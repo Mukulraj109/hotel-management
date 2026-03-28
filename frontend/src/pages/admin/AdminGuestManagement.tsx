@@ -42,13 +42,14 @@ const AdminGuestManagement: React.FC = () => {
         params: {
           role: 'guest',
           limit: 100,
-          propertyId: selectedPropertyId
+          hotelId: selectedPropertyId
         }
       });
       const guestData = response.data.data.users || [];
       setGuests(guestData);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to fetch guests');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Failed to fetch guests');
     } finally {
       setLoading(false);
     }

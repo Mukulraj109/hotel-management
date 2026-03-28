@@ -556,7 +556,7 @@ export default function GlobalSettingsForm({
                   <div>
                     <Label>Default View</Label>
                     <Select
-                      value={formData.uiPreferences.defaultView}
+                      value={formData.uiPreferences?.defaultView}
                       onValueChange={(value) => handleInputChange('uiPreferences', 'defaultView', value)}
                     >
                       <SelectTrigger className="mt-1">
@@ -573,7 +573,7 @@ export default function GlobalSettingsForm({
                   <div>
                     <Label>Calendar View</Label>
                     <Select
-                      value={formData.uiPreferences.calendarView}
+                      value={formData.uiPreferences?.calendarView}
                       onValueChange={(value) => handleInputChange('uiPreferences', 'calendarView', value)}
                     >
                       <SelectTrigger className="mt-1">
@@ -596,7 +596,7 @@ export default function GlobalSettingsForm({
                       </p>
                     </div>
                     <Switch
-                      checked={formData.uiPreferences.showChannelColors}
+                      checked={formData.uiPreferences?.showChannelColors}
                       onCheckedChange={(checked) => handleInputChange('uiPreferences', 'showChannelColors', checked)}
                     />
                   </div>
@@ -609,7 +609,7 @@ export default function GlobalSettingsForm({
                       </p>
                     </div>
                     <Switch
-                      checked={formData.uiPreferences.compactMode}
+                      checked={formData.uiPreferences?.compactMode}
                       onCheckedChange={(checked) => handleInputChange('uiPreferences', 'compactMode', checked)}
                     />
                   </div>
@@ -622,12 +622,12 @@ export default function GlobalSettingsForm({
                       </p>
                     </div>
                     <Switch
-                      checked={formData.uiPreferences.autoRefresh}
+                      checked={formData.uiPreferences?.autoRefresh}
                       onCheckedChange={(checked) => handleInputChange('uiPreferences', 'autoRefresh', checked)}
                     />
                   </div>
 
-                  {formData.uiPreferences.autoRefresh && (
+                  {formData.uiPreferences?.autoRefresh && (
                     <div>
                       <Label htmlFor="refreshInterval">Refresh Interval (seconds)</Label>
                       <Input
@@ -636,7 +636,7 @@ export default function GlobalSettingsForm({
                         min="30"
                         max="1800"
                         step="30"
-                        value={formData.uiPreferences.refreshInterval}
+                        value={formData.uiPreferences?.refreshInterval}
                         onChange={(e) => handleInputChange('uiPreferences', 'refreshInterval', parseInt(e.target.value))}
                         className="mt-1"
                       />

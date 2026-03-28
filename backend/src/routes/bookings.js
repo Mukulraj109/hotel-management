@@ -19,6 +19,13 @@ import logger from '../utils/logger.js';
 import cancellationService from '../services/cancellationService.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
 import bookingService from '../modules/booking/service.js';
+import availabilityService from '../services/availabilityService.js';
+import {
+  getRoomTypeCountsForBooking,
+  expandPlan,
+  inventoryPlansEqual,
+  patchTouchesInventory
+} from '../services/bookingInventoryPlan.js';
 import {
   getSettlement,
   addSettlementAdjustment,
@@ -147,9 +154,9 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   const dayAfterTomorrow = new Date(tomorrow);
   dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
 
-  // Count arrivals for today (confirmed or pending bookings checking in today)
+  // Count arrivals for today (confirmed, pending, or checked_in bookings with checkIn today)
   const todayQuery = {
-    status: { $in: ['confirmed', 'pending'] },
+    status: { $in: ['confirmed', 'pending', 'checked_in'] },
     checkIn: { $gte: today, $lt: tomorrow }
   };
 
@@ -250,10 +257,10 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
 
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && req.user.hotelId) {
+  } else if (req.user.hotelId) {
+    // All roles (admin, manager, staff, frontdesk) are scoped to their hotel
     query.hotelId = req.user.hotelId;
   }
-  // Admin sees all bookings
 
   if (status) {
     // Support comma-separated status values (e.g., "confirmed,pending,checked_in")
@@ -306,11 +313,15 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   ] = await Promise.all([
     Booking.countDocuments(baseQuery),
     Booking.countDocuments({ ...baseQuery, status: 'pending' }),
-    Booking.find(baseQuery).select('totalAmount')
+    Booking.aggregate([
+      { $match: baseQuery },
+      { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+    ])
   ]);
 
-  // Calculate average booking value
-  const totalRevenue = allBookingsForStats.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+  // Calculate average booking value from aggregation
+  const revenueStats = allBookingsForStats[0] || { totalRevenue: 0, count: 0 };
+  const totalRevenue = revenueStats.totalRevenue || 0;
   const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
   res.json({
@@ -722,6 +733,11 @@ router.post('/',
           }
         }
 
+        const holdPrimaryType =
+          (!rooms || rooms.length === 0) &&
+          req.body.roomTypeId &&
+          mongoose.Types.ObjectId.isValid(String(req.body.roomTypeId));
+
         const booking = await Booking.create([{
           hotelId,
           userId: resolvedUserId || req.user._id, // Use provided userId for admin bookings, fallback to current user
@@ -736,9 +752,49 @@ router.post('/',
           status: status || 'pending',
           paymentStatus: paymentStatus || 'pending',
           roomType, // Add roomType for room-type preference bookings
+          ...(holdPrimaryType
+            ? {
+                primaryRoomTypeId: new mongoose.Types.ObjectId(String(req.body.roomTypeId)),
+                primaryRoomQuantity: Math.max(1, Number(req.body.primaryRoomQuantity) || 1)
+              }
+            : {}),
           ratePlanSnapshot,
           ...paymentDetails // Spread payment details if provided
         }], { session });
+
+        // Keep RoomAvailability calendar aligned when specific rooms are assigned (FAB-004/005)
+        if (rooms && rooms.length > 0) {
+          const countsByRoomType = new Map();
+          for (const room of rooms) {
+            const rtId = room.roomTypeId;
+            if (!rtId) continue;
+            const key = rtId.toString();
+            countsByRoomType.set(key, (countsByRoomType.get(key) || 0) + 1);
+          }
+          for (const [roomTypeIdStr, roomsCount] of countsByRoomType) {
+            await availabilityService.reserveRoomsWithParentSession(session, {
+              hotelId,
+              roomTypeId: new mongoose.Types.ObjectId(roomTypeIdStr),
+              checkIn: checkInDate,
+              checkOut: checkOutDate,
+              roomsCount,
+              bookingId: booking[0]._id,
+              source: 'direct',
+              userId: req.user._id
+            });
+          }
+        } else if (holdPrimaryType) {
+          await availabilityService.reserveRoomsWithParentSession(session, {
+            hotelId,
+            roomTypeId: new mongoose.Types.ObjectId(String(req.body.roomTypeId)),
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            roomsCount: Math.max(1, Number(req.body.primaryRoomQuantity) || 1),
+            bookingId: booking[0]._id,
+            source: 'direct',
+            userId: req.user._id
+          });
+        }
 
         // Create corresponding invoice for billing history
         const finalAmount = totalAmount || calculatedTotal;
@@ -889,6 +945,94 @@ router.patch('/:id',
       { path: 'userId', select: 'name email phone' },
       { path: 'hotelId', select: 'name address contact' }
     ]);
+
+    if (
+      patchTouchesInventory(updateData) &&
+      !['cancelled', 'checked_out', 'no_show'].includes(updatedBooking.status)
+    ) {
+      const oldCounts = await getRoomTypeCountsForBooking(originalBooking);
+      const newCounts = await getRoomTypeCountsForBooking(updatedBooking.toObject());
+
+      const oldHotelId = originalBooking.hotelId?._id || originalBooking.hotelId;
+      const newHotelId = updatedBooking.hotelId?._id || updatedBooking.hotelId;
+
+      const oldPlan = expandPlan(oldHotelId, originalBooking.checkIn, originalBooking.checkOut, oldCounts);
+      const newPlan = expandPlan(newHotelId, updatedBooking.checkIn, updatedBooking.checkOut, newCounts);
+
+      if (!inventoryPlansEqual(oldPlan, newPlan)) {
+        for (const entry of oldPlan) {
+          try {
+            const rel = await availabilityService.releaseRooms({
+              hotelId: entry.hotelId,
+              roomTypeId: entry.roomTypeId,
+              checkIn: entry.checkIn,
+              checkOut: entry.checkOut,
+              roomsCount: entry.roomsCount,
+              bookingId: originalBooking._id,
+              userId: req.user._id
+            });
+            if (!rel.success) {
+              logger.warn('releaseRooms on booking patch', {
+                message: rel.message,
+                bookingId: req.params.id
+              });
+            }
+          } catch (e) {
+            logger.warn('releaseRooms on booking patch threw', {
+              error: e.message,
+              bookingId: req.params.id
+            });
+          }
+        }
+
+        for (const entry of newPlan) {
+          const r = await availabilityService.reserveRooms({
+            hotelId: entry.hotelId,
+            roomTypeId: entry.roomTypeId,
+            checkIn: entry.checkIn,
+            checkOut: entry.checkOut,
+            roomsCount: entry.roomsCount,
+            bookingId: updatedBooking._id,
+            source: 'direct',
+            userId: req.user._id
+          });
+          if (!r.success) {
+            const rollback = {};
+            for (const k of ['checkIn', 'checkOut', 'rooms', 'primaryRoomTypeId', 'primaryRoomQuantity']) {
+              if (Object.prototype.hasOwnProperty.call(updateData, k)) {
+                rollback[k] = originalBooking[k];
+              }
+            }
+            if (Object.keys(rollback).length) {
+              await Booking.findByIdAndUpdate(req.params.id, { $set: rollback }, { new: true });
+            }
+            for (const entry2 of oldPlan) {
+              try {
+                await availabilityService.reserveRooms({
+                  hotelId: entry2.hotelId,
+                  roomTypeId: entry2.roomTypeId,
+                  checkIn: entry2.checkIn,
+                  checkOut: entry2.checkOut,
+                  roomsCount: entry2.roomsCount,
+                  bookingId: originalBooking._id,
+                  source: 'direct',
+                  userId: req.user._id
+                });
+              } catch (re) {
+                logger.error('Failed to re-reserve inventory after patch rollback', {
+                  bookingId: req.params.id,
+                  error: re.message
+                });
+              }
+            }
+            throw new ApplicationError(
+              r.message || 'Could not secure inventory for the updated booking; changes were reverted.',
+              409
+            );
+          }
+        }
+      }
+    }
 
     // Update corresponding invoice if payment status changed
     if (updateData.paymentStatus && ['admin', 'staff'].includes(req.user.role)) {
@@ -1045,14 +1189,32 @@ router.patch('/:id/cancel',
       );
     }
 
-    // Release room availability for cancelled dates
-    if (booking.rooms && booking.rooms.length > 0) {
-      const RoomAvailability = (await import('../models/RoomAvailability.js')).default;
-      if (RoomAvailability) {
-        await RoomAvailability.updateMany(
-          { bookingId: booking._id },
-          { $set: { status: 'available', bookingId: null } }
-        ).catch(err => logger.warn('Failed to release room inventory', { error: err.message }));
+    // Release RoomAvailability calendar counts (physical rooms and/or primary room type)
+    const countsByType = await getRoomTypeCountsForBooking(booking);
+    for (const [roomTypeId, roomsCount] of countsByType) {
+      try {
+        const result = await availabilityService.releaseRooms({
+          hotelId: booking.hotelId,
+          roomTypeId,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          roomsCount,
+          bookingId: booking._id,
+          userId: req.user._id
+        });
+        if (!result.success) {
+          logger.warn('availabilityService.releaseRooms failed on cancel', {
+            bookingId: booking._id,
+            roomTypeId,
+            message: result.message
+          });
+        }
+      } catch (err) {
+        logger.warn('Failed to release room availability on cancel', {
+          bookingId: booking._id,
+          roomTypeId,
+          error: err.message
+        });
       }
     }
 

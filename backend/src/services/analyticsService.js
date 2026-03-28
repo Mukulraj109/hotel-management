@@ -64,9 +64,10 @@ class AnalyticsService {
             matchCriteria.travelAgentId = travelAgentId;
           }
 
-          if (hotelId) {
-            matchCriteria.hotelId = hotelId;
+          if (!hotelId) {
+            throw new Error('Hotel context required for booking trend analysis');
           }
+          matchCriteria.hotelId = hotelId;
 
           if (startDate && endDate) {
             matchCriteria.createdAt = {

@@ -402,7 +402,15 @@ router.get('/channels', catchAsync(async (req, res) => {
 router.get('/statistics', catchAsync(async (req, res) => {
   const RoomMapping = (await import('../models/RoomMapping.js')).default;
   const RateMapping = (await import('../models/RateMapping.js')).default;
-  
+  const mongoose = (await import('mongoose')).default;
+
+  const targetHotelId = req.query.hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel ID is required' });
+  }
+
+  const hotelFilter = { hotelId: new mongoose.Types.ObjectId(targetHotelId) };
+
   const [
     totalRoomMappings,
     activeRoomMappings,
@@ -410,16 +418,17 @@ router.get('/statistics', catchAsync(async (req, res) => {
     activeRateMappings,
     mappingsByChannel
   ] = await Promise.all([
-    RoomMapping.countDocuments(),
-    RoomMapping.countDocuments({ isActive: true }),
-    RateMapping.countDocuments(),
-    RateMapping.countDocuments({ isActive: true }),
+    RoomMapping.countDocuments(hotelFilter),
+    RoomMapping.countDocuments({ ...hotelFilter, isActive: true }),
+    RateMapping.countDocuments(hotelFilter),
+    RateMapping.countDocuments({ ...hotelFilter, isActive: true }),
     RoomMapping.aggregate([
+      { $match: hotelFilter },
       { $group: { _id: '$channel', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ])
   ]);
-  
+
   res.status(200).json({
     status: 'success',
     data: {

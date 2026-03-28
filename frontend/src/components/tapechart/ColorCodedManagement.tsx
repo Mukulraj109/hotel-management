@@ -101,7 +101,32 @@ export const ColorCodedManagement: React.FC = () => {
     loadColorManagementData();
   }, []);
 
+  // Persist color settings to localStorage when they change
+  useEffect(() => {
+    if (colorSchemes.length > 0) {
+      try {
+        localStorage.setItem('tapechart-color-config', JSON.stringify({
+          colorSchemes, bookingColorRules, customFields, visualIndicators, selectedTheme
+        }));
+      } catch { /* localStorage full — ignore */ }
+    }
+  }, [colorSchemes, bookingColorRules, customFields, visualIndicators, selectedTheme]);
+
   const loadColorManagementData = () => {
+    // Try to load saved preferences from localStorage
+    try {
+      const saved = localStorage.getItem('tapechart-color-config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.colorSchemes?.length) setColorSchemes(parsed.colorSchemes);
+        if (parsed.bookingColorRules?.length) setBookingColorRules(parsed.bookingColorRules);
+        if (parsed.customFields?.length) setCustomFields(parsed.customFields);
+        if (parsed.visualIndicators?.length) setVisualIndicators(parsed.visualIndicators);
+        if (parsed.selectedTheme) setSelectedTheme(parsed.selectedTheme);
+        return; // Use saved data
+      }
+    } catch { /* Parse error — fall through to defaults */ }
+
     // Load default color schemes
     const defaultColorSchemes: ColorScheme[] = [
       {

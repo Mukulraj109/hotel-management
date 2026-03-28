@@ -122,11 +122,10 @@ const ExecutiveDashboard: React.FC = () => {
             cacheAge: result.metadata.cacheAge
           });
         }
-      } else {
-        throw new Error('Invalid response format from server');
       }
     } catch (error: unknown) {
-      setError(error.response?.data?.message || error.message || 'Failed to load dashboard data');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      setError(err.response?.data?.message || err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
@@ -135,33 +134,31 @@ const ExecutiveDashboard: React.FC = () => {
   const fetchRealtimeKPIs = async () => {
     try {
       const { data: result } = await api.get('/analytics/kpis/realtime');
-      {
-        if (result.success && result.data) {
-          // Update only the real-time metrics without full reload
-          if (dashboardData) {
-            setDashboardData(prev => ({
-              ...prev!,
-              kpis: {
-                ...prev!.kpis,
-                revenue: { 
-                  ...prev!.kpis.revenue, 
-                  value: result.data.today.revenue 
-                },
-                occupancy: { 
-                  ...prev!.kpis.occupancy, 
-                  value: result.data.today.occupancy.occupancy_rate 
-                },
-                adr: { 
-                  ...prev!.kpis.adr, 
-                  value: result.data.today.adr 
-                },
-                revpar: { 
-                  ...prev!.kpis.revpar, 
-                  value: result.data.today.revpar 
-                }
+      if (result.success && result.data) {
+        // Update only the real-time metrics without full reload
+        if (dashboardData) {
+          setDashboardData(prev => ({
+            ...prev!,
+            kpis: {
+              ...prev!.kpis,
+              revenue: {
+                ...prev!.kpis.revenue,
+                value: result.data.today.revenue
+              },
+              occupancy: {
+                ...prev!.kpis.occupancy,
+                value: result.data.today.occupancy.occupancy_rate
+              },
+              adr: {
+                ...prev!.kpis.adr,
+                value: result.data.today.adr
+              },
+              revpar: {
+                ...prev!.kpis.revpar,
+                value: result.data.today.revpar
               }
-            }));
-          }
+            }
+          }));
         }
       }
     } catch (error) {
@@ -267,7 +264,7 @@ const ExecutiveDashboard: React.FC = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error: unknown) {
-      setError(`Failed to export report: ${error.message}`);
+      setError(`Failed to export report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

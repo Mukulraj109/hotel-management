@@ -867,22 +867,19 @@ class EnhancedBookingController {
         });
       }
 
-      // Mock sync results for now
-      const syncResults = (channels || ['booking_com', 'expedia']).map(channel => ({
+      // Channel sync is not configured — no OTA channel manager is connected.
+      // Report honestly that sync was not performed rather than faking success.
+      const requestedChannels = channels || ['booking_com', 'expedia'];
+      const syncResults = requestedChannels.map(channel => ({
         channel,
-        status: 'success',
-        message: `Successfully synced to ${channel}`
+        status: 'not_configured',
+        message: `Channel sync for ${channel} is not configured. Connect an OTA channel manager to enable sync.`
       }));
 
-      // Mark as synced
+      // Mark as still needing sync since nothing was actually synced
       booking.syncStatus = {
-        lastSyncedAt: new Date(),
-        syncedToChannels: syncResults.map(result => ({
-          channel: result.channel,
-          syncedAt: new Date(),
-          syncStatus: result.status
-        })),
-        needsSync: false
+        ...booking.syncStatus,
+        needsSync: true
       };
 
       await booking.save();
@@ -890,7 +887,8 @@ class EnhancedBookingController {
       res.json({
         success: true,
         data: {
-          syncResults
+          syncResults,
+          notice: 'No OTA channel manager is configured. Sync results reflect configuration status, not actual synchronization.'
         }
       });
 
@@ -1246,13 +1244,27 @@ class EnhancedBookingController {
         'syncStatus.needsSync': true
       });
 
+      // Calculate occupancy rate from real room data
+      let occupancyRate = 0;
+      const totalRooms = await Room.countDocuments({ hotelId, isActive: true });
+      if (totalRooms > 0) {
+        const today = new Date();
+        const occupiedRooms = await Booking.countDocuments({
+          hotelId,
+          status: { $in: ['confirmed', 'checked_in'] },
+          checkIn: { $lte: today },
+          checkOut: { $gt: today }
+        });
+        occupancyRate = Math.round((occupiedRooms / totalRooms) * 100 * 10) / 10;
+      }
+
       res.json({
         success: true,
         data: {
           totalBookings,
           totalRevenue: totalRevenue[0]?.total || 0,
           averageRate,
-          occupancyRate: 0, // Placeholder
+          occupancyRate,
           channelBreakdown: channelBreakdown.reduce((acc, item) => {
             acc[item._id] = {
               bookings: item.bookings,

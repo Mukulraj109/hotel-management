@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { User } from '../types/auth';
 import { authService } from '../services/authService';
 import toast from 'react-hot-toast';
+
+/** Shared React Query cache key — PropertyContext reads the same key (no second `/auth/me`). */
+export const AUTH_ME_QUERY_KEY = ['auth-me'] as const;
 
 interface AuthContextType {
   user: User | null;
@@ -25,6 +29,7 @@ interface RegisterData {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -34,13 +39,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initializeAuth = async () => {
     try {
-      // With httpOnly cookies, try fetching current user directly
-      // The cookie is sent automatically with withCredentials: true
-      const userData = await authService.getCurrentUser();
+      const userData = await queryClient.fetchQuery({
+        queryKey: AUTH_ME_QUERY_KEY,
+        queryFn: () => authService.getCurrentUser(),
+        staleTime: 5 * 60 * 1000
+      });
       setUser(userData);
     } catch (error: unknown) {
-      // 401 means no valid session -- user is not authenticated
       setUser(null);
+      queryClient.removeQueries({ queryKey: AUTH_ME_QUERY_KEY });
     } finally {
       setIsLoading(false);
     }
@@ -49,8 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       const { user: userData } = await authService.login({ email, password });
-      // Token is set as httpOnly cookie by the server automatically
       setUser(userData);
+      queryClient.setQueryData(AUTH_ME_QUERY_KEY, userData);
       toast.success('Login successful!');
       return { user: userData };
     } catch (error: unknown) {
@@ -83,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem('selectedPropertyId');
     setUser(null);
+    queryClient.removeQueries({ queryKey: AUTH_ME_QUERY_KEY });
     toast.success('Logged out successfully');
   };
 
@@ -94,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUser = (userData: User) => {
     setUser(userData);
+    queryClient.setQueryData(AUTH_ME_QUERY_KEY, userData);
   };
 
   const value = {

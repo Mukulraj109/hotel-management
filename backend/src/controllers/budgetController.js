@@ -7,8 +7,7 @@ import logger from '../utils/logger.js';
 
 // Get budgets with filtering
 export const getBudgets = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const { hotelId } = req.user;
   const {
     budgetType,
     fiscalYear,
@@ -18,8 +17,12 @@ export const getBudgets = catchAsync(async (req, res) => {
     limit = 20
   } = req.query;
 
-  let filter = {}; // Remove hotelId filter temporarily
-  
+  let filter = {};
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+  filter.hotelId = hotelId;
+
   if (budgetType) filter.budgetType = budgetType;
   if (fiscalYear) filter.fiscalYear = parseInt(fiscalYear);
   if (status) filter.status = status;
@@ -89,15 +92,20 @@ export const getBudgets = catchAsync(async (req, res) => {
 
 // Get single budget
 export const getBudget = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const { hotelId } = req.user;
   const { id } = req.params;
   const { includeComparison = false } = req.query;
 
-  const budget = await Budget.findOne({ _id: id })
+  const query = { _id: id };
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+  query.hotelId = hotelId;
+
+  const budget = await Budget.findOne(query)
     .populate('createdBy approvedBy', 'name email')
     .populate('budgetLines.accountId', 'accountCode accountName accountType')
-    .populate('previousVersionId', 'budgetName version status').lean();
+    .populate('previousVersionId', 'budgetName version status');
 
   if (!budget) {
     return res.status(404).json({
@@ -127,18 +135,17 @@ export const getBudget = catchAsync(async (req, res) => {
 
 // Create new budget
 export const createBudget = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId, _id: userId } = req.user;
-  const userId = 'temp-user-id'; // Temporary user ID for testing
-  
+  const { hotelId, _id: userId } = req.user;
+
   // Validate budget lines have valid accounts
   if (req.body.budgetLines?.length) {
+    if (!hotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
     const accountIds = req.body.budgetLines.map(line => line.accountId);
-    const accounts = await ChartOfAccounts.find({
-      _id: { $in: accountIds },
-      // hotelId, // Temporarily removed
-      isActive: true
-    }).lean().limit(1000);
+    const filter = { _id: { $in: accountIds }, isActive: true };
+    filter.hotelId = hotelId;
+    const accounts = await ChartOfAccounts.find(filter).lean().limit(1000);
 
     if (accounts.length !== accountIds.length) {
       return res.status(400).json({
@@ -147,11 +154,6 @@ export const createBudget = catchAsync(async (req, res) => {
       });
     }
   }
-
-  // Get first hotel ID for testing
-  const Hotel = (await import('../models/Hotel.js')).default;
-  const firstHotel = await Hotel.findOne().lean();
-  const hotelId = firstHotel ? firstHotel._id : null;
 
   const budgetData = {
     ...req.body,
@@ -276,8 +278,8 @@ export const approveBudget = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
-  
+  const budget = await Budget.findOne({ _id: id, hotelId });
+
   if (!budget) {
     return res.status(404).json({
       status: 'error',
@@ -421,8 +423,8 @@ export const createRevision = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
-  
+  const budget = await Budget.findOne({ _id: id, hotelId });
+
   if (!budget) {
     return res.status(404).json({
       status: 'error',
@@ -519,17 +521,19 @@ export const getBudgetSummary = catchAsync(async (req, res) => {
 
 // Get budget statistics
 export const getBudgetStatistics = catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+
   try {
     // Get basic counts and stats using simple operations
     const [totalCount, activeBudgets, draftBudgets, approvedBudgets] = await Promise.all([
-      Budget.estimatedDocumentCount(),
-      Budget.countDocuments({ status: 'Active' }),
-      Budget.countDocuments({ status: 'Draft' }),
-      Budget.countDocuments({ status: 'Approved' })
+      Budget.countDocuments({ hotelId }),
+      Budget.countDocuments({ hotelId, status: 'Active' }),
+      Budget.countDocuments({ hotelId, status: 'Draft' }),
+      Budget.countDocuments({ hotelId, status: 'Approved' })
     ]);
 
-    // Get all budgets for calculations
-    const budgets = await Budget.find().select('totalRevenue totalExpenses netIncome').lean().limit(1000);
+    // Get budgets for calculations scoped to this hotel
+    const budgets = await Budget.find({ hotelId }).select('totalRevenue totalExpenses netIncome').lean().limit(1000);
 
     const totalBudgetedRevenue = budgets.reduce((sum, budget) => sum + (budget.totalRevenue || 0), 0);
     const totalBudgetedExpenses = budgets.reduce((sum, budget) => sum + (budget.totalExpenses || 0), 0);

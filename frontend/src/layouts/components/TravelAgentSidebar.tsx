@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 // Travel Agent navigation
 const travelAgentNavigation = [
   { name: 'Dashboard', href: '/travel-agent', icon: Home },
-  { name: 'My Bookings', href: '/travel-agent/bookings', icon: Calendar },
+  { name: 'My Bookings', href: '/travel-agent', icon: Calendar },
   { name: 'New Booking', href: '/travel-agent/booking/new', icon: Calendar },
   { name: 'Multi-Booking', href: '/travel-agent/multi-booking', icon: Users },
   { name: 'View Rates', href: '/travel-agent/rates', icon: CreditCard },

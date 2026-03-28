@@ -90,7 +90,8 @@ router.get('/unread-count', catchAsync(async (req, res) => {
  * Get inventory notification summary for dashboard
  */
 router.get('/summary', catchAsync(async (req, res) => {
-  const { _id: userId, hotelId } = req.user;
+  const { _id: userId, hotelId: rawHotelId } = req.user;
+  const hotelId = rawHotelId?._id || rawHotelId;
 
   // Get recent notifications (last 7 days)
   const recent = await inventoryNotificationService.getInventoryNotifications(userId, hotelId, 20);

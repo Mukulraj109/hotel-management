@@ -22,7 +22,9 @@ export function ProtectedRoute({ children, allowedRoles = [] }: ProtectedRoutePr
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    const requiresAdminLogin = allowedRoles.includes('admin') || allowedRoles.includes('manager');
+    const loginPath = requiresAdminLogin ? '/admin/login' : '/login';
+    return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {

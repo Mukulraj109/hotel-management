@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Grid, List, FileText, Eye, Edit, Copy, Trash2, BarChart } from 'lucide-react';
+import { Plus, Search, Grid, List, FileText, Eye, Edit, Copy, Trash2, BarChart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -16,12 +15,8 @@ import FormPreview from '../../components/web/FormPreview';
 import { bookingFormService, BookingFormTemplate } from '../../services/bookingFormService';
 
 const AdminBookingFormBuilder: React.FC = () => {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [templates, setTemplates] = useState<BookingFormTemplate[]>([]);
-  const [filteredTemplates, setFilteredTemplates] = useState<BookingFormTemplate[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<BookingFormTemplate | null>(null);
@@ -34,40 +29,39 @@ const AdminBookingFormBuilder: React.FC = () => {
     limit: 12
   });
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Early return if no property selected in single mode
-  if (!selectedPropertyId && viewMode === 'single') {
-    return <div className="p-6">Please select a property</div>;
-  }
+  // Read filter values from URL search params (single source of truth)
+  const searchTerm = searchParams.get('search') || '';
+  const statusFilter = searchParams.get('status') || 'all';
+  const categoryFilter = searchParams.get('category') || 'all';
+  const currentPage = searchParams.get('page') || '1';
 
+  // Fetch templates whenever URL params or property changes
   useEffect(() => {
     if (selectedPropertyId) {
       loadTemplates();
     }
   }, [searchParams, selectedPropertyId]);
 
-  useEffect(() => {
-    filterTemplates();
-  }, [templates, searchTerm, statusFilter, categoryFilter]);
-
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      
+
       const params = {
-        page: searchParams.get('page') || '1',
+        page: currentPage,
         limit: '12',
-        search: searchParams.get('search') || '',
-        status: searchParams.get('status') || 'all',
-        category: searchParams.get('category') || 'all',
+        search: searchTerm,
+        status: statusFilter,
+        category: categoryFilter,
         sortBy: searchParams.get('sortBy') || 'updatedAt',
         sortOrder: searchParams.get('sortOrder') || 'desc'
       };
 
       const response = await bookingFormService.getTemplates(params);
-      
+
       if (response.success && response.data) {
         setTemplates(response.data.templates);
         setPagination(response.data.pagination);
@@ -81,26 +75,44 @@ const AdminBookingFormBuilder: React.FC = () => {
     }
   };
 
-  const filterTemplates = () => {
-    let filtered = [...templates];
+  // Update URL params (triggers re-fetch via useEffect)
+  const updateParams = useCallback((updates: Record<string, string>) => {
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value && value !== 'all' && value !== '1' && value !== '') {
+          newParams.set(key, value);
+        } else {
+          newParams.delete(key);
+        }
+      });
+      // Reset to page 1 when filters change (unless page is being changed directly)
+      if (!('page' in updates)) {
+        newParams.delete('page');
+      }
+      return newParams;
+    });
+  }, [setSearchParams]);
 
-    if (searchTerm) {
-      filtered = filtered.filter(template =>
-        template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        template.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  // Debounced search
+  const handleSearchChange = useCallback((value: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      updateParams({ search: value });
+    }, 400);
+  }, [updateParams]);
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(template => template.status === statusFilter);
-    }
+  const handleStatusChange = useCallback((value: string) => {
+    updateParams({ status: value });
+  }, [updateParams]);
 
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter(template => template.category === categoryFilter);
-    }
+  const handleCategoryChange = useCallback((value: string) => {
+    updateParams({ category: value });
+  }, [updateParams]);
 
-    setFilteredTemplates(filtered);
-  };
+  const handlePageChange = useCallback((page: number) => {
+    updateParams({ page: String(page) });
+  }, [updateParams]);
 
   const handleCreateTemplate = () => {
     setSelectedTemplate(null);
@@ -121,7 +133,7 @@ const AdminBookingFormBuilder: React.FC = () => {
     try {
       const newName = `${template.name} (Copy)`;
       const response = await bookingFormService.duplicateTemplate(template._id, { name: newName });
-      
+
       if (response.success) {
         toast.success('Template duplicated successfully');
         loadTemplates();
@@ -152,12 +164,13 @@ const AdminBookingFormBuilder: React.FC = () => {
   };
 
   const handleViewAnalytics = (template: BookingFormTemplate) => {
-    navigate(`/admin/booking-forms/${template._id}/analytics`);
+    toast('Analytics dashboard coming soon', { icon: '📊' });
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
+      case 'published':
         return 'bg-green-100 text-green-800';
       case 'draft':
         return 'bg-yellow-100 text-yellow-800';
@@ -189,7 +202,7 @@ const AdminBookingFormBuilder: React.FC = () => {
     return (
       <FormBuilder
         template={selectedTemplate}
-        onSave={(template) => {
+        onSave={() => {
           setShowFormBuilder(false);
           setSelectedTemplate(null);
           loadTemplates();
@@ -229,27 +242,28 @@ const AdminBookingFormBuilder: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
                   placeholder="Search templates..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  defaultValue={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-10 text-sm"
                 />
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={handleStatusChange}>
                 <SelectTrigger className="w-full sm:w-40 text-sm">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
                   <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
 
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select value={categoryFilter} onValueChange={handleCategoryChange}>
                 <SelectTrigger className="w-full sm:w-40 text-sm">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
@@ -295,7 +309,7 @@ const AdminBookingFormBuilder: React.FC = () => {
         <>
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {filteredTemplates.map((template) => (
+              {templates.map((template) => (
                 <Card key={template._id} className="hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-200">
                   <CardHeader className="pb-3 sm:pb-4">
                     <div className="flex items-start justify-between">
@@ -317,11 +331,11 @@ const AdminBookingFormBuilder: React.FC = () => {
                       </Badge>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent className="pt-0">
                     <div className="grid grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 py-2 sm:py-3 bg-gray-50 rounded-lg">
                       <div className="text-center">
-                        <div className="font-semibold text-gray-700 text-sm sm:text-base">{template.fieldCount || 0}</div>
+                        <div className="font-semibold text-gray-700 text-sm sm:text-base">{template.fieldCount ?? template.fields?.length ?? 0}</div>
                         <div className="text-xs">Fields</div>
                       </div>
                       <div className="text-center">
@@ -329,7 +343,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                         <div className="text-xs">Views</div>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Button
                         size="sm"
@@ -341,7 +355,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                         <span className="sm:hidden">Preview</span>
                         <span className="hidden sm:inline">Preview Form</span>
                       </Button>
-                      
+
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           size="sm"
@@ -364,7 +378,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                           Copy
                         </Button>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           size="sm"
@@ -409,7 +423,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredTemplates.map((template) => (
+                      {templates.map((template) => (
                         <tr key={template._id} className="border-b border-gray-100">
                           <td className="py-3 px-2 sm:px-4">
                             <div>
@@ -434,36 +448,27 @@ const AdminBookingFormBuilder: React.FC = () => {
                               {template.status}
                             </Badge>
                           </td>
-                          <td className="py-3 px-2 sm:px-4 hidden md:table-cell text-xs sm:text-sm">{template.fieldCount || 0}</td>
+                          <td className="py-3 px-2 sm:px-4 hidden md:table-cell text-xs sm:text-sm">{template.fieldCount ?? template.fields?.length ?? 0}</td>
                           <td className="py-3 px-2 sm:px-4 hidden lg:table-cell text-xs sm:text-sm">{template.usage?.views || 0}</td>
                           <td className="py-3 px-2 sm:px-4 hidden lg:table-cell text-xs sm:text-sm text-gray-500">
-                            {new Date(template.updatedAt).toLocaleDateString()}
+                            {template.updatedAt ? new Date(template.updatedAt).toLocaleDateString() : '-'}
                           </td>
                           <td className="py-3 px-2 sm:px-4">
                             <div className="flex gap-1 sm:gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handlePreviewTemplate(template)}
-                                className="text-xs"
-                              >
+                              <Button size="sm" variant="outline" onClick={() => handlePreviewTemplate(template)} className="text-xs" title="Preview">
                                 <Eye className="w-3 h-3" />
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditTemplate(template)}
-                                className="text-xs"
-                              >
+                              <Button size="sm" variant="outline" onClick={() => handleEditTemplate(template)} className="text-xs" title="Edit">
                                 <Edit className="w-3 h-3" />
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewAnalytics(template)}
-                                className="text-xs"
-                              >
+                              <Button size="sm" variant="outline" onClick={() => handleDuplicateTemplate(template)} className="text-xs" title="Duplicate">
+                                <Copy className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleViewAnalytics(template)} className="text-xs" title="Analytics">
                                 <BarChart className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(template)} className="text-xs text-red-600 hover:text-red-700" title="Delete">
+                                <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
                           </td>
@@ -476,7 +481,39 @@ const AdminBookingFormBuilder: React.FC = () => {
             </Card>
           )}
 
-          {filteredTemplates.length === 0 && (
+          {/* Pagination */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between mt-4 sm:mt-6">
+              <p className="text-xs sm:text-sm text-gray-600">
+                Showing {templates.length} of {pagination.total} {pagination.total === 1 ? 'template' : 'templates'}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pagination.current <= 1}
+                  onClick={() => handlePageChange(pagination.current - 1)}
+                  className="text-xs"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-xs sm:text-sm text-gray-700">
+                  Page {pagination.current} of {pagination.pages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pagination.current >= pagination.pages}
+                  onClick={() => handlePageChange(pagination.current + 1)}
+                  className="text-xs"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {templates.length === 0 && (
             <Card className="border-2 border-dashed border-gray-200">
               <CardContent className="text-center py-8 sm:py-12">
                 <FileText className="mx-auto h-12 w-12 sm:h-16 sm:w-16 text-gray-400 mb-4" />
@@ -493,12 +530,8 @@ const AdminBookingFormBuilder: React.FC = () => {
                     <span className="hidden sm:inline">Create Your First Form Template</span>
                   </Button>
                 ) : (
-                  <Button 
-                    onClick={() => {
-                      setSearchTerm('');
-                      setStatusFilter('all');
-                      setCategoryFilter('all');
-                    }}
+                  <Button
+                    onClick={() => setSearchParams({})}
                     variant="outline"
                     className="text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3"
                   >

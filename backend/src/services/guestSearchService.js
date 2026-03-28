@@ -27,7 +27,10 @@ class GuestSearchService {
       } = searchCriteria;
 
       const query = { role: 'guest' };
-      if (hotelId) query.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant-isolated guest search');
+      }
+      query.hotelId = hotelId;
 
       // Text search across multiple fields
       if (text) {

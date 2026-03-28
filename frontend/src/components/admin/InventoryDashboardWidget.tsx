@@ -169,7 +169,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
               </div>
             </div>
             <Button
-              onClick={() => handleNavigate('/admin/inventory/items')}
+              onClick={() => handleNavigate('/admin/inventory')}
               size="sm"
               variant="secondary"
             >
@@ -293,7 +293,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
               
               {summary.lowStockItems > 5 && (
                 <Button
-                  onClick={() => handleNavigate('/admin/inventory/items?filter=low-stock')}
+                  onClick={() => handleNavigate('/admin/inventory?lowStock=true')}
                   variant="secondary"
                   size="sm"
                   className="w-full mt-3"
@@ -364,7 +364,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Inventory Activity (Last 7 Days)</h3>
           <Button
-            onClick={() => handleNavigate('/admin/inventory/transactions')}
+            onClick={() => handleNavigate('/admin/inventory')}
             size="sm"
             variant="secondary"
           >
@@ -412,7 +412,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
           </Button>
           
           <Button
-            onClick={() => handleNavigate('/admin/inventory/items')}
+            onClick={() => handleNavigate('/admin/inventory')}
             className="flex items-center justify-center p-3 bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
           >
             <TrendingUp className="w-4 h-4 mr-2" />
@@ -428,7 +428,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
           </Button>
           
           <Button
-            onClick={() => handleNavigate('/admin/inventory/transactions')}
+            onClick={() => handleNavigate('/admin/inventory')}
             className="flex items-center justify-center p-3 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
           >
             <RefreshCw className="w-4 h-4 mr-2" />

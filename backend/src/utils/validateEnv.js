@@ -14,11 +14,8 @@ export function validateEnvironment() {
     'REDIS_URL',
     'STRIPE_SECRET_KEY',
     'ALLOWED_ORIGINS',
-    'HEALTH_CHECK_TOKEN',
-    'BOOKINGCOM_WEBHOOK_SECRET',
-    'EXPEDIA_WEBHOOK_SECRET',
-    'AIRBNB_WEBHOOK_SECRET',
-    'AGODA_WEBHOOK_SECRET'
+    'ENCRYPTION_KEY',
+    'FRONTEND_URL'
   ];
 
   const recommended = [

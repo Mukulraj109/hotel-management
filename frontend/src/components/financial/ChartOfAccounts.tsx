@@ -77,7 +77,23 @@ const ChartOfAccounts: React.FC = () => {
       const response = await financialService.getFlattenedAccounts();
 
       // Use the backend-calculated flattened accounts directly
-      const accountsData = response.data?.accounts || [];
+      let accountsData = response.data?.accounts || [];
+
+      // Auto-initialize default accounts if none exist
+      if (accountsData.length === 0) {
+        try {
+          const { api } = await import('../../services/api');
+          const initResponse = await api.post('/financial/chart-of-accounts/initialize');
+          if (initResponse.data?.success && initResponse.data?.count > 0) {
+            toast.success(`Created ${initResponse.data.count} default accounts`);
+            // Re-fetch after initialization
+            const refreshed = await financialService.getFlattenedAccounts();
+            accountsData = refreshed.data?.accounts || [];
+          }
+        } catch {
+          // Initialization failed — show empty state
+        }
+      }
 
       setAccounts(accountsData);
     } catch (error: unknown) {
@@ -138,7 +154,7 @@ const ChartOfAccounts: React.FC = () => {
       resetForm();
       fetchAccounts();
     } catch (error: unknown) {
-      toast.error('Failed to save account: ' + error.message);
+      toast.error('Failed to save account: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -165,7 +181,7 @@ const ChartOfAccounts: React.FC = () => {
       fetchAccounts();
       setDeleteAccount(null);
     } catch (error: unknown) {
-      toast.error('Failed to deactivate account: ' + error.message);
+      toast.error('Failed to deactivate account: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -271,7 +287,7 @@ const ChartOfAccounts: React.FC = () => {
                     <SelectContent>
                       {accountTypes.map(type => (
                         <SelectItem key={type} value={type}>
-                          {type.replace('_', ' ').toUpperCase()}
+                          {type.replace(/_/g, ' ').toUpperCase()}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -291,7 +307,7 @@ const ChartOfAccounts: React.FC = () => {
                     <SelectContent>
                       {formData.accountType && categories[formData.accountType as keyof typeof categories]?.map(category => (
                         <SelectItem key={category} value={category}>
-                          {category.replace('_', ' ').toUpperCase()}
+                          {category.replace(/_/g, ' ').toUpperCase()}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -376,7 +392,7 @@ const ChartOfAccounts: React.FC = () => {
                 <SelectItem value="">All Types</SelectItem>
                 {accountTypes.map(type => (
                   <SelectItem key={type} value={type}>
-                    {type.replace('_', ' ').toUpperCase()}
+                    {type.replace(/_/g, ' ').toUpperCase()}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -389,7 +405,7 @@ const ChartOfAccounts: React.FC = () => {
                 <SelectItem value="">All Categories</SelectItem>
                 {Object.values(categories).flat().map(category => (
                   <SelectItem key={category} value={category}>
-                    {category.replace('_', ' ').toUpperCase()}
+                    {category.replace(/_/g, ' ').toUpperCase()}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -420,17 +436,24 @@ const ChartOfAccounts: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {filteredAccounts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    No accounts found. Click "+ Add Account" to create your first account.
+                  </TableCell>
+                </TableRow>
+              )}
               {filteredAccounts.map((account) => (
                 <TableRow key={account._id}>
                   <TableCell className="font-mono">{account.accountCode}</TableCell>
                   <TableCell className="font-medium">{account.accountName}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {account.accountType.replace('_', ' ').toUpperCase()}
+                      {account.accountType.replace(/_/g, ' ').toUpperCase()}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">
-                    {(account.accountSubType || account.category || '').replace('_', ' ').toUpperCase()}
+                    {(account.accountSubType || account.category || '').replace(/_/g, ' ').toUpperCase()}
                   </TableCell>
                   <TableCell className={getBalanceColor(account)}>
                     {formatCurrency(account.currentBalance || 0)}

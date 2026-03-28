@@ -510,10 +510,11 @@ export const exportSecurityReport = async (req, res, next) => {
 
     // Set appropriate content type and headers
     if (format === 'csv') {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="security-report-${Date.now()}.csv"`);
-      // Convert to CSV format (simplified)
-      res.send('CSV export not implemented in demo');
+      // CSV export requires a dedicated serialization implementation
+      return res.status(501).json({
+        status: 'error',
+        message: 'CSV export is not yet implemented. Use JSON format instead.'
+      });
     } else {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename="security-report-${Date.now()}.json"`);

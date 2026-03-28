@@ -39,6 +39,9 @@ jobs:
       - name: Unit seam tests
         run: npm run test -- src/tests/unit/bookingModuleService.test.js src/tests/unit/billingModuleService.test.js src/tests/unit/apiVersioningMiddleware.test.js
 
+      - name: Critical auth and booking integration gates
+        run: npm run test:integration:gate
+
       - name: Validation audit
         run: npm run audit:validation
 

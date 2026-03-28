@@ -305,7 +305,8 @@ roomAvailabilitySchema.methods.bookRooms = function(roomsCount, bookingId, sourc
   });
   
   this.needsSync = true;
-  return this.save();
+  const saveOpts = metadata?.session ? { session: metadata.session } : {};
+  return this.save(saveOpts);
 };
 
 // Method to update stop sell status with audit trail

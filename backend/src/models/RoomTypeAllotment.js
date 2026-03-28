@@ -630,7 +630,9 @@ roomTypeAllotmentSchema.methods.updateChannelAllocation = function(channelId, da
 roomTypeAllotmentSchema.methods.updateTotals = function(dailyAllotment) {
   dailyAllotment.totalSold = dailyAllotment.channelAllotments.reduce((sum, channel) => sum + channel.sold, 0);
   dailyAllotment.freeStock = dailyAllotment.totalInventory - dailyAllotment.channelAllotments.reduce((sum, channel) => sum + channel.allocated, 0);
-  dailyAllotment.occupancyRate = Math.round((dailyAllotment.totalSold / dailyAllotment.totalInventory) * 100 * 100) / 100;
+  dailyAllotment.occupancyRate = dailyAllotment.totalInventory > 0
+    ? Math.round((dailyAllotment.totalSold / dailyAllotment.totalInventory) * 100 * 100) / 100
+    : 0;
 };
 
 roomTypeAllotmentSchema.methods.applyAllocationRule = function(ruleId, dateRange) {
@@ -787,7 +789,7 @@ roomTypeAllotmentSchema.pre('save', function(next) {
   this.dailyAllotments.forEach(dailyAllotment => {
     const totalAllocated = dailyAllotment.channelAllotments.reduce((sum, channel) => sum + channel.allocated, 0);
     
-    if (totalAllocated > dailyAllotment.totalInventory && !this.defaultSettings.overbookingAllowed) {
+    if (totalAllocated > dailyAllotment.totalInventory && !this.defaultSettings.overbookingAllowed && totalAllocated > 0) {
       const ratio = dailyAllotment.totalInventory / totalAllocated;
       dailyAllotment.channelAllotments.forEach(channel => {
         channel.allocated = Math.floor(channel.allocated * ratio);

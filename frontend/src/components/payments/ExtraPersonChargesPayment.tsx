@@ -46,7 +46,7 @@ function PaymentForm({ bookingId, extraPersonCharges, onSuccess, onCancel }: Pay
       });
 
       if (error) {
-        setError(error.message || 'Payment failed');
+        setError(error.message ?? 'Payment failed');
         return;
       }
 

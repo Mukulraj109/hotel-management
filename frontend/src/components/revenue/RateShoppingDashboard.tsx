@@ -31,20 +31,16 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Eye,
   Plus,
   RefreshCw,
-  AlertTriangle,
   Building,
-  Calendar,
-  IndianRupee,
   Target,
   Activity,
   Download,
-  Upload
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
-import revenueManagementService, { CompetitorRate } from '@/services/revenueManagementService';
+import { api } from '@/services/api';
+import revenueManagementService from '@/services/revenueManagementService';
 import { toast } from 'react-hot-toast';
 
 interface Competitor {
@@ -96,9 +92,22 @@ const RateShoppingDashboard: React.FC = () => {
   const fetchCompetitorRates = async () => {
     setIsLoading(true);
     try {
-      const rates = await revenueManagementService.getCompetitorRates({ date: selectedDate });
+      // Fetch our hotel's current rates in parallel with competitor rates
+      const [rates, roomTypesRes] = await Promise.all([
+        revenueManagementService.getCompetitorRates({ date: selectedDate }),
+        api.get('/revenue-management/room-types').catch(() => ({ data: { data: [] } }))
+      ]);
 
-
+      // Build a map of our room type rates from real data
+      const ourRoomTypeRates: Record<string, number> = {};
+      let avgOurRate = 0;
+      if (roomTypesRes.data?.data?.length > 0) {
+        const roomTypes = roomTypesRes.data.data;
+        roomTypes.forEach((rt: { roomType: string; currentRate: number }) => {
+          ourRoomTypeRates[rt.roomType?.toLowerCase()] = rt.currentRate;
+        });
+        avgOurRate = roomTypes.reduce((sum: number, rt: { currentRate: number }) => sum + rt.currentRate, 0) / roomTypes.length;
+      }
       if (rates && rates.length > 0) {
         // Use real competitor data from database
         const realCompetitors = rates.map((rate: Record<string, unknown>, index: number) => ({
@@ -111,19 +120,26 @@ const RateShoppingDashboard: React.FC = () => {
         }));
         setCompetitors(realCompetitors);
 
-        // Set real rate comparison data
-        const realRateComparisons = rates.map((rate: Record<string, unknown>) => ({
-          roomType: rate.roomType || 'Standard Room',
-          ourRate: 4500, // This should come from hotel's current rates
-          competitorRates: rate.rates?.map((r: unknown) => ({
-            name: rate.competitorName,
-            rate: r.rate,
-            availability: r.availability || Math.floor(Math.random() * 20) + 5
-          })) || [],
-          marketAverage: rate.rates?.reduce((sum: number, r: unknown) => sum + r.rate, 0) / (rate.rates?.length || 1) || 4300,
-          position: 'competitive' as const,
-          recommendation: 'Monitor rates based on current market data'
-        }));
+        // Set real rate comparison data using actual hotel rates
+        const realRateComparisons = rates.map((rate: Record<string, unknown>) => {
+          const roomTypeName = (rate.roomType as string) || 'Standard Room';
+          const matchedOurRate = ourRoomTypeRates[roomTypeName.toLowerCase()] || avgOurRate || 0;
+
+          return {
+            roomType: roomTypeName,
+            ourRate: matchedOurRate,
+            competitorRates: rate.rates?.map((r: { rate: number; availability?: number; competitorName?: string }) => ({
+              name: r.competitorName || rate.competitorName,
+              rate: r.rate,
+              availability: r.availability ?? 0
+            })) || [],
+            marketAverage: rate.rates?.length > 0
+              ? rate.rates.reduce((sum: number, r: { rate: number }) => sum + r.rate, 0) / rate.rates.length
+              : 0,
+            position: 'competitive' as const,
+            recommendation: 'Monitor rates based on current market data'
+          };
+        });
         setRateComparisons(realRateComparisons);
 
         // Calculate market statistics from real data
@@ -148,30 +164,20 @@ const RateShoppingDashboard: React.FC = () => {
 
 
             setPriceGap(gap);
+
+            // Determine market position from the computed gap
+            if (gap > 500) {
+              setMarketPosition('leader');
+            } else if (gap < -500) {
+              setMarketPosition('follower');
+            } else {
+              setMarketPosition('competitive');
+            }
           }
         }
       } else {
         // If no data found, show message but don't clear the state immediately
         toast('No competitor data available for selected date');
-      }
-
-      // Calculate market position based on real data
-      if (rateComparisons.length > 0 || rates.length > 0) {
-        const avgPosition = rateComparisons.reduce((sum, comp) => {
-          const diff = comp.ourRate - comp.marketAverage;
-          return sum + diff;
-        }, 0) / rateComparisons.length;
-
-        if (avgPosition > 500) {
-          setMarketPosition('leader');
-        } else if (avgPosition < -500) {
-          setMarketPosition('follower');
-        } else {
-          setMarketPosition('competitive');
-        }
-
-        setPriceGap(Math.abs(avgPosition));
-      } else {
         setMarketPosition('competitive');
         setPriceGap(0);
       }
@@ -210,17 +216,12 @@ const RateShoppingDashboard: React.FC = () => {
   };
 
   const refreshRates = async () => {
-    setIsLoading(true);
     try {
-      // Simulate API call to refresh rates from external sources
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    if (!isMountedRef.current) return;
-      toast.success('Rates updated successfully');
-      fetchCompetitorRates();
+      await fetchCompetitorRates();
+      if (!isMountedRef.current) return;
+      toast.success('Rates refreshed successfully');
     } catch (error) {
       toast.error('Failed to refresh rates');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -241,6 +242,10 @@ const RateShoppingDashboard: React.FC = () => {
   };
 
   const exportData = () => {
+    if (rateComparisons.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
     const data = rateComparisons.map(comp => ({
       'Room Type': comp.roomType,
       'Our Rate': comp.ourRate,

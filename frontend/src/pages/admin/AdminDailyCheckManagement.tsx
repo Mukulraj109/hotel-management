@@ -15,10 +15,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Search,
-  Filter,
-  Eye,
   Edit,
-  X
 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { dailyRoutineCheckService } from '../../services/dailyRoutineCheckService';
@@ -99,7 +96,7 @@ const TemplatesManagement = () => {
     { value: 'single', label: 'Single Room', color: 'bg-blue-100 text-blue-800' },
     { value: 'double', label: 'Double Room', color: 'bg-green-100 text-green-800' },
     { value: 'deluxe', label: 'Deluxe Room', color: 'bg-purple-100 text-purple-800' },
-    { value: 'suite', label: 'Suite', color: 'bg-gold-100 text-gold-800' }
+    { value: 'suite', label: 'Suite', color: 'bg-amber-100 text-amber-800' }
   ];
 
   const selectedTemplate = templates.find(t => t.roomType === selectedRoomType);
@@ -416,17 +413,30 @@ function AdminDailyCheckManagement() {
 
     try {
       setLoading(true);
-      const [overviewRes, roomsRes, unassignedRes, staffRes] = await Promise.all([
+      const [overviewRes, roomsRes, unassignedRes, staffRes] = await Promise.allSettled([
         api.get(`/daily-routine-check/admin/overview`, { params: { hotelId: selectedPropertyId } }),
         api.get(`/rooms`, { params: { hotelId: selectedPropertyId } }),
         api.get(`/daily-routine-check/admin/unassigned-rooms`, { params: { hotelId: selectedPropertyId } }),
         api.get(`/admin/users`, { params: { role: 'staff', hotelId: selectedPropertyId } })
       ]);
 
-      setOverview(overviewRes.data.data);
-      setRooms(roomsRes.data.data?.rooms || []);
-      setUnassignedRooms(unassignedRes.data.data?.rooms || []);
-      setStaff(staffRes.data.data?.users || []);
+      if (overviewRes.status === 'fulfilled') {
+        setOverview(overviewRes.value.data.data);
+      }
+      if (roomsRes.status === 'fulfilled') {
+        setRooms(roomsRes.value.data.data?.rooms || []);
+      }
+      if (unassignedRes.status === 'fulfilled') {
+        setUnassignedRooms(unassignedRes.value.data.data?.rooms || []);
+      }
+      if (staffRes.status === 'fulfilled') {
+        setStaff(staffRes.value.data.data?.users || []);
+      }
+
+      const failures = [overviewRes, roomsRes, unassignedRes, staffRes].filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        toast.error('Some data failed to load. Try refreshing.');
+      }
     } catch (error) {
       toast.error('Failed to load daily check management data');
     } finally {
@@ -556,14 +566,14 @@ function AdminDailyCheckManagement() {
       {/* Tab Navigation */}
       <div className="mb-6 border-b">
         <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'overview', label: 'Overview', icon: ClipboardList },
-            { id: 'assignments', label: 'Room Assignments', icon: Users },
-            { id: 'templates', label: 'Templates', icon: Settings }
-          ].map(({ id, label, icon: Icon }) => (
-            <button aria-label="Close"
+          {([
+            { id: 'overview' as const, label: 'Overview', icon: ClipboardList },
+            { id: 'assignments' as const, label: 'Room Assignments', icon: Users },
+            { id: 'templates' as const, label: 'Templates', icon: Settings }
+          ]).map(({ id, label, icon: Icon }) => (
+            <button
               key={id}
-              onClick={() => setActiveTab(id as unknown)}
+              onClick={() => setActiveTab(id)}
               className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                 activeTab === id
                   ? 'border-blue-500 text-blue-600'
@@ -576,6 +586,25 @@ function AdminDailyCheckManagement() {
           ))}
         </nav>
       </div>
+
+      {/* Overview Tab - Error State */}
+      {activeTab === 'overview' && !loading && !overview && (
+        <Card>
+          <CardContent className="p-8">
+            <div className="text-center">
+              <AlertTriangle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Unable to Load Overview</h3>
+              <p className="text-gray-500 mb-6">
+                Daily check data could not be loaded. Please try again.
+              </p>
+              <Button onClick={fetchData} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Overview Tab */}
       {activeTab === 'overview' && overview && (
@@ -1008,7 +1037,7 @@ function AdminDailyCheckManagement() {
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                               <span className="text-blue-600 font-semibold text-sm">
-                                {summary.staff.name.split(' ').map(n => n[0]).join('')}
+                                {(summary.staff.name || '?').split(' ').map(n => n[0] || '').join('').slice(0, 2)}
                               </span>
                             </div>
                             <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,79 +75,20 @@ import {
   DropdownMenuSeparator 
 } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { propertyGroupsApi, api } from '../../services/api';
 import { withErrorBoundary } from '../ErrorBoundary';
-
-interface Property {
-  id: string;
-  name: string;
-  brand: string;
-  type: 'hotel' | 'resort' | 'aparthotel' | 'hostel' | 'boutique';
-  location: {
-    address: string;
-    city: string;
-    country: string;
-    coordinates: { lat: number; lng: number };
-  };
-  contact: {
-    phone: string;
-    email: string;
-    manager: string;
-  };
-  rooms: {
-    total: number;
-    occupied: number;
-    available: number;
-    outOfOrder: number;
-  };
-  performance: {
-    occupancyRate: number;
-    adr: number;
-    revpar: number;
-    revenue: number;
-    lastMonth: {
-      occupancyRate: number;
-      adr: number;
-      revpar: number;
-      revenue: number;
-    };
-  };
-  amenities: string[];
-  rating: number;
-  status: 'active' | 'inactive' | 'maintenance';
-  features: {
-    pms: boolean;
-    pos: boolean;
-    spa: boolean;
-    restaurant: boolean;
-    parking: boolean;
-    wifi: boolean;
-    fitness: boolean;
-    pool: boolean;
-  };
-  operationalHours: {
-    checkIn: string;
-    checkOut: string;
-    frontDesk: string;
-  };
-  originalHotel?: unknown; // Store original hotel data for editing
-}
-
-interface PropertyGroup {
-  id: string;
-  name: string;
-  description: string;
-  properties: string[];
-  manager: string;
-  budget: number;
-  performance: {
-    totalRevenue: number;
-    avgOccupancy: number;
-    avgADR: number;
-    totalRooms: number;
-  };
-}
+import { Property, PropertyGroup } from '../../types/property';
 
 export const MultiPropertyManager: React.FC = () => {
   const { toast } = useToast();
@@ -170,6 +111,14 @@ export const MultiPropertyManager: React.FC = () => {
   const [showPropertyAssignment, setShowPropertyAssignment] = useState(false);
   const [showGroupDashboard, setShowGroupDashboard] = useState(false);
   const [selectedGroupForDashboard, setSelectedGroupForDashboard] = useState<PropertyGroup | null>(null);
+
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: '', description: '', onConfirm: () => {} });
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -276,26 +225,32 @@ export const MultiPropertyManager: React.FC = () => {
     }
   };
 
-  const handleDeleteGroup = async (groupId: string) => {
-    if (window.confirm('Are you sure you want to delete this property group?')) {
-      try {
-        await propertyGroupsApi.deleteGroup(groupId);
-        toast({
-          title: "Success",
-          description: "Property group deleted successfully"
-        });
-        refetchPropertyGroups();
-        if (selectedGroup?.id === groupId) {
-          setSelectedGroup(null);
+  const handleDeleteGroup = (groupId: string) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Property Group',
+      description: 'Are you sure you want to delete this property group? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await propertyGroupsApi.deleteGroup(groupId);
+          toast({
+            title: "Success",
+            description: "Property group deleted successfully"
+          });
+          refetchPropertyGroups();
+          if (selectedGroup?.id === groupId) {
+            setSelectedGroup(null);
+          }
+        } catch (err: unknown) {
+          const error = err as { response?: { data?: { message?: string } } };
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: error?.response?.data?.message || "Failed to delete property group"
+          });
         }
-      } catch (err: unknown) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: err.response?.data?.message || "Failed to delete property group"
-        });
       }
-    }
+    });
   };
 
   const handleSyncGroupSettings = async (groupId: string) => {
@@ -334,24 +289,30 @@ export const MultiPropertyManager: React.FC = () => {
     }
   };
 
-  const handleRemovePropertiesFromGroup = async (groupId: string, propertyIds: string[]) => {
-    if (window.confirm(`Are you sure you want to remove ${propertyIds.length} property(ies) from this group?`)) {
-      try {
-        await propertyGroupsApi.removePropertiesFromGroup(groupId, { propertyIds });
-        toast({
-          title: "Success",
-          description: `Removed ${propertyIds.length} property(ies) from group successfully`
-        });
-        refetchPropertyGroups();
-        refetchProperties();
-      } catch (err: unknown) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: err.response?.data?.message || "Failed to remove properties from group"
-        });
+  const handleRemovePropertiesFromGroup = (groupId: string, propertyIds: string[]) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Remove Properties',
+      description: `Are you sure you want to remove ${propertyIds.length} property(ies) from this group?`,
+      onConfirm: async () => {
+        try {
+          await propertyGroupsApi.removePropertiesFromGroup(groupId, { propertyIds });
+          toast({
+            title: "Success",
+            description: `Removed ${propertyIds.length} property(ies) from group successfully`
+          });
+          refetchPropertyGroups();
+          refetchProperties();
+        } catch (err: unknown) {
+          const error = err as { response?: { data?: { message?: string } } };
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: error?.response?.data?.message || "Failed to remove properties from group"
+          });
+        }
       }
-    }
+    });
   };
 
   const openPropertyAssignmentModal = (group: PropertyGroup) => {
@@ -377,22 +338,22 @@ export const MultiPropertyManager: React.FC = () => {
     }
   };
 
-  const filteredProperties = properties.filter(property => {
+  const filteredProperties = useMemo(() => properties.filter(property => {
     const matchesSearch = property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.location?.city?.toLowerCase().includes(searchTerm.toLowerCase()) || false;
     const matchesStatus = statusFilter === 'all' || property.status === statusFilter;
     const matchesType = typeFilter === 'all' || property.type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
 
-  const totalStats = {
+    return matchesSearch && matchesStatus && matchesType;
+  }), [properties, searchTerm, statusFilter, typeFilter]);
+
+  const totalStats = useMemo(() => ({
     properties: properties.length,
     totalRooms: properties.reduce((sum, p) => sum + (p.rooms?.total || 0), 0),
     totalRevenue: properties.reduce((sum, p) => sum + (p.performance?.revenue || 0), 0),
     avgOccupancy: properties.length > 0 ? properties.reduce((sum, p) => sum + (p.performance?.occupancyRate || 0), 0) / properties.length : 0,
     avgADR: properties.length > 0 ? properties.reduce((sum, p) => sum + (p.performance?.adr || 0), 0) / properties.length : 0
-  };
+  }), [properties]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -404,6 +365,12 @@ export const MultiPropertyManager: React.FC = () => {
   };
 
   const getPerformanceChange = (current: number, previous: number) => {
+    if (previous === 0 && current === 0) {
+      return { value: '—', isPositive: true };
+    }
+    if (previous === 0) {
+      return { value: 'New', isPositive: true };
+    }
     const change = ((current - previous) / previous) * 100;
     return {
       value: Math.abs(change).toFixed(1),
@@ -460,7 +427,7 @@ export const MultiPropertyManager: React.FC = () => {
               <div className="space-y-1">
                 <p className="text-sm font-medium text-green-600">Total Rooms</p>
                 <p className="text-3xl font-bold text-green-900">{totalStats.totalRooms}</p>
-                <p className="text-xs text-green-500">Available rooms</p>
+                <p className="text-xs text-green-500">Across all properties</p>
               </div>
               <div className="p-3 bg-green-500 rounded-full">
                 <Bed className="h-6 w-6 text-white" />
@@ -475,7 +442,7 @@ export const MultiPropertyManager: React.FC = () => {
               <div className="space-y-1">
                 <p className="text-sm font-medium text-emerald-600">Total Revenue</p>
                 <p className="text-3xl font-bold text-emerald-900">₹{(totalStats.totalRevenue || 0).toLocaleString()}</p>
-                <p className="text-xs text-emerald-500">This month</p>
+                <p className="text-xs text-emerald-500">All time paid</p>
               </div>
               <div className="p-3 bg-emerald-500 rounded-full">
                 <IndianRupee className="h-6 w-6 text-white" />
@@ -523,7 +490,7 @@ export const MultiPropertyManager: React.FC = () => {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="font-semibold text-lg text-gray-900">{group.name}</h3>
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-700">{group.properties.length} properties</Badge>
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-700">{group.properties?.length || 0} properties</Badge>
                     </div>
                     <p className="text-sm text-gray-600 mb-3">{group.description}</p>
                     <div className="flex items-center space-x-6 text-sm text-gray-500">
@@ -619,12 +586,18 @@ export const MultiPropertyManager: React.FC = () => {
                       <div className={`flex items-center justify-end text-sm font-medium ${
                         revparChange.isPositive ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {revparChange.isPositive ? (
-                          <ArrowUpRight className="h-4 w-4 mr-1" />
+                        {revparChange.value === '—' || revparChange.value === 'New' ? (
+                          <span className="text-gray-400">{revparChange.value}</span>
                         ) : (
-                          <ArrowDownRight className="h-4 w-4 mr-1" />
+                          <>
+                            {revparChange.isPositive ? (
+                              <ArrowUpRight className="h-4 w-4 mr-1" />
+                            ) : (
+                              <ArrowDownRight className="h-4 w-4 mr-1" />
+                            )}
+                            {revparChange.value}%
+                          </>
                         )}
-                        {revparChange.value}%
                       </div>
                     </div>
                   </div>
@@ -654,7 +627,7 @@ export const MultiPropertyManager: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 w-full lg:w-auto">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40 h-11 border-gray-200">
-                  <SelectValue placeholder="Status" />
+                  <span>{statusFilter === 'all' ? 'All Status' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -665,7 +638,7 @@ export const MultiPropertyManager: React.FC = () => {
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="w-full sm:w-40 h-11 border-gray-200">
-                  <SelectValue placeholder="Type" />
+                  <span>{typeFilter === 'all' ? 'All Types' : typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
@@ -691,6 +664,7 @@ export const MultiPropertyManager: React.FC = () => {
       {/* Virtualized Property List */}
       <VirtualizedPropertyList
         properties={filteredProperties}
+        isLoading={propertiesLoading}
         onPropertySelect={setSelectedProperty}
         onPropertyEdit={(property) => {
           setSelectedPropertyForEdit(property.originalHotel || property);
@@ -698,6 +672,11 @@ export const MultiPropertyManager: React.FC = () => {
         }}
         onPropertyDelete={(propertyId) => {
           toast({ title: 'Property Deleted', description: 'Property has been removed from the system.' });
+        }}
+        onResetFilters={() => {
+          setSearchTerm('');
+          setStatusFilter('all');
+          setTypeFilter('all');
         }}
         searchTerm={searchTerm}
         statusFilter={statusFilter}
@@ -822,6 +801,9 @@ export const MultiPropertyManager: React.FC = () => {
     </div>
   );
 
+  // Auto-select first property for analytics if none selected
+  const analyticsProperty = selectedProperty || (properties.length > 0 ? properties[0] : null);
+
   const renderAnalytics = () => (
     <div className="space-y-6">
       {/* Portfolio Overview */}
@@ -832,15 +814,15 @@ export const MultiPropertyManager: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">{totalStats.avgOccupancy.toFixed(1)}%</div>
+              <div className="text-3xl font-bold text-blue-600">{(totalStats.avgOccupancy || 0).toFixed(1)}%</div>
               <div className="text-sm text-muted-foreground">Average Occupancy</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">₹{totalStats.avgADR.toFixed(0)}</div>
+              <div className="text-3xl font-bold text-green-600">₹{(totalStats.avgADR || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
               <div className="text-sm text-muted-foreground">Average ADR</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">₹{(totalStats.totalRevenue || 0).toLocaleString()}</div>
+              <div className="text-3xl font-bold text-purple-600">₹{(totalStats.totalRevenue || 0).toLocaleString('en-IN')}</div>
               <div className="text-sm text-muted-foreground">Total Revenue</div>
             </div>
             <div className="text-center">
@@ -854,19 +836,19 @@ export const MultiPropertyManager: React.FC = () => {
       {/* Performance Benchmarking Dashboard */}
       <PerformanceBenchmarking
         properties={properties}
-        selectedProperty={selectedProperty}
+        selectedProperty={analyticsProperty}
       />
 
       {/* Revenue Optimization Insights */}
       <RevenueOptimizationInsights
         properties={properties}
-        selectedProperty={selectedProperty}
+        selectedProperty={analyticsProperty}
       />
 
       {/* Custom Report Builder */}
       <CustomReportBuilder
         properties={properties}
-        selectedProperty={selectedProperty}
+        selectedProperty={analyticsProperty}
         onSaveReport={(config) => {
           toast({ title: 'Report Template Saved', description: 'Your custom report template has been saved successfully.' });
         }}
@@ -898,6 +880,9 @@ export const MultiPropertyManager: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {properties.length === 0 && (
+                <div className="text-center py-8 text-gray-500 text-sm">No properties to display</div>
+              )}
               {[...new Set(properties.map(p => p.type).filter(Boolean))].map(type => {
                 const typeProperties = properties.filter(p => p.type === type);
                 const avgRevenue = typeProperties.length > 0 ? typeProperties.reduce((sum, p) => sum + (p.performance?.revenue || 0), 0) / typeProperties.length : 0;
@@ -907,11 +892,11 @@ export const MultiPropertyManager: React.FC = () => {
                   <div key={type} className="flex items-center justify-between p-4 border rounded-lg">
                     <div>
                       <div className="font-medium capitalize">{type}s</div>
-                      <div className="text-sm text-muted-foreground">{typeProperties.length} properties</div>
+                      <div className="text-sm text-muted-foreground">{typeProperties.length} {typeProperties.length === 1 ? 'property' : 'properties'}</div>
                       <div className="text-sm text-blue-600">{avgOccupancy.toFixed(1)}% avg occupancy</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">₹{avgRevenue.toFixed(0)}</div>
+                      <div className="font-bold">₹{(avgRevenue || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
                       <div className="text-sm text-muted-foreground">Avg Revenue</div>
                     </div>
                   </div>
@@ -927,6 +912,9 @@ export const MultiPropertyManager: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {properties.length === 0 && (
+                <div className="text-center py-8 text-gray-500 text-sm">No properties to display</div>
+              )}
               {[...new Set(properties.map(p => p.location?.city).filter(Boolean))].map(city => {
                 const cityProperties = properties.filter(p => p.location?.city === city);
                 const totalRevenue = cityProperties.reduce((sum, p) => sum + (p.performance?.revenue || 0), 0);
@@ -936,7 +924,7 @@ export const MultiPropertyManager: React.FC = () => {
                   <div key={city} className="flex items-center justify-between p-4 border rounded-lg">
                     <div>
                       <div className="font-medium">{city}</div>
-                      <div className="text-sm text-muted-foreground">{cityProperties.length} properties</div>
+                      <div className="text-sm text-muted-foreground">{cityProperties.length} {cityProperties.length === 1 ? 'property' : 'properties'}</div>
                       <div className="text-sm text-blue-600">{avgOccupancy.toFixed(1)}% avg occupancy</div>
                     </div>
                     <div className="text-right">
@@ -1105,13 +1093,13 @@ export const MultiPropertyManager: React.FC = () => {
             itemsPerPage={pagination.itemsPerPage}
             onPageChange={handlePageChange}
             onItemsPerPageChange={handleItemsPerPageChange}
-            isLoading={isLoading}
+            isLoading={groupsLoading}
           />
         </div>
       )}
 
       {/* Empty State */}
-      {propertyGroups.length === 0 && !isLoading && (
+      {propertyGroups.length === 0 && !groupsLoading && (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16">
             <div className="text-center">
@@ -1236,7 +1224,7 @@ export const MultiPropertyManager: React.FC = () => {
                 return (
                   <button aria-label="View"
                     key={tab.id}
-                    onClick={() => setActiveView(tab.id as unknown)}
+                    onClick={() => setActiveView(tab.id as typeof activeView)}
                     className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${
                       activeView === tab.id
                         ? 'border-blue-500 text-blue-600 bg-blue-50'
@@ -1804,6 +1792,28 @@ export const MultiPropertyManager: React.FC = () => {
           </Card>
         </div>
       )}
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                confirmDialog.onConfirm();
+                setConfirmDialog(prev => ({ ...prev, open: false }));
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

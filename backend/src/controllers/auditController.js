@@ -391,12 +391,15 @@ export const getAuditByCorrelation = async (req, res) => {
  */
 export const getRetentionStats = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const stats = payloadRetentionService.getStats();
 
-    // Get additional database stats
-    const totalPayloads = await OTAPayload.estimatedDocumentCount();
-    const archivedPayloads = await OTAPayload.countDocuments({ 'retention.archived': true });
+    // Get additional database stats — scoped to tenant
+    const tenantFilter = hotelId ? { hotelId } : {};
+    const totalPayloads = await OTAPayload.countDocuments(tenantFilter);
+    const archivedPayloads = await OTAPayload.countDocuments({ ...tenantFilter, 'retention.archived': true });
     const overduePayloads = await OTAPayload.countDocuments({
+      ...tenantFilter,
       'retention.deleteAfter': { $lt: new Date() }
     });
 

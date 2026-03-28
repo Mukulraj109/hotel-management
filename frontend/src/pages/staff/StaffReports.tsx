@@ -177,7 +177,7 @@ export default function StaffReports() {
                   alert('Error: ' + data.message);
                 }
               } catch (error) {
-                alert('Error creating test booking: ' + error.message);
+                alert('Error creating test booking: ' + (error instanceof Error ? error.message : 'Unknown error'));
               }
             }}
             variant="secondary"
@@ -191,7 +191,7 @@ export default function StaffReports() {
                 const { data } = await api.get('/test/debug-checkins');
                 alert(`Check-ins Debug:\nCount: ${data.data.todayCheckInsCount}\nBookings: ${data.data.actualTodayBookings.length}\n\nCheck console for details`);
               } catch (error) {
-                alert('Debug error: ' + error.message);
+                alert('Debug error: ' + (error instanceof Error ? error.message : 'Unknown error'));
               }
             }}
             variant="outline"

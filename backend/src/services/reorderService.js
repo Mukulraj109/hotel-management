@@ -690,9 +690,11 @@ Please review the alert in the admin panel: ${process.env.FRONTEND_URL || 'http:
     try {
       const { hotelId, itemId, status, startDate, endDate, limit = 50 } = options;
 
-      let query = {};
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant-isolated reorder history');
+      }
 
-      if (hotelId) query.hotelId = hotelId;
+      let query = { hotelId };
       if (itemId) query._id = itemId;
 
       const items = await InventoryItem.find(query)

@@ -22,6 +22,7 @@ import {
   Info,
   CheckCircle
 } from 'lucide-react';
+import { api } from '@/services/api';
 import laundryService, { LaundryItem, SendToLaundryRequest } from '@/services/laundryService';
 import { formatCurrency } from '@/utils/currencyUtils';
 
@@ -83,49 +84,35 @@ const LaundryTransactionForm: React.FC<LaundryTransactionFormProps> = ({
   const fetchRoomInventory = async () => {
     try {
       setLoading(true);
-      // This would typically fetch from room inventory service
-      // For now, we'll use mock data
-      const mockItems: InventoryItem[] = [
-        {
-          _id: '1',
-          name: 'Bed Sheet Set',
-          category: 'bedding',
-          unitPrice: 500,
-          currentQuantity: 2,
-          expectedQuantity: 2,
-          condition: 'good'
-        },
-        {
-          _id: '2',
-          name: 'Bath Towel',
-          category: 'towels',
-          unitPrice: 200,
-          currentQuantity: 4,
-          expectedQuantity: 4,
-          condition: 'good'
-        },
-        {
-          _id: '3',
-          name: 'Bathrobe',
-          category: 'bathrobes',
-          unitPrice: 800,
-          currentQuantity: 2,
-          expectedQuantity: 2,
-          condition: 'good'
-        },
-        {
-          _id: '4',
-          name: 'Curtains',
-          category: 'curtains',
-          unitPrice: 1200,
-          currentQuantity: 1,
-          expectedQuantity: 1,
-          condition: 'good'
-        }
-      ];
-      setInventoryItems(mockItems);
-    } catch (error) {
+      // Fetch real room inventory from the backend
+      const response = await api.get(`/room-inventory/rooms/${roomId}`);
+      if (response.data?.status === 'success' && response.data?.data?.roomInventory?.items) {
+        const items: InventoryItem[] = response.data.data.roomInventory.items
+          .filter((item: Record<string, unknown>) => {
+            // Only include launderable categories (bedding, towels, bathrobes, curtains, etc.)
+            const category = ((item.itemId as Record<string, unknown>)?.category as string || '').toLowerCase();
+            const launderableCategories = ['bedding', 'towels', 'bathrobes', 'curtains', 'linens', 'bathroom', 'bedroom'];
+            return launderableCategories.some(c => category.includes(c));
+          })
+          .map((item: Record<string, unknown>) => {
+            const itemData = item.itemId as Record<string, unknown> || {};
+            return {
+              _id: (itemData._id as string) || (item._id as string),
+              name: (itemData.name as string) || 'Unknown Item',
+              category: (itemData.category as string) || 'other',
+              unitPrice: (itemData.unitPrice as number) || 0,
+              currentQuantity: (item.currentQuantity as number) || 0,
+              expectedQuantity: (item.expectedQuantity as number) || 0,
+              condition: (item.condition as string) || 'unknown'
+            };
+          });
+        setInventoryItems(items);
+      } else {
+        setInventoryItems([]);
+      }
+    } catch {
       toast.error('Failed to load room inventory');
+      setInventoryItems([]);
     } finally {
       setLoading(false);
     }
@@ -218,7 +205,7 @@ const LaundryTransactionForm: React.FC<LaundryTransactionFormProps> = ({
         isUrgent: false
       });
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to send items to laundry');
+      toast.error(error instanceof Error ? error.message : 'Failed to send items to laundry');
     } finally {
       setSubmitting(false);
     }

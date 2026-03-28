@@ -212,6 +212,60 @@ class CostOptimizationService {
   }
 
   /**
+   * Benchmarking data for cost comparison across categories
+   */
+  static async getBenchmarkingData(hotelId) {
+    try {
+      const items = await InventoryItem.find({ hotelId, isActive: true })
+        .select('name category unitPrice supplier').lean().limit(1000);
+
+      const categoryBenchmarks = {};
+      items.forEach(item => {
+        if (!categoryBenchmarks[item.category]) {
+          categoryBenchmarks[item.category] = { prices: [], count: 0 };
+        }
+        categoryBenchmarks[item.category].prices.push(item.unitPrice || 0);
+        categoryBenchmarks[item.category].count += 1;
+      });
+
+      return {
+        categories: Object.entries(categoryBenchmarks).map(([category, data]) => ({
+          category,
+          averagePrice: data.prices.length > 0
+            ? data.prices.reduce((a, b) => a + b, 0) / data.prices.length
+            : 0,
+          itemCount: data.count
+        })),
+        generatedAt: new Date()
+      };
+    } catch (error) {
+      throw new Error(`Failed to get benchmarking data: ${error.message}`);
+    }
+  }
+
+  /**
+   * Cost forecasting based on current inventory and reorder settings
+   */
+  static async getCostForecasting(hotelId) {
+    try {
+      const items = await InventoryItem.find({ hotelId, isActive: true })
+        .select('name category unitPrice currentStock reorderSettings').lean().limit(1000);
+
+      return {
+        projections: items.slice(0, 20).map(item => ({
+          itemId: item._id,
+          name: item.name,
+          currentCost: item.unitPrice || 0,
+          projectedMonthlyCost: (item.unitPrice || 0) * (item.reorderSettings?.reorderQuantity || 0),
+        })),
+        generatedAt: new Date()
+      };
+    } catch (error) {
+      throw new Error(`Failed to get cost forecasting: ${error.message}`);
+    }
+  }
+
+  /**
    * Contract analysis and negotiation insights
    */
   static async analyzeContracts(hotelId, options = {}) {
@@ -362,7 +416,9 @@ class CostOptimizationService {
           supplierValue,
           benchmarkValue,
           performance,
-          variance: parseFloat(((supplierValue - benchmarkValue) / benchmarkValue * 100).toFixed(1))
+          variance: benchmarkValue !== 0
+            ? parseFloat(((supplierValue - benchmarkValue) / benchmarkValue * 100).toFixed(1))
+            : 0
         };
       });
 
@@ -786,7 +842,9 @@ class CostOptimizationService {
   static generateSupplierSummary(supplierAnalysis) {
     return {
       totalSuppliers: supplierAnalysis.length,
-      averagePerformanceScore: supplierAnalysis.reduce((sum, s) => sum + s.performance.qualityScore, 0) / supplierAnalysis.length,
+      averagePerformanceScore: supplierAnalysis.length > 0
+        ? supplierAnalysis.reduce((sum, s) => sum + s.performance.qualityScore, 0) / supplierAnalysis.length
+        : 0,
       highRiskSuppliers: supplierAnalysis.filter(s => s.riskAssessment.level === 'high').length,
       totalSpend: supplierAnalysis.reduce((sum, s) => sum + s.performance.totalSpend, 0)
     };

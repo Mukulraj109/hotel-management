@@ -158,12 +158,13 @@ export const getNoShowStats = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You do not have permission to view no-show statistics');
   }
 
-  // Build query
-  const query = { status: 'no_show' };
-
-  if (hotelId) {
-    query.hotelId = hotelId;
+  // Build query — mandatory tenant isolation
+  const resolvedHotelId = hotelId || user.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  const query = { status: 'no_show' };
+  query.hotelId = resolvedHotelId;
 
   if (startDate && endDate) {
     query.noShowRecorded = {

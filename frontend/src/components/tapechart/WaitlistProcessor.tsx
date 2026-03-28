@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { waitlistService, WaitlistEntry, WaitlistAnalytics, MatchResult as ServiceMatchResult } from '../../services/waitlistService';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -488,7 +489,7 @@ export const WaitlistProcessor: React.FC = () => {
                         </div>
                         <div>
                           <div className="text-sm font-medium">Max Budget</div>
-                          <div className="text-sm text-gray-600">${entry.maxPrice}/night</div>
+                          <div className="text-sm text-gray-600">{formatCurrency(entry.maxPrice)}/night</div>
                         </div>
                         <div>
                           <div className="text-sm font-medium">Wait Time</div>

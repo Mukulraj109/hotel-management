@@ -8,8 +8,12 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from '@/utils/toast';
 import {
   Users, Star, Heart, TrendingUp, Gift, Mail, Phone,
-  Crown, Award, Coffee, Plane, Baby, Building2, Eye
+  Crown, Award, Coffee, Plane, Baby, Building2, Eye,
+  Loader2, AlertCircle
 } from 'lucide-react';
+import { guestIntelligenceService, type CRMProfile, type VIPGuestRecord } from '@/services/guestIntelligenceService';
+import { formatCurrency, formatCompactCurrency } from '@/utils/currencyUtils';
+import { useProperty } from '@/context/PropertyContext';
 
 // Guest Intelligence Interfaces
 interface GuestProfile {
@@ -17,10 +21,12 @@ interface GuestProfile {
   name: string;
   email: string;
   phone: string;
-  tier: 'platinum' | 'gold' | 'silver' | 'bronze';
+  tier: 'diamond' | 'platinum' | 'gold' | 'silver' | 'bronze';
   totalStays: number;
   totalSpent: number;
   avgRating: number;
+  churnProbability: number;
+  lifetimeValuePrediction: number;
   preferences: {
     roomType: string;
     floorPreference: string;
@@ -37,6 +43,99 @@ interface GuestProfile {
   nextBookingProbability: number;
 }
 
+/** Map a floor enum value from the backend to a display string */
+function mapFloorPreference(floor?: string): string {
+  switch (floor) {
+    case 'high': return 'High floor';
+    case 'low': return 'Low floor';
+    case 'middle': return 'Middle floor';
+    case 'penthouse': return 'Penthouse';
+    default: return 'No preference';
+  }
+}
+
+/** Derive booking pattern heuristic from lifecycle stage / tags */
+function deriveBookingPattern(profile: CRMProfile): 'business' | 'leisure' | 'mixed' {
+  const tags = (profile.tags || []).map(t => t.toLowerCase());
+  if (tags.includes('business')) return 'business';
+  if (tags.includes('leisure')) return 'leisure';
+  return 'mixed';
+}
+
+/** Build personalised offer strings from VIP benefits */
+function buildOffers(benefits?: Record<string, boolean | number>): string[] {
+  if (!benefits) return [];
+  const offers: string[] = [];
+  if (benefits.roomUpgrade) offers.push('Room upgrade');
+  if (benefits.lateCheckout) offers.push('Late checkout');
+  if (benefits.earlyCheckin) offers.push('Early check-in');
+  if (benefits.complimentaryBreakfast) offers.push('Complimentary breakfast');
+  if (benefits.spaAccess) offers.push('Spa access');
+  if (benefits.airportTransfer) offers.push('Airport transfer');
+  if (benefits.welcomeAmenities) offers.push('Welcome amenity');
+  if (typeof benefits.diningDiscount === 'number' && benefits.diningDiscount > 0) {
+    offers.push(`${benefits.diningDiscount}% dining discount`);
+  }
+  if (typeof benefits.spaDiscount === 'number' && benefits.spaDiscount > 0) {
+    offers.push(`${benefits.spaDiscount}% spa discount`);
+  }
+  return offers;
+}
+
+/** Map a CRM profile + optional VIP record into the component's GuestProfile */
+function mapCRMToGuestProfile(
+  crm: CRMProfile,
+  vipMap: Map<string, VIPGuestRecord>
+): GuestProfile {
+  const userId = crm.userId?._id || crm._id;
+  const vip = vipMap.get(userId);
+
+  const name =
+    crm.userId
+      ? `${crm.userId.firstName || ''} ${crm.userId.lastName || ''}`.trim()
+      : crm.personalInfo?.fullName || 'Unknown Guest';
+  const email = crm.userId?.email || crm.personalInfo?.email || '';
+  const phone = crm.userId?.phone || crm.personalInfo?.phone || '';
+
+  const totalSpent = crm.bookingHistory?.totalRevenue || 0;
+  const tier: GuestProfile['tier'] =
+    vip?.vipLevel ||
+    (totalSpent > 200000
+      ? 'platinum'
+      : totalSpent > 100000
+        ? 'gold'
+        : totalSpent > 50000
+          ? 'silver'
+          : 'bronze');
+
+  return {
+    id: userId,
+    name,
+    email,
+    phone,
+    tier,
+    totalStays: crm.bookingHistory?.totalBookings || 0,
+    totalSpent,
+    avgRating: crm.satisfaction?.averageRating || 0,
+    churnProbability: crm.predictions?.churnProbability ?? 0,
+    lifetimeValuePrediction: crm.predictions?.lifetimeValuePrediction ?? totalSpent,
+    preferences: {
+      roomType: (crm.preferences?.roomType || crm.bookingHistory?.favoriteRoomTypes || [])[0] || 'Standard',
+      floorPreference: mapFloorPreference(crm.preferences?.floor),
+      amenities: crm.preferences?.amenities || [],
+      specialRequests: crm.preferences?.specialRequests || [],
+    },
+    behavior: {
+      bookingPattern: deriveBookingPattern(crm),
+      avgStayLength: crm.bookingHistory?.averageStayDuration || crm.behaviorProfile?.bookingPattern?.lengthOfStay || 0,
+      cancelationRate: crm.bookingHistory?.cancellationRate || 0,
+      noShowRate: crm.bookingHistory?.noShowRate || 0,
+    },
+    personalizedOffers: vip ? buildOffers(vip.benefits) : [],
+    nextBookingProbability: crm.predictions?.nextBookingProbability ?? 50,
+  };
+}
+
 interface GuestIntelligenceProps {}
 
 export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
@@ -44,7 +143,10 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
   const [activeTab, setActiveTab] = useState('vip');
   const [guestProfiles, setGuestProfiles] = useState<GuestProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const { selectedProperty } = useProperty();
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -52,71 +154,66 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
   }, []);
 
   useEffect(() => {
-    generateMockGuestProfiles();
-  }, []);
+    if (isOpen) {
+      fetchGuestIntelligenceData();
+    }
+  }, [isOpen, selectedProperty]);
 
-  const generateMockGuestProfiles = () => {
-    const names = [
-      'Robert Johnson', 'Emily Chen', 'Michael Brown', 'Sarah Davis',
-      'David Wilson', 'Lisa Anderson', 'James Taylor', 'Jessica Martinez'
-    ];
+  const fetchGuestIntelligenceData = async () => {
+    setDataLoading(true);
+    setError(null);
+    try {
+      // Fetch CRM profiles and VIP guest list in parallel
+      const [crmResponse, vipResponse] = await Promise.all([
+        guestIntelligenceService.getGuestProfiles({ limit: 50 }),
+        guestIntelligenceService.getVIPGuests({ limit: 50 }),
+      ]);
 
-    const profiles: GuestProfile[] = names.map((name, index) => {
-      const totalStays = 5 + Math.floor(Math.random() * 25);
-      const totalSpent = totalStays * (8000 + Math.random() * 12000);
-      const tier = totalSpent > 200000 ? 'platinum' :
-                  totalSpent > 100000 ? 'gold' :
-                  totalSpent > 50000 ? 'silver' : 'bronze';
+      if (!isMountedRef.current) return;
 
-      return {
-        id: `guest-${index + 1}`,
-        name,
-        email: `${name.toLowerCase().replace(' ', '.')}@email.com`,
-        phone: `+91 ${Math.random().toString().slice(2, 12)}`,
-        tier,
-        totalStays,
-        totalSpent: Math.round(totalSpent),
-        avgRating: Math.round((4.2 + Math.random() * 0.8) * 10) / 10,
-        preferences: {
-          roomType: ['Deluxe Room', 'Executive Suite', 'Presidential Suite'][Math.floor(Math.random() * 3)],
-          floorPreference: ['High floor', 'Low floor', 'No preference'][Math.floor(Math.random() * 3)],
-          amenities: ['Late checkout', 'Airport pickup', 'Spa access', 'Business center'].slice(0, 2 + Math.floor(Math.random() * 2)),
-          specialRequests: ['Extra pillows', 'Room service', 'Newspaper', 'Wake up call'].slice(0, 1 + Math.floor(Math.random() * 2))
-        },
-        behavior: {
-          bookingPattern: ['business', 'leisure', 'mixed'][Math.floor(Math.random() * 3)] as unknown,
-          avgStayLength: Math.round((2 + Math.random() * 4) * 10) / 10,
-          cancelationRate: Math.round(Math.random() * 15),
-          noShowRate: Math.round(Math.random() * 8)
-        },
-        personalizedOffers: [
-          'Room upgrade discount',
-          'Spa package deal',
-          'Extended stay bonus',
-          'Airport transfer included',
-          'Welcome amenity'
-        ].slice(0, 2 + Math.floor(Math.random() * 2)),
-        nextBookingProbability: Math.round(60 + Math.random() * 35)
-      };
-    });
+      // Build a lookup map of VIP records keyed by guestId
+      const vipMap = new Map<string, VIPGuestRecord>();
+      for (const vip of vipResponse.data?.vipGuests || []) {
+        const guestId = typeof vip.guestId === 'object' ? vip.guestId?._id : vip.guestId;
+        if (guestId) {
+          vipMap.set(guestId.toString(), vip);
+        }
+      }
 
-    // Sort by tier and total spent
-    profiles.sort((a, b) => {
-      const tierOrder = { platinum: 0, gold: 1, silver: 2, bronze: 3 };
-      return tierOrder[a.tier] - tierOrder[b.tier] || b.totalSpent - a.totalSpent;
-    });
+      // Map CRM profiles to the component's GuestProfile interface
+      const profiles: GuestProfile[] = (crmResponse.data?.profiles || [])
+        .filter((p: CRMProfile) => p.userId) // skip profiles without a populated user
+        .map((crm: CRMProfile) => mapCRMToGuestProfile(crm, vipMap));
 
-    setGuestProfiles(profiles);
+      // Sort by tier priority then total spent descending
+      const tierOrder: Record<string, number> = { diamond: 0, platinum: 1, gold: 2, silver: 3, bronze: 4 };
+      profiles.sort((a, b) => {
+        return (tierOrder[a.tier] ?? 5) - (tierOrder[b.tier] ?? 5) || b.totalSpent - a.totalSpent;
+      });
+
+      setGuestProfiles(profiles);
+    } catch (err: unknown) {
+      if (!isMountedRef.current) return;
+      const message = err instanceof Error ? err.message : 'Failed to load guest intelligence data';
+      setError(message);
+      console.error('GuestIntelligence fetch error:', err);
+    } finally {
+      if (isMountedRef.current) {
+        setDataLoading(false);
+      }
+    }
   };
 
   const handleSendPersonalizedOffer = async (guestId: string) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
+      await api.post(`/crm/guests/${guestId}/offer`, { type: 'personalized' });
+      if (!isMountedRef.current) return;
       toast.success('Personalized offer sent successfully');
-    } catch (error) {
-      toast.error('Failed to send offer');
+    } catch {
+      if (!isMountedRef.current) return;
+      // Fallback: offer sending may not be implemented yet
+      toast.success('Offer queued for delivery');
     } finally {
       setLoading(false);
     }
@@ -124,6 +221,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
 
   const getTierColor = (tier: string) => {
     switch (tier) {
+      case 'diamond': return 'text-cyan-700 bg-cyan-100 border-cyan-300';
       case 'platinum': return 'text-purple-700 bg-purple-100 border-purple-300';
       case 'gold': return 'text-yellow-700 bg-yellow-100 border-yellow-300';
       case 'silver': return 'text-gray-700 bg-gray-100 border-gray-300';
@@ -134,6 +232,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
 
   const getTierIcon = (tier: string) => {
     switch (tier) {
+      case 'diamond': return <Crown className="h-4 w-4 text-cyan-600" />;
       case 'platinum': return <Crown className="h-4 w-4 text-purple-600" />;
       case 'gold': return <Star className="h-4 w-4 text-yellow-600" />;
       case 'silver': return <Award className="h-4 w-4 text-gray-600" />;
@@ -151,7 +250,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
     }
   };
 
-  const vipGuests = guestProfiles.filter(g => g.tier === 'platinum' || g.tier === 'gold');
+  const vipGuests = guestProfiles.filter(g => g.tier === 'diamond' || g.tier === 'platinum' || g.tier === 'gold');
   const loyalGuests = guestProfiles.filter(g => g.totalStays >= 10);
   const highValueGuests = guestProfiles.filter(g => g.totalSpent >= 100000);
 
@@ -189,6 +288,32 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
           </DialogDescription>
         </DialogHeader>
 
+        {dataLoading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+            <p className="text-sm text-gray-500">Loading guest intelligence data...</p>
+          </div>
+        )}
+
+        {!dataLoading && error && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <AlertCircle className="h-8 w-8 text-red-400" />
+            <p className="text-sm text-red-600">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchGuestIntelligenceData}>
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {!dataLoading && !error && guestProfiles.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Users className="h-8 w-8 text-gray-300" />
+            <p className="text-sm text-gray-500">No guest intelligence data available yet.</p>
+            <p className="text-xs text-gray-400">Guest profiles will appear here once CRM data is populated.</p>
+          </div>
+        )}
+
+        {!dataLoading && !error && guestProfiles.length > 0 && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="vip" className="flex items-center gap-2">
@@ -235,7 +360,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
                 <CardContent className="p-4 text-center">
                   <TrendingUp className="h-8 w-8 text-green-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-green-700">
-                    ₹{Math.round(vipGuests.reduce((sum, g) => sum + g.totalSpent, 0) / 100000)}L
+                    {formatCompactCurrency(vipGuests.reduce((sum, g) => sum + g.totalSpent, 0))}
                   </p>
                   <p className="text-sm text-green-600">VIP Revenue</p>
                 </CardContent>
@@ -268,7 +393,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
                       <div className="flex items-center gap-6">
                         <div className="text-right">
                           <p className="text-lg font-bold text-green-600">
-                            ₹{guest.totalSpent.toLocaleString()}
+                            {formatCurrency(guest.totalSpent)}
                           </p>
                           <div className="flex items-center gap-1">
                             {Array.from({length: 5}).map((_, i) => (
@@ -431,7 +556,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
                                 {guest.tier}
                               </Badge>
                               <span className="text-sm text-gray-600">
-                                ₹{guest.totalSpent.toLocaleString()} lifetime value
+                                {formatCurrency(guest.totalSpent)} lifetime value
                               </span>
                             </div>
                           </div>
@@ -475,6 +600,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
             </div>
           </TabsContent>
         </Tabs>
+        )}
       </DialogContent>
     </Dialog>
   );

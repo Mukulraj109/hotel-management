@@ -195,7 +195,7 @@ class AllotmentService {
    */
   async initializeAllotments(allotmentId, days = 90) {
     try {
-      const allotment = await RoomTypeAllotment.findById(allotmentId).lean();
+      const allotment = await RoomTypeAllotment.findById(allotmentId);
       if (!allotment) {
         throw new Error('Allotment not found');
       }
@@ -447,7 +447,7 @@ class AllotmentService {
       for (const channelId of allotment.channels.map(c => c.channelId)) {
         const channelForecast = forecast.channels.find(c => c.channelId === channelId);
         if (channelForecast) {
-          const demandPercentage = channelForecast.demandScore / forecast.totalDemandScore;
+          const demandPercentage = forecast.totalDemandScore > 0 ? channelForecast.demandScore / forecast.totalDemandScore : 0;
           let allocation = Math.floor(totalInventory * demandPercentage);
           
           // Apply min/max constraints
@@ -518,7 +518,7 @@ class AllotmentService {
         hotelId,
         roomTypeId,
         status: 'active'
-      }).lean();
+      });
 
       if (!allotment) {
         throw new Error('No active allotment found for this room type');
@@ -1053,8 +1053,10 @@ class AllotmentService {
     const recommendations = [];
     
     // Find best performing channel
-    const bestChannel = channelMetrics.reduce((best, channel) => 
-      channel.utilizationRate > best.utilizationRate ? channel : best, channelMetrics[0]);
+    const bestChannel = channelMetrics.length > 0
+      ? channelMetrics.reduce((best, channel) =>
+          channel.utilizationRate > best.utilizationRate ? channel : best, channelMetrics[0])
+      : null;
     
     // Find underperforming channels
     const underperformingChannels = channelMetrics.filter(channel => 
@@ -1114,7 +1116,7 @@ class AllotmentService {
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Convert to days
     });
 
-    return leadTimes.reduce((sum, time) => sum + time, 0) / leadTimes.length;
+    return leadTimes.length > 0 ? leadTimes.reduce((sum, time) => sum + time, 0) / leadTimes.length : 0;
   }
 
   /**
@@ -1229,7 +1231,7 @@ class AllotmentService {
       let totalAllocated = 0;
       optimizedPercentages.forEach(value => totalAllocated += value);
 
-      if (totalAllocated !== 100) {
+      if (totalAllocated !== 100 && totalAllocated > 0) {
         const scaleFactor = 100 / totalAllocated;
         optimizedPercentages.forEach((value, key) => {
           optimizedPercentages.set(key, Math.round(value * scaleFactor));

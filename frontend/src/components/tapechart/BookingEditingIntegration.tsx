@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserPlus, FileText, IndianRupee, Users } from 'lucide-react';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { BookingEditModal } from '../booking/BookingEditModal';
 
 interface BookingData {
@@ -81,12 +82,12 @@ export function BookingEditingIntegration({ booking, onBookingUpdated }: Booking
             <div className="mt-3 pt-3 border-t border-blue-200">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Extra person charges:</span>
-                <span className="font-semibold text-green-600">₹{totalExtraCharges.toLocaleString()}</span>
+                <span className="font-semibold text-green-600">{formatCurrency(totalExtraCharges)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Updated total amount:</span>
                 <span className="font-semibold text-blue-600">
-                  ₹{(booking.totalAmount + totalExtraCharges).toLocaleString()}
+                  {formatCurrency(booking.totalAmount + totalExtraCharges)}
                 </span>
               </div>
             </div>
@@ -129,7 +130,7 @@ export function BookingEditingIntegration({ booking, onBookingUpdated }: Booking
                     </div>
                     {personCharge && (
                       <div className="text-right">
-                        <p className="text-sm font-medium text-green-600">₹{personCharge.totalCharge.toLocaleString()}</p>
+                        <p className="text-sm font-medium text-green-600">{formatCurrency(personCharge.totalCharge)}</p>
                       </div>
                     )}
                   </div>
@@ -202,7 +203,7 @@ export function EnhancedBookingCard({
           </p>
         </div>
         <div className="text-right">
-          <p className="text-sm font-medium text-green-600">₹{booking.totalAmount.toLocaleString()}</p>
+          <p className="text-sm font-medium text-green-600">{formatCurrency(booking.totalAmount)}</p>
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
             booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
             booking.status === 'checked_in' ? 'bg-green-100 text-green-800' :

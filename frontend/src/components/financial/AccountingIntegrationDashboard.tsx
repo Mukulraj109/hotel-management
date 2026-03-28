@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import financialService from '@/services/financialService';
+import { api } from '@/services/api';
 import { withErrorBoundary } from '../ErrorBoundary';
 
 interface AccountingIntegration {
@@ -124,9 +125,28 @@ const AccountingIntegrationDashboard: React.FC = () => {
   const [currencyRates, setCurrencyRates] = useState<CurrencyRate[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<AccountingIntegration | null>(null);
   const [baseCurrency, setBaseCurrency] = useState('INR');
-  const [fiscalPeriod, setFiscalPeriod] = useState('current');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [activeCurrencies, setActiveCurrencies] = useState<Record<string, boolean>>({
+    USD: false, EUR: false, GBP: false, AED: false, SGD: false
+  });
+  const [autoUpdateRates, setAutoUpdateRates] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+
+  // Currency-aware formatting: converts INR amounts to selected currency
+  const formatAmount = (amountInINR: number) => {
+    if (baseCurrency === 'INR') {
+      return formatCurrency(amountInINR);
+    }
+    // Find the exchange rate for selected currency
+    const rate = currencyRates.find(r => r.currency === baseCurrency);
+    if (rate && rate.rate > 0) {
+      const converted = amountInINR / rate.rate; // rate is ₹ per 1 foreign unit
+      return formatCurrency(converted, { currency: baseCurrency });
+    }
+    return formatCurrency(amountInINR);
+  };
 
   const isMountedRef = useRef(true);
 
@@ -136,7 +156,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchFinancialData();
-  }, [baseCurrency, fiscalPeriod]);
+  }, [baseCurrency]);
 
   const fetchFinancialData = async () => {
     setIsLoading(true);
@@ -144,7 +164,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
       
       // Fetch real financial data from backend APIs with improved error handling
       const [dashboardData, journalEntries, invoicesData, paymentsData, bankAccountsData] = await Promise.all([
-        financialService.getFinancialDashboard(fiscalPeriod).catch((error) => {
+        financialService.getFinancialDashboard(filterStartDate && filterEndDate ? 'custom' : 'all', filterStartDate, filterEndDate).catch((error) => {
           toast.error('Failed to load financial dashboard data');
           return {
             success: false,
@@ -169,24 +189,21 @@ const AccountingIntegrationDashboard: React.FC = () => {
           };
         }),
         financialService.getJournalEntries({
-          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-          endDate: new Date().toISOString().split('T')[0]
-        }).catch((error) => {
-          toast.error('Failed to load journal entries');
+          ...(filterStartDate ? { startDate: filterStartDate } : {}),
+          ...(filterEndDate ? { endDate: filterEndDate } : {})
+        }).catch(() => {
           return { data: { entries: [] } };
         }),
         financialService.getInvoices({
-          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-          endDate: new Date().toISOString().split('T')[0]
-        }).catch((error) => {
-          toast.error('Failed to load invoices');
+          ...(filterStartDate ? { startDate: filterStartDate } : {}),
+          ...(filterEndDate ? { endDate: filterEndDate } : {})
+        }).catch(() => {
           return { data: [] };
         }),
         financialService.getPayments({
-          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-          endDate: new Date().toISOString().split('T')[0]
-        }).catch((error) => {
-          toast.error('Failed to load payments');
+          ...(filterStartDate ? { startDate: filterStartDate } : {}),
+          ...(filterEndDate ? { endDate: filterEndDate } : {})
+        }).catch(() => {
           return { data: [] };
         }),
         financialService.getBankAccounts().catch((error) => {
@@ -197,14 +214,16 @@ const AccountingIntegrationDashboard: React.FC = () => {
 
 
       // Set integrations (static for now, but connected to backend data availability)
-      const mockIntegrations: AccountingIntegration[] = [
+      const hasDashboard = !!(dashboardData?.data || dashboardData);
+      const hasBookings = (dashboardData?.data?.summary?.bookingCount || 0) > 0;
+      const liveIntegrations: AccountingIntegration[] = [
         {
-          id: 'quickbooks',
-          name: 'QuickBooks Online',
+          id: 'booking_system',
+          name: 'Booking & Revenue System',
           type: 'accounting',
           logo: '/logos/quickbooks.png',
-          isConnected: !!(dashboardData?.data || dashboardData),
-          status: (dashboardData?.data || dashboardData) ? 'active' : 'inactive',
+          isConnected: hasDashboard,
+          status: hasDashboard ? 'active' : 'inactive',
           lastSync: new Date(Date.now() - 300000),
           autoSync: true,
           syncInterval: 60,
@@ -233,11 +252,11 @@ const AccountingIntegrationDashboard: React.FC = () => {
         },
         {
           id: 'financial_system',
-          name: 'Hotel Financial System',
+          name: 'Chart of Accounts & Ledger',
           type: 'accounting',
           logo: '/logos/system.png',
-          isConnected: true,
-          status: 'active',
+          isConnected: hasDashboard,
+          status: hasDashboard ? 'active' : 'inactive',
           lastSync: new Date(),
           autoSync: true,
           syncInterval: 30,
@@ -286,6 +305,58 @@ const AccountingIntegrationDashboard: React.FC = () => {
         });
       }
 
+      // Transform payments to transactions
+      const paymentsArray = paymentsData?.data?.payments || paymentsData?.data || [];
+      if (Array.isArray(paymentsArray) && paymentsArray.length > 0) {
+        paymentsArray.slice(0, 10).forEach((payment: Record<string, unknown>) => {
+          transformedTransactions.push({
+            id: `pay-${payment._id}`,
+            type: 'revenue',
+            date: new Date(payment.paymentDate || payment.createdAt || new Date()),
+            amount: (payment.amount as number) || 0,
+            currency: (payment.currency as string) || 'INR',
+            description: `Payment - ${payment.method || 'Unknown method'}`,
+            account: '1001',
+            reference: (payment.transactionId as string) || (payment.referenceNumber as string) || 'N/A',
+            status: payment.status === 'completed' ? 'posted' : 'pending',
+            guestName: payment.guestName as string || undefined
+          });
+        });
+      }
+
+      // If no financial transactions yet, pull from real bookings
+      if (transformedTransactions.length === 0) {
+        try {
+          const bookingsResponse = await api.get('/bookings', {
+            params: {
+              limit: 10,
+              sort: '-createdAt',
+              ...(filterStartDate ? { startDate: filterStartDate } : {}),
+              ...(filterEndDate ? { endDate: filterEndDate } : {})
+            }
+          });
+          const bookingsArray = bookingsResponse.data?.data?.bookings || bookingsResponse.data?.bookings || [];
+          if (Array.isArray(bookingsArray)) {
+            bookingsArray.slice(0, 10).forEach((booking: Record<string, unknown>) => {
+              transformedTransactions.push({
+                id: `bkg-${booking._id}`,
+                type: 'revenue',
+                date: new Date((booking.checkIn as string) || (booking.createdAt as string) || new Date()),
+                amount: (booking.totalAmount as number) || 0,
+                currency: 'INR',
+                description: `Booking - Room ${(booking.roomNumber as string) || (booking.rooms as unknown[])?.length || ''} (${(booking.status as string) || 'confirmed'})`,
+                account: '4000',
+                reference: (booking.bookingNumber as string) || (booking.confirmationNumber as string) || String(booking._id).slice(-8),
+                status: ['checked_out', 'completed'].includes(booking.status as string) ? 'posted' : 'pending',
+                guestName: (booking.guestName as string) || (booking.guest as Record<string, string>)?.name || undefined
+              });
+            });
+          }
+        } catch {
+          // Bookings API not available — that's fine
+        }
+      }
+
       // Transform invoices to receivables
       const invoicesArray = invoicesData?.data || invoicesData || [];
 
@@ -330,6 +401,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
         }
       ];
 
+      // Process invoices for aging
       if (Array.isArray(invoicesArray) && invoicesArray.length > 0) {
         invoicesArray.forEach((invoice: Record<string, unknown>) => {
           if (invoice?.status !== 'paid' && (invoice?.balanceAmount || 0) > 0) {
@@ -337,23 +409,47 @@ const AccountingIntegrationDashboard: React.FC = () => {
               (new Date().getTime() - new Date(invoice.issueDate || invoice.createdAt || new Date()).getTime()) /
               (1000 * 3600 * 24)
             );
-            const amount = invoice.balanceAmount || 0;
-            const categoryIndex = invoice.customer?.type === 'corporate' ? 1 : 0;
+            const amount = (invoice.balanceAmount as number) || 0;
+            const categoryIndex = (invoice.customer as Record<string, unknown>)?.type === 'corporate' ? 1 : 0;
 
-            if (daysDiff <= 30) {
-              agingReport[categoryIndex].current += amount;
-            } else if (daysDiff <= 60) {
-              agingReport[categoryIndex].days30 += amount;
-            } else if (daysDiff <= 90) {
-              agingReport[categoryIndex].days60 += amount;
-            } else if (daysDiff <= 120) {
-              agingReport[categoryIndex].days90 += amount;
-            } else {
-              agingReport[categoryIndex].over90 += amount;
-            }
+            if (daysDiff <= 30) agingReport[categoryIndex].current += amount;
+            else if (daysDiff <= 60) agingReport[categoryIndex].days30 += amount;
+            else if (daysDiff <= 90) agingReport[categoryIndex].days60 += amount;
+            else if (daysDiff <= 120) agingReport[categoryIndex].days90 += amount;
+            else agingReport[categoryIndex].over90 += amount;
             agingReport[categoryIndex].total += amount;
           }
         });
+      }
+
+      // If no invoice aging data, calculate from real bookings with outstanding balances
+      if (agingReport[0].total === 0 && agingReport[1].total === 0) {
+        try {
+          const bookingsForAging = await api.get('/bookings', {
+            params: { limit: 200, sort: '-checkIn' }
+          });
+          const bkgs = bookingsForAging.data?.data?.bookings || bookingsForAging.data?.bookings || [];
+          if (Array.isArray(bkgs)) {
+            bkgs.forEach((bkg: Record<string, unknown>) => {
+              const total = (bkg.totalAmount as number) || 0;
+              const paid = ((bkg.paymentDetails as Record<string, number>)?.totalPaid) || 0;
+              const outstanding = total - paid;
+              if (outstanding <= 0) return;
+
+              const checkIn = new Date((bkg.checkIn as string) || (bkg.createdAt as string));
+              const daysDiff = Math.floor((Date.now() - checkIn.getTime()) / (1000 * 3600 * 24));
+
+              if (daysDiff <= 30) agingReport[0].current += outstanding;
+              else if (daysDiff <= 60) agingReport[0].days30 += outstanding;
+              else if (daysDiff <= 90) agingReport[0].days60 += outstanding;
+              else if (daysDiff <= 120) agingReport[0].days90 += outstanding;
+              else agingReport[0].over90 += outstanding;
+              agingReport[0].total += outstanding;
+            });
+          }
+        } catch {
+          // Bookings not available
+        }
       }
 
       // Calculate metrics from dashboard data
@@ -399,17 +495,37 @@ const AccountingIntegrationDashboard: React.FC = () => {
         };
       }
 
-      const mockCurrencyRates: CurrencyRate[] = [
-        { currency: 'USD', rate: 83.15, lastUpdated: new Date(), trend: 'up' },
-        { currency: 'EUR', rate: 90.25, lastUpdated: new Date(), trend: 'down' },
-        { currency: 'GBP', rate: 105.80, lastUpdated: new Date(), trend: 'stable' }
-      ];
+      // Fetch real exchange rates from currency API
+      let fetchedRates: CurrencyRate[] = [];
+      try {
+        const ratesResponse = await api.get('/currencies/conversion-rates', {
+          params: { baseCurrency: 'INR', targetCurrencies: 'USD,EUR,GBP' }
+        });
+        const ratesData = ratesResponse.data?.data?.conversionRates || ratesResponse.data?.conversionRates || ratesResponse.data?.data?.rates || ratesResponse.data?.rates || {};
+        fetchedRates = Object.entries(ratesData).map(([currency, info]: [string, unknown]) => ({
+          currency,
+          rate: (() => {
+            const rawRate = typeof info === 'object' && info !== null ? (info as Record<string, number>).rate || 0 : Number(info) || 0;
+            // If base is INR, rates are fractions (0.012 for USD). Invert to show ₹ per 1 foreign unit.
+            return rawRate > 0 && rawRate < 1 ? Number((1 / rawRate).toFixed(2)) : rawRate;
+          })(),
+          lastUpdated: new Date(),
+          trend: 'stable' as const
+        }));
+      } catch {
+        // No fallback — rates section will show empty if API unavailable
+        fetchedRates = [];
+      }
 
-      setIntegrations(mockIntegrations);
+      // Only set integrations on first load — preserve user toggles after that
+      setIntegrations(prev => prev.length === 0 ? liveIntegrations : prev.map(existing => {
+        const live = liveIntegrations.find(l => l.id === existing.id);
+        return live ? { ...live, isConnected: existing.isConnected, status: existing.isConnected ? live.status : 'inactive' } : existing;
+      }));
       setTransactions(transformedTransactions);
       setAgingReport(agingReport);
       setMetrics(calculatedMetrics);
-      setCurrencyRates(mockCurrencyRates);
+      setCurrencyRates(fetchedRates);
     } catch (error) {
       toast.error('Failed to load financial data');
     } finally {
@@ -417,36 +533,36 @@ const AccountingIntegrationDashboard: React.FC = () => {
     }
   };
 
-  const toggleIntegration = async (integrationId: string, connected: boolean) => {
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
-      
-      setIntegrations(prev => prev.map(integration =>
-        integration.id === integrationId 
-          ? { ...integration, isConnected: connected, status: connected ? 'active' : 'inactive' }
-          : integration
-      ));
-      
-      toast.success(`${connected ? 'Connected to' : 'Disconnected from'} integration`);
-    } catch (error) {
-      toast.error('Failed to update integration');
-    }
+  const toggleIntegration = (integrationId: string, connected: boolean) => {
+    // Update UI immediately
+    setIntegrations(prev => prev.map(integration =>
+      integration.id === integrationId
+        ? { ...integration, isConnected: connected, status: connected ? 'active' : 'inactive' }
+        : integration
+    ));
+    toast.success(`${connected ? 'Connected to' : 'Disconnected from'} integration`);
+
+    // Persist to backend in background (don't await)
+    api.put(`/financial/integrations/${integrationId}/settings`, {
+      isConnected: connected,
+      status: connected ? 'active' : 'inactive'
+    }).catch(() => {});
   };
 
   const syncIntegration = async (integrationId: string) => {
     try {
       setIntegrations(prev => prev.map(integration =>
-        integration.id === integrationId 
+        integration.id === integrationId
           ? { ...integration, status: 'syncing' }
           : integration
       ));
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    if (!isMountedRef.current) return;
-      
+      // Actually re-fetch financial data
+      await fetchFinancialData();
+      if (!isMountedRef.current) return;
+
       setIntegrations(prev => prev.map(integration =>
-        integration.id === integrationId 
+        integration.id === integrationId
           ? { ...integration, status: 'active', lastSync: new Date() }
           : integration
       ));
@@ -559,21 +675,33 @@ const AccountingIntegrationDashboard: React.FC = () => {
             </SelectContent>
           </Select>
           
-          <Select value={fiscalPeriod} onValueChange={setFiscalPeriod}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current">Current Month</SelectItem>
-              <SelectItem value="quarter">Current Quarter</SelectItem>
-              <SelectItem value="year">Current Year</SelectItem>
-            </SelectContent>
-          </Select>
-          
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="w-36"
+              placeholder="From"
+            />
+            <span className="text-gray-400">to</span>
+            <Input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="w-36"
+              placeholder="To"
+            />
+          </div>
+
           <Button variant="outline" onClick={fetchFinancialData}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            {filterStartDate || filterEndDate ? 'Apply' : 'Refresh'}
           </Button>
+          {(filterStartDate || filterEndDate) && (
+            <Button variant="ghost" size="sm" onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setTimeout(fetchFinancialData, 0); }}>
+              Clear
+            </Button>
+          )}
         </div>
       </div>
 
@@ -585,7 +713,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold">{formatCurrency(metrics.totalRevenue)}</p>
+                  <p className="text-2xl font-bold">{formatAmount(metrics.totalRevenue)}</p>
                 </div>
                 <div className="flex items-center gap-1">
                   <TrendingUp className="w-4 h-4 text-green-500" />
@@ -600,7 +728,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Net Income</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(metrics.netIncome)}</p>
+                  <p className="text-2xl font-bold text-green-600">{formatAmount(metrics.netIncome)}</p>
                 </div>
                 <Target className="w-6 h-6 text-green-500" />
               </div>
@@ -612,7 +740,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Accounts Receivable</p>
-                  <p className="text-2xl font-bold text-yellow-600">{formatCurrency(metrics.accountsReceivable)}</p>
+                  <p className="text-2xl font-bold text-yellow-600">{formatAmount(metrics.accountsReceivable)}</p>
                 </div>
                 <Clock className="w-6 h-6 text-yellow-500" />
               </div>
@@ -625,7 +753,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Cash Flow</p>
-                  <p className="text-2xl font-bold text-blue-600">{formatCurrency(metrics.cashFlow)}</p>
+                  <p className="text-2xl font-bold text-blue-600">{formatAmount(metrics.cashFlow)}</p>
                 </div>
                 <Activity className="w-6 h-6 text-blue-500" />
               </div>
@@ -735,7 +863,17 @@ const AccountingIntegrationDashboard: React.FC = () => {
                   <Download className="w-3 h-3 mr-1" />
                   Export
                 </Button>
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.csv,.json,.xlsx';
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (!file) return;
+                    toast.success(`File "${file.name}" selected. Import processing is not yet available.`);
+                  };
+                  input.click();
+                }}>
                   <Upload className="w-3 h-3 mr-1" />
                   Import
                 </Button>
@@ -755,6 +893,14 @@ const AccountingIntegrationDashboard: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {transactions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      No transactions found. Transactions will appear here once bookings and payments are processed.
+                    </TableCell>
+                  </TableRow>
+                )}
                 {transactions.slice(0, 5).map(transaction => (
                   <TableRow key={transaction.id}>
                     <TableCell>
@@ -780,11 +926,11 @@ const AccountingIntegrationDashboard: React.FC = () => {
                           transaction.type === 'expense' ? 'text-red-600' :
                           'text-gray-600'
                         }`}>
-                          {formatCurrency(transaction.amount)}
+                          {formatAmount(transaction.amount)}
                         </p>
                         {transaction.taxAmount && (
                           <p className="text-xs text-gray-500">
-                            Tax: {formatCurrency(transaction.taxAmount)}
+                            Tax: {formatAmount(transaction.taxAmount)}
                           </p>
                         )}
                       </div>
@@ -836,15 +982,15 @@ const AccountingIntegrationDashboard: React.FC = () => {
                 {agingReport.map(report => (
                   <TableRow key={report.category}>
                     <TableCell className="font-medium">{report.category}</TableCell>
-                    <TableCell>{formatCurrency(report.current)}</TableCell>
-                    <TableCell>{formatCurrency(report.days30)}</TableCell>
-                    <TableCell>{formatCurrency(report.days60)}</TableCell>
-                    <TableCell>{formatCurrency(report.days90)}</TableCell>
-                    <TableCell className="text-red-600">
-                      {formatCurrency(report.over90)}
+                    <TableCell>{formatAmount(report.current)}</TableCell>
+                    <TableCell>{formatAmount(report.days30)}</TableCell>
+                    <TableCell>{formatAmount(report.days60)}</TableCell>
+                    <TableCell>{formatAmount(report.days90)}</TableCell>
+                    <TableCell className={report.over90 > 0 ? 'text-red-600' : ''}>
+                      {formatAmount(report.over90)}
                     </TableCell>
                     <TableCell className="font-bold">
-                      {formatCurrency(report.total)}
+                      {formatAmount(report.total)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -881,7 +1027,28 @@ const AccountingIntegrationDashboard: React.FC = () => {
                 </div>
               ))}
 
-              <Button variant="outline" className="w-full mt-4">
+              <Button variant="outline" className="w-full mt-4" onClick={async () => {
+                try {
+                  const ratesResponse = await api.get('/currencies/conversion-rates', {
+                    params: { baseCurrency, targetCurrencies: 'USD,EUR,GBP,AED,SGD' }
+                  });
+                  const ratesData = ratesResponse.data?.data?.conversionRates || ratesResponse.data?.conversionRates || ratesResponse.data?.data?.rates || ratesResponse.data?.rates || {};
+                  const updated: CurrencyRate[] = Object.entries(ratesData).map(([currency, info]: [string, unknown]) => ({
+                    currency,
+                    rate: (() => {
+            const rawRate = typeof info === 'object' && info !== null ? (info as Record<string, number>).rate || 0 : Number(info) || 0;
+            // If base is INR, rates are fractions (0.012 for USD). Invert to show ₹ per 1 foreign unit.
+            return rawRate > 0 && rawRate < 1 ? Number((1 / rawRate).toFixed(2)) : rawRate;
+          })(),
+                    lastUpdated: new Date(),
+                    trend: 'stable' as const
+                  }));
+                  if (updated.length > 0) setCurrencyRates(updated);
+                  toast.success('Exchange rates updated');
+                } catch {
+                  toast.error('Failed to update exchange rates');
+                }
+              }}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Update Rates
               </Button>
@@ -913,7 +1080,10 @@ const AccountingIntegrationDashboard: React.FC = () => {
                 <div className="space-y-2">
                   {['USD', 'EUR', 'GBP', 'AED', 'SGD'].map(currency => (
                     <div key={currency} className="flex items-center gap-2">
-                      <Switch size="sm" />
+                      <Switch
+                        checked={activeCurrencies[currency] || false}
+                        onCheckedChange={(checked) => setActiveCurrencies(prev => ({ ...prev, [currency]: checked }))}
+                      />
                       <span className="text-sm">{currency}</span>
                     </div>
                   ))}
@@ -923,10 +1093,28 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div>
                 <Label>Auto-Update Rates</Label>
                 <div className="flex items-center gap-2 mt-2">
-                  <Switch />
+                  <Switch
+                    checked={autoUpdateRates}
+                    onCheckedChange={setAutoUpdateRates}
+                  />
                   <span className="text-sm text-gray-600">Daily at 9:00 AM</span>
                 </div>
               </div>
+
+              <Button variant="outline" className="w-full" onClick={async () => {
+                try {
+                  await api.put('/financial/integrations/currency_settings/settings', {
+                    baseCurrency,
+                    activeCurrencies,
+                    autoUpdateRates
+                  });
+                  toast.success('Currency settings saved');
+                } catch {
+                  toast.error('Failed to save currency settings');
+                }
+              }}>
+                Save Currency Settings
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -1012,14 +1200,30 @@ const AccountingIntegrationDashboard: React.FC = () => {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={() => {
-                    // Save settings
-                    setIntegrations(prev => prev.map(i => 
-                      i.id === selectedIntegration.id ? selectedIntegration : i
-                    ));
-                    setSettingsDialogOpen(false);
-                    toast.success('Integration settings updated');
+                <Button
+                  onClick={async () => {
+                    try {
+                      // Persist integration settings to backend
+                      await api.put(`/financial/integrations/${selectedIntegration.id}/settings`, {
+                        syncInterval: selectedIntegration.syncInterval,
+                        companyCode: selectedIntegration.settings.companyCode,
+                        autoSync: selectedIntegration.autoSync,
+                        chartOfAccounts: selectedIntegration.settings.chartOfAccounts,
+                        taxSettings: selectedIntegration.settings.taxSettings
+                      });
+                      setIntegrations(prev => prev.map(i =>
+                        i.id === selectedIntegration.id ? selectedIntegration : i
+                      ));
+                      setSettingsDialogOpen(false);
+                      toast.success('Integration settings saved');
+                    } catch {
+                      // Fallback: save to local state even if backend fails
+                      setIntegrations(prev => prev.map(i =>
+                        i.id === selectedIntegration.id ? selectedIntegration : i
+                      ));
+                      setSettingsDialogOpen(false);
+                      toast.success('Integration settings updated locally');
+                    }
                   }}
                 >
                   Save Changes

@@ -15,6 +15,12 @@ import financialService, { JournalEntry, ChartOfAccount } from '@/services/finan
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 interface EntryFormData {
   date: string;
   reference: string;
@@ -79,7 +85,7 @@ const GeneralLedger: React.FC = () => {
 
       setJournalEntries(entriesData);
     } catch (error: unknown) {
-      toast.error('Failed to fetch journal entries: ' + error.message);
+      toast.error('Failed to fetch journal entries: ' + getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -94,7 +100,7 @@ const GeneralLedger: React.FC = () => {
 
       setAccounts(accountsData);
     } catch (error: unknown) {
-      toast.error('Failed to fetch accounts: ' + error.message);
+      toast.error('Failed to fetch accounts: ' + getErrorMessage(error));
     }
   };
 
@@ -130,7 +136,7 @@ const GeneralLedger: React.FC = () => {
       resetForm();
       fetchJournalEntries();
     } catch (error: unknown) {
-      toast.error('Failed to create journal entry: ' + error.message);
+      toast.error('Failed to create journal entry: ' + getErrorMessage(error));
     }
   };
 
@@ -143,7 +149,7 @@ const GeneralLedger: React.FC = () => {
       setReverseEntry(null);
       fetchJournalEntries();
     } catch (error: unknown) {
-      toast.error('Failed to reverse journal entry: ' + error.message);
+      toast.error('Failed to reverse journal entry: ' + getErrorMessage(error));
     }
   };
 

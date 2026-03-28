@@ -291,9 +291,10 @@ class MeetUpSupervisionAlertService {
         }
       };
 
-      if (hotelId) {
-        query.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for processing meet-up supervision alerts');
       }
+      query.hotelId = hotelId;
 
       const upcomingMeetUps = await MeetUpRequest.find(query)
         .populate('requesterId', 'name email')

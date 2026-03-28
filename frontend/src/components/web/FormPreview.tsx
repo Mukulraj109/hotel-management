@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
-import { Eye, EyeOff, Smartphone, Tablet, Monitor } from 'lucide-react';
+import { Smartphone, Tablet, Monitor } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -28,15 +28,23 @@ const FormPreview: React.FC<FormPreviewProps> = ({
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  const fields = template.fields || [];
+  const fields = useMemo(() => template.fields || [], [template.fields]);
   const styling = template.styling || {};
   const settings = template.settings || {};
+
+  // Reset form data when template changes
+  useEffect(() => {
+    setFormData({});
+    setErrors({});
+    setSubmitSuccess(false);
+  }, [template]);
 
   useEffect(() => {
     // Initialize visible fields and evaluate conditions
     const visible = new Set<string>();
-    
+
     fields.forEach(field => {
       if (isFieldVisible(field, formData)) {
         visible.add(field.id);
@@ -46,21 +54,17 @@ const FormPreview: React.FC<FormPreviewProps> = ({
     setVisibleFields(visible);
   }, [fields, formData]);
 
-  const isFieldVisible = (field: FormField, data: Record<string, unknown>): boolean => {
-    if (!field.conditional) return true;
-
-    const { fieldId, operator, value } = field.conditional;
+  const evaluateCondition = (fieldId: string, operator: string, value: unknown, data: Record<string, unknown>): boolean => {
     const fieldValue = data[fieldId];
-
     switch (operator) {
       case 'equals':
         return fieldValue === value;
       case 'not_equals':
         return fieldValue !== value;
       case 'contains':
-        return String(fieldValue || '').includes(value);
+        return String(fieldValue || '').includes(String(value));
       case 'not_contains':
-        return !String(fieldValue || '').includes(value);
+        return !String(fieldValue || '').includes(String(value));
       case 'greater_than':
         return Number(fieldValue || 0) > Number(value);
       case 'less_than':
@@ -68,6 +72,25 @@ const FormPreview: React.FC<FormPreviewProps> = ({
       default:
         return true;
     }
+  };
+
+  const isFieldVisible = (field: FormField, data: Record<string, unknown>): boolean => {
+    // Support frontend simple conditional format
+    if (field.conditional) {
+      const { fieldId, operator, value } = field.conditional;
+      return evaluateCondition(fieldId, operator, value, data);
+    }
+
+    // Support backend conditionalLogic format (array of conditions with show/hide actions)
+    if (field.conditionalLogic && field.conditionalLogic.length > 0) {
+      for (const logic of field.conditionalLogic) {
+        const conditionMet = evaluateCondition(logic.condition.field, logic.condition.operator, logic.condition.value, data);
+        if (logic.action.type === 'show' && !conditionMet) return false;
+        if (logic.action.type === 'hide' && conditionMet) return false;
+      }
+    }
+
+    return true;
   };
 
   const handleInputChange = (fieldId: string, value: unknown) => {
@@ -115,13 +138,13 @@ const FormPreview: React.FC<FormPreviewProps> = ({
           isValid = Number(value) <= Number(rule.value || 100);
           break;
         case 'email':
-          isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+          isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
           break;
         case 'phone':
-          isValid = /^\+?[\d\s\-\(\)]+$/.test(value);
+          isValid = /^\+?[\d\s\-\(\)]+$/.test(String(value));
           break;
         case 'url':
-          isValid = /^https?:\/\/.+/.test(value);
+          isValid = /^https?:\/\/.+/.test(String(value));
           break;
         case 'regex':
           try {
@@ -160,7 +183,7 @@ const FormPreview: React.FC<FormPreviewProps> = ({
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
-      // Form is valid, would submit here
+      setSubmitSuccess(true);
     }
   };
 
@@ -185,6 +208,7 @@ const FormPreview: React.FC<FormPreviewProps> = ({
       case 'text':
       case 'email':
       case 'tel':
+      case 'phone':
       case 'number':
         return (
           <div key={field.id} className="space-y-2" style={fieldStyle}>
@@ -328,9 +352,9 @@ const FormPreview: React.FC<FormPreviewProps> = ({
                   <div key={option.value} className="flex items-center space-x-2">
                     <Checkbox
                       id={`${field.id}-${option.value}`}
-                      checked={(fieldValue || []).includes(option.value)}
+                      checked={Array.isArray(fieldValue) ? fieldValue.includes(option.value) : false}
                       onCheckedChange={(checked) => {
-                        const currentValues = fieldValue || [];
+                        const currentValues = Array.isArray(fieldValue) ? fieldValue : [];
                         let newValues;
                         if (checked) {
                           newValues = [...currentValues, option.value];
@@ -415,6 +439,21 @@ const FormPreview: React.FC<FormPreviewProps> = ({
           />
         );
 
+      case 'hidden':
+        // Hidden fields don't render visually
+        return <input key={field.id} type="hidden" name={field.id} value={String(fieldValue || '')} />;
+
+      case 'section':
+      case 'heading':
+        return (
+          <div key={field.id} className="pt-4 pb-2" style={fieldStyle}>
+            <h3 className="text-lg font-semibold text-gray-800 border-b pb-2">{field.label}</h3>
+            {field.helpText && (
+              <p className="text-sm text-gray-500 mt-1">{field.helpText}</p>
+            )}
+          </div>
+        );
+
       default:
         return (
           <div key={field.id} className="p-4 bg-gray-100 rounded border" style={fieldStyle}>
@@ -497,30 +536,42 @@ const FormPreview: React.FC<FormPreviewProps> = ({
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {settings.enableProgressBar && fields.length > 0 && (
-                <div className="mb-6">
-                  <div className="flex justify-between text-sm text-gray-600 mb-2">
-                    <span>Progress</span>
-                    <span>{Math.round((Object.keys(formData).length / fields.length) * 100)}%</span>
+              {settings.enableProgressBar && fields.length > 0 && (() => {
+                const inputFields = fields.filter(f => !['divider', 'html', 'hidden', 'section', 'heading'].includes(f.type) && visibleFields.has(f.id));
+                const filledCount = inputFields.filter(f => {
+                  const v = formData[f.id];
+                  return v !== undefined && v !== '' && v !== null;
+                }).length;
+                const progress = inputFields.length > 0 ? Math.round((filledCount / inputFields.length) * 100) : 0;
+                return (
+                  <div className="mb-6">
+                    <div className="flex justify-between text-sm text-gray-600 mb-2">
+                      <span>Progress</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
-                      style={{
-                        width: `${(Object.keys(formData).length / fields.length) * 100}%`
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="grid gap-6">
-                {fields
+                {[...fields]
                   .sort((a, b) => a.order - b.order)
                   .map(renderField)}
               </div>
 
-              {interactive && fields.length > 0 && (
+              {submitSuccess && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+                  {settings.successMessage || 'Thank you! Your form has been submitted successfully.'}
+                </div>
+              )}
+
+              {interactive && fields.length > 0 && !submitSuccess && (
                 <div className="pt-6">
                   <Button
                     type="submit"
@@ -533,7 +584,7 @@ const FormPreview: React.FC<FormPreviewProps> = ({
                       fontWeight: styling.buttons?.fontWeight || '500'
                     }}
                   >
-                    Submit
+                    {settings.submitButtonText || 'Submit'}
                   </Button>
                 </div>
               )}

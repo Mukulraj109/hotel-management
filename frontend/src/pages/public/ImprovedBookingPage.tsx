@@ -546,7 +546,7 @@ const ImprovedBookingPage: React.FC = () => {
               onClick={() => {
                 // Simulate payment completion
                 toast.success('Booking submitted! Awaiting admin confirmation.');
-                navigate('/guest/bookings');
+                navigate('/app/bookings');
               }}
             >
               <CreditCard className="h-5 w-5 mr-2" />

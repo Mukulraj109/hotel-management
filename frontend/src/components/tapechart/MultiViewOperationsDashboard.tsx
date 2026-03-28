@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/utils/toast';
+import { formatCurrency, formatCompactCurrency } from '@/utils/currencyUtils';
 import {
   LayoutGrid,
   UserCheck,
@@ -240,56 +241,6 @@ export const MultiViewOperationsDashboard: React.FC = () => {
     }
   };
 
-  const generateMockOperationalData = () => {
-    const baseGuests = [
-      { name: 'John Smith', tier: 'vip', phone: '+1-555-0123', email: 'john@email.com' },
-      { name: 'Sarah Johnson', tier: 'diamond', phone: '+1-555-0456', email: 'sarah@email.com' },
-      { name: 'Michael Brown', tier: 'corporate', phone: '+1-555-0789', email: 'michael@email.com' },
-      { name: 'Emma Wilson', tier: 'regular', phone: '+1-555-0321', email: 'emma@email.com' },
-      { name: 'David Chen', tier: 'svip', phone: '+1-555-0654', email: 'david@email.com' }
-    ];
-
-    const generateItems = (type: string, count: number): OperationalListItem[] => {
-      return Array.from({ length: count }, (_, i) => {
-        const guest = baseGuests[i % baseGuests.length];
-        return {
-          id: `${type}-${i + 1}`,
-          bookingId: `BK${Date.now() + i}`,
-          guestName: guest.name,
-          roomNumber: `${300 + i}`,
-          roomType: ['Standard', 'Deluxe', 'Suite', 'Presidential'][i % 4],
-          checkIn: format(new Date(), 'yyyy-MM-dd'),
-          checkOut: format(new Date(Date.now() + (1 + i) * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-          status: type === 'checkin' ? 'confirmed' : type === 'checkout' ? 'occupied' : type,
-          amount: 250 + (i * 50),
-          paymentStatus: ['pending', 'paid', 'partial'][i % 3],
-          guestTier: guest.tier as unknown,
-          phone: guest.phone,
-          email: guest.email,
-          specialRequests: i % 3 === 0 ? ['Late checkout', 'Extra towels'] : [],
-          groupType: ['individual', 'group', 'corporate'][i % 3] as unknown,
-          depositAmount: 100,
-          balanceAmount: 150 + (i * 50),
-          lastUpdated: new Date().toISOString()
-        };
-      });
-    };
-
-    return {
-      checkin: generateItems('checkin', 8),
-      checkout: generateItems('checkout', 12),
-      reservations: generateItems('confirmed', 15),
-      temp: generateItems('temp', 4),
-      noshow: generateItems('noshow', 2),
-      cancelled: generateItems('cancelled', 3),
-      pending_checkout: generateItems('pending_checkout', 5),
-      folios: generateItems('folio', 7),
-      deposits: generateItems('deposit', 6),
-      payments: generateItems('payment', 9),
-      inhouse: generateItems('inhouse', 24)
-    };
-  };
-
   const getStatusColor = (status: string) => {
     const colors = {
       confirmed: 'bg-green-100 text-green-800',
@@ -344,8 +295,29 @@ export const MultiViewOperationsDashboard: React.FC = () => {
   };
 
   const exportToExcel = (data: OperationalListItem[], listName: string) => {
-    // Mock export functionality
-    toast.success(`Exporting ${data.length} items from ${listName} to Excel`);
+    if (data.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers = ['Guest Name', 'Room', 'Room Type', 'Check In', 'Check Out', 'Status', 'Amount'];
+    const rows = data.map(item => [
+      item.guestName,
+      item.roomNumber,
+      item.roomType,
+      item.checkIn,
+      item.checkOut,
+      item.status,
+      String(item.amount)
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${listName}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${data.length} items from ${listName}`);
   };
 
   const tabConfigs = [
@@ -502,7 +474,7 @@ export const MultiViewOperationsDashboard: React.FC = () => {
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Amount:</span>
-                      <div className="font-semibold text-green-600">${item.amount}</div>
+                      <div className="font-semibold text-green-600">{formatCurrency(item.amount)}</div>
                     </div>
                   </div>
 
@@ -524,7 +496,7 @@ export const MultiViewOperationsDashboard: React.FC = () => {
                       <span>Group: {item.groupType}</span>
                       <span>Payment: {item.paymentStatus}</span>
                       {item.balanceAmount && (
-                        <span>Balance: ${item.balanceAmount}</span>
+                        <span>Balance: {formatCurrency(item.balanceAmount)}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -614,7 +586,7 @@ export const MultiViewOperationsDashboard: React.FC = () => {
           </Card>
           <Card className="p-3">
             <div className="text-center">
-              <div className="text-xl font-bold text-emerald-600">${Math.round(stats.totalRevenue / 1000)}k</div>
+              <div className="text-xl font-bold text-emerald-600">{formatCompactCurrency(stats.totalRevenue)}</div>
               <div className="text-xs text-gray-600">Revenue</div>
             </div>
           </Card>

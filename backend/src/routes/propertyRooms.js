@@ -3,6 +3,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import propertyRoomService from '../services/propertyRoomService.js';
 import { authenticate as protect, authorize as restrictTo } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import User from '../models/User.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
@@ -163,6 +164,12 @@ router.post('/create-with-rooms',
       });
 
       const result = await propertyRoomService.createPropertyWithRooms(property, roomsConfig);
+
+      // Add the new property to the creator's properties array and enable multi-property access
+      await User.findByIdAndUpdate(req.user._id, {
+        $addToSet: { properties: result.property._id },
+        $set: { 'multiPropertyAccess.enabled': true }
+      });
 
       res.status(201).json({
         success: true,

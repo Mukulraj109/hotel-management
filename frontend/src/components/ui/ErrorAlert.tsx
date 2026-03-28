@@ -189,9 +189,10 @@ const ErrorAlert: React.FC<ErrorAlertProps> = ({
   );
 };
 
-export const parseErrorToLoyaltyError = (error: Record<string, unknown>): LoyaltyError => {
-  const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'An unexpected error occurred';
-  const errorData = error.response?.data || {};
+export const parseErrorToLoyaltyError = (error: unknown): LoyaltyError => {
+  const axiosErr = error as { response?: { data?: { error?: { message?: string }; message?: string; errorType?: string; userPoints?: number; requiredPoints?: number; pointsNeeded?: number; userTier?: string; requiredTier?: string; maxRedemptions?: number; expiryDate?: string; offer?: { validUntil?: string }; offerExpired?: boolean; offerInactive?: boolean; currentRedemptions?: number } } };
+  const message = axiosErr.response?.data?.error?.message || axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'An unexpected error occurred');
+  const errorData = axiosErr.response?.data || {} as Record<string, unknown>;
   
   // Check if we have explicit error type from enhanced error handling
   if (errorData.errorType) {
@@ -229,8 +230,8 @@ export const parseErrorToLoyaltyError = (error: Record<string, unknown>): Loyalt
       type: 'tier_required',
       message,
       details: {
-        userTier: error.response?.data?.userTier,
-        requiredTier: error.response?.data?.requiredTier
+        userTier: axiosErr.response?.data?.userTier,
+        requiredTier: axiosErr.response?.data?.requiredTier
       }
     };
   }
@@ -240,7 +241,7 @@ export const parseErrorToLoyaltyError = (error: Record<string, unknown>): Loyalt
       type: 'offer_expired',
       message,
       details: {
-        expiryDate: error.response?.data?.expiryDate
+        expiryDate: axiosErr.response?.data?.expiryDate
       }
     };
   }
@@ -257,8 +258,8 @@ export const parseErrorToLoyaltyError = (error: Record<string, unknown>): Loyalt
       type: 'max_redemptions',
       message,
       details: {
-        maxRedemptions: error.response?.data?.maxRedemptions,
-        currentRedemptions: error.response?.data?.currentRedemptions
+        maxRedemptions: axiosErr.response?.data?.maxRedemptions,
+        currentRedemptions: axiosErr.response?.data?.currentRedemptions
       }
     };
   }

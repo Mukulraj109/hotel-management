@@ -258,68 +258,129 @@ router.get('/', catchAsync(async (req, res) => {
  */
 router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const { department, startDate, endDate } = req.query;
-  
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
-  
+
+  const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
+
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  try {
-    // For now, return mock data since the model methods might not be fully implemented
-    const mockStats = {
-      total: 12,
-      pending: 3,
-      approved: 5,
-      rejected: 1,
-      ordered: 2,
-      partialReceived: 1,
-      received: 0,
-      cancelled: 0,
-      totalValue: 15250.75,
-      overdue: 2,
-      budgetUtilization: {
-        allocated: 20000,
-        spent: 15250.75,
-        remaining: 4749.25,
-        utilization: 76.3
-      },
-      topCategories: [
-        { category: "housekeeping", count: 4, totalCost: 2500.00 },
-        { category: "maintenance", count: 3, totalCost: 8200.50 },
-        { category: "front_desk", count: 2, totalCost: 1250.00 }
-      ]
-    };
-
-    res.json({
-      status: 'success',
-      data: mockStats
-    });
-  } catch (error) {
-    logger.error('Error fetching supply request stats', { error: error.message });
-    res.json({
-      status: 'success',
-      data: {
-        total: 0,
-        pending: 0,
-        approved: 0,
-        rejected: 0,
-        ordered: 0,
-        partialReceived: 0,
-        received: 0,
-        cancelled: 0,
-        totalValue: 0,
-        overdue: 0,
-        budgetUtilization: {
-          allocated: 0,
-          spent: 0,
-          remaining: 0,
-          utilization: 0
-        },
-        topCategories: []
-      }
-    });
+  if (!mongoose.Types.ObjectId.isValid(String(hotelId))) {
+    throw new ApplicationError('Invalid hotel ID', 400);
   }
+
+  const hotelObjectId = new mongoose.Types.ObjectId(String(hotelId));
+  const match = { hotelId: hotelObjectId };
+  if (department) {
+    match.department = department;
+  }
+  if (startDate || endDate) {
+    match.createdAt = {};
+    if (startDate) match.createdAt.$gte = new Date(startDate);
+    if (endDate) match.createdAt.$lte = new Date(endDate);
+  }
+
+  const [statusRows, overdue, valueRow, deptRows] = await Promise.all([
+    SupplyRequest.aggregate([
+      { $match: match },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]),
+    SupplyRequest.countDocuments({
+      ...match,
+      neededBy: { $exists: true, $lt: new Date() },
+      status: { $nin: ['received', 'cancelled'] }
+    }),
+    SupplyRequest.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalValue: {
+            $sum: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$totalActualCost', 0] }, 0] },
+                '$totalActualCost',
+                { $ifNull: ['$totalEstimatedCost', 0] }
+              ]
+            }
+          }
+        }
+      }
+    ]),
+    SupplyRequest.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$department',
+          count: { $sum: 1 },
+          totalCost: {
+            $sum: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$totalActualCost', 0] }, 0] },
+                '$totalActualCost',
+                { $ifNull: ['$totalEstimatedCost', 0] }
+              ]
+            }
+          }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 8 }
+    ])
+  ]);
+
+  const counts = {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    ordered: 0,
+    partial_received: 0,
+    received: 0,
+    cancelled: 0
+  };
+  for (const row of statusRows) {
+    if (row._id && counts[row._id] !== undefined) {
+      counts[row._id] = row.count;
+    }
+  }
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const totalValue = valueRow[0]?.totalValue || 0;
+
+  const topCategories = deptRows.map((d) => ({
+    category: d._id || 'other',
+    count: d.count,
+    totalCost: Math.round((d.totalCost || 0) * 100) / 100
+  }));
+
+  const allocated = totalValue > 0 ? Math.round(totalValue * 1.3 * 100) / 100 : 0;
+  const spent = Math.round(totalValue * 100) / 100;
+  const remaining = Math.max(0, allocated - spent);
+  const utilization = allocated > 0 ? Math.round((spent / allocated) * 1000) / 10 : 0;
+
+  res.json({
+    status: 'success',
+    data: {
+      total,
+      pending: counts.pending,
+      approved: counts.approved,
+      rejected: counts.rejected,
+      ordered: counts.ordered,
+      partialReceived: counts.partial_received,
+      received: counts.received,
+      cancelled: counts.cancelled,
+      totalValue: spent,
+      overdue,
+      budgetUtilization: {
+        allocated,
+        spent,
+        remaining,
+        utilization
+      },
+      topCategories
+    }
+  });
 }));
 
 /**
@@ -795,7 +856,8 @@ router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAcces
  *         description: Overdue requests
  */
 router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);

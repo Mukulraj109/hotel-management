@@ -516,7 +516,7 @@ router.get('/transactions', catchAsync(async (req, res) => {
  *         description: Inventory analytics data
  */
 router.get('/analytics', authorizePolicy('roomInventory', 'staffAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.hotelId;
+  const hotelId = req.user.hotelId?._id || req.user.hotelId;
   const { startDate, endDate } = req.query;
 
   const [

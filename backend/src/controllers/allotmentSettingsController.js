@@ -2,13 +2,21 @@ import allotmentSettingsService from '../services/allotmentSettingsService.js';
 import { validationResult } from 'express-validator';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
+const getHotelId = (req) => {
+  const hotelId = req.user?.hotelId || req.params.hotelId;
+  if (!hotelId) {
+    throw new Error('Hotel ID is required');
+  }
+  return hotelId;
+};
+
 const allotmentSettingsController = {
   /**
    * Get hotel allotment settings
    */
   async getHotelSettings(req, res) {
     try {
-      const hotelId = req.user?.hotelId || req.params.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = getHotelId(req);
       const userId = req.user?.id;
 
       console.log('🔍 [AllotmentSettingsController] Getting hotel settings for:', hotelId, 'User:', userId);
@@ -44,7 +52,7 @@ const allotmentSettingsController = {
         });
       }
 
-      const hotelId = req.user?.hotelId || req.params.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId || req.params.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🔧 [AllotmentSettingsController] Updating global settings for hotel:', hotelId);
@@ -84,7 +92,7 @@ const allotmentSettingsController = {
         });
       }
 
-      const hotelId = req.user?.hotelId || req.params.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId || req.params.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🔧 [AllotmentSettingsController] Updating integration settings for hotel:', hotelId);
@@ -124,7 +132,7 @@ const allotmentSettingsController = {
         });
       }
 
-      const hotelId = req.user?.hotelId || req.params.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId || req.params.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🔧 [AllotmentSettingsController] Updating analytics settings for hotel:', hotelId);
@@ -164,7 +172,7 @@ const allotmentSettingsController = {
         });
       }
 
-      const hotelId = req.user?.hotelId || req.params.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId || req.params.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🎯 [AllotmentSettingsController] Adding allocation rule template for hotel:', hotelId);
@@ -196,7 +204,7 @@ const allotmentSettingsController = {
   async deleteAllocationRuleTemplate(req, res) {
     try {
       const { templateId } = req.params;
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🗑️ [AllotmentSettingsController] Deleting allocation rule template:', templateId);
@@ -229,7 +237,7 @@ const allotmentSettingsController = {
     try {
       const { type } = req.params;
       const config = req.body;
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
 
       console.log('🧪 [AllotmentSettingsController] Testing integration:', type);
 
@@ -255,7 +263,7 @@ const allotmentSettingsController = {
    */
   async resetToDefaults(req, res) {
     try {
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
       const userId = req.user?.id || 'system';
 
       console.log('🔄 [AllotmentSettingsController] Resetting settings to defaults for hotel:', hotelId);
@@ -282,7 +290,7 @@ const allotmentSettingsController = {
    */
   async exportSettings(req, res) {
     try {
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
 
       console.log('📤 [AllotmentSettingsController] Exporting settings for hotel:', hotelId);
 
@@ -312,7 +320,7 @@ const allotmentSettingsController = {
    */
   async importSettings(req, res) {
     try {
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
       const userId = req.user?.id || 'system';
       const importData = req.body;
 
@@ -344,7 +352,7 @@ const allotmentSettingsController = {
    */
   async getSettingsSummary(req, res) {
     try {
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      const hotelId = req.user?.hotelId;
 
       console.log('📊 [AllotmentSettingsController] Getting settings summary for hotel:', hotelId);
 

@@ -74,9 +74,7 @@ export function InventoryTemplateManagement() {
   const fetchTemplates = async () => {
     try {
       const { data: data } = await api.get('/room-inventory/templates');
-      {
-        setTemplates(data.data.templates);
-      }
+      setTemplates(data.data.templates);
     } catch {
       // Error handled silently
     }
@@ -85,9 +83,7 @@ export function InventoryTemplateManagement() {
   const fetchAvailableItems = async () => {
     try {
       const { data: data } = await api.get('/room-inventory/items');
-      {
-        setAvailableItems(data.data.items);
-      }
+      setAvailableItems(data.data.items);
     } catch {
       // Error handled silently
     } finally {
@@ -126,11 +122,9 @@ export function InventoryTemplateManagement() {
       const response = template._id
         ? await api.patch(`/room-inventory/templates/${template._id}`, template)
         : await api.post('/room-inventory/templates', template);
-      {
-        await fetchTemplates();
-        setShowCreateModal(false);
-        setEditingTemplate(null);
-      }
+      await fetchTemplates();
+      setShowCreateModal(false);
+      setEditingTemplate(null);
     } catch {
       // Error handled silently
     }
@@ -141,9 +135,7 @@ export function InventoryTemplateManagement() {
 
     try {
       await api.delete(`/room-inventory/templates/${templateId}`);
-      {
-        await fetchTemplates();
-      }
+      await fetchTemplates();
     } catch {
       // Error handled silently
     }

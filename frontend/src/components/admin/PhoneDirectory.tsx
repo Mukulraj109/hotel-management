@@ -13,9 +13,9 @@ import {
 } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { 
 import { api } from '../../services/api';
-  Phone, 
+import {
+  Phone,
   Search, 
   Download, 
   Users, 
@@ -99,11 +99,11 @@ const PhoneDirectory: React.FC<PhoneDirectoryProps> = ({ onClose }) => {
         params.append('category', categoryFilter);
       }
 
-      const { data: data } = await api.get(`/phone-extensions/hotels/${hotelId}/directory?${params}`);
-      {
+      const { data } = await api.get(`/phone-extensions/hotels/${hotelId}/directory?${params}`);
+      if (data?.data) {
         setDirectory(data.data);
         // Auto-expand all categories initially
-        setExpandedCategories(Object.keys(data.data.categories));
+        setExpandedCategories(Object.keys(data.data.categories || {}));
       } else {
         throw new Error('Failed to fetch directory');
       }
@@ -132,24 +132,20 @@ const PhoneDirectory: React.FC<PhoneDirectoryProps> = ({ onClose }) => {
       }
 
       const response = await api.get(`/phone-extensions/hotels/${hotelId}/directory?${params}`, { responseType: 'blob' });
-      {
-        const blob = response.data;
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `phone-directory.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+      const blob = response.data;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `phone-directory.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-        toast({
-          title: 'Success',
-          description: `Directory exported as ${format.toUpperCase()}`
-        });
-      } else {
-        throw new Error('Failed to export directory');
-      }
+      toast({
+        title: 'Success',
+        description: `Directory exported as ${format.toUpperCase()}`
+      });
     } catch (error) {
       toast({
         title: 'Error',

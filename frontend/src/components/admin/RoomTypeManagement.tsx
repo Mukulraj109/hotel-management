@@ -43,8 +43,9 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
   const [migrationStatus, setMigrationStatus] = useState<unknown>(null);
 
   // Multi-property support
-  const { selectedPropertyId } = useProperty();
+  const { selectedPropertyId, properties } = useProperty();
   const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [targetPropertyId, setTargetPropertyId] = useState<string>(hotelId);
   const [showSuccess, setShowSuccess] = useState(false);
 
   const {
@@ -111,9 +112,10 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
     }
 
     try {
+      const effectiveHotelId = applyToScope === 'single' ? targetPropertyId : hotelId;
       const roomTypeData = {
         ...formData,
-        hotelId,
+        hotelId: effectiveHotelId,
         maxOccupancy: formData.maxOccupancy || 2,
         basePrice: Number(formData.basePrice),
         totalRooms: Number(formData.totalRooms)
@@ -241,6 +243,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
 
   const openCreateModal = () => {
     setFormData({});
+    setTargetPropertyId(hotelId);
+    setApplyToScope('single');
     setShowCreateModal(true);
     setError(null);
   };
@@ -264,11 +268,21 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
   const runMigration = async () => {
     try {
       setLoading(true);
+      setError(null);
       const result = await roomTypeService.migrateRoomsToRoomTypes(hotelId);
+      if (result?.migratedCount > 0) {
+        toast.success(`Migration complete! ${result.migratedCount} room(s) migrated to room types.`);
+      } else if (result?.totalRooms === 0) {
+        toast('No rooms found to migrate. Create room types manually.', { icon: 'ℹ️' });
+      } else {
+        toast.success('Migration completed.');
+      }
       await fetchRoomTypes();
       await checkMigrationStatus();
     } catch (err: unknown) {
-      setError(err.message || 'Migration failed');
+      const message = err instanceof Error ? err.message : 'Migration failed';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -656,17 +670,64 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
             />
           </div>
 
-          {/* Multi-property selector */}
+          {/* Property selector */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <ApplyToSelector
-              value={applyToScope}
-              onChange={setApplyToScope}
-              isInGroup={inheritanceStatus?.hasGroup || false}
-              groupName={inheritanceStatus?.groupName}
-              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
-              showWarning={true}
-              warningMessage="This room type configuration will be applied to all selected properties. Ensure the room type settings are appropriate for all properties."
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Create Room Type For
+            </label>
+            <div className="space-y-2">
+              {/* Single property option with dropdown */}
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                     onClick={() => setApplyToScope('single')}>
+                <input
+                  type="radio"
+                  name="applyScope"
+                  checked={applyToScope === 'single'}
+                  onChange={() => setApplyToScope('single')}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Specific Property</div>
+                  {applyToScope === 'single' && properties.length > 1 && (
+                    <select
+                      value={targetPropertyId}
+                      onChange={(e) => setTargetPropertyId(e.target.value)}
+                      className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {properties.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.name}{p.address?.city ? ` — ${p.address.city}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {applyToScope === 'single' && properties.length <= 1 && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {properties[0]?.name || 'Current property'}
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              {/* All properties option */}
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                     onClick={() => setApplyToScope('all')}>
+                <input
+                  type="radio"
+                  name="applyScope"
+                  checked={applyToScope === 'all'}
+                  onChange={() => setApplyToScope('all')}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="font-medium text-sm">All My Properties</div>
+                  <div className="text-xs text-gray-500">
+                    All {properties.length} properties you manage
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

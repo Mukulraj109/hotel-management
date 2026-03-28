@@ -64,8 +64,13 @@ export default function AdminWebSettings() {
     inheritanceStatus?.groupPropertyCount || 0
   );
 
-  // Get hotel ID from authenticated user context
-  const hotelId = selectedPropertyId || user?.hotelId || '68bc094f80c86bfe258e172b'; // Fallback to default if not in user context
+  const hotelIdFromUser =
+    typeof user?.hotelId === 'string'
+      ? user.hotelId
+      : user?.hotelId && typeof user.hotelId === 'object' && '_id' in user.hotelId
+        ? (user.hotelId as { _id: string })._id
+        : undefined;
+  const hotelId = selectedPropertyId || hotelIdFromUser;
 
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -77,8 +82,12 @@ export default function AdminWebSettings() {
   }, []);
 
   useEffect(() => {
+    if (!hotelId) {
+      setLoading(false);
+      return;
+    }
     loadSettings();
-  }, []);
+  }, [hotelId]);
 
   const loadSettings = async () => {
     try {
@@ -270,11 +279,11 @@ export default function AdminWebSettings() {
     if (!settings.payment?.gateways?.some(g => g.isActive)) issues.push('No active payment gateway');
     
     if (issues.length === 0) {
-      return { status: 'healthy', message: 'All settings configured', color: 'green' };
+      return { status: 'healthy', message: 'All settings configured', color: 'green', issues };
     } else if (issues.length <= 2) {
-      return { status: 'warning', message: `${issues.length} configuration issues`, color: 'yellow' };
+      return { status: 'warning', message: `${issues.length} configuration issue${issues.length > 1 ? 's' : ''}`, color: 'yellow', issues };
     } else {
-      return { status: 'critical', message: `${issues.length} critical issues`, color: 'red' };
+      return { status: 'critical', message: `${issues.length} critical issues`, color: 'red', issues };
     }
   };
 
@@ -282,6 +291,16 @@ export default function AdminWebSettings() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (!hotelId) {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertDescription>Select a property to load web settings.</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -354,9 +373,10 @@ export default function AdminWebSettings() {
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Status Badge */}
-          <Badge 
+          <Badge
             variant={status.status === 'healthy' ? 'default' : status.status === 'warning' ? 'secondary' : 'destructive'}
             className="flex items-center justify-center sm:justify-start text-xs sm:text-sm px-2 py-1"
+            title={status.issues?.length ? status.issues.join(', ') : undefined}
           >
             {status.status === 'healthy' ? <CheckCircle className="w-3 h-3 mr-1" /> :
              status.status === 'warning' ? <AlertTriangle className="w-3 h-3 mr-1" /> :
@@ -510,8 +530,8 @@ export default function AdminWebSettings() {
                   <TabsContent key={section} value={section} className="mt-6">
                     <WebSettingsForm
                       settings={settings}
-                      section={section as unknown}
-                      onSave={(data) => handleSectionUpdate(section as unknown, data)}
+                      section={section as 'general' | 'booking' | 'payment' | 'seo' | 'integrations' | 'theme' | 'advanced' | 'maintenance'}
+                      onSave={(data) => handleSectionUpdate(section as 'general' | 'booking' | 'payment' | 'seo' | 'integrations' | 'theme' | 'advanced' | 'maintenance', data)}
                       onTest={(type, config) => handleTestConfiguration(type, config)}
                       testResults={testResults}
                       onChange={() => setHasChanges(true)}
@@ -603,8 +623,8 @@ export default function AdminWebSettings() {
             <CardContent className="pt-0 space-y-2 sm:space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-gray-600">General Settings</span>
-                <Badge variant={settings.general?.hotelName ? 'default' : 'secondary'} className="text-xs">
-                  {settings.general?.hotelName ? 'Complete' : 'Incomplete'}
+                <Badge variant={settings.general?.hotelName && settings.general.hotelName !== 'My Hotel' && settings.general?.contact?.email ? 'default' : 'secondary'} className="text-xs">
+                  {settings.general?.hotelName && settings.general.hotelName !== 'My Hotel' && settings.general?.contact?.email ? 'Complete' : 'Needs Setup'}
                 </Badge>
               </div>
               
@@ -625,7 +645,18 @@ export default function AdminWebSettings() {
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-gray-600">Integrations</span>
                 <Badge variant="secondary" className="text-xs">
-                  {settings.integrations ? Object.keys(settings.integrations).length : 0} Active
+                  {(() => {
+                    if (!settings.integrations) return '0 Active';
+                    let count = 0;
+                    const intg = settings.integrations;
+                    if (intg.googleAnalytics?.enabled || intg.googleAnalytics?.trackingId) count++;
+                    if (intg.googleTagManager?.enabled || intg.googleTagManager?.containerId) count++;
+                    if (intg.facebookPixel?.enabled || intg.facebookPixel?.pixelId) count++;
+                    if (intg.emailMarketing?.enabled) count++;
+                    if (intg.chatWidget?.enabled) count++;
+                    if (intg.reviewPlatforms && Object.keys(intg.reviewPlatforms).length > 0) count++;
+                    return `${count} Active`;
+                  })()}
                 </Badge>
               </div>
             </CardContent>

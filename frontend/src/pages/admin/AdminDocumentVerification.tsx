@@ -8,12 +8,10 @@ import {
   UserCheck,
   CheckCircle,
   XCircle,
-  Clock,
   AlertTriangle,
   Eye,
   Download,
   Search,
-  Filter,
   RefreshCw,
   Calendar,
   Building,
@@ -25,8 +23,6 @@ import {
   PiggyBank,
   Briefcase,
   RotateCcw,
-  MessageSquare,
-  TrendingUp,
   FileCheck,
   FileX,
   Timer
@@ -48,23 +44,24 @@ interface Document {
   category: string;
   documentType: string;
   status: 'pending' | 'verified' | 'rejected' | 'expired' | 'renewal_required';
-  uploadedAt: string;
-  verifiedAt?: string;
-  verifiedBy?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
+  createdAt: string;
+  verificationDetails?: {
+    verifiedAt?: string;
+    verifiedBy?: {
+      _id: string;
+      name: string;
+    };
+    comments?: string;
+    rejectionReason?: string;
   };
-  expiresAt?: string;
-  notes?: string;
-  rejectionReason?: string;
-  fileUrl: string;
-  filePath: string;
+  expiryDate?: string;
+  description?: string;
+  fileSize: number;
+  fileType: string;
   userType: 'guest' | 'staff';
   userId: {
     _id: string;
-    firstName: string;
-    lastName: string;
+    name: string;
     email: string;
     role: string;
   };
@@ -75,11 +72,6 @@ interface Document {
   bookingId?: {
     _id: string;
     confirmationNumber: string;
-  };
-  viewableByRoles: string[];
-  metadata: {
-    size: number;
-    mimeType: string;
   };
 }
 
@@ -124,8 +116,8 @@ const staffDocumentCategories = {
 };
 
 function AdminDocumentVerification() {
-  const { user } = useAuth();
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  useAuth();
+  const { selectedPropertyId, viewMode } = useProperty();
   const [activeQueue, setActiveQueue] = useState<'guest' | 'staff'>('guest');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<DocumentStats>({
@@ -155,6 +147,10 @@ function AdminDocumentVerification() {
     }
   }, [selectedPropertyId, activeQueue, statusFilter]);
 
+  useEffect(() => {
+    setCategoryFilter('all');
+  }, [activeQueue]);
+
   const fetchDocuments = async () => {
     try {
       setLoading(true);
@@ -171,34 +167,17 @@ function AdminDocumentVerification() {
   };
 
   const calculateStats = (docs: Document[], totalStats?: Record<string, unknown>) => {
-    const newStats = {
-      total: totalStats?.total || docs.length,
-      pending: totalStats?.pending || docs.filter(d => d.status === 'pending').length,
-      verified: totalStats?.verified || docs.filter(d => d.status === 'verified').length,
-      rejected: totalStats?.rejected || docs.filter(d => d.status === 'rejected').length,
-      expired: totalStats?.expired || docs.filter(d => d.status === 'expired').length,
-      renewalRequired: totalStats?.renewalRequired || docs.filter(d => d.status === 'renewal_required').length,
-      guestDocs: totalStats?.guestDocs || docs.filter(d => d.userType === 'guest').length,
-      staffDocs: totalStats?.staffDocs || docs.filter(d => d.userType === 'staff').length
+    const newStats: DocumentStats = {
+      total: (totalStats?.total as number) ?? docs.length,
+      pending: (totalStats?.pending as number) ?? docs.filter(d => d.status === 'pending').length,
+      verified: (totalStats?.verified as number) ?? docs.filter(d => d.status === 'verified').length,
+      rejected: (totalStats?.rejected as number) ?? docs.filter(d => d.status === 'rejected').length,
+      expired: (totalStats?.expired as number) ?? docs.filter(d => d.status === 'expired').length,
+      renewalRequired: (totalStats?.renewalRequired as number) ?? docs.filter(d => d.status === 'renewal_required').length,
+      guestDocs: (totalStats?.guestDocs as number) ?? docs.filter(d => d.userType === 'guest').length,
+      staffDocs: (totalStats?.staffDocs as number) ?? docs.filter(d => d.userType === 'staff').length
     };
     setStats(newStats);
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'pending':
-        return <Clock className="h-4 w-4 text-yellow-600" />;
-      case 'rejected':
-        return <XCircle className="h-4 w-4 text-red-600" />;
-      case 'expired':
-        return <AlertTriangle className="h-4 w-4 text-orange-600" />;
-      case 'renewal_required':
-        return <RotateCcw className="h-4 w-4 text-blue-600" />;
-      default:
-        return <FileText className="h-4 w-4 text-gray-600" />;
-    }
   };
 
   const getStatusColor = (status: string) => {
@@ -221,8 +200,8 @@ function AdminDocumentVerification() {
   const getPriorityColor = (doc: Document) => {
     if (doc.status === 'expired') return 'border-l-red-500';
     if (doc.status === 'renewal_required') return 'border-l-orange-500';
-    if (doc.expiresAt) {
-      const daysToExpiry = Math.ceil((new Date(doc.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    if (doc.expiryDate) {
+      const daysToExpiry = Math.ceil((new Date(doc.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
       if (daysToExpiry <= 7) return 'border-l-red-500';
       if (daysToExpiry <= 30) return 'border-l-yellow-500';
     }
@@ -235,6 +214,8 @@ function AdminDocumentVerification() {
       const blob = response.data;
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
+      // Revoke after a delay to allow the new tab to load
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (error) {
       toast.error('Error opening document');
     }
@@ -275,27 +256,28 @@ function AdminDocumentVerification() {
 
     try {
       let endpoint = '';
-      let payload: Record<string, unknown> = {
-        notes: verificationAction.notes
-      };
+      const payload: Record<string, unknown> = {};
 
       switch (verificationAction.action) {
         case 'verify':
-          endpoint = `/api/v1/documents/${selectedDocument._id}/verify`;
+          endpoint = `/documents/${selectedDocument._id}/verify`;
+          payload.comments = verificationAction.notes;
           if (verificationAction.expiryMonths) {
             payload.expiryMonths = verificationAction.expiryMonths;
           }
           break;
         case 'reject':
-          endpoint = `/api/v1/documents/${selectedDocument._id}/reject`;
+          endpoint = `/documents/${selectedDocument._id}/reject`;
           payload.rejectionReason = verificationAction.rejectionReason;
+          payload.notes = verificationAction.notes;
           break;
         case 'request_renewal':
-          endpoint = `/api/v1/documents/${selectedDocument._id}/request-renewal`;
+          endpoint = `/documents/${selectedDocument._id}/request-renewal`;
+          payload.notes = verificationAction.notes;
           break;
       }
 
-      await api.post(endpoint.replace('/api/v1', ''), payload);
+      await api.patch(endpoint, payload);
       toast.success(`Document ${verificationAction.action === 'verify' ? 'verified' : verificationAction.action === 'reject' ? 'rejected' : 'marked for renewal'} successfully`);
       setVerificationModal(false);
       setSelectedDocument(null);
@@ -308,11 +290,11 @@ function AdminDocumentVerification() {
   };
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch =
-      doc.originalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.userId.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.userId.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.userId.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm ||
+      doc.originalName?.toLowerCase().includes(term) ||
+      doc.userId?.name?.toLowerCase().includes(term) ||
+      doc.userId?.email?.toLowerCase().includes(term);
 
     const matchesCategory = categoryFilter === 'all' || doc.category === categoryFilter;
 
@@ -330,7 +312,7 @@ function AdminDocumentVerification() {
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes <= 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -338,7 +320,8 @@ function AdminDocumentVerification() {
   };
 
   const QueueButton = ({ queue, label, count }: { queue: 'guest' | 'staff'; label: string; count: number }) => (
-    <button aria-label="Close"
+    <button
+      aria-label={`Switch to ${label}`}
       onClick={() => setActiveQueue(queue)}
       className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeQueue === queue
@@ -588,16 +571,16 @@ function AdminDocumentVerification() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
                           <p>
-                            <strong>User:</strong> {doc.userId.firstName} {doc.userId.lastName} ({doc.userId.role})
+                            <strong>User:</strong> {doc.userId?.name} ({doc.userId?.role})
                           </p>
                           <p>
                             <strong>Category:</strong> {category?.label}
                           </p>
                           <p>
-                            <strong>Uploaded:</strong> {formatDate(doc.uploadedAt)}
+                            <strong>Uploaded:</strong> {formatDate(doc.createdAt)}
                           </p>
                           <p>
-                            <strong>Size:</strong> {formatFileSize(doc.metadata.size)}
+                            <strong>Size:</strong> {formatFileSize(doc.fileSize)}
                           </p>
                           {doc.departmentId && (
                             <p>
@@ -609,27 +592,27 @@ function AdminDocumentVerification() {
                               <strong>Booking:</strong> {doc.bookingId.confirmationNumber}
                             </p>
                           )}
-                          {doc.expiresAt && (
+                          {doc.expiryDate && (
                             <p>
-                              <strong>Expires:</strong> {formatDate(doc.expiresAt)}
+                              <strong>Expires:</strong> {formatDate(doc.expiryDate)}
                             </p>
                           )}
-                          {doc.verifiedAt && doc.verifiedBy && (
+                          {doc.verificationDetails?.verifiedAt && doc.verificationDetails?.verifiedBy && (
                             <p>
-                              <strong>Verified by:</strong> {doc.verifiedBy.firstName} {doc.verifiedBy.lastName}
+                              <strong>Verified by:</strong> {doc.verificationDetails.verifiedBy.name}
                             </p>
                           )}
                         </div>
 
-                        {doc.notes && (
+                        {doc.verificationDetails?.comments && (
                           <p className="text-sm text-gray-600 mt-2 italic bg-gray-100 p-2 rounded">
-                            <strong>Notes:</strong> {doc.notes}
+                            <strong>Notes:</strong> {doc.verificationDetails.comments}
                           </p>
                         )}
 
-                        {doc.rejectionReason && (
+                        {doc.verificationDetails?.rejectionReason && (
                           <p className="text-sm text-red-600 mt-2 bg-red-50 p-2 rounded">
-                            <strong>Rejection reason:</strong> {doc.rejectionReason}
+                            <strong>Rejection reason:</strong> {doc.verificationDetails.rejectionReason}
                           </p>
                         )}
                       </div>
@@ -705,7 +688,7 @@ function AdminDocumentVerification() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium mb-2">{selectedDocument.originalName}</h4>
               <p className="text-sm text-gray-600">
-                User: {selectedDocument.userId.firstName} {selectedDocument.userId.lastName} ({selectedDocument.userId.email})
+                User: {selectedDocument.userId?.name} ({selectedDocument.userId?.email})
               </p>
               <p className="text-sm text-gray-600">
                 Category: {currentCategories[selectedDocument.category]?.label}

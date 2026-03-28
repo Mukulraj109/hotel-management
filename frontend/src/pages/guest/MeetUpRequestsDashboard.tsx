@@ -55,7 +55,8 @@ export default function MeetUpRequestsDashboard() {
       toast.success('Meet-up request created successfully!');
     },
     onError: (error) => {
-      const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to create meet-up request';
+      const axiosErr = error as { response?: { data?: { error?: { message?: string } } } };
+      const errorMessage = axiosErr.response?.data?.error?.message || (error instanceof Error ? error.message : 'Failed to create meet-up request');
       toast.error(errorMessage);
     }
   });

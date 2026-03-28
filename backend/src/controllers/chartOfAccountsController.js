@@ -24,17 +24,16 @@ function flattenAccountTree(accounts) {
 
 // Get all accounts with optional filtering
 export const getAccounts = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
-  const { 
-    accountType, 
-    isActive = true, 
+  const { hotelId } = req.user;
+  const {
+    accountType,
+    isActive = true,
     parentAccount,
     searchTerm,
-    includeBalances = false 
+    includeBalances = false
   } = req.query;
 
-  let filter = {}; // Remove hotelId filter temporarily
+  let filter = { hotelId };
   
   if (accountType) filter.accountType = accountType;
   if (isActive !== undefined) filter.isActive = isActive === 'true';
@@ -69,9 +68,8 @@ export const getAccounts = catchAsync(async (req, res) => {
 
 // Get account tree structure
 export const getAccountTree = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
-  const tree = await ChartOfAccounts.getAccountTree(); // Remove hotelId parameter
+  const { hotelId } = req.user;
+  const tree = await ChartOfAccounts.getAccountTree(hotelId);
 
   res.status(200).json({
     status: 'success',
@@ -82,8 +80,8 @@ export const getAccountTree = catchAsync(async (req, res) => {
 // Get flattened accounts (tree flattening done on backend)
 export const getFlattenedAccounts = catchAsync(async (req, res) => {
   try {
-    // Get the tree structure first
-    const tree = await ChartOfAccounts.getAccountTree();
+    const { hotelId } = req.user;
+    const tree = await ChartOfAccounts.getAccountTree(hotelId);
 
     // Flatten the tree on backend
     const flattenedAccounts = flattenAccountTree(tree);

@@ -147,8 +147,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
 
     // Password validation if changing
     if (changePassword && password) {
-      if (password.length < 6) {
-        toast.error('Password must be at least 6 characters');
+      if (password.length < 8) {
+        toast.error('Password must be at least 8 characters');
         return;
       }
     }
@@ -168,9 +168,12 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
         primaryProperty: formData.primaryProperty,
         multiPropertyAccess: selectedProperties.length > 1 ? {
           enabled: true,
-          canCreateProperties: formData.multiPropertyAccess?.canCreateProperties || false,
-          canDeleteProperties: formData.multiPropertyAccess?.canDeleteProperties || false,
-          canManageGroups: formData.multiPropertyAccess?.canManageGroups || false
+          allowedProperties: selectedProperties,
+          restrictions: {
+            canCreateProperties: formData.multiPropertyAccess?.canCreateProperties || false,
+            canDeleteProperties: formData.multiPropertyAccess?.canDeleteProperties || false,
+            canManageGroups: formData.multiPropertyAccess?.canManageGroups || false,
+          }
         } : undefined
       };
 
@@ -185,7 +188,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
       onSuccess();
       onClose();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update user');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || err.message || 'Failed to update user');
     } finally {
       setLoading(false);
     }

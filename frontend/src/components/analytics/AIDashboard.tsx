@@ -25,6 +25,7 @@ import { format, addDays, subDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '../../services/api';
 
 interface AIInsight {
   id: string;
@@ -74,200 +75,106 @@ const AIDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [timeframe, setTimeframe] = useState('30d');
   const [refreshing, setRefreshing] = useState(false);
-  
+  const [notConfigured, setNotConfigured] = useState(false);
+
   // AI Data States
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
   const [forecastData, setForecastData] = useState<ForecastData[]>([]);
   const [pricingRecommendations, setPricingRecommendations] = useState<PricingRecommendation[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<unknown>({});
   const [modelHealth, setModelHealth] = useState<unknown>({});
-  
+
   // UI States
   const [selectedInsight, setSelectedInsight] = useState<AIInsight | null>(null);
   const [showPredictionDetails, setShowPredictionDetails] = useState(false);
-  
+
   useEffect(() => {
     loadAIDashboardData();
-    const interval = setInterval(loadAIDashboardData, 300000); // Refresh every 5 minutes
-    return () => clearInterval(interval);
   }, [timeframe]);
 
   const loadAIDashboardData = async () => {
     try {
       setRefreshing(true);
-      
-      // Simulate API calls to AI services
-      await Promise.all([
-        loadAIInsights(),
-        loadForecastData(),
-        loadPricingRecommendations(),
-        loadPerformanceMetrics(),
-        loadModelHealth()
+
+      // Call real backend AI endpoints
+      const [dashboardRes, insightsRes, demandRes, pricingRes, healthRes] = await Promise.allSettled([
+        api.get('/ai/dashboard', { params: { timeframe } }),
+        api.get('/ai/insights', { params: { timeframe } }),
+        api.get('/ai/forecast/demand', { params: { timeframe } }),
+        api.get('/ai/pricing/recommendations', { params: { timeframe } }),
+        api.get('/ai/model/health')
       ]);
+
+      // Check if all returned 501 (not implemented)
+      const allNotImplemented = [dashboardRes, insightsRes, demandRes, pricingRes, healthRes].every(
+        r => r.status === 'rejected' && (r.reason?.response?.status === 501 || r.reason?.response?.status === 404)
+      );
+
+      if (allNotImplemented) {
+        setNotConfigured(true);
+        setAiInsights([]);
+        setForecastData([]);
+        setPricingRecommendations([]);
+        setPerformanceMetrics({});
+        setModelHealth({});
+        return;
+      }
+
+      setNotConfigured(false);
+
+      // Process insights
+      if (insightsRes.status === 'fulfilled' && insightsRes.value.data?.data) {
+        const rawInsights = Array.isArray(insightsRes.value.data.data)
+          ? insightsRes.value.data.data
+          : insightsRes.value.data.data.insights || [];
+        setAiInsights(rawInsights.map((i: Record<string, unknown>) => ({
+          ...i,
+          timestamp: i.timestamp ? new Date(i.timestamp as string) : new Date()
+        })));
+      } else {
+        setAiInsights([]);
+      }
+
+      // Process forecast data
+      if (demandRes.status === 'fulfilled' && demandRes.value.data?.data) {
+        const rawForecast = Array.isArray(demandRes.value.data.data)
+          ? demandRes.value.data.data
+          : demandRes.value.data.data.forecasts || [];
+        setForecastData(rawForecast);
+      } else {
+        setForecastData([]);
+      }
+
+      // Process pricing recommendations
+      if (pricingRes.status === 'fulfilled' && pricingRes.value.data?.data) {
+        const rawPricing = Array.isArray(pricingRes.value.data.data)
+          ? pricingRes.value.data.data
+          : pricingRes.value.data.data.recommendations || [];
+        setPricingRecommendations(rawPricing);
+      } else {
+        setPricingRecommendations([]);
+      }
+
+      // Process dashboard / performance metrics
+      if (dashboardRes.status === 'fulfilled' && dashboardRes.value.data?.data) {
+        setPerformanceMetrics(dashboardRes.value.data.data.performanceMetrics || dashboardRes.value.data.data);
+      } else {
+        setPerformanceMetrics({});
+      }
+
+      // Process model health
+      if (healthRes.status === 'fulfilled' && healthRes.value.data?.data) {
+        setModelHealth(healthRes.value.data.data);
+      } else {
+        setModelHealth({});
+      }
     } catch (error) {
-      toast.error('Failed to load AI insights');
+      toast.error('Failed to load AI dashboard data');
+      setNotConfigured(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  const loadAIInsights = async () => {
-    // Simulate AI insights
-    const mockInsights: AIInsight[] = [
-      {
-        id: '1',
-        type: 'opportunity',
-        severity: 'high',
-        title: 'Revenue Optimization Opportunity',
-        description: 'Dynamic pricing can increase revenue by 18% over the next 14 days',
-        confidence: 92,
-        impact: 18500,
-        actionRequired: true,
-        recommendation: 'Implement dynamic pricing for Suite rooms during high-demand periods',
-        data: { roomTypes: ['Suite', 'Deluxe'], dates: ['2024-02-15', '2024-02-16'] },
-        timestamp: new Date()
-      },
-      {
-        id: '2',
-        type: 'demand',
-        severity: 'medium',
-        title: 'High Demand Period Detected',
-        description: 'Local conference will drive 35% increase in demand March 10-12',
-        confidence: 88,
-        impact: 12000,
-        actionRequired: true,
-        recommendation: 'Adjust inventory allocation and pricing 7 days before event',
-        data: { event: 'Tech Conference 2024', expectedGuests: 2500 },
-        timestamp: new Date()
-      },
-      {
-        id: '3',
-        type: 'risk',
-        severity: 'medium',
-        title: 'Cancellation Risk Alert',
-        description: '15 bookings have high cancellation probability (>70%)',
-        confidence: 84,
-        impact: -8500,
-        actionRequired: true,
-        recommendation: 'Contact high-risk guests with retention offers',
-        data: { bookingIds: ['BK001', 'BK002'], riskFactors: ['short_lead_time', 'price_sensitive'] },
-        timestamp: new Date()
-      },
-      {
-        id: '4',
-        type: 'pricing',
-        severity: 'low',
-        title: 'Competitive Pricing Alert',
-        description: 'Current pricing is 12% above market average for Standard rooms',
-        confidence: 76,
-        impact: -3200,
-        actionRequired: false,
-        recommendation: 'Monitor booking pace and adjust if conversion drops',
-        data: { competitorAverage: 185, currentPrice: 208 },
-        timestamp: new Date()
-      }
-    ];
-    
-    setAiInsights(mockInsights);
-  };
-
-  const loadForecastData = async () => {
-    // Generate mock forecast data
-    const forecasts: ForecastData[] = [];
-    for (let i = 0; i < 30; i++) {
-      const date = addDays(new Date(), i);
-      const baseScore = 0.3 + Math.sin(i * 0.1) * 0.3 + Math.random() * 0.2;
-      
-      forecasts.push({
-        date: format(date, 'yyyy-MM-dd'),
-        demandScore: Math.max(0.1, Math.min(1.0, baseScore)),
-        expectedOccupancy: Math.round(40 + baseScore * 50),
-        confidence: Math.round(70 + Math.random() * 25),
-        basePrice: 200,
-        optimizedPrice: Math.round(180 + baseScore * 80),
-        projectedRevenue: Math.round(15000 + baseScore * 8000),
-        factors: {
-          seasonal: Math.round((0.4 + Math.sin(i * 0.2) * 0.2) * 100) / 100,
-          events: Math.random() > 0.8 ? Math.round(Math.random() * 50) / 100 : 0,
-          competition: Math.round((0.5 + Math.random() * 0.3) * 100) / 100,
-          historical: Math.round((0.6 + Math.random() * 0.2) * 100) / 100
-        }
-      });
-    }
-    
-    setForecastData(forecasts);
-  };
-
-  const loadPricingRecommendations = async () => {
-    const mockRecommendations: PricingRecommendation[] = [
-      {
-        roomType: 'Standard',
-        currentPrice: 180,
-        recommendedPrice: 195,
-        priceChange: 8.3,
-        revenueImpact: 4500,
-        confidence: 87,
-        strategy: 'demand_based',
-        riskLevel: 'low'
-      },
-      {
-        roomType: 'Deluxe',
-        currentPrice: 240,
-        recommendedPrice: 265,
-        priceChange: 10.4,
-        revenueImpact: 7200,
-        confidence: 92,
-        strategy: 'revenue_optimization',
-        riskLevel: 'low'
-      },
-      {
-        roomType: 'Suite',
-        currentPrice: 350,
-        recommendedPrice: 385,
-        priceChange: 10.0,
-        revenueImpact: 8900,
-        confidence: 85,
-        strategy: 'event_based',
-        riskLevel: 'medium'
-      },
-      {
-        roomType: 'Presidential',
-        currentPrice: 500,
-        recommendedPrice: 480,
-        priceChange: -4.0,
-        revenueImpact: -1200,
-        confidence: 78,
-        strategy: 'competitive',
-        riskLevel: 'medium'
-      }
-    ];
-    
-    setPricingRecommendations(mockRecommendations);
-  };
-
-  const loadPerformanceMetrics = async () => {
-    setPerformanceMetrics({
-      totalRevenueIncrease: 28500,
-      avgAccuracyScore: 86,
-      predictionsGenerated: 1247,
-      recommendationsImplemented: 18,
-      modelLastUpdated: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      successfulPredictions: 89,
-      revenueOptimizationScore: 92,
-      demandForecastAccuracy: 84,
-      pricingOptimizationAccuracy: 88
-    });
-  };
-
-  const loadModelHealth = async () => {
-    setModelHealth({
-      demandForecast: { status: 'healthy', accuracy: 84, lastTrained: '2024-01-28', dataQuality: 92 },
-      pricingOptimization: { status: 'healthy', accuracy: 88, lastTrained: '2024-01-30', dataQuality: 89 },
-      cancellationPrediction: { status: 'training', accuracy: 82, lastTrained: '2024-01-25', dataQuality: 85 },
-      revenueOptimization: { status: 'healthy', accuracy: 90, lastTrained: '2024-01-31', dataQuality: 94 },
-      competitorAnalysis: { status: 'warning', accuracy: 76, lastTrained: '2024-01-20', dataQuality: 78 }
-    });
   };
 
   const getInsightIcon = (type: string) => {
@@ -332,6 +239,37 @@ const AIDashboard: React.FC = () => {
           ))}
         </div>
         <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
+  if (notConfigured) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
+                <Brain className="w-6 h-6 text-white" />
+              </div>
+              AI-Powered Analytics
+            </h1>
+          </div>
+        </div>
+        <Card className="border-dashed">
+          <CardContent className="p-12 text-center">
+            <WifiOff className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">AI Insights Not Configured</h2>
+            <p className="text-gray-600 max-w-md mx-auto mb-6">
+              AI-powered insights are not yet configured for your property.
+              Contact support to enable demand forecasting, pricing optimization, and intelligent recommendations.
+            </p>
+            <Button onClick={loadAIDashboardData} variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

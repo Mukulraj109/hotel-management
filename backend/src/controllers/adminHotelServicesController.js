@@ -1,10 +1,10 @@
+import mongoose from 'mongoose';
 import HotelService from '../models/HotelService.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
@@ -85,37 +85,40 @@ export const getAllServices = catchAsync(async (req, res) => {
 
   const query = {};
 
-  // Admin can filter by specific hotel or default to their hotel
-  if (hotelId) {
-    query.hotelId = hotelId;
-  } else if (req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
+  // Resolve hotel context — mandatory for tenant isolation
+  const resolvedHotelId = hotelId || req.user.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  query.hotelId = resolvedHotelId;
 
   if (type) query.type = type;
 
   if (status === 'active') query.isActive = true;
   if (status === 'inactive') query.isActive = false;
 
-  let servicesQuery;
-
-  if (search) {
-    const regex = new RegExp(search, 'i');
-    query.$or = [
-      { name: regex },
-      { description: regex },
-      { tags: regex }
-    ];
+  if (search && typeof search === 'string') {
+    const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').trim();
+    if (safeSearch) {
+      const regex = new RegExp(safeSearch, 'i');
+      query.$or = [
+        { name: regex },
+        { description: regex },
+        { tags: regex }
+      ];
+    }
   }
 
-  const skip = (page - 1) * limit;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
 
   const [services, total] = await Promise.all([
     HotelService.find(query)
       .populate('hotelId', 'name address')
       .sort({ featured: -1, createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limitNum),
     HotelService.countDocuments(query)
   ]);
 
@@ -124,12 +127,12 @@ export const getAllServices = catchAsync(async (req, res) => {
     data: {
       services,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        pages: Math.ceil(total / limit),
-        hasNext: page * limit < total,
-        hasPrev: page > 1
+        pages: Math.ceil(total / limitNum) || 1,
+        hasNext: pageNum * limitNum < total,
+        hasPrev: pageNum > 1
       }
     }
   });
@@ -163,9 +166,9 @@ export const getServiceById = catchAsync(async (req, res) => {
     throw new ApplicationError('Service not found', 404);
   }
 
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId._id.toString() !== req.user.hotelId.toString()) {
+  // Tenant isolation — applies to all roles
+  const serviceHotelId = service.hotelId?._id || service.hotelId;
+  if (req.user.hotelId && serviceHotelId.toString() !== req.user.hotelId.toString()) {
     throw new ApplicationError('Access denied to this service', 403);
   }
 
@@ -688,20 +691,26 @@ export const bulkOperations = catchAsync(async (req, res) => {
  *         description: List of assigned staff
  */
 export const getServiceStaff = catchAsync(async (req, res) => {
+  // Do NOT use .lean() — we need instance methods (getActiveStaff, hasAdequateStaffing)
   const service = await HotelService.findById(req.params.id)
-    .populate('assignedStaff.staffId', 'name email phone department').lean();
+    .populate('assignedStaff.staffId', 'name email phone department');
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
   }
 
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
+  // Tenant isolation — check for all roles
+  if (req.user.hotelId && service.hotelId.toString() !== req.user.hotelId.toString()) {
     throw new ApplicationError('Access denied to this service', 403);
   }
 
-  const activeStaff = service.getActiveStaff();
+  const activeStaff = typeof service.getActiveStaff === 'function'
+    ? service.getActiveStaff()
+    : (service.assignedStaff || []).filter(s => s.isActive !== false);
+
+  const isAdequatelyStaffed = typeof service.hasAdequateStaffing === 'function'
+    ? service.hasAdequateStaffing()
+    : activeStaff.length >= (service.staffRequirements?.minimumStaff || 1);
 
   res.json({
     status: 'success',
@@ -710,7 +719,7 @@ export const getServiceStaff = catchAsync(async (req, res) => {
       serviceName: service.name,
       assignedStaff: activeStaff,
       staffingStatus: {
-        isAdequatelyStaffed: service.hasAdequateStaffing(),
+        isAdequatelyStaffed,
         minimumRequired: service.staffRequirements?.minimumStaff || 1,
         currentStaffCount: activeStaff.length
       }

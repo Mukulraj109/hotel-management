@@ -63,9 +63,9 @@ const AdvancedReservations: React.FC = () => {
       setReservations(result.data);
       setPagination(result.pagination);
     } catch (error: unknown) {
-      const errorMessage = error.response?.data?.message ||
-                          error.message ||
-                          'Failed to load advanced reservations. Please try again.';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr.response?.data?.message ||
+                          (error instanceof Error ? error.message : 'Failed to load advanced reservations. Please try again.');
       setError(errorMessage);
     } finally {
       setLoading(false);

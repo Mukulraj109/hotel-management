@@ -252,7 +252,7 @@ function GuestBookingDetail() {
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Error Loading Booking</h2>
           <p className="text-gray-600 mb-6">{error || 'Booking not found'}</p>
-          <Button onClick={() => navigate('/guest/bookings')} className="bg-yellow-600 hover:bg-yellow-700">
+          <Button onClick={() => navigate('/app/bookings')} className="bg-yellow-600 hover:bg-yellow-700">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Bookings
           </Button>
@@ -272,7 +272,7 @@ function GuestBookingDetail() {
         <div className="mb-6">
           <Button
             variant="ghost"
-            onClick={() => navigate('/guest/bookings')}
+            onClick={() => navigate('/app/bookings')}
             className="mb-4 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -540,10 +540,10 @@ function GuestBookingDetail() {
             <Card className="p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Home className="w-5 h-5 text-yellow-600" />
-                Room Details ({booking.rooms.length})
+                Room Details ({booking.rooms?.length || 0})
               </h2>
               <div className="space-y-3">
-                {booking.rooms.map((room, index) => (
+                {(booking.rooms || []).map((room, index) => (
                   <div key={room.roomId} className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:border-yellow-300 transition-colors">
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div>

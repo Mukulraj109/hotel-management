@@ -388,6 +388,17 @@ export const Phase5Demo: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
+      {/* Demo Mode Banner */}
+      <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+        <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+          <AlertTriangle className="w-4 h-4" />
+          Demo Mode - Showing sample data
+        </div>
+        <p className="text-amber-700 text-sm mt-1">
+          This is a demonstration component and is not connected to live data. All values shown are illustrative examples only.
+        </p>
+      </div>
+
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">

@@ -12,6 +12,30 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 
+// Helper to check tier hierarchy (replicates model logic for use with lean docs)
+const TIER_VALUES = { bronze: 0, silver: 1, gold: 2, platinum: 3 };
+function getTierValue(tier) {
+  return TIER_VALUES[tier] || 0;
+}
+
+// Helper to check if a lean offer doc is currently valid
+function isOfferValid(offer) {
+  const now = new Date();
+  if (!offer.isActive) return false;
+  if (offer.validFrom && now < new Date(offer.validFrom)) return false;
+  if (offer.validUntil && now > new Date(offer.validUntil)) return false;
+  if (offer.maxRedemptions && offer.currentRedemptions >= offer.maxRedemptions) return false;
+  return true;
+}
+
+// Helper to check if a user can redeem a lean offer doc
+function canRedeemOffer(offer, userTier, userPoints) {
+  if (!isOfferValid(offer)) return false;
+  if (getTierValue(userTier) < getTierValue(offer.minTier)) return false;
+  if (userPoints < offer.pointsRequired) return false;
+  return true;
+}
+
 // Apply authentication and property access to all loyalty routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
@@ -61,21 +85,40 @@ router.use(authorizePolicy('loyalty', 'baseAccess'));
 router.get('/dashboard', catchAsync(async (req, res) => {
   // Get user with loyalty data
   const user = await User.findById(req.user._id).select('+loyalty').lean();
-  
-  // Get recent transactions
+
+  if (!user || !user.loyalty) {
+    throw new ApplicationError('Loyalty data not found for user', 404);
+  }
+
+  // Get recent transactions (scoped to user)
   const recentTransactions = await Loyalty.find({ userId: req.user._id })
     .sort({ createdAt: -1 })
     .limit(10)
     .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
     .populate('offerId', 'title category')
     .populate('hotelId', 'name').lean();
-  
-  // Get available offers
-  const availableOffers = await Offer.getAvailableOffers(
-    req.user._id,
-    user.loyalty.tier,
-    user.hotelId
-  );
+
+  // FIX: Use paginated query instead of static method that returns up to 1000 docs
+  const userTier = user.loyalty.tier;
+  const hotelId = user.hotelId;
+  const tierValue = getTierValue(userTier);
+  const eligibleTiers = Object.entries(TIER_VALUES)
+    .filter(([, v]) => v <= tierValue)
+    .map(([k]) => k);
+
+  const availableOffers = await Offer.find({
+    hotelId,
+    isActive: true,
+    minTier: { $in: eligibleTiers },
+    $or: [
+      { validUntil: { $gt: new Date() } },
+      { validUntil: { $exists: false } },
+      { validUntil: null }
+    ]
+  })
+    .sort({ pointsRequired: 1, createdAt: -1 })
+    .limit(20)
+    .lean();
 
   res.json({
     status: 'success',
@@ -107,24 +150,80 @@ router.get('/dashboard', catchAsync(async (req, res) => {
  *           type: string
  *           enum: [room, dining, spa, transport, general]
  *         description: Filter offers by category
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Items per page
  *     responses:
  *       200:
  *         description: Available offers
  */
+// FIX: Added pagination to the offers endpoint
 router.get('/offers', catchAsync(async (req, res) => {
-  const { category } = req.query;
+  const { category, page = 1, limit = 20 } = req.query;
+  const parsedPage = parseInt(page) || 1;
+  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+  const skip = (parsedPage - 1) * parsedLimit;
+
   const user = await User.findById(req.user._id).select('+loyalty').lean();
-  
-  let offers;
-  if (category) {
-    offers = await Offer.getOffersByCategory(category, user.hotelId);
-  } else {
-    offers = await Offer.getAvailableOffers(req.user._id, user.loyalty.tier, user.hotelId);
+
+  if (!user || !user.loyalty) {
+    throw new ApplicationError('Loyalty data not found for user', 404);
   }
+
+  // FIX: Build proper query with hotelId and tier-based filtering instead of broken $lte string compare
+  const userTier = user.loyalty.tier;
+  const tierValue = getTierValue(userTier);
+  const eligibleTiers = Object.entries(TIER_VALUES)
+    .filter(([, v]) => v <= tierValue)
+    .map(([k]) => k);
+
+  const query = {
+    hotelId: user.hotelId,
+    isActive: true,
+    minTier: { $in: eligibleTiers },
+    $or: [
+      { validUntil: { $gt: new Date() } },
+      { validUntil: { $exists: false } },
+      { validUntil: null }
+    ]
+  };
+
+  if (category) {
+    query.category = category;
+  }
+
+  const [offers, total] = await Promise.all([
+    Offer.find(query)
+      .sort({ pointsRequired: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .populate('hotelId', 'name')
+      .lean(),
+    Offer.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
-    data: offers
+    data: {
+      offers,
+      pagination: {
+        currentPage: parsedPage,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
+        totalItems: total,
+        itemsPerPage: parsedLimit,
+        hasNext: parsedPage * parsedLimit < total,
+        hasPrev: parsedPage > 1
+      }
+    }
   });
 }));
 
@@ -161,35 +260,39 @@ router.get('/offers', catchAsync(async (req, res) => {
  */
 router.get('/transactions', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
-  const skip = (page - 1) * limit;
-  
+  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+  const parsedPage = parseInt(page) || 1;
+  const skip = (parsedPage - 1) * parsedLimit;
+
   // Build query
   const query = { userId: req.user._id };
   if (type) {
     query.type = type;
   }
-  
+
   // Get transactions with pagination
-  const transactions = await Loyalty.find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
-    .populate('offerId', 'title category')
-    .populate('hotelId', 'name').lean();
-  
-  // Get total count
-  const total = await Loyalty.countDocuments(query);
-  
+  const [transactions, total] = await Promise.all([
+    Loyalty.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
+      .populate('offerId', 'title category')
+      .populate('hotelId', 'name').lean(),
+    Loyalty.countDocuments(query)
+  ]);
+
   res.json({
     status: 'success',
     data: {
       transactions,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: parsedPage,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
         totalItems: total,
-        itemsPerPage: parseInt(limit)
+        itemsPerPage: parsedLimit,
+        hasNext: parsedPage * parsedLimit < total,
+        hasPrev: parsedPage > 1
       }
     }
   });
@@ -222,76 +325,67 @@ router.get('/transactions', catchAsync(async (req, res) => {
  */
 router.post('/redeem',
   validate(schemas.redeemPoints),
-catchAsync(async (req, res) => {
+  catchAsync(async (req, res) => {
     logger.debug('Loyalty redeem - starting redemption process', { userId: req.user?._id });
 
     const { offerId } = req.body;
 
-    // Get the offer
-    const offer = await Offer.findById(offerId).lean();
+    // FIX: Do NOT use .lean() -- we need Mongoose documents for instance methods
+    const offer = await Offer.findById(offerId);
     if (!offer) {
       logger.debug('Offer not found for redemption', { offerId });
       throw new ApplicationError('Offer not found', 404);
     }
     logger.debug('Offer found for redemption', { offerId, title: offer.title, pointsRequired: offer.pointsRequired });
 
-    // Get user with loyalty data
-    const user = await User.findById(req.user._id).select('+loyalty').lean();
-    logger.debug('User loyalty status', { userFound: !!user, points: user?.loyalty?.points, tier: user?.loyalty?.tier });
+    // FIX: Do NOT use .lean() -- we need the user document for .save() and .updateLoyaltyTier()
+    const user = await User.findById(req.user._id).select('+loyalty');
+    if (!user || !user.loyalty) {
+      throw new ApplicationError('User loyalty data not found', 404);
+    }
+    logger.debug('User loyalty status', { userFound: !!user, points: user.loyalty.points, tier: user.loyalty.tier });
 
-    // Validate redemption
+    // Validate redemption using the Mongoose document instance method
     logger.debug('Validating redemption eligibility', {
-      userPoints: user?.loyalty?.points,
-      userTier: user?.loyalty?.tier,
+      userPoints: user.loyalty.points,
+      userTier: user.loyalty.tier,
       pointsRequired: offer.pointsRequired,
       minTier: offer.minTier,
       isActive: offer.isActive,
       isValid: offer.isValid
     });
 
-    const now = new Date();
+    const redeemable = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
 
-    try {
-      const canRedeem = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
+    if (!redeemable) {
+      const now = new Date();
+      logger.debug('Cannot redeem offer', {
+        pointsCheck: user.loyalty.points >= offer.pointsRequired,
+        activeCheck: offer.isActive,
+        timeValid: (!offer.validUntil || now <= offer.validUntil),
+        redemptionsAvailable: (!offer.maxRedemptions || offer.currentRedemptions < offer.maxRedemptions)
+      });
 
-      if (!canRedeem) {
-        logger.debug('Cannot redeem offer', {
-          pointsCheck: user.loyalty.points >= offer.pointsRequired,
-          activeCheck: offer.isActive,
-          timeValid: (!offer.validUntil || now <= offer.validUntil),
-          redemptionsAvailable: (!offer.maxRedemptions || offer.currentRedemptions < offer.maxRedemptions)
-        });
-
-        throw new ApplicationError('Cannot redeem this offer. Check tier requirements and available points.', 400);
-      }
-    } catch (error) {
-      logger.debug('Error in canRedeem check', { error: error.message });
-      throw error;
+      throw new ApplicationError('Cannot redeem this offer. Check tier requirements and available points.', 400);
     }
 
     // Create redemption transaction
-    let loyaltyTransaction;
-    try {
-      loyaltyTransaction = await Loyalty.create({
-        userId: req.user._id,
-        hotelId: offer.hotelId,
-        type: 'redeemed',
-        points: -offer.pointsRequired,
-        description: `Redeemed: ${offer.title}`,
-        offerId: offer._id
-      });
-      logger.debug('Loyalty transaction created', { transactionId: loyaltyTransaction._id });
-    } catch (error) {
-      logger.error('Error creating loyalty transaction', { error: error.message });
-      throw error;
-    }
+    const loyaltyTransaction = await Loyalty.create({
+      userId: req.user._id,
+      hotelId: offer.hotelId,
+      type: 'redeemed',
+      points: -offer.pointsRequired,
+      description: `Redeemed: ${offer.title}`,
+      offerId: offer._id
+    });
+    logger.debug('Loyalty transaction created', { transactionId: loyaltyTransaction._id });
 
-    // Update user points
+    // Update user points (now works because user is a Mongoose document)
     user.loyalty.points -= offer.pointsRequired;
     user.updateLoyaltyTier();
     await user.save();
 
-    // Update offer redemption count
+    // Update offer redemption count (now works because offer is a Mongoose document)
     await offer.incrementRedemption();
 
     // Populate transaction data
@@ -345,16 +439,16 @@ catchAsync(async (req, res) => {
  */
 router.get('/history', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
-  
+
   const options = {
-    page: parseInt(page),
-    limit: parseInt(limit)
+    page: parseInt(page) || 1,
+    limit: Math.min(parseInt(limit) || 20, 100)
   };
-  
+
   if (type) {
     options.type = type;
   }
-  
+
   const result = await Loyalty.getUserHistory(req.user._id, options);
 
   res.json({
@@ -377,7 +471,11 @@ router.get('/history', catchAsync(async (req, res) => {
  */
 router.get('/points', catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).select('+loyalty').lean();
-  
+
+  if (!user || !user.loyalty) {
+    throw new ApplicationError('Loyalty data not found for user', 404);
+  }
+
   // Get active points (not expired)
   const activePoints = await Loyalty.getUserActivePoints(req.user._id);
 
@@ -415,22 +513,29 @@ router.get('/points', catchAsync(async (req, res) => {
  */
 router.get('/offers/:offerId', catchAsync(async (req, res) => {
   const { offerId } = req.params;
-  
+
+  // FIX: Use .lean() and local helper instead of instance method
   const offer = await Offer.findById(offerId)
     .populate('hotelId', 'name').lean();
-    
+
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
 
   const user = await User.findById(req.user._id).select('+loyalty').lean();
-  const canRedeem = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
+
+  if (!user || !user.loyalty) {
+    throw new ApplicationError('Loyalty data not found for user', 404);
+  }
+
+  // FIX: Use local helper function instead of instance method on lean doc
+  const redeemable = canRedeemOffer(offer, user.loyalty.tier, user.loyalty.points);
 
   res.json({
     status: 'success',
     data: {
       offer,
-      canRedeem,
+      canRedeem: redeemable,
       userPoints: user.loyalty.points,
       userTier: user.loyalty.tier
     }

@@ -23,7 +23,7 @@ router.put('/pricing-rules/:id', authorizePolicy('revenueManagement', 'manageAcc
 router.delete('/pricing-rules/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.deletePricingRule);
 
 // Dynamic Pricing Routes
-router.get('/dynamic-rate', revenueController.calculateDynamicRate);
+router.get('/dynamic-rate', authorizePolicy('revenueManagement', 'readAccess'), revenueController.calculateDynamicRate);
 
 // Demand Forecasting Routes
 router.post('/demand-forecast', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.generateDemandForecast);
@@ -38,10 +38,13 @@ router.put('/competitor-rates', authorizePolicy('revenueManagement', 'manageAcce
 router.post('/packages', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.createPackage);
 router.get('/packages', revenueController.getPackages);
 router.put('/packages/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.updatePackage);
+router.delete('/packages/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.deletePackage);
 
 // Corporate Rates Routes
 router.post('/corporate-rates', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.createCorporateRate);
 router.get('/corporate-rates', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getCorporateRates);
+router.put('/corporate-rates/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.updateCorporateRate);
+router.delete('/corporate-rates/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.deleteCorporateRate);
 
 // Revenue Analytics Routes
 router.get('/analytics', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getRevenueAnalytics);

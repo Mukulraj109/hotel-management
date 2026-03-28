@@ -468,6 +468,17 @@ router.post('/refund',
       throw new ApplicationError('You do not have permission to refund this payment', 403);
     }
 
+    // Validate refund amount doesn't exceed remaining refundable amount
+    if (amount) {
+      const totalRefunded = (payment.refunds || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+      if ((totalRefunded + amount) > payment.amount) {
+        throw new ApplicationError(
+          `Refund amount (${amount}) would exceed remaining refundable amount (${payment.amount - totalRefunded})`,
+          400
+        );
+      }
+    }
+
     const bookingBeforeRefund = bookingAuditService.buildSnapshot(payment.bookingId);
 
     // Create refund in Stripe (with circuit breaker)

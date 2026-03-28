@@ -296,228 +296,6 @@ router.get('/hotel/:hotelId/summary', catchAsync(async (req, res) => {
 
 /**
  * @swagger
- * /reviews/{id}:
- *   get:
- *     summary: Get specific review
- *     tags: [Reviews]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Review details
- */
-router.get('/:id', catchAsync(async (req, res) => {
-  const review = await Review.findById(req.params.id)
-    .populate('hotelId', 'name address')
-    .populate('userId', 'name')
-    .populate('bookingId', 'bookingNumber checkIn checkOut')
-    .populate('response.respondedBy', 'name role').lean();
-
-  if (!review || (!review.isPublished && review.moderationStatus !== 'approved')) {
-    throw new ApplicationError('Review not found', 404);
-  }
-
-  res.json({
-    status: 'success',
-    data: { review }
-  });
-}));
-
-/**
- * @swagger
- * /reviews/{id}/response:
- *   post:
- *     summary: Add response to review (staff/admin only)
- *     tags: [Reviews]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - content
- *             properties:
- *               content:
- *                 type: string
- *     responses:
- *       200:
- *         description: Response added successfully
- */
-router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { content } = req.body;
-  
-  const review = await Review.findById(req.params.id).lean();
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
-  }
-
-  // Staff can only respond to reviews for their hotel
-  if (req.user.role === 'staff' && review.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only respond to reviews for your hotel', 403);
-  }
-
-  await review.addResponse(content, req.user._id);
-  
-  await review.populate([
-    { path: 'response.respondedBy', select: 'name role' }
-  ]);
-
-  res.json({
-    status: 'success',
-    message: 'Response added successfully',
-    data: { review }
-  });
-}));
-
-/**
- * @swagger
- * /reviews/{id}/helpful:
- *   post:
- *     summary: Mark review as helpful
- *     tags: [Reviews]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Review marked as helpful
- */
-router.post('/:id/helpful', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const review = await Review.findByIdAndUpdate(
-    req.params.id,
-    { $inc: { helpfulVotes: 1 } },
-    { new: true }
-  );
-
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
-  }
-
-  res.json({
-    status: 'success',
-    message: 'Review marked as helpful',
-    data: { helpfulVotes: review.helpfulVotes }
-  });
-}));
-
-/**
- * @swagger
- * /reviews/{id}/report:
- *   post:
- *     summary: Report review as inappropriate
- *     tags: [Reviews]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *     responses:
- *       200:
- *         description: Review reported successfully
- */
-router.post('/:id/report', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { reason } = req.body;
-  
-  const review = await Review.findByIdAndUpdate(
-    req.params.id,
-    { $inc: { reportedCount: 1 } },
-    { new: true }
-  );
-
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
-  }
-
-  // Auto-hide review if reported too many times
-  if (review.reportedCount >= 5) {
-    review.moderationStatus = 'pending';
-    review.isPublished = false;
-    await review.save();
-  }
-
-  res.json({
-    status: 'success',
-    message: 'Review reported successfully'
-  });
-}));
-
-/**
- * @swagger
- * /reviews/{id}/moderate:
- *   patch:
- *     summary: Moderate review (admin only)
- *     tags: [Reviews]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [approved, rejected, pending]
- *               notes:
- *                 type: string
- *     responses:
- *       200:
- *         description: Review moderated successfully
- */
-router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { status, notes } = req.body;
-  
-  const review = await Review.findById(req.params.id).lean();
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
-  }
-
-  await review.moderate(status, notes);
-
-  res.json({
-    status: 'success',
-    message: 'Review moderated successfully',
-    data: { review }
-  });
-}));
-
-/**
- * @swagger
  * /reviews/pending:
  *   get:
  *     summary: Get pending reviews for moderation (admin only)
@@ -624,6 +402,228 @@ router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(as
         pages: Math.ceil(total / limit)
       }
     }
+  });
+}));
+
+/**
+ * @swagger
+ * /reviews/{id}:
+ *   get:
+ *     summary: Get specific review
+ *     tags: [Reviews]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Review details
+ */
+router.get('/:id', catchAsync(async (req, res) => {
+  const review = await Review.findById(req.params.id)
+    .populate('hotelId', 'name address')
+    .populate('userId', 'name')
+    .populate('bookingId', 'bookingNumber checkIn checkOut')
+    .populate('response.respondedBy', 'name role').lean();
+
+  if (!review || (!review.isPublished && review.moderationStatus !== 'approved')) {
+    throw new ApplicationError('Review not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { review }
+  });
+}));
+
+/**
+ * @swagger
+ * /reviews/{id}/response:
+ *   post:
+ *     summary: Add response to review (staff/admin only)
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Response added successfully
+ */
+router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { content } = req.body;
+
+  const review = await Review.findById(req.params.id).lean();
+  if (!review) {
+    throw new ApplicationError('Review not found', 404);
+  }
+
+  // Staff can only respond to reviews for their hotel
+  if (req.user.role === 'staff' && review.hotelId.toString() !== req.user.hotelId.toString()) {
+    throw new ApplicationError('You can only respond to reviews for your hotel', 403);
+  }
+
+  await review.addResponse(content, req.user._id);
+
+  await review.populate([
+    { path: 'response.respondedBy', select: 'name role' }
+  ]);
+
+  res.json({
+    status: 'success',
+    message: 'Response added successfully',
+    data: { review }
+  });
+}));
+
+/**
+ * @swagger
+ * /reviews/{id}/helpful:
+ *   post:
+ *     summary: Mark review as helpful
+ *     tags: [Reviews]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Review marked as helpful
+ */
+router.post('/:id/helpful', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const review = await Review.findByIdAndUpdate(
+    req.params.id,
+    { $inc: { helpfulVotes: 1 } },
+    { new: true }
+  );
+
+  if (!review) {
+    throw new ApplicationError('Review not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    message: 'Review marked as helpful',
+    data: { helpfulVotes: review.helpfulVotes }
+  });
+}));
+
+/**
+ * @swagger
+ * /reviews/{id}/report:
+ *   post:
+ *     summary: Report review as inappropriate
+ *     tags: [Reviews]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Review reported successfully
+ */
+router.post('/:id/report', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { reason } = req.body;
+
+  const review = await Review.findByIdAndUpdate(
+    req.params.id,
+    { $inc: { reportedCount: 1 } },
+    { new: true }
+  );
+
+  if (!review) {
+    throw new ApplicationError('Review not found', 404);
+  }
+
+  // Auto-hide review if reported too many times
+  if (review.reportedCount >= 5) {
+    review.moderationStatus = 'pending';
+    review.isPublished = false;
+    await review.save();
+  }
+
+  res.json({
+    status: 'success',
+    message: 'Review reported successfully'
+  });
+}));
+
+/**
+ * @swagger
+ * /reviews/{id}/moderate:
+ *   patch:
+ *     summary: Moderate review (admin only)
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [approved, rejected, pending]
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Review moderated successfully
+ */
+router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { status, notes } = req.body;
+
+  const review = await Review.findById(req.params.id).lean();
+  if (!review) {
+    throw new ApplicationError('Review not found', 404);
+  }
+
+  await review.moderate(status, notes);
+
+  res.json({
+    status: 'success',
+    message: 'Review moderated successfully',
+    data: { review }
   });
 }));
 

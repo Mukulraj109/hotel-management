@@ -506,4 +506,38 @@ export const getJobTypeAnalytics = catchAsync(async (req, res) => {
 
 
 
+const discountPricingController = {
+  createSpecialDiscount,
+  getSpecialDiscounts,
+  getSpecialDiscount,
+  updateSpecialDiscount,
+  deleteSpecialDiscount,
+  getApplicableDiscounts,
+  createDynamicPricing,
+  getDynamicPricingRules,
+  getDynamicPricing,
+  updateDynamicPricing,
+  deleteDynamicPricing,
+  calculateDynamicPrice,
+  createMarketSegment,
+  getMarketSegments,
+  getMarketSegment,
+  updateMarketSegment,
+  deleteMarketSegment,
+  findMatchingSegments,
+  createJobType,
+  getJobTypes,
+  getJobType,
+  updateJobType,
+  deleteJobType,
+  searchJobTypes,
+  getAdvancedFeaturesOverview,
+  bulkUpdateDiscountStatus,
+  bulkUpdatePricingStatus,
+  getDiscountAnalytics,
+  getPricingAnalytics,
+  getMarketSegmentAnalytics,
+  getJobTypeAnalytics
+};
+
 export default discountPricingController;

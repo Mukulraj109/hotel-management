@@ -40,6 +40,7 @@ import {
   Timer
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { workflowEngine, ReservationWorkflow, WorkflowStep } from '@/utils/ReservationWorkflowEngine';
 
@@ -261,7 +262,7 @@ const ReservationWorkflowPanel: React.FC<ReservationWorkflowPanelProps> = ({
         toast.error('Failed to complete action');
       }
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to complete action');
+      toast.error(error instanceof Error ? error.message : 'Failed to complete action');
     } finally {
       setLoading(false);
     }
@@ -429,7 +430,7 @@ const ReservationWorkflowPanel: React.FC<ReservationWorkflowPanelProps> = ({
                                     <span>•</span>
                                     <span>{workflow.reservationData.roomType || 'Standard Room'}</span>
                                     <span>•</span>
-                                    <span>${workflow.metadata.totalAmount.toLocaleString()}</span>
+                                    <span>{formatCurrency(workflow.metadata.totalAmount)}</span>
                                   </div>
 
                                   {/* Current Step */}
@@ -584,7 +585,7 @@ const ReservationWorkflowPanel: React.FC<ReservationWorkflowPanelProps> = ({
                       <div><strong>Email:</strong> {selectedWorkflow.reservationData.userId?.email}</div>
                       <div><strong>Booking:</strong> {selectedWorkflow.reservationData.bookingNumber}</div>
                       <div><strong>Room Type:</strong> {selectedWorkflow.reservationData.roomType}</div>
-                      <div><strong>Total Amount:</strong> ${selectedWorkflow.metadata.totalAmount.toLocaleString()}</div>
+                      <div><strong>Total Amount:</strong> {formatCurrency(selectedWorkflow.metadata.totalAmount)}</div>
                     </div>
                   </div>
                 </div>

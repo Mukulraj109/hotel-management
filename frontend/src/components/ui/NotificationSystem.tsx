@@ -73,89 +73,6 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Mock notifications for demonstration
-  const mockNotifications: Notification[] = [
-    {
-      id: '1',
-      title: 'Guest Check-in',
-      message: 'John Doe has checked into Room 205',
-      type: 'success',
-      category: 'checkin',
-      timestamp: new Date(),
-      isRead: false,
-      isNew: true,
-      priority: 'medium',
-      relatedData: {
-        roomNumber: '205',
-        guestName: 'John Doe',
-        bookingId: 'BK-2024-001'
-      },
-      actions: [
-        {
-          label: 'View Booking',
-          action: () => {},
-          variant: 'default'
-        }
-      ]
-    },
-    {
-      id: '2',
-      title: 'Housekeeping Alert',
-      message: 'Room 301 maintenance request - AC not working',
-      type: 'warning',
-      category: 'maintenance',
-      timestamp: new Date(Date.now() - 300000),
-      isRead: false,
-      isNew: true,
-      priority: 'high',
-      actionRequired: true,
-      relatedData: {
-        roomNumber: '301'
-      },
-      actions: [
-        {
-          label: 'Assign Technician',
-          action: () => {},
-          variant: 'default'
-        },
-        {
-          label: 'Call Guest',
-          action: () => {},
-          variant: 'secondary'
-        }
-      ]
-    },
-    {
-      id: '3',
-      title: 'Payment Failed',
-      message: 'Credit card payment failed for Sarah Wilson - Room 150',
-      type: 'error',
-      category: 'payment',
-      timestamp: new Date(Date.now() - 600000),
-      isRead: false,
-      isNew: true,
-      priority: 'critical',
-      actionRequired: true,
-      relatedData: {
-        roomNumber: '150',
-        guestName: 'Sarah Wilson',
-        bookingId: 'BK-2024-002'
-      },
-      actions: [
-        {
-          label: 'Retry Payment',
-          action: () => {},
-          variant: 'default'
-        },
-        {
-          label: 'Contact Guest',
-          action: () => {},
-          variant: 'secondary'
-        }
-      ]
-    }
-  ];
-
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -163,25 +80,6 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    // Simulate receiving notifications
-    const timer = setInterval(() => {
-      if (notifications.length < maxNotifications) {
-        const randomNotification = mockNotifications[Math.floor(Math.random() * mockNotifications.length)];
-        const newNotification = {
-          ...randomNotification,
-          id: Date.now().toString(),
-          timestamp: new Date(),
-          isNew: true
-        };
-        
-        addNotification(newNotification);
-      }
-    }, 10000); // Add a new notification every 10 seconds
-
-    return () => clearInterval(timer);
-  }, [notifications.length, maxNotifications]);
 
   const addNotification = (notification: Notification) => {
     setNotifications(prev => [notification, ...prev.slice(0, maxNotifications - 1)]);

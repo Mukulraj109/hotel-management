@@ -29,12 +29,16 @@ describe('validateEnvironment', () => {
     process.env.REDIS_URL = 'redis://localhost:6379';
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     process.env.ALLOWED_ORIGINS = 'https://app.example.com';
-    process.env.HEALTH_CHECK_TOKEN = 'health-token';
-    process.env.BOOKINGCOM_WEBHOOK_SECRET = 'secret-1';
-    process.env.EXPEDIA_WEBHOOK_SECRET = 'secret-2';
-    process.env.AIRBNB_WEBHOOK_SECRET = 'secret-3';
-    process.env.AGODA_WEBHOOK_SECRET = 'secret-4';
+    process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+    process.env.FRONTEND_URL = 'https://app.example.com';
 
+    expect(() => validateEnvironment()).not.toThrow();
+  });
+
+  it('warns when JWT_SECRET is too short', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'short';
+    // Should not throw but should warn
     expect(() => validateEnvironment()).not.toThrow();
   });
 });

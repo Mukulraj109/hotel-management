@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, addHours, addMinutes, addMonths, addYears } from 'date-fns';
 import { api } from '@/services/api';
+import { formatCurrency } from '@/utils/currencyUtils';
 
 export interface TempReservation {
   id: string;
@@ -456,7 +457,7 @@ export const TempReservationSystem: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-blue-600">₹{stats.holdingRevenue.toLocaleString()}</div>
+                  <div className="text-3xl font-bold text-blue-600">{formatCurrency(stats.holdingRevenue)}</div>
                   <p className="text-sm text-blue-700/80">Potential revenue</p>
                 </CardContent>
               </Card>
@@ -475,6 +476,13 @@ export const TempReservationSystem: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[400px]">
+                  {tempReservations.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                      <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>No temporary reservations</p>
+                      <p className="text-xs mt-1">Temporary holds will appear here when created</p>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
                     {tempReservations.slice(0, 10).map((tempRes) => (
                       <div key={tempRes.id} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
@@ -501,7 +509,7 @@ export const TempReservationSystem: React.FC = () => {
                             <span className="font-medium">Dates:</span> {format(new Date(tempRes.checkIn), 'MMM dd')} - {format(new Date(tempRes.checkOut), 'MMM dd')}
                           </div>
                           <div>
-                            <span className="font-medium">Amount:</span> ₹{tempRes.totalAmount.toLocaleString()}
+                            <span className="font-medium">Amount:</span> {formatCurrency(tempRes.totalAmount)}
                           </div>
                         </div>
 
@@ -544,6 +552,7 @@ export const TempReservationSystem: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  )}
                 </ScrollArea>
               </CardContent>
             </Card>
@@ -583,7 +592,7 @@ export const TempReservationSystem: React.FC = () => {
                             {dayData.count}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            ₹{dayData.revenue.toLocaleString()}
+                            {formatCurrency(dayData.revenue)}
                           </div>
                           {dayData.status !== 'normal' && (
                             <Badge className={`mt-2 text-xs ${

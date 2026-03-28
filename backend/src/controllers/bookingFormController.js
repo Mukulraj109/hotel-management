@@ -1,23 +1,18 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import BookingFormTemplate from '../models/BookingFormTemplate.js';
 import bookingFormService from '../services/bookingFormService.js';
 import { validationResult } from 'express-validator';
+import logger from '../utils/logger.js';
+
+// Escape special regex characters to prevent ReDoS
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 const bookingFormController = {
   async createTemplate(req, res) {
-    console.log('📋 BookingForm createTemplate called');
-    console.log('🔍 Request body:', JSON.stringify(req.body, null, 2));
-    console.log('👤 User info:', req.user ? {
-      id: req.user.id,
-      hotelId: req.user.hotelId,
-      role: req.user.role,
-      name: req.user.name
-    } : 'No user');
-    
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        console.log('❌ Validation errors:', errors.array());
         return res.status(400).json({
           success: false,
           error: 'Validation failed',
@@ -26,7 +21,6 @@ const bookingFormController = {
       }
 
       if (!req.user || !req.user.hotelId) {
-        console.log('❌ Authentication failed - missing user or hotelId');
         return res.status(401).json({
           success: false,
           error: 'User authentication failed - missing hotel ID'
@@ -40,22 +34,7 @@ const bookingFormController = {
         updatedBy: req.user.id
       };
 
-      console.log('📝 Template data to save:', JSON.stringify(templateData, null, 2));
-
-      // Test template validation before saving
-      const template = new BookingFormTemplate(templateData);
-      console.log('✅ BookingFormTemplate instance created');
-      
-      // Run validation manually to see detailed errors
-      const validationError = template.validateSync();
-      if (validationError) {
-        console.log('🔴 Manual validation failed:', validationError);
-        throw validationError;
-      }
-      console.log('✅ Manual validation passed');
-      
-      await template.save();
-      console.log('💾 Template saved successfully');
+      const template = await bookingFormService.createTemplate(templateData, req.user.id);
 
       res.status(201).json({
         success: true,
@@ -63,117 +42,105 @@ const bookingFormController = {
         message: 'Form template created successfully'
       });
     } catch (error) {
-      console.error('💥 DETAILED ERROR in createTemplate:');
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      if (error.errors) {
-        console.error('Validation errors:', error.errors);
+      logger.error('Error creating form template:', error.message);
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          message: error.message
+        });
       }
-      
       res.status(500).json({
         success: false,
         error: 'Failed to create form template',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-        debug: process.env.NODE_ENV === 'development' ? {
-          name: error.name,
-          validationErrors: error.errors
-        } : undefined
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
       });
     }
   },
 
   async getTemplates(req, res) {
-    console.log('📋 BookingForm getTemplates called');
-    console.log('🔍 Query params:', req.query);
-    console.log('👤 User hotelId:', req.user?.hotelId);
-    
     try {
-      const { 
-        page = 1, 
-        limit = 10, 
-        status, 
-        category, 
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          details: errors.array()
+        });
+      }
+
+      const {
+        page = '1',
+        limit = '10',
+        status,
+        category,
         search,
         sortBy = 'createdAt',
         sortOrder = 'desc'
       } = req.query;
 
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+
       const filter = { hotelId: req.user.hotelId };
-      
+
       if (status && status !== 'all') {
         filter.status = status;
       }
-      
+
       if (category && category !== 'all') {
         filter.category = category;
       }
-      
-      if (search) {
-        filter.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } }
-        ];
+
+      if (search && typeof search === 'string') {
+        const safeSearch = escapeRegex(search.trim());
+        if (safeSearch) {
+          filter.$or = [
+            { name: { $regex: safeSearch, $options: 'i' } },
+            { description: { $regex: safeSearch, $options: 'i' } }
+          ];
+        }
       }
 
-      console.log('🔍 MongoDB filter:', JSON.stringify(filter, null, 2));
-
-      const skip = (page - 1) * limit;
+      const skip = (pageNum - 1) * limitNum;
       const sort = {};
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-      console.log('📊 Query options:', { skip, limit: parseInt(limit), sort });
+      const [templates, total] = await Promise.all([
+        BookingFormTemplate.find(filter)
+          .populate('createdBy', 'name email')
+          .populate('updatedBy', 'name email')
+          .sort(sort)
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        BookingFormTemplate.countDocuments(filter)
+      ]);
 
-      const templates = await BookingFormTemplate.find(filter)
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email')
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit)).lean();
-
-      console.log('📋 Found templates count:', templates.length);
-      
-      if (templates.length > 0) {
-        console.log('📋 Sample template:', {
-          id: templates[0]._id,
-          name: templates[0].name,
-          category: templates[0].category,
-          hotelId: templates[0].hotelId,
-          status: templates[0].status
-        });
-      }
-
-      const total = await BookingFormTemplate.countDocuments(filter);
-
-      console.log('📊 Total count:', total);
-      console.log('📋 Response data:', {
-        templatesCount: templates.length,
-        pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
-          total,
-          limit: parseInt(limit)
-        }
-      });
+      // Add virtual fields that .lean() strips
+      const enrichedTemplates = templates.map(t => ({
+        ...t,
+        fieldCount: t.fields ? t.fields.length : 0,
+        requiredFieldCount: t.fields ? t.fields.filter(f => f.required).length : 0
+      }));
 
       res.json({
         success: true,
         data: {
-          templates,
+          templates: enrichedTemplates,
           pagination: {
-            current: parseInt(page),
-            pages: Math.ceil(total / limit),
+            current: pageNum,
+            pages: Math.ceil(total / limitNum) || 1,
             total,
-            limit: parseInt(limit)
+            limit: limitNum
           }
         }
       });
     } catch (error) {
-      console.error('Error fetching form templates:', error);
+      logger.error('Error fetching form templates:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch form templates',
-        message: error.message
+        error: 'Failed to fetch form templates'
       });
     }
   },
@@ -197,14 +164,17 @@ const bookingFormController = {
 
       res.json({
         success: true,
-        data: template
+        data: {
+          ...template,
+          fieldCount: template.fields ? template.fields.length : 0,
+          requiredFieldCount: template.fields ? template.fields.filter(f => f.required).length : 0
+        }
       });
     } catch (error) {
-      console.error('Error fetching form template:', error);
+      logger.error('Error fetching form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch form template',
-        message: error.message
+        error: 'Failed to fetch form template'
       });
     }
   },
@@ -246,11 +216,10 @@ const bookingFormController = {
         message: 'Form template updated successfully'
       });
     } catch (error) {
-      console.error('Error updating form template:', error);
+      logger.error('Error updating form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to update form template',
-        message: error.message
+        error: 'Failed to update form template'
       });
     }
   },
@@ -275,11 +244,10 @@ const bookingFormController = {
         message: 'Form template deleted successfully'
       });
     } catch (error) {
-      console.error('Error deleting form template:', error);
+      logger.error('Error deleting form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to delete form template',
-        message: error.message
+        error: 'Failed to delete form template'
       });
     }
   },
@@ -308,10 +276,14 @@ const bookingFormController = {
       
       duplicateData.name = name || `${originalTemplate.name} (Copy)`;
       duplicateData.status = 'draft';
+      duplicateData.isPublished = false;
+      duplicateData.publishedAt = null;
       duplicateData.createdBy = req.user.id;
       duplicateData.updatedBy = req.user.id;
       duplicateData.createdAt = new Date();
       duplicateData.updatedAt = new Date();
+      // Reset usage stats for the duplicate
+      duplicateData.usage = { views: 0, submissions: 0, conversionRate: 0 };
 
       const duplicateTemplate = new BookingFormTemplate(duplicateData);
       await duplicateTemplate.save();
@@ -322,24 +294,22 @@ const bookingFormController = {
         message: 'Form template duplicated successfully'
       });
     } catch (error) {
-      console.error('Error duplicating form template:', error);
+      logger.error('Error duplicating form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to duplicate form template',
-        message: error.message
+        error: 'Failed to duplicate form template'
       });
     }
   },
 
+  // Public endpoints — no req.user available
   async renderForm(req, res) {
     try {
       const { id } = req.params;
       const { preview = false } = req.query;
 
-      const template = await BookingFormTemplate.findOne({
-        _id: id,
-        hotelId: req.user.hotelId
-      }).lean();
+      // Public route: look up by _id only (no hotelId filter)
+      const template = await BookingFormTemplate.findById(id).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -348,28 +318,42 @@ const bookingFormController = {
         });
       }
 
-      if (!preview && template.status !== 'active') {
+      const isPreview = preview === 'true' || preview === true;
+      if (!isPreview && template.status !== 'published' && template.status !== 'active') {
         return res.status(400).json({
           success: false,
-          error: 'Form template is not active'
+          error: 'Form template is not published'
         });
       }
 
-      const renderedForm = await bookingFormService.renderForm(template, {
-        preview,
-        context: req.query
-      });
+      // Increment views atomically
+      await BookingFormTemplate.updateOne(
+        { _id: id },
+        { $inc: { 'usage.views': 1 }, $set: { 'usage.lastUsed': new Date() } }
+      );
 
       res.json({
         success: true,
-        data: renderedForm
+        data: {
+          id: template._id,
+          name: template.name,
+          description: template.description,
+          fields: template.fields,
+          styling: template.styling,
+          settings: {
+            successMessage: template.settings?.successMessage,
+            errorMessage: template.settings?.errorMessage,
+            enableProgressBar: template.settings?.enableProgressBar,
+            enableCaptcha: template.settings?.enableCaptcha,
+            submitButtonText: template.settings?.submitButtonText
+          }
+        }
       });
     } catch (error) {
-      console.error('Error rendering form:', error);
+      logger.error('Error rendering form:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to render form',
-        message: error.message
+        error: 'Failed to render form'
       });
     }
   },
@@ -379,11 +363,11 @@ const bookingFormController = {
       const { id } = req.params;
       const submissionData = req.body;
 
+      // Public route: look up by _id, check status
       const template = await BookingFormTemplate.findOne({
         _id: id,
-        hotelId: req.user.hotelId,
-        status: 'active'
-      }).lean();
+        $or: [{ status: 'published' }, { status: 'active' }]
+      });
 
       if (!template) {
         return res.status(404).json({
@@ -392,27 +376,34 @@ const bookingFormController = {
         });
       }
 
-      const result = await bookingFormService.processSubmission(
-        template,
-        submissionData,
+      // Validate submission using the model instance method
+      const validationErrors = template.validateForm(submissionData);
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          details: validationErrors
+        });
+      }
+
+      // Increment submissions atomically
+      await BookingFormTemplate.updateOne(
+        { _id: id },
         {
-          userAgent: req.get('User-Agent'),
-          ipAddress: req.ip,
-          referrer: req.get('Referer')
+          $inc: { 'usage.submissions': 1 },
+          $set: { 'usage.lastUsed': new Date() }
         }
       );
 
-      if (!result.success) {
-        return res.status(400).json(result);
-      }
-
-      res.json(result);
+      res.json({
+        success: true,
+        message: template.settings?.successMessage || 'Form submitted successfully'
+      });
     } catch (error) {
-      console.error('Error submitting form:', error);
+      logger.error('Error submitting form:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to submit form',
-        message: error.message
+        error: 'Failed to submit form'
       });
     }
   },
@@ -422,10 +413,8 @@ const bookingFormController = {
       const { id } = req.params;
       const formData = req.body;
 
-      const template = await BookingFormTemplate.findOne({
-        _id: id,
-        hotelId: req.user.hotelId
-      }).lean();
+      // Public route: look up by _id only
+      const template = await BookingFormTemplate.findById(id);
 
       if (!template) {
         return res.status(404).json({
@@ -434,18 +423,20 @@ const bookingFormController = {
         });
       }
 
-      const validationResult = await bookingFormService.validateSubmission(template, formData);
+      const formValidationErrors = template.validateForm(formData);
 
       res.json({
         success: true,
-        data: validationResult
+        data: {
+          valid: formValidationErrors.length === 0,
+          errors: formValidationErrors
+        }
       });
     } catch (error) {
-      console.error('Error validating form:', error);
+      logger.error('Error validating form:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to validate form',
-        message: error.message
+        error: 'Failed to validate form'
       });
     }
   },
@@ -485,11 +476,10 @@ const bookingFormController = {
         data: analytics
       });
     } catch (error) {
-      console.error('Error fetching form analytics:', error);
+      logger.error('Error fetching form analytics:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch form analytics',
-        message: error.message
+        error: 'Failed to fetch form analytics'
       });
     }
   },
@@ -513,20 +503,21 @@ const bookingFormController = {
 
       const exportData = await bookingFormService.exportTemplate(template, format);
 
-      res.setHeader('Content-Type', 
+      // Sanitize filename to prevent header injection
+      const safeName = template.name.replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 100);
+      res.setHeader('Content-Type',
         format === 'json' ? 'application/json' : 'text/plain'
       );
-      res.setHeader('Content-Disposition', 
-        `attachment; filename="${template.name}.${format}"`
+      res.setHeader('Content-Disposition',
+        `attachment; filename="${safeName}.${format}"`
       );
 
       res.send(exportData);
     } catch (error) {
-      console.error('Error exporting form template:', error);
+      logger.error('Error exporting form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to export form template',
-        message: error.message
+        error: 'Failed to export form template'
       });
     }
   },
@@ -558,11 +549,10 @@ const bookingFormController = {
         message: 'Form template imported successfully'
       });
     } catch (error) {
-      console.error('Error importing form template:', error);
+      logger.error('Error importing form template:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to import form template',
-        message: error.message
+        error: 'Failed to import form template'
       });
     }
   },
@@ -599,11 +589,10 @@ const bookingFormController = {
         data: result
       });
     } catch (error) {
-      console.error('Error recording A/B test event:', error);
+      logger.error('Error recording A/B test event:', error.message);
       res.status(500).json({
         success: false,
-        error: 'Failed to record A/B test event',
-        message: error.message
+        error: 'Failed to record A/B test event'
       });
     }
   }

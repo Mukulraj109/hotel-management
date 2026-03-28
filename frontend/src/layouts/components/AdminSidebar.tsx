@@ -43,7 +43,10 @@ import {
   Plane,
   ChevronLeft,
   ChevronRight,
-  DollarSign
+  DollarSign,
+  History,
+  LineChart,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const navigation = [
@@ -94,6 +97,14 @@ const navigation = [
   { name: 'Bypass Approvals', href: '/admin/bypass-approvals', icon: CheckSquare },
   { name: 'Security Dashboard', href: '/admin/security-dashboard', icon: Shield },
   { name: 'Financial Analytics', href: '/admin/financial-analytics', icon: BarChart3 },
+  { name: 'Revenue analytics', href: '/admin/analytics/revenue', icon: LineChart },
+  { name: 'Audit log', href: '/admin/audit-log', icon: History },
+  { name: 'Settings hub', href: '/admin/configuration', icon: SlidersHorizontal },
+  { name: 'Walk-in booking', href: '/admin/walk-in-booking', icon: Calendar },
+  { name: 'User management', href: '/admin/user-management', icon: Users },
+  { name: 'Seasonal pricing', href: '/admin/seasonal-pricing', icon: TrendingUp },
+  { name: 'Alerts', href: '/admin/alerts', icon: AlertTriangle },
+  { name: 'System health', href: '/admin/system/health', icon: Shield },
   { name: 'OTA Analytics', href: '/admin/ota', icon: Wifi },
 ];
 

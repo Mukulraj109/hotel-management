@@ -1286,7 +1286,7 @@ export function AdminRooms() {
           <MetricCard
             title="Occupancy Rate"
             type='percentage'
-            value={formatPercentage(analyticsData?.occupancyRate || 0)}
+            value={formatPercentage(metrics?.occupancyRate || analyticsData?.occupancyRate || 0)}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -1296,17 +1296,17 @@ export function AdminRooms() {
             color="purple"
             loading={isLoading}
             trend={{
-              value: analyticsData?.occupancyRate || 0,
-              direction: (analyticsData?.occupancyRate || 0) > 70 ? 'up' : 'down',
+              value: metrics?.occupancyRate || analyticsData?.occupancyRate || 0,
+              direction: (metrics?.occupancyRate || analyticsData?.occupancyRate || 0) > 70 ? 'up' : 'down',
               label: 'target: 80%'
             }}
           />
 
-          {/* Daily Revenue Progress */}
+          {/* Occupancy vs Target */}
           <MetricCard
-            title="Daily Revenue Progress"
+            title="Occupancy vs Target"
             type="percentage"
-            value={`${((analyticsData?.occupancyRate || 0) / 80 * 100).toFixed(1)}%`}
+            value={`${Math.min(((metrics?.occupancyRate || analyticsData?.occupancyRate || 0) / 80 * 100), 100).toFixed(1)}%`}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -1322,14 +1322,19 @@ export function AdminRooms() {
         <div className="mt-8">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Revenue by Room Type</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {analyticsData?.roomTypeProfitability?.map(roomType => (
+            {analyticsData?.roomTypeProfitability?.map(roomType => {
+              const rooms = roomsQuery.data?.rooms || [];
+              const typeRooms = rooms.filter(r => r.type === roomType.roomType);
+              const typeOccupied = typeRooms.filter(r => getRoomStatus(r) === 'occupied').length;
+              const realTimeOccupancy = typeRooms.length > 0 ? Math.round((typeOccupied / typeRooms.length) * 100) : 0;
+              return (
               <div key={roomType.roomType} className="bg-gray-50 rounded-lg p-4">
                 <div className="text-sm font-medium text-gray-900 capitalize mb-2">
                   {roomType.roomType} Rooms
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-gray-600">
-                    {Math.round(roomType.occupancyRate)}% occupied ({roomType.roomCount} rooms)
+                    {realTimeOccupancy}% occupied ({roomType.roomCount} {roomType.roomCount === 1 ? 'room' : 'rooms'})
                   </div>
                   <div className="text-sm font-medium text-gray-900">
                     Avg Rate: {formatCurrency(roomType.averageRate)}
@@ -1340,7 +1345,8 @@ export function AdminRooms() {
                   <div className="text-xs text-gray-500">daily revenue</div>
                 </div>
               </div>
-            )) || (
+              );
+            }) || (
               // Fallback to room calculation if analytics data not available
               ['single', 'double', 'suite', 'deluxe'].map(type => {
                 const rooms = roomsQuery.data?.rooms || [];
@@ -1413,7 +1419,7 @@ export function AdminRooms() {
               </div>
               <div className="text-sm text-gray-600">Current Daily Revenue</div>
               <div className="text-xs mt-1 text-purple-600">
-                from {metrics?.occupiedRooms || 0} occupied rooms
+                from {metrics?.occupiedRooms || 0} occupied {(metrics?.occupiedRooms || 0) === 1 ? 'room' : 'rooms'}
               </div>
             </div>
           </div>

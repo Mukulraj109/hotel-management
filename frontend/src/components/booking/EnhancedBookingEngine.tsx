@@ -58,6 +58,7 @@ import { roomTypeService } from '@/services/roomTypeService';
 import { inventoryService } from '@/services/inventoryService';
 import { roomTypeLocalizationService, type LocalizedRoomType } from '@/services/roomTypeLocalizationService';
 import { multiCurrencyRateService, type ConvertedRatePlan, type ConversionRatesResponse } from '@/services/multiCurrencyRateService';
+import { api } from '@/services/api';
 import { withErrorBoundary } from '../ErrorBoundary';
 
 // Use LocalizedRoomType from the service, but keep legacy interface for backward compatibility
@@ -183,6 +184,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
   const [isBooking, setIsBooking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bookingResponse, setBookingResponse] = useState<{ bookingNumber?: string; _id?: string } | null>(null);
 
   // Multi-currency rate state
   const [ratePlans, setRatePlans] = useState<ConvertedRatePlan[]>([]);
@@ -511,27 +513,35 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
     try {
       setIsBooking(true);
 
-      // In a real implementation, this would call the booking API
       const bookingPayload = {
-        ...bookingData,
-        checkInDate: format(bookingData.checkInDate, 'yyyy-MM-dd'),
-        checkOutDate: format(bookingData.checkOutDate, 'yyyy-MM-dd'),
-        roomTypeName: selectedRoomType?.name,
-        pricingBreakdown,
-        bookingReference: `ENH-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-        status: 'confirmed',
-        createdAt: new Date().toISOString()
+        checkIn: format(bookingData.checkInDate, 'yyyy-MM-dd'),
+        checkOut: format(bookingData.checkOutDate, 'yyyy-MM-dd'),
+        roomType: selectedRoomType?._id || bookingData.roomTypeId,
+        guestDetails: {
+          adults: bookingData.adults,
+          children: bookingData.children,
+        },
+        guestName: `${bookingData.guestInfo.firstName} ${bookingData.guestInfo.lastName}`,
+        guestEmail: bookingData.guestInfo.email,
+        guestPhone: bookingData.guestInfo.phone,
+        specialRequests: bookingData.guestInfo.specialRequests,
+        totalAmount: pricingBreakdown?.totalAmount || bookingData.totalAmount,
+        source: bookingData.source,
+        hotelId,
+        numberOfRooms: bookingData.rooms,
       };
 
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await api.post('/bookings', bookingPayload);
     if (!isMountedRef.current) return;
+
+      const createdBooking = response.data?.data?.booking || response.data?.booking || response.data?.data || {};
+      setBookingResponse(createdBooking);
 
       toast.success('Booking confirmed successfully!');
       setCurrentStep(5);
-      
+
       if (onBookingComplete) {
-        onBookingComplete(bookingPayload);
+        onBookingComplete(createdBooking);
       }
 
     } catch (err: unknown) {
@@ -1292,7 +1302,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
             <div className="bg-gray-50 p-4 rounded-lg mb-6">
               <p className="text-sm text-gray-600 mb-2">Booking Reference:</p>
               <p className="text-lg font-mono font-bold">
-                ENH-{Date.now().toString().slice(-6)}-{Math.random().toString(36).substr(2, 6).toUpperCase()}
+                {bookingResponse?.bookingNumber || bookingResponse?._id || 'Check your email for details'}
               </p>
             </div>
             <div className="space-y-2 text-sm text-gray-600">

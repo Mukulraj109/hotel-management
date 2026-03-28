@@ -246,50 +246,86 @@ offerSchema.virtual('discountDisplay').get(function() {
 });
 
 // Static method to get available offers for a user
-offerSchema.statics.getAvailableOffers = async function(userId, userTier, hotelId = null) {
+offerSchema.statics.getAvailableOffers = async function(userId, userTier, hotelId = null, options = {}) {
   try {
+    const { page = 1, limit = 20 } = options;
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const skip = (parseInt(page) - 1) * parsedLimit;
+
+    // FIX: Use $in with eligible tiers instead of broken $lte string comparison
+    // String $lte compares alphabetically ("silver" <= "gold" is false), not by tier rank
+    const tierValue = getTierValue(userTier);
+    const eligibleTiers = Object.entries({ bronze: 0, silver: 1, gold: 2, platinum: 3 })
+      .filter(([, v]) => v <= tierValue)
+      .map(([k]) => k);
+
     const query = {
       isActive: true,
-      minTier: { $lte: userTier },
+      minTier: { $in: eligibleTiers },
       $or: [
         { validUntil: { $gt: new Date() } },
-        { validUntil: { $exists: false } }
+        { validUntil: { $exists: false } },
+        { validUntil: null }
       ]
     };
-  
+
     if (hotelId) {
       query.hotelId = hotelId;
     }
-  
-    const offers = await this.find(query)
+
+    // FIX: Add proper pagination and remove .filter(offer => offer.isValid)
+    // which relied on a virtual that does not exist on lean documents.
+    // The query itself already filters for active + valid date range + not maxed redemptions
+    // is handled by the $or above; for maxRedemptions we add an $expr check.
+    const offers = await this.find({
+      ...query,
+      $expr: {
+        $or: [
+          { $eq: [{ $ifNull: ['$maxRedemptions', null] }, null] },
+          { $lt: ['$currentRedemptions', '$maxRedemptions'] }
+        ]
+      }
+    })
       .sort({ pointsRequired: 1, createdAt: -1 })
-      .populate('hotelId', 'name').lean().limit(1000);
-    
-    return offers.filter(offer => offer.isValid);
+      .skip(skip)
+      .limit(parsedLimit)
+      .populate('hotelId', 'name')
+      .lean();
+
+    return offers;
   } catch (error) {
     throw new Error(`${error.message}`);
   }
 };
 
 // Static method to get offers by category
-offerSchema.statics.getOffersByCategory = async function(category, hotelId = null) {
+offerSchema.statics.getOffersByCategory = async function(category, hotelId = null, options = {}) {
   try {
+    const { page = 1, limit = 20 } = options;
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const skip = (parseInt(page) - 1) * parsedLimit;
+
     const query = {
       category,
       isActive: true,
       $or: [
         { validUntil: { $gt: new Date() } },
-        { validUntil: { $exists: false } }
+        { validUntil: { $exists: false } },
+        { validUntil: null }
       ]
     };
-  
+
     if (hotelId) {
       query.hotelId = hotelId;
     }
-  
+
+    // FIX: Add pagination instead of unbounded .limit(1000)
     return await this.find(query)
       .sort({ pointsRequired: 1 })
-      .populate('hotelId', 'name').lean().limit(1000);
+      .skip(skip)
+      .limit(parsedLimit)
+      .populate('hotelId', 'name')
+      .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }

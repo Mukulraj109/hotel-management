@@ -321,7 +321,7 @@ propertyGroupSchema.methods.updateMetrics = async function() {
     ]);
 
     // Get property IDs for this group
-    const propertyIds = await Hotel.find({ propertyGroupId: this._id, isActive: true }).distinct('_id').lean().limit(1000);
+    const propertyIds = await Hotel.distinct('_id', { propertyGroupId: this._id, isActive: true });
 
     // Count total rooms for all properties in this group
     const Room = mongoose.model('Room');

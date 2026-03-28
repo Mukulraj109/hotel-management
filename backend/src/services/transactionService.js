@@ -199,8 +199,10 @@ class TransactionService {
         limit = 100
       } = options;
 
-      const query = { inventoryItemId: itemId };
-      if (hotelId) query.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant-isolated item transactions');
+      }
+      const query = { inventoryItemId: itemId, hotelId };
 
       if (startDate || endDate) {
         query['timestamps.created'] = {};

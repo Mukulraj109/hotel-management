@@ -88,50 +88,48 @@ export default function AdminMaintenance() {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await adminMaintenanceService.getTasks(filters);
+      const taskFilters: MaintenanceFilters = { ...filters, hotelId: selectedPropertyId || undefined };
+      const response = await adminMaintenanceService.getTasks(taskFilters);
       // Filter out any undefined or invalid tasks
       const validTasks = (response.data.tasks || []).filter(task => task && typeof task === 'object');
       setTasks(validTasks);
-      setPagination({ 
-        total: response.data.pagination?.total || 0, 
-        pages: response.data.pagination?.pages || 1 
+      setPagination({
+        total: response.data.pagination?.total || 0,
+        pages: response.data.pagination?.pages || 1
       });
     } catch (error) {
       toast.error('Failed to load maintenance tasks');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, selectedPropertyId]);
 
   const fetchStats = useCallback(async () => {
     try {
-      // Service will handle hotelId dynamically
-      const response = await adminMaintenanceService.getStats();
+      const response = await adminMaintenanceService.getStats(selectedPropertyId || undefined);
       setStats(response.data);
     } catch (error) {
       toast.error('Failed to load maintenance statistics');
     }
-  }, []);
+  }, [selectedPropertyId]);
 
   const fetchAvailableStaff = useCallback(async () => {
     try {
-      // Service will handle hotelId dynamically
-      const response = await adminMaintenanceService.getAvailableStaff();
+      const response = await adminMaintenanceService.getAvailableStaff(selectedPropertyId || undefined);
       setAvailableStaff(response.data);
     } catch (error) {
       toast.error('Failed to load available staff');
     }
-  }, []);
+  }, [selectedPropertyId]);
 
   const fetchAvailableRooms = useCallback(async () => {
     try {
-      // Service will handle hotelId dynamically
-      const response = await adminMaintenanceService.getAvailableRooms();
+      const response = await adminMaintenanceService.getAvailableRooms(selectedPropertyId || undefined);
       setAvailableRooms(response.data);
     } catch (error) {
       toast.error('Failed to load available rooms');
     }
-  }, []);
+  }, [selectedPropertyId]);
 
   useEffect(() => {
     if (!selectedPropertyId) return;
@@ -216,6 +214,7 @@ export default function AdminMaintenance() {
 
       const cleanedFormData = {
         ...formData,
+        hotelId: selectedPropertyId || undefined,
         roomId: formData.roomId || undefined,
         assignedToUserId: formData.assignedToUserId || undefined,
         estimatedDuration: formData.estimatedDuration || 60,
@@ -969,7 +968,7 @@ export default function AdminMaintenance() {
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-gray-700 flex items-center">
                   <TrendingUp className="w-4 h-4 mr-2 text-green-500" />
-                  Estimated Cost ($)
+                  Estimated Cost (₹)
                 </label>
                 <Input
                   type="number"
@@ -1257,7 +1256,7 @@ export default function AdminMaintenance() {
                     <div key={`selectedTask-materials-${index}-${material.name}`} className="text-sm text-gray-900 flex justify-between items-center py-1">
                       <span>{material.name} (Qty: {material.quantity})</span>
                       {material.unitCost && material.unitCost > 0 && (
-                        <span className="text-gray-600">${material.unitCost}</span>
+                        <span className="text-gray-600">₹{material.unitCost}</span>
                       )}
                     </div>
                   ))}
@@ -1286,7 +1285,7 @@ export default function AdminMaintenance() {
                       <div className="text-gray-600">{selectedTask.vendor.contact}</div>
                     )}
                     {selectedTask.vendor.cost && selectedTask.vendor.cost > 0 && (
-                      <div className="text-green-600 font-medium">${selectedTask.vendor.cost}</div>
+                      <div className="text-green-600 font-medium">₹{selectedTask.vendor.cost}</div>
                     )}
                   </div>
                 </div>

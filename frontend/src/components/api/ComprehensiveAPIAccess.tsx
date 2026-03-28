@@ -144,192 +144,6 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mockAPIEndpoints: APIEndpoint[] = [
-    {
-      id: 'EP001',
-      name: 'Get Reservations',
-      method: 'GET',
-      path: '/api/v1/reservations',
-      description: 'Retrieve all reservations with optional filtering',
-      category: 'Reservations',
-      version: 'v1',
-      status: 'active',
-      authRequired: true,
-      rateLimit: 1000,
-      usage: { requests: 25847, errors: 12, avgResponseTime: 145 },
-      lastUsed: '2024-12-01T14:30:00Z'
-    },
-    {
-      id: 'EP002',
-      name: 'Create Reservation',
-      method: 'POST',
-      path: '/api/v1/reservations',
-      description: 'Create a new reservation',
-      category: 'Reservations',
-      version: 'v1',
-      status: 'active',
-      authRequired: true,
-      rateLimit: 500,
-      usage: { requests: 8934, errors: 45, avgResponseTime: 234 },
-      lastUsed: '2024-12-01T14:15:00Z'
-    },
-    {
-      id: 'EP003',
-      name: 'Get Rooms',
-      method: 'GET',
-      path: '/api/v1/rooms',
-      description: 'Retrieve room inventory and availability',
-      category: 'Inventory',
-      version: 'v1',
-      status: 'active',
-      authRequired: true,
-      rateLimit: 2000,
-      usage: { requests: 45234, errors: 23, avgResponseTime: 89 },
-      lastUsed: '2024-12-01T14:45:00Z'
-    },
-    {
-      id: 'EP004',
-      name: 'Process Payment',
-      method: 'POST',
-      path: '/api/v1/payments',
-      description: 'Process guest payments and transactions',
-      category: 'Payments',
-      version: 'v1',
-      status: 'active',
-      authRequired: true,
-      rateLimit: 100,
-      usage: { requests: 3456, errors: 8, avgResponseTime: 456 },
-      lastUsed: '2024-12-01T14:20:00Z'
-    },
-    {
-      id: 'EP005',
-      name: 'Get Guest Profile (Legacy)',
-      method: 'GET',
-      path: '/api/v0/guest/{id}',
-      description: 'Legacy endpoint for guest profile retrieval',
-      category: 'Guests',
-      version: 'v0',
-      status: 'deprecated',
-      authRequired: true,
-      rateLimit: 100,
-      usage: { requests: 234, errors: 12, avgResponseTime: 789 },
-      lastUsed: '2024-11-15T10:30:00Z'
-    }
-  ];
-
-  const mockAPIKeys: APIKey[] = [
-    {
-      id: 'KEY001',
-      name: 'Mobile App Production',
-      key: 'pk_live_1234567890abcdef',
-      type: 'read',
-      permissions: ['read:reservations', 'read:rooms', 'read:guests'],
-      expiresAt: '2025-06-01T00:00:00Z',
-      isActive: true,
-      usage: {
-        requests: 156789,
-        lastUsed: '2024-12-01T14:45:00Z',
-        rateLimit: 10000,
-        rateLimitUsed: 7234
-      },
-      createdBy: 'John Smith',
-      createdAt: '2024-06-01T09:00:00Z'
-    },
-    {
-      id: 'KEY002',
-      name: 'Partner Integration',
-      key: 'pk_test_abcdef1234567890',
-      type: 'write',
-      permissions: ['read:reservations', 'write:reservations', 'read:rooms'],
-      isActive: true,
-      usage: {
-        requests: 45623,
-        lastUsed: '2024-12-01T13:20:00Z',
-        rateLimit: 5000,
-        rateLimitUsed: 2145
-      },
-      createdBy: 'Sarah Johnson',
-      createdAt: '2024-08-15T14:30:00Z'
-    },
-    {
-      id: 'KEY003',
-      name: 'Admin Dashboard',
-      key: 'pk_admin_fedcba0987654321',
-      type: 'admin',
-      permissions: ['*'],
-      expiresAt: '2024-12-31T23:59:59Z',
-      isActive: false,
-      usage: {
-        requests: 8934,
-        lastUsed: '2024-11-28T16:45:00Z',
-        rateLimit: 1000,
-        rateLimitUsed: 0
-      },
-      createdBy: 'Admin User',
-      createdAt: '2024-01-01T00:00:00Z'
-    }
-  ];
-
-  const mockWebhooks: WebhookEndpoint[] = [
-    {
-      id: 'WH001',
-      name: 'Booking Notifications',
-      url: 'https://partner.example.com/webhooks/bookings',
-      events: ['reservation.created', 'reservation.updated', 'reservation.cancelled'],
-      isActive: true,
-      secret: 'whsec_1234567890abcdef',
-      retryPolicy: {
-        maxRetries: 3,
-        backoffMultiplier: 2
-      },
-      stats: {
-        totalDeliveries: 1245,
-        successfulDeliveries: 1189,
-        failedDeliveries: 56,
-        lastDelivery: '2024-12-01T14:30:00Z'
-      }
-    },
-    {
-      id: 'WH002',
-      name: 'Payment Processing',
-      url: 'https://payments.example.com/webhooks/hotel',
-      events: ['payment.completed', 'payment.failed', 'refund.processed'],
-      isActive: true,
-      secret: 'whsec_abcdef1234567890',
-      retryPolicy: {
-        maxRetries: 5,
-        backoffMultiplier: 1.5
-      },
-      stats: {
-        totalDeliveries: 567,
-        successfulDeliveries: 562,
-        failedDeliveries: 5,
-        lastDelivery: '2024-12-01T14:15:00Z'
-      }
-    }
-  ];
-
-  const mockAPIMetrics: APIMetrics = {
-    totalRequests: 234567,
-    requestsToday: 15678,
-    avgResponseTime: 187,
-    errorRate: 0.8,
-    topEndpoints: [
-      { endpoint: '/api/v1/rooms', requests: 45234, errors: 23 },
-      { endpoint: '/api/v1/reservations', requests: 25847, errors: 12 },
-      { endpoint: '/api/v1/guests', requests: 18934, errors: 34 },
-      { endpoint: '/api/v1/payments', requests: 3456, errors: 8 }
-    ],
-    statusCodes: {
-      '200': 220145,
-      '201': 8934,
-      '400': 2134,
-      '401': 1234,
-      '404': 567,
-      '500': 234
-    }
-  };
-
   useEffect(() => {
     loadData();
 
@@ -359,13 +173,13 @@ export const ComprehensiveAPIAccess: React.FC = () => {
       if (keysResponse.status === 'fulfilled') {
         setApiKeys(keysResponse.value.data?.data?.apiKeys || []);
       } else {
-        if (!silent) setApiKeys(mockAPIKeys);
+        if (!silent) setApiKeys([]);
       }
 
       if (webhooksResponse.status === 'fulfilled') {
         setWebhooks(webhooksResponse.value.data?.data?.webhooks || []);
       } else {
-        if (!silent) setWebhooks(mockWebhooks);
+        if (!silent) setWebhooks([]);
       }
 
       if (metricsResponse.status === 'fulfilled') {
@@ -374,35 +188,35 @@ export const ComprehensiveAPIAccess: React.FC = () => {
           // Transform the API response to match the expected interface
           const transformedMetrics = {
             totalRequests: rawMetrics.totalRequests || 0,
-            requestsToday: rawMetrics.requestsToday || 0, // Now provided by optimized API
+            requestsToday: rawMetrics.requestsToday || 0,
             avgResponseTime: rawMetrics.averageResponseTime || 0,
             errorRate: parseFloat(rawMetrics.errorRate) || 0,
-            topEndpoints: rawMetrics.topEndpoints || [], // Use data from API
-            statusCodes: rawMetrics.statusCodes || {} // Use data from API
+            topEndpoints: rawMetrics.topEndpoints || [],
+            statusCodes: rawMetrics.statusCodes || {}
           };
           setApiMetrics(transformedMetrics);
         } else {
           setApiMetrics(null);
         }
       } else {
-        if (!silent) setApiMetrics(mockAPIMetrics);
+        if (!silent) setApiMetrics(null);
       }
 
       if (endpointsResponse.status === 'fulfilled') {
         setApiEndpoints(endpointsResponse.value.data?.data || []);
       } else {
-        if (!silent) setApiEndpoints(mockAPIEndpoints);
+        if (!silent) setApiEndpoints([]);
       }
 
     } catch (error) {
       if (!silent) {
-        setError('Failed to load data. Using fallback data.');
+        setError('API management not configured. Contact your administrator to set up API access.');
 
-        // Set mock data on error during initial load only
-        setApiEndpoints(mockAPIEndpoints);
-        setApiKeys(mockAPIKeys);
-        setWebhooks(mockWebhooks);
-        setApiMetrics(mockAPIMetrics);
+        // Set empty data on error
+        setApiEndpoints([]);
+        setApiKeys([]);
+        setWebhooks([]);
+        setApiMetrics(null);
       }
     } finally {
       if (!silent) {

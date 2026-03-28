@@ -96,21 +96,19 @@ const PhoneAssignmentTool: React.FC<PhoneAssignmentToolProps> = ({ onClose, onSu
         api.get(`/rooms/hotels/${hotelId}`)
       ]);
 
-      {
-        const extensionsData = extensionsResponse.data;
-        const roomsData = roomsResponse.data;
+      const extensionsData = extensionsResponse.data;
+      const roomsData = roomsResponse.data;
 
-        setUnassignedExtensions(extensionsData.data?.extensions || []);
-        
-        // Process rooms to show extension status
-        const rooms = (roomsData.data?.rooms || []).map((room: Record<string, unknown>) => ({
-          ...room,
-          hasExtension: Boolean(room.phoneExtensions && room.phoneExtensions.length > 0),
-          currentExtension: room.phoneExtensions?.[0]
-        }));
-        
-        setAvailableRooms(rooms);
-      }
+      setUnassignedExtensions(extensionsData.data?.extensions || []);
+
+      // Process rooms to show extension status
+      const rooms = (roomsData.data?.rooms || []).map((room: Record<string, unknown>) => ({
+        ...room,
+        hasExtension: Boolean(room.phoneExtensions && room.phoneExtensions.length > 0),
+        currentExtension: room.phoneExtensions?.[0]
+      }));
+
+      setAvailableRooms(rooms);
     } catch (error) {
       toast({
         title: 'Error',
@@ -155,22 +153,17 @@ const PhoneAssignmentTool: React.FC<PhoneAssignmentToolProps> = ({ onClose, onSu
       const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
 
       const { data: result } = await api.post(`/phone-extensions/hotels/${hotelId}/auto-assign`, {
-          pattern: autoAssignPattern
-        });
-      {
-        toast({
-          title: 'Auto Assignment Complete',
-          description: `Successfully assigned ${result.data.successCount} extensions`
-        });
-        
-        // Refresh data and close
-        await fetchData();
-        onSuccess();
-        onClose();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Auto assignment failed');
-      }
+        pattern: autoAssignPattern
+      });
+      toast({
+        title: 'Auto Assignment Complete',
+        description: `Successfully assigned ${result.data.successCount} extensions`
+      });
+
+      // Refresh data and close
+      await fetchData();
+      onSuccess();
+      onClose();
     } catch (error) {
       toast({
         title: 'Error',
@@ -197,31 +190,26 @@ const PhoneAssignmentTool: React.FC<PhoneAssignmentToolProps> = ({ onClose, onSu
       const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
 
       const { data: result } = await api.patch(`/phone-extensions/hotels/${hotelId}/bulk-assign`, {
-          assignments: assignments.map(a => ({
-            extensionId: a.extensionId,
-            roomId: a.roomId
-          }))
-        });
-      {
-        toast({
-          title: 'Success',
-          description: `Successfully assigned ${result.data.successCount} extensions`
-        });
-        
-        if (result.data.failureCount > 0) {
-          toast({
-            title: 'Partial Success',
-            description: `${result.data.failureCount} assignments failed`,
-            variant: 'destructive'
-          });
-        }
+        assignments: assignments.map(a => ({
+          extensionId: a.extensionId,
+          roomId: a.roomId
+        }))
+      });
+      toast({
+        title: 'Success',
+        description: `Successfully assigned ${result.data.successCount} extensions`
+      });
 
-        onSuccess();
-        onClose();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save assignments');
+      if (result.data.failureCount > 0) {
+        toast({
+          title: 'Partial Success',
+          description: `${result.data.failureCount} assignments failed`,
+          variant: 'destructive'
+        });
       }
+
+      onSuccess();
+      onClose();
     } catch (error) {
       toast({
         title: 'Error',

@@ -382,26 +382,21 @@ class QueueService {
       // Check queues by priority (1 = highest)
       for (let priority = 1; priority <= 5 && events.length < limit; priority++) {
         const queueKey = `queue:events:priority_${priority}`;
-        const remaining = limit - events.length;
-        
-        // Get events from this priority queue
-        const eventStrings = await this.redis.lRange(queueKey, 0, remaining - 1);
-        
-        if (eventStrings && eventStrings.length > 0) {
-          // Remove these events from the queue
-          await this.redis.lTrim(queueKey, eventStrings.length, -1);
-          
-          // Parse event data
-          for (const eventString of eventStrings) {
-            try {
-              const eventData = JSON.parse(eventString);
-              events.push(eventData);
-            } catch (parseError) {
-              logger.error('Failed to parse event from Redis', { 
-                eventString, 
-                error: parseError.message 
-              });
-            }
+        while (events.length < limit) {
+          // Atomic pop prevents race conditions between workers.
+          const eventString = await this.redis.rPop(queueKey);
+          if (!eventString) {
+            break;
+          }
+
+          try {
+            const eventData = JSON.parse(eventString);
+            events.push(eventData);
+          } catch (parseError) {
+            logger.error('Failed to parse event from Redis', {
+              eventString,
+              error: parseError.message
+            });
           }
         }
       }

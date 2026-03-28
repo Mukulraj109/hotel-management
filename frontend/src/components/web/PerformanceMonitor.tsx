@@ -358,7 +358,7 @@ const PerformanceMonitor: React.FC = () => {
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Good: ≤2.5s</span>
-                        <span>Poor: >4.0s</span>
+                        <span>Poor: &gt;4.0s</span>
                       </div>
                       <Progress 
                         value={Math.min((coreWebVitals.lcp / 4) * 100, 100)} 
@@ -389,7 +389,7 @@ const PerformanceMonitor: React.FC = () => {
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Good: ≤100ms</span>
-                        <span>Poor: >300ms</span>
+                        <span>Poor: &gt;300ms</span>
                       </div>
                       <Progress 
                         value={Math.min((coreWebVitals.fid / 300) * 100, 100)} 
@@ -420,7 +420,7 @@ const PerformanceMonitor: React.FC = () => {
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Good: ≤0.1</span>
-                        <span>Poor: >0.25</span>
+                        <span>Poor: &gt;0.25</span>
                       </div>
                       <Progress 
                         value={Math.min((coreWebVitals.cls / 0.25) * 100, 100)} 
@@ -451,7 +451,7 @@ const PerformanceMonitor: React.FC = () => {
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Good: ≤1.8s</span>
-                        <span>Poor: >3.0s</span>
+                        <span>Poor: &gt;3.0s</span>
                       </div>
                       <Progress 
                         value={Math.min((coreWebVitals.fcp / 3) * 100, 100)} 
@@ -482,7 +482,7 @@ const PerformanceMonitor: React.FC = () => {
                     <div className="mt-4">
                       <div className="flex justify-between text-sm mb-1">
                         <span>Good: ≤0.8s</span>
-                        <span>Poor: >1.8s</span>
+                        <span>Poor: &gt;1.8s</span>
                       </div>
                       <Progress 
                         value={Math.min((coreWebVitals.ttfb / 1.8) * 100, 100)} 

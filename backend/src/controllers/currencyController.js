@@ -415,7 +415,7 @@ class CurrencyController {
       staleCurrencies,
       channelStats
     ] = await Promise.all([
-      Currency.estimatedDocumentCount(),
+      Currency.countDocuments({}),
       Currency.countDocuments({ isActive: true }),
       Currency.getBaseCurrency(),
       Currency.getStaleCurrencies(),

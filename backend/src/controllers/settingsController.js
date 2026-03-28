@@ -432,10 +432,9 @@ export const getSettingsStats = catchAsync(async (req, res, next) => {
     return next(new AppError('Only admins can access settings statistics', 403));
   }
 
-  const hotelId = req.user?.hotelId;
-  const settingsMatch = hotelId ? { $match: { hotelId } } : { $match: {} };
+  const { hotelId } = req.user;
   const stats = await UserSettings.aggregate([
-    settingsMatch,
+    { $match: { hotelId } },
     {
       $group: {
         _id: '$role',
@@ -455,7 +454,7 @@ export const getSettingsStats = catchAsync(async (req, res, next) => {
     }
   ]);
 
-  const totalUsers = await UserSettings.estimatedDocumentCount();
+  const totalUsers = await UserSettings.countDocuments({ hotelId });
 
   res.status(200).json({
     status: 'success',

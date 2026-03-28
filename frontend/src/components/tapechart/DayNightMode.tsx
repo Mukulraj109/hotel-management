@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,10 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/utils/toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { nightAuditService } from '@/services/nightAuditService';
 import {
   Sun, Moon, Clock, Calendar, Globe,
   Settings, Users, Building, MapPin,
-  Sunrise, Sunset, Timer, RefreshCw
+  Sunrise, Sunset, Timer, RefreshCw,
+  PlayCircle, CheckCircle2, XCircle, Loader2,
+  Lock, AlertTriangle, ClipboardCheck, FileText,
+  DollarSign, UserX, CreditCard, BarChart3
 } from 'lucide-react';
 
 // Day/Night Mode Types
@@ -64,6 +68,117 @@ interface TimezoneSetting {
   daylightSaving: boolean;
 }
 
+// Night Audit Types (matching backend NightAudit model)
+interface AuditStep {
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  startedAt?: string;
+  completedAt?: string;
+  result?: Record<string, unknown>;
+  errors?: string[];
+  warnings?: string[];
+}
+
+interface AuditSummary {
+  roomInventory?: {
+    totalRooms: number;
+    occupied: number;
+    vacant: number;
+    outOfOrder: number;
+    discrepancies: number;
+  };
+  bookingReconciliation?: {
+    totalBookings: number;
+    confirmedArrivals: number;
+    actualArrivals: number;
+    noShows: number;
+    cancellations: number;
+    departures: number;
+    stayovers: number;
+  };
+  revenue?: {
+    roomRevenue: number;
+    totalRevenue: number;
+    journalEntriesCreated: number;
+  };
+  noShowProcessing?: {
+    detected: number;
+    processed: number;
+    chargesApplied: number;
+  };
+  settlement?: {
+    totalPaymentsReceived: number;
+    totalChargesPosted: number;
+    variance: number;
+    unreconciledItems: number;
+  };
+}
+
+interface NightAuditRecord {
+  _id: string;
+  hotelId: string;
+  auditDate: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'partially_completed';
+  startedAt?: string;
+  completedAt?: string;
+  initiatedBy: 'manual' | 'scheduled';
+  initiatedByUser?: { _id: string; name: string } | null;
+  steps: AuditStep[];
+  summary: AuditSummary;
+  locked: boolean;
+  lockedAt?: string;
+  lockedBy?: { _id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const AUDIT_STEP_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  room_inventory_verification: { label: 'Room Inventory Verification', icon: <Building className="h-4 w-4" /> },
+  booking_reconciliation: { label: 'Booking Reconciliation', icon: <ClipboardCheck className="h-4 w-4" /> },
+  revenue_posting: { label: 'Revenue Posting', icon: <DollarSign className="h-4 w-4" /> },
+  no_show_processing: { label: 'No-Show Processing', icon: <UserX className="h-4 w-4" /> },
+  settlement_verification: { label: 'Settlement Verification', icon: <CreditCard className="h-4 w-4" /> },
+  lock_day: { label: 'Lock Day', icon: <Lock className="h-4 w-4" /> },
+};
+
+const getStepStatusIcon = (status: AuditStep['status']) => {
+  switch (status) {
+    case 'completed':
+      return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+    case 'running':
+      return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+    case 'failed':
+      return <XCircle className="h-4 w-4 text-red-600" />;
+    case 'skipped':
+      return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
+    case 'pending':
+    default:
+      return <Clock className="h-4 w-4 text-gray-400" />;
+  }
+};
+
+const getStepStatusBadge = (status: AuditStep['status']) => {
+  const styles: Record<string, string> = {
+    completed: 'bg-green-100 text-green-800',
+    running: 'bg-blue-100 text-blue-800',
+    failed: 'bg-red-100 text-red-800',
+    skipped: 'bg-yellow-100 text-yellow-800',
+    pending: 'bg-gray-100 text-gray-600',
+  };
+  return styles[status] || styles.pending;
+};
+
+const getAuditStatusBadge = (status: NightAuditRecord['status']) => {
+  const styles: Record<string, string> = {
+    completed: 'bg-green-100 text-green-800',
+    in_progress: 'bg-blue-100 text-blue-800',
+    failed: 'bg-red-100 text-red-800',
+    partially_completed: 'bg-yellow-100 text-yellow-800',
+    pending: 'bg-gray-100 text-gray-600',
+  };
+  return styles[status] || styles.pending;
+};
+
 export const DayNightMode: React.FC = () => {
   const [currentMode, setCurrentMode] = useState<'day' | 'night' | 'auto'>('auto');
   const [propertySettings, setPropertySettings] = useState<PropertySettings>({
@@ -80,6 +195,16 @@ export const DayNightMode: React.FC = () => {
   const [shiftConfigs, setShiftConfigs] = useState<ShiftConfiguration[]>([]);
   const [timezoneSettings, setTimezoneSettings] = useState<TimezoneSetting[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Night Audit state
+  const [auditHistory, setAuditHistory] = useState<NightAuditRecord[]>([]);
+  const [activeAudit, setActiveAudit] = useState<NightAuditRecord | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditHistoryPage, setAuditHistoryPage] = useState(1);
+  const [auditHistoryTotal, setAuditHistoryTotal] = useState(0);
+  const AUDIT_PAGE_LIMIT = 10;
 
   const timezones = [
     { value: 'UTC', label: 'UTC - Coordinated Universal Time', offset: '+00:00' },
@@ -323,6 +448,107 @@ export const DayNightMode: React.FC = () => {
     toast.success('Property timezone updated');
   };
 
+  // --- Night Audit functions ---
+
+  const fetchAuditHistory = useCallback(async (page = 1) => {
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const response = await nightAuditService.getAuditHistory({
+        page,
+        limit: AUDIT_PAGE_LIMIT,
+      });
+      const data = response.data || response;
+      const audits: NightAuditRecord[] = data.data?.audits || data.audits || [];
+      const pagination = data.pagination || {};
+      setAuditHistory(audits);
+      setAuditHistoryTotal(pagination.total || audits.length);
+      setAuditHistoryPage(pagination.page || page);
+
+      // If there's an in-progress audit, set it as the active one
+      const running = audits.find(
+        (a: NightAuditRecord) => a.status === 'in_progress'
+      );
+      if (running) {
+        setActiveAudit(running);
+      } else if (audits.length > 0) {
+        setActiveAudit(audits[0]);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load audit history';
+      setAuditError(message);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [AUDIT_PAGE_LIMIT]);
+
+  const handleRunAudit = async () => {
+    setAuditRunning(true);
+    setAuditError(null);
+    try {
+      const response = await nightAuditService.runAudit({});
+      const data = response.data || response;
+      const audit: NightAuditRecord = data.data?.audit || data.audit;
+      if (audit) {
+        setActiveAudit(audit);
+        toast.success('Night audit completed successfully');
+      } else {
+        toast.success('Night audit initiated');
+      }
+      // Refresh history to show the new audit
+      await fetchAuditHistory(1);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to run night audit';
+      setAuditError(message);
+      toast.error(message);
+    } finally {
+      setAuditRunning(false);
+    }
+  };
+
+  const handleLockAudit = async (auditId: string) => {
+    try {
+      await nightAuditService.lockAudit(auditId);
+      toast.success('Audit day locked successfully');
+      await fetchAuditHistory(auditHistoryPage);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to lock audit';
+      toast.error(message);
+    }
+  };
+
+  const handleViewAudit = (audit: NightAuditRecord) => {
+    setActiveAudit(audit);
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  const formatAuditDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatTime = (dateStr?: string) => {
+    if (!dateStr) return '--';
+    return new Date(dateStr).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const auditHistoryTotalPages = Math.ceil(auditHistoryTotal / AUDIT_PAGE_LIMIT);
+
+  // --- End Night Audit functions ---
+
   const getThemeStyles = () => {
     const mode = currentMode === 'auto'
       ? (new Date().getHours() >= 6 && new Date().getHours() < 18 ? 'day' : 'night')
@@ -427,11 +653,12 @@ export const DayNightMode: React.FC = () => {
         </div>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="shifts">Shifts</TabsTrigger>
             <TabsTrigger value="hours">Operational Hours</TabsTrigger>
             <TabsTrigger value="timezones">Timezones</TabsTrigger>
+            <TabsTrigger value="night-audit" onClick={() => { if (auditHistory.length === 0 && !auditLoading) fetchAuditHistory(); }}>Night Audit</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -797,6 +1024,485 @@ export const DayNightMode: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="night-audit" className="space-y-4">
+            <ScrollArea className="h-[60vh]">
+              <div className="space-y-4 pr-4">
+                {/* Action Bar */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    <h3 className="text-lg font-semibold">Night Audit</h3>
+                    <Badge className="bg-indigo-100 text-indigo-800">Live</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fetchAuditHistory(auditHistoryPage)}
+                      disabled={auditLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-1 ${auditLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleRunAudit}
+                      disabled={auditRunning}
+                      className="gap-1"
+                    >
+                      {auditRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <PlayCircle className="h-4 w-4" />
+                      )}
+                      {auditRunning ? 'Running Audit...' : 'Run Night Audit'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Error State */}
+                {auditError && (
+                  <Card className="border-red-200 bg-red-50">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium text-red-800">Error</p>
+                        <p className="text-sm text-red-700">{auditError}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="ml-auto"
+                        onClick={() => { setAuditError(null); fetchAuditHistory(); }}
+                      >
+                        Retry
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Loading State */}
+                {auditLoading && !activeAudit && (
+                  <Card>
+                    <CardContent className="p-8 flex flex-col items-center justify-center gap-3">
+                      <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+                      <p className="text-sm text-gray-600">Loading audit data...</p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Active Audit Detail */}
+                {activeAudit && (
+                  <>
+                    {/* Audit Header */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <BarChart3 className="h-5 w-5" />
+                            Audit: {formatAuditDate(activeAudit.auditDate)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getAuditStatusBadge(activeAudit.status)}>
+                              {activeAudit.status.replace(/_/g, ' ').toUpperCase()}
+                            </Badge>
+                            {activeAudit.locked && (
+                              <Badge className="bg-gray-200 text-gray-800">
+                                <Lock className="h-3 w-3 mr-1" />
+                                LOCKED
+                              </Badge>
+                            )}
+                            {activeAudit.status === 'completed' && !activeAudit.locked && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleLockAudit(activeAudit._id)}
+                              >
+                                <Lock className="h-3 w-3 mr-1" />
+                                Lock Day
+                              </Button>
+                            )}
+                          </div>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <Label className="text-xs text-gray-500">Initiated By</Label>
+                            <div className="font-medium capitalize">{activeAudit.initiatedBy}</div>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-500">User</Label>
+                            <div className="font-medium">
+                              {activeAudit.initiatedByUser?.name || 'System'}
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-500">Started</Label>
+                            <div className="font-medium">{formatTime(activeAudit.startedAt)}</div>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-500">Completed</Label>
+                            <div className="font-medium">{formatTime(activeAudit.completedAt)}</div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Audit Steps */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Audit Steps</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {activeAudit.steps.map((step, index) => {
+                            const stepMeta = AUDIT_STEP_LABELS[step.name] || {
+                              label: step.name.replace(/_/g, ' '),
+                              icon: <FileText className="h-4 w-4" />,
+                            };
+                            return (
+                              <div
+                                key={`audit-step-${index}-${step.name}`}
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-white"
+                              >
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
+                                  {index + 1}
+                                </div>
+                                <div className="flex-shrink-0">
+                                  {stepMeta.icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{stepMeta.label}</div>
+                                  {step.errors && step.errors.length > 0 && (
+                                    <div className="text-xs text-red-600 mt-0.5 truncate">
+                                      {step.errors[0]}
+                                    </div>
+                                  )}
+                                  {step.warnings && step.warnings.length > 0 && (
+                                    <div className="text-xs text-yellow-600 mt-0.5 truncate">
+                                      {step.warnings[0]}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {step.startedAt && step.completedAt && (
+                                    <span className="text-xs text-gray-500">
+                                      {formatTime(step.startedAt)} - {formatTime(step.completedAt)}
+                                    </span>
+                                  )}
+                                  {getStepStatusIcon(step.status)}
+                                  <Badge className={`text-xs ${getStepStatusBadge(step.status)}`}>
+                                    {step.status.toUpperCase()}
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Audit Summary */}
+                    {activeAudit.summary && activeAudit.status !== 'pending' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Room Inventory */}
+                        {activeAudit.summary.roomInventory && (
+                          <Card>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <Building className="h-4 w-4" />
+                                Room Inventory
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-gray-500 text-xs">Total Rooms</div>
+                                  <div className="text-lg font-bold">{activeAudit.summary.roomInventory.totalRooms}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Occupied</div>
+                                  <div className="text-lg font-bold text-blue-600">{activeAudit.summary.roomInventory.occupied}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Vacant</div>
+                                  <div className="text-lg font-bold text-green-600">{activeAudit.summary.roomInventory.vacant}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Out of Order</div>
+                                  <div className="text-lg font-bold text-orange-600">{activeAudit.summary.roomInventory.outOfOrder}</div>
+                                </div>
+                                {activeAudit.summary.roomInventory.discrepancies > 0 && (
+                                  <div className="col-span-2">
+                                    <div className="flex items-center gap-1 text-red-600">
+                                      <AlertTriangle className="h-3 w-3" />
+                                      <span className="text-xs font-medium">
+                                        {activeAudit.summary.roomInventory.discrepancies} discrepancies found
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Booking Reconciliation */}
+                        {activeAudit.summary.bookingReconciliation && (
+                          <Card>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <ClipboardCheck className="h-4 w-4" />
+                                Booking Reconciliation
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-gray-500 text-xs">Total Bookings</div>
+                                  <div className="text-lg font-bold">{activeAudit.summary.bookingReconciliation.totalBookings}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Arrivals (Confirmed)</div>
+                                  <div className="text-lg font-bold text-blue-600">{activeAudit.summary.bookingReconciliation.confirmedArrivals}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Actual Arrivals</div>
+                                  <div className="text-lg font-bold text-green-600">{activeAudit.summary.bookingReconciliation.actualArrivals}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">No-Shows</div>
+                                  <div className="text-lg font-bold text-red-600">{activeAudit.summary.bookingReconciliation.noShows}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Cancellations</div>
+                                  <div className="font-bold text-orange-600">{activeAudit.summary.bookingReconciliation.cancellations}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Departures</div>
+                                  <div className="font-bold">{activeAudit.summary.bookingReconciliation.departures}</div>
+                                </div>
+                                <div className="col-span-2">
+                                  <div className="text-gray-500 text-xs">Stayovers</div>
+                                  <div className="font-bold">{activeAudit.summary.bookingReconciliation.stayovers}</div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Revenue */}
+                        {activeAudit.summary.revenue && (
+                          <Card>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" />
+                                Revenue
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-gray-500 text-xs">Room Revenue</div>
+                                  <div className="text-lg font-bold text-green-600">
+                                    {formatCurrency(activeAudit.summary.revenue.roomRevenue)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Total Revenue</div>
+                                  <div className="text-lg font-bold text-green-700">
+                                    {formatCurrency(activeAudit.summary.revenue.totalRevenue)}
+                                  </div>
+                                </div>
+                                <div className="col-span-2">
+                                  <div className="text-gray-500 text-xs">Journal Entries Created</div>
+                                  <div className="font-bold">{activeAudit.summary.revenue.journalEntriesCreated}</div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* No-Show Processing */}
+                        {activeAudit.summary.noShowProcessing && (
+                          <Card>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <UserX className="h-4 w-4" />
+                                No-Show Processing
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <div className="text-gray-500 text-xs">Detected</div>
+                                  <div className="text-lg font-bold">{activeAudit.summary.noShowProcessing.detected}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Processed</div>
+                                  <div className="text-lg font-bold text-blue-600">{activeAudit.summary.noShowProcessing.processed}</div>
+                                </div>
+                                <div className="col-span-2">
+                                  <div className="text-gray-500 text-xs">Charges Applied</div>
+                                  <div className="text-lg font-bold text-orange-600">
+                                    {formatCurrency(activeAudit.summary.noShowProcessing.chargesApplied)}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Settlement */}
+                        {activeAudit.summary.settlement && (
+                          <Card className="md:col-span-2">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <CreditCard className="h-4 w-4" />
+                                Settlement Verification
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                <div>
+                                  <div className="text-gray-500 text-xs">Payments Received</div>
+                                  <div className="text-lg font-bold text-green-600">
+                                    {formatCurrency(activeAudit.summary.settlement.totalPaymentsReceived)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Charges Posted</div>
+                                  <div className="text-lg font-bold text-blue-600">
+                                    {formatCurrency(activeAudit.summary.settlement.totalChargesPosted)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Variance</div>
+                                  <div className={`text-lg font-bold ${
+                                    activeAudit.summary.settlement.variance !== 0 ? 'text-red-600' : 'text-green-600'
+                                  }`}>
+                                    {formatCurrency(activeAudit.summary.settlement.variance)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-500 text-xs">Unreconciled Items</div>
+                                  <div className={`text-lg font-bold ${
+                                    activeAudit.summary.settlement.unreconciledItems > 0 ? 'text-orange-600' : 'text-green-600'
+                                  }`}>
+                                    {activeAudit.summary.settlement.unreconciledItems}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Audit History */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Audit History
+                      </span>
+                      {auditHistoryTotal > 0 && (
+                        <span className="text-sm font-normal text-gray-500">
+                          {auditHistoryTotal} total audits
+                        </span>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {auditHistory.length === 0 && !auditLoading && !auditError && (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+                        <p className="font-medium">No audit history yet</p>
+                        <p className="text-sm mt-1">
+                          Run a night audit to see results here.
+                        </p>
+                      </div>
+                    )}
+
+                    {auditHistory.length > 0 && (
+                      <div className="space-y-2">
+                        {auditHistory.map((audit) => (
+                          <div
+                            key={audit._id}
+                            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors ${
+                              activeAudit?._id === audit._id ? 'border-blue-300 bg-blue-50' : ''
+                            }`}
+                            onClick={() => handleViewAudit(audit)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex-shrink-0">
+                                {audit.status === 'completed' ? (
+                                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                ) : audit.status === 'failed' ? (
+                                  <XCircle className="h-5 w-5 text-red-600" />
+                                ) : audit.status === 'in_progress' ? (
+                                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+                                ) : (
+                                  <Clock className="h-5 w-5 text-gray-400" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-medium text-sm">
+                                  {formatAuditDate(audit.auditDate)}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {audit.initiatedBy === 'manual' ? 'Manual' : 'Scheduled'}
+                                  {audit.initiatedByUser?.name ? ` by ${audit.initiatedByUser.name}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {audit.locked && (
+                                <Lock className="h-3.5 w-3.5 text-gray-500" />
+                              )}
+                              <Badge className={`text-xs ${getAuditStatusBadge(audit.status)}`}>
+                                {audit.status.replace(/_/g, ' ').toUpperCase()}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Pagination */}
+                        {auditHistoryTotalPages > 1 && (
+                          <div className="flex items-center justify-between pt-3 border-t">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={auditHistoryPage <= 1 || auditLoading}
+                              onClick={() => fetchAuditHistory(auditHistoryPage - 1)}
+                            >
+                              Previous
+                            </Button>
+                            <span className="text-sm text-gray-500">
+                              Page {auditHistoryPage} of {auditHistoryTotalPages}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={auditHistoryPage >= auditHistoryTotalPages || auditLoading}
+                              onClick={() => fetchAuditHistory(auditHistoryPage + 1)}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </ScrollArea>
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-4">

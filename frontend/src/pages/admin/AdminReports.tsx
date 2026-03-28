@@ -26,13 +26,15 @@ export default function AdminReports() {
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
-  // Use selectedPropertyId from context, fallback to user's hotelId
-  const hotelId = selectedPropertyId || user?.hotelId || '68afe8080c02fcbe30092b8e';
+  // Use selected property context first; fallback to user's primary property only.
+  const hotelId = selectedPropertyId || user?.hotelId || '';
   
   const dateRanges = useReportDateRanges();
   const currentRange = dateRanges[selectedDateRange as keyof typeof dateRanges];
   
-  const reportsQuery = useDashboardReports(hotelId, currentRange, { enabled: currentView === 'overview' });
+  const reportsQuery = useDashboardReports(hotelId, currentRange, {
+    enabled: currentView === 'overview' && !!hotelId
+  });
   const exportMutation = useExportReport();
 
   // Real-time connection
@@ -318,11 +320,7 @@ export default function AdminReports() {
               }
               color="green"
               loading={reportsQuery.revenue.isLoading}
-              trend={
-                reportsQuery.revenue.data?.summary.totalRevenue > 0
-                  ? { direction: 'up', value: '12.5%' }
-                  : undefined
-              }
+              trend={undefined}
             />
             
             <MetricCard

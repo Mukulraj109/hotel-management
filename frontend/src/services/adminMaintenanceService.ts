@@ -62,6 +62,7 @@ export interface MaintenanceFilters {
   priority?: string;
   roomId?: string;
   assignedToUserId?: string;
+  hotelId?: string;
   page?: number;
   limit?: number;
 }
@@ -105,6 +106,7 @@ class AdminMaintenanceService {
   }
 
   private roomsCache: Array<{ _id: string; roomNumber: string; type: string; floor?: string }> = [];
+  private roomsCacheHotelId: string | null = null;
 
   async getTasks(filters: MaintenanceFilters = {}): Promise<ApiResponse<{ tasks: MaintenanceTask[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
     const queryParams = new URLSearchParams();
@@ -119,13 +121,16 @@ class AdminMaintenanceService {
     const endpoint = queryString ? `?${queryString}` : '';
 
     // Fetch available rooms to create a lookup cache if needed
-    if (this.roomsCache.length === 0) {
+    // Invalidate cache when switching hotels
+    const cacheHotelId = filters.hotelId || null;
+    if (cacheHotelId && (this.roomsCache.length === 0 || this.roomsCacheHotelId !== cacheHotelId)) {
       try {
-        const userHotelId = await this.getUserHotelId();
-        const roomsResponse = await this.getAvailableRooms(userHotelId);
+        const roomsResponse = await this.getAvailableRooms(cacheHotelId);
         this.roomsCache = roomsResponse.data;
+        this.roomsCacheHotelId = cacheHotelId;
       } catch (error) {
-        this.roomsCache = []; // Set empty array to prevent repeated failures
+        this.roomsCache = [];
+        this.roomsCacheHotelId = cacheHotelId;
       }
     }
 
@@ -208,15 +213,18 @@ class AdminMaintenanceService {
       const userData = response.data?.user;
 
       if (userData?.hotelId) {
-        this.hotelIdCache = userData.hotelId;
+        // hotelId may be a populated object { _id, name, ... } or a plain string
+        const hotelId = typeof userData.hotelId === 'object' && userData.hotelId._id
+          ? String(userData.hotelId._id)
+          : String(userData.hotelId);
+        this.hotelIdCache = hotelId;
         this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-        return userData.hotelId;
+        return hotelId;
       }
     } catch {
       // Error handled silently
     }
 
-    // TODO: Replace with proper hotel ID endpoint when available
     throw new Error('Unable to determine hotel ID for this user');
   }
 
@@ -232,7 +240,7 @@ class AdminMaintenanceService {
     // Transform frontend data to match backend interface
     const backendData = {
       ...taskData,
-      hotelId: userHotelId, // Always include hotelId in request body
+      hotelId: taskData.hotelId || userHotelId, // Use provided hotelId or fall back to user's primary
       assignedTo: taskData.assignedToUserId, // Frontend uses 'assignedToUserId', backend expects 'assignedTo'
       // Ensure required fields have valid values
       title: String(taskData.title).trim(),

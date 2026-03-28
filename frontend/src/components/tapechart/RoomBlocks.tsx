@@ -68,7 +68,7 @@ const RoomBlocks: React.FC = () => {
       setRoomBlocks(result.data);
       setPagination(result.pagination);
     } catch (error: unknown) {
-      setError(error.message || 'Failed to load room blocks. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to load room blocks. Please try again.');
       setRoomBlocks([]);
     } finally {
       setLoading(false);
@@ -82,7 +82,7 @@ const RoomBlocks: React.FC = () => {
       const statsData = await roomBlockService.getRoomBlockStats();
       setStats(statsData);
     } catch (error: unknown) {
-      setStatsError(error.message || 'Failed to load statistics.');
+      setStatsError(error instanceof Error ? error.message : 'Failed to load statistics.');
       setStats(null);
     } finally {
       setStatsLoading(false);

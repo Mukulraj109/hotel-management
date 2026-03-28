@@ -321,10 +321,52 @@ class RevenueManagementService {
     }
   }
 
+  // Delete package
+  async deletePackage(id: string): Promise<void> {
+    try {
+      await api.delete(`${this.baseURL}/packages/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
   // Create corporate rate
   async createCorporateRate(rateData: Record<string, unknown>): Promise<unknown> {
     try {
       const response = await api.post(`${this.baseURL}/corporate-rates`, rateData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  // Update corporate rate
+  async updateCorporateRate(id: string, rateData: Record<string, unknown>): Promise<unknown> {
+    try {
+      const response = await api.put(`${this.baseURL}/corporate-rates/${id}`, rateData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  // Delete corporate rate
+  async deleteCorporateRate(id: string): Promise<void> {
+    try {
+      await api.delete(`${this.baseURL}/corporate-rates/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  // Generate demand forecast
+  async generateDemandForecast(params?: {
+    startDate?: string;
+    endDate?: string;
+    roomTypeId?: string;
+  }): Promise<unknown> {
+    try {
+      const response = await api.post(`${this.baseURL}/demand-forecast`, params);
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

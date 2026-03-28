@@ -134,4 +134,17 @@ export function DropdownMenuSeparator({ className }: DropdownMenuSeparatorProps)
   );
 }
 
+interface DropdownMenuLabelProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function DropdownMenuLabel({ children, className }: DropdownMenuLabelProps) {
+  return (
+    <div className={cn('px-2 py-1.5 text-sm font-semibold text-gray-900', className)}>
+      {children}
+    </div>
+  );
+}
+
 export default DropdownMenu;

@@ -137,12 +137,11 @@ const hotelServiceSchema = new mongoose.Schema({
     type: String,
     validate: {
       validator: function(value) {
-        if (value && !value.match(/^https?:\/\/.+/)) {
-          return false;
-        }
-        return true;
+        if (!value) return true;
+        // Accept both HTTP URLs and local upload paths
+        return /^https?:\/\/.+/.test(value) || /^\/?(uploads|images)\//.test(value);
       },
-      message: 'Image URL must be a valid HTTP/HTTPS URL'
+      message: 'Image must be a valid URL or upload path'
     }
   }],
   amenities: [{
@@ -343,10 +342,15 @@ hotelServiceSchema.statics.getFeaturedServices = async function(hotelId) {
 };
 
 // Static method to search services
-hotelServiceSchema.statics.searchServices = async function(hotelId, searchTerm) {
+hotelServiceSchema.statics.searchServices = async function(hotelId, searchTerm, { page = 1, limit = 20 } = {}) {
   try {
-    const regex = new RegExp(searchTerm, 'i');
-  
+    // Escape regex special characters to prevent ReDoS
+    const safeSearch = String(searchTerm).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').trim();
+    if (!safeSearch) return [];
+
+    const regex = new RegExp(safeSearch, 'i');
+    const limitNum = Math.min(100, Math.max(1, limit));
+
     return await this.find({
       hotelId,
       isActive: true,
@@ -355,7 +359,11 @@ hotelServiceSchema.statics.searchServices = async function(hotelId, searchTerm) 
         { description: regex },
         { tags: regex }
       ]
-    }).sort({ featured: -1, 'rating.average': -1 }).lean().limit(1000);
+    })
+      .sort({ featured: -1, 'rating.average': -1 })
+      .skip((page - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }

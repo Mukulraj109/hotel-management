@@ -26,6 +26,7 @@ import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameM
 import { toast } from 'sonner';
 import { travelAgentService, TravelAgentRate } from '../../services/travelAgentService';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { api } from '../../services/api';
 
 interface RoomTypeRate {
   roomTypeId: string;
@@ -64,99 +65,6 @@ const ViewRates: React.FC = () => {
   const [seasonalRates, setSeasonalRates] = useState<SeasonalRate[]>([]);
   const [roomTypes, setRoomTypes] = useState<string[]>([]);
 
-  // Mock data for rates
-  const mockRates: RoomTypeRate[] = [
-    {
-      roomTypeId: 'deluxe-room',
-      roomTypeName: 'Deluxe Room',
-      standardRate: 150,
-      agentRate: 135,
-      discount: 10,
-      commissionRate: 10,
-      description: 'Spacious room with city view and modern amenities',
-      maxOccupancy: 2,
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV', 'Mini Bar'],
-      availability: 5,
-      validFrom: new Date(),
-      validTo: new Date(2024, 11, 31),
-      minimumNights: 1,
-      conditions: ['Non-refundable', 'Advance booking required']
-    },
-    {
-      roomTypeId: 'executive-suite',
-      roomTypeName: 'Executive Suite',
-      standardRate: 280,
-      agentRate: 250,
-      discount: 10.7,
-      commissionRate: 12,
-      description: 'Luxurious suite with separate living area and premium facilities',
-      maxOccupancy: 4,
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV', 'Mini Bar', 'Room Service', 'Balcony'],
-      availability: 3,
-      validFrom: new Date(),
-      validTo: new Date(2024, 11, 31),
-      minimumNights: 2,
-      conditions: ['Complimentary breakfast', 'Late checkout available']
-    },
-    {
-      roomTypeId: 'standard-room',
-      roomTypeName: 'Standard Room',
-      standardRate: 100,
-      agentRate: 90,
-      discount: 10,
-      commissionRate: 8,
-      description: 'Comfortable room with essential amenities',
-      maxOccupancy: 2,
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV'],
-      availability: 8,
-      validFrom: new Date(),
-      validTo: new Date(2024, 11, 31),
-      minimumNights: 1,
-      conditions: ['Flexible cancellation']
-    },
-    {
-      roomTypeId: 'presidential-suite',
-      roomTypeName: 'Presidential Suite',
-      standardRate: 500,
-      agentRate: 425,
-      discount: 15,
-      commissionRate: 15,
-      description: 'Ultimate luxury with panoramic views and exclusive services',
-      maxOccupancy: 6,
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV', 'Mini Bar', 'Room Service', 'Balcony', 'Butler Service', 'Hot Tub'],
-      availability: 1,
-      validFrom: new Date(),
-      validTo: new Date(2024, 11, 31),
-      minimumNights: 3,
-      conditions: ['Complimentary airport transfer', 'Personal concierge', 'VIP amenities']
-    }
-  ];
-
-  const mockSeasonalRates: SeasonalRate[] = [
-    {
-      season: 'Peak Season',
-      period: 'Dec 15 - Jan 15, Jun 15 - Aug 31',
-      roomRates: mockRates.map(rate => ({
-        ...rate,
-        agentRate: rate.agentRate * 1.2,
-        commissionRate: rate.commissionRate + 2
-      })),
-      commissionBonus: 2,
-      description: 'Holiday and summer peak season rates'
-    },
-    {
-      season: 'Off Season',
-      period: 'Jan 16 - Mar 31, Sep 1 - Nov 30',
-      roomRates: mockRates.map(rate => ({
-        ...rate,
-        agentRate: rate.agentRate * 0.8,
-        commissionRate: rate.commissionRate + 1
-      })),
-      commissionBonus: 1,
-      description: 'Special off-season pricing with bonus commission'
-    }
-  ];
-
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -170,17 +78,57 @@ const ViewRates: React.FC = () => {
   const fetchRates = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
 
-      setRates(mockRates);
-      setSeasonalRates(mockSeasonalRates);
-      setRoomTypes(['all', ...Array.from(new Set(mockRates.map(r => r.roomTypeName)))]);
+      // Fetch real room types from the backend
+      const response = await api.get('/room-types', { params: { limit: 100 } });
+      if (!isMountedRef.current) return;
+
+      const rawRoomTypes = response.data?.data?.roomTypes || response.data?.data || response.data?.roomTypes || [];
+
+      if (!Array.isArray(rawRoomTypes) || rawRoomTypes.length === 0) {
+        setRates([]);
+        setSeasonalRates([]);
+        setRoomTypes(['all']);
+        return;
+      }
+
+      // Map room type data to RoomTypeRate interface
+      const mappedRates: RoomTypeRate[] = rawRoomTypes.map((rt: Record<string, unknown>) => {
+        const baseRate = (rt.basePrice as number) || (rt.baseRate as number) || (rt.ratePerNight as number) || 0;
+        const agentDiscount = 0.1; // 10% default agent discount
+        const agentRate = Math.round(baseRate * (1 - agentDiscount));
+        return {
+          roomTypeId: (rt._id as string) || (rt.id as string) || '',
+          roomTypeName: (rt.name as string) || (rt.displayName as string) || 'Room',
+          standardRate: baseRate,
+          agentRate,
+          discount: agentDiscount * 100,
+          commissionRate: 10,
+          description: (rt.description as string) || '',
+          maxOccupancy: (rt.maxOccupancy as number) || (rt.capacity as number) || 2,
+          amenities: (rt.amenities as string[]) || [],
+          availability: (rt.availableRooms as number) || (rt.totalRooms as number) || 0,
+          validFrom: rt.validFrom ? new Date(rt.validFrom as string) : new Date(),
+          validTo: rt.validTo ? new Date(rt.validTo as string) : new Date(new Date().getFullYear(), 11, 31),
+          minimumNights: (rt.minimumNights as number) || 1,
+          conditions: (rt.conditions as string[]) || []
+        };
+      });
+
+      setRates(mappedRates);
+      setRoomTypes(['all', ...Array.from(new Set(mappedRates.map(r => r.roomTypeName)))]);
+      // No seasonal rates from backend - leave empty
+      setSeasonalRates([]);
     } catch (error) {
+      if (!isMountedRef.current) return;
       toast.error('Failed to load rates');
+      setRates([]);
+      setSeasonalRates([]);
+      setRoomTypes(['all']);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -347,7 +295,14 @@ const ViewRates: React.FC = () => {
         </div>
 
         {/* Table View */}
-        {viewMode === 'table' && (
+        {viewMode === 'table' && filteredRates.length === 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+            <Bed className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No rates configured</h3>
+            <p className="text-gray-600">Room rates are not yet available. Please check back later or contact the hotel.</p>
+          </div>
+        )}
+        {viewMode === 'table' && filteredRates.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">

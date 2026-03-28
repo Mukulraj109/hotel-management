@@ -136,79 +136,60 @@ export function RoomServiceWidget({
         }
       }
 
-      // Generate available services based on room inventory or use mock data
-      const mockSummary: RoomServiceSummary = {
-        availableServices: [
-          {
-            category: 'minibar',
-            icon: serviceCategoryIcons.minibar,
-            name: 'Minibar & Refreshments',
-            description: 'Beverages, snacks, and refreshments',
-            items: [
-              { id: '1', name: 'Bottled Water', price: 0, isComplimentary: true, maxComplimentary: 2, inStock: true },
-              { id: '2', name: 'Coffee/Tea Set', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '3', name: 'Premium Wine', price: 25.00, isComplimentary: false, maxComplimentary: 0, inStock: true },
-              { id: '4', name: 'Champagne', price: 45.00, isComplimentary: false, maxComplimentary: 0, inStock: true },
-              { id: '5', name: 'Gourmet Snacks', price: 15.00, isComplimentary: false, maxComplimentary: 0, inStock: true }
-            ]
-          },
-          {
-            category: 'toiletries',
-            icon: serviceCategoryIcons.toiletries,
-            name: 'Bathroom Amenities',
-            description: 'Premium toiletries and bathroom essentials',
-            items: [
-              { id: '6', name: 'Luxury Towel Set', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '7', name: 'Premium Shampoo', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '8', name: 'Bathrobe', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '9', name: 'Extra Toiletries', price: 12.00, isComplimentary: false, maxComplimentary: 0, inStock: true }
-            ]
-          },
-          {
-            category: 'bedding',
-            icon: serviceCategoryIcons.bedding,
-            name: 'Bedding & Comfort',
-            description: 'Additional bedding and comfort items',
-            items: [
-              { id: '10', name: 'Extra Pillows', price: 0, isComplimentary: true, maxComplimentary: 2, inStock: true },
-              { id: '11', name: 'Extra Blankets', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '12', name: 'Premium Bed Sheets', price: 20.00, isComplimentary: false, maxComplimentary: 0, inStock: true }
-            ]
-          },
-          {
-            category: 'electronics',
-            icon: serviceCategoryIcons.electronics,
-            name: 'Electronics & Entertainment',
-            description: 'Device charging and entertainment options',
-            items: [
-              { id: '13', name: 'Phone Charger', price: 0, isComplimentary: true, maxComplimentary: 1, inStock: true },
-              { id: '14', name: 'Bluetooth Speaker', price: 15.00, isComplimentary: false, maxComplimentary: 0, inStock: true },
-              { id: '15', name: 'HDMI Cable', price: 8.00, isComplimentary: false, maxComplimentary: 0, inStock: true }
-            ]
+      // Build services from room inventory data, or show empty if no data available
+      const availableServices: RoomServiceSummary['availableServices'] = [];
+
+      if (roomInventoryData?.items && Array.isArray(roomInventoryData.items)) {
+        // Group items by category from real inventory data
+        const categoryMap = new Map<string, RoomServiceSummary['availableServices'][0]>();
+        for (const item of roomInventoryData.items) {
+          const category = item.itemId?.category || 'other';
+          if (!categoryMap.has(category)) {
+            const iconKey = category as keyof typeof serviceCategoryIcons;
+            categoryMap.set(category, {
+              category,
+              icon: serviceCategoryIcons[iconKey] || serviceCategoryIcons.amenities,
+              name: category.charAt(0).toUpperCase() + category.slice(1),
+              description: `${category.charAt(0).toUpperCase() + category.slice(1)} items`,
+              items: []
+            });
           }
-        ],
+          categoryMap.get(category)!.items.push({
+            id: item.itemId?._id || item._id,
+            name: item.itemId?.name || 'Unknown Item',
+            price: item.itemId?.unitPrice || 0,
+            isComplimentary: item.itemId?.isComplimentary || false,
+            maxComplimentary: item.itemId?.maxComplimentary || 0,
+            inStock: (item.currentQuantity || 0) > 0,
+            description: item.itemId?.description
+          });
+        }
+        availableServices.push(...categoryMap.values());
+      }
+
+      const complimentaryUsage = roomInventoryData?.items
+        ?.filter((item: Record<string, unknown>) => (item.itemId as Record<string, unknown>)?.isComplimentary)
+        .map((item: Record<string, unknown>) => ({
+          itemName: (item.itemId as Record<string, unknown>)?.name as string || 'Unknown',
+          used: ((item.itemId as Record<string, unknown>)?.maxComplimentary as number || 0) - ((item.currentQuantity as number) || 0),
+          allowed: (item.itemId as Record<string, unknown>)?.maxComplimentary as number || 0,
+          remaining: (item.currentQuantity as number) || 0
+        })) || [];
+
+      const summaryData: RoomServiceSummary = {
+        availableServices,
         currentCharges: [],
         inventoryCharges: inventoryCharges,
-        totalCharges: inventoryCharges.reduce((sum, charge) => sum + charge.cost, 0),
+        totalCharges: inventoryCharges.reduce((sum: number, charge: { cost: number }) => sum + charge.cost, 0),
         roomCondition: {
-          score: roomInventoryData?.conditionScore || 92,
-          status: roomInventoryData?.status || 'clean',
-          lastInspection: roomInventoryData?.lastInspectionDate || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+          score: roomInventoryData?.conditionScore || 0,
+          status: roomInventoryData?.status || 'unknown',
+          lastInspection: roomInventoryData?.lastInspectionDate || ''
         },
-        complimentaryUsage: roomInventoryData?.items?.filter((item: Record<string, unknown>) => item.itemId.isComplimentary)
-          .map((item: Record<string, unknown>) => ({
-            itemName: item.itemId.name,
-            used: item.itemId.maxComplimentary - (item.currentQuantity || 0),
-            allowed: item.itemId.maxComplimentary,
-            remaining: item.currentQuantity || 0
-          })) || [
-          { itemName: 'Bottled Water', used: 1, allowed: 2, remaining: 1 },
-          { itemName: 'Coffee/Tea Set', used: 1, allowed: 1, remaining: 0 },
-          { itemName: 'Extra Pillows', used: 0, allowed: 2, remaining: 2 }
-        ]
+        complimentaryUsage
       };
 
-      setSummary(mockSummary);
+      setSummary(summaryData);
     } catch {
       // Error handled silently
     } finally {

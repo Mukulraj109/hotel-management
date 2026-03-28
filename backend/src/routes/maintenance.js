@@ -133,7 +133,7 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(mutatio
   
   await task.populate([
     { path: 'hotelId', select: 'name' },
-    { path: 'roomId', select: 'number type' },
+    { path: 'roomId', select: 'roomNumber type' },
     { path: 'reportedBy', select: 'name' }
   ]);
 
@@ -200,13 +200,14 @@ router.get('/', catchAsync(async (req, res) => {
 
   const query = {};
 
-  // Role-based filtering
+  // Role-based filtering — always scope by hotelId for tenant isolation
   if (req.user.role === 'staff') {
     query.hotelId = req.user.hotelId;
     // Staff users should only see tasks assigned to them
     query.assignedTo = req.user._id;
-  } else if (req.user.role === 'admin' && req.query.hotelId) {
-    query.hotelId = req.query.hotelId;
+  } else {
+    // For admin/manager/frontdesk: use query param or fall back to user's hotelId
+    query.hotelId = req.query.hotelId || req.user.hotelId;
   }
 
   // Apply filters
@@ -227,7 +228,7 @@ router.get('/', catchAsync(async (req, res) => {
   const [tasks, total] = await Promise.all([
     MaintenanceTask.find(query)
       .populate('hotelId', 'name')
-      .populate('roomId', 'number type floor')
+      .populate('roomId', 'roomNumber type floor')
       .populate('assignedTo', 'name')
       .populate('reportedBy', 'name')
       .sort('-createdAt')
@@ -468,7 +469,7 @@ router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), ca
 router.get('/:id', catchAsync(async (req, res) => {
   const task = await MaintenanceTask.findById(req.params.id)
     .populate('hotelId', 'name contact')
-    .populate('roomId', 'number type floor amenities')
+    .populate('roomId', 'roomNumber type floor amenities')
     .populate('assignedTo', 'name email phone')
     .populate('reportedBy', 'name email').lean();
 
@@ -608,7 +609,7 @@ router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(mut
 
   await task.populate([
     { path: 'hotelId', select: 'name' },
-    { path: 'roomId', select: 'number type' },
+    { path: 'roomId', select: 'roomNumber type' },
     { path: 'assignedTo', select: 'name' }
   ]);
 

@@ -178,10 +178,15 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
 
       let selectedHotel = '';
 
-      if (user?.hotelId) {
-        const userHotel = hotelsList.find(hotel => hotel._id === user.hotelId);
+      // Extract hotelId string — user.hotelId may be a populated object or a string
+      const userHotelIdStr = typeof user?.hotelId === 'object' && user?.hotelId?._id
+        ? String(user.hotelId._id)
+        : user?.hotelId ? String(user.hotelId) : '';
+
+      if (userHotelIdStr) {
+        const userHotel = hotelsList.find((hotel: { _id: string }) => hotel._id === userHotelIdStr);
         if (userHotel) {
-          selectedHotel = user.hotelId;
+          selectedHotel = userHotelIdStr;
         }
       }
 
@@ -244,8 +249,9 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
         role: 'guest'
       };
 
-      // Add hotelId if available
-      const hotelId = selectedHotelId || user?.hotelId;
+      // Add hotelId if available (handle populated object or string)
+      const hotelId = selectedHotelId ||
+        (typeof user?.hotelId === 'object' && user?.hotelId?._id ? String(user.hotelId._id) : user?.hotelId ? String(user.hotelId) : '');
       if (hotelId) {
         searchParams.hotelId = hotelId;
       }
@@ -269,7 +275,11 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
       }
     } else {
       if (!guestForm.name.trim()) newErrors.name = 'Name is required';
-      if (!guestForm.email.trim()) newErrors.email = 'Email is required';
+      if (!guestForm.email.trim()) {
+        newErrors.email = 'Email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestForm.email)) {
+        newErrors.email = 'Please enter a valid email address';
+      }
       if (!guestForm.phone.trim()) newErrors.phone = 'Phone is required';
       if (!guestForm.address.trim()) newErrors.address = 'Address is required';
       if (!guestForm.city.trim()) newErrors.city = 'City is required';
@@ -284,6 +294,9 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
   const validateBookingForm = () => {
     const newErrors: Record<string, string> = {};
 
+    if (!bookingForm.hotelId) {
+      newErrors.hotel = 'Please select a property';
+    }
     if (!bookingForm.roomIds.length) {
       newErrors.rooms = 'Please select at least one room';
     }

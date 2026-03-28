@@ -7,7 +7,6 @@ import {
   FunnelIcon,
   StarIcon,
   UserGroupIcon,
-  CrownIcon,
   SparklesIcon,
   GiftIcon,
   UserPlusIcon,
@@ -253,7 +252,7 @@ const AdminVIP: React.FC = () => {
       <div className="p-6">
         <PropertyBreadcrumb items={['VIP Management']} />
         <div className="text-center py-12">
-          <CrownIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <SparklesIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
           <p className="text-gray-500">Please select a property to view VIP guests.</p>
         </div>
@@ -536,7 +535,7 @@ const AdminVIP: React.FC = () => {
 
         {!loading && vipGuests.length === 0 && (
           <div className="p-8 text-center">
-            <CrownIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <SparklesIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No VIP guests found</p>
             <button
               onClick={handleCreate}

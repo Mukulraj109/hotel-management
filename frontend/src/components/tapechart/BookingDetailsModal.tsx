@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -344,7 +345,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                   </span>
                   <span className="flex items-center gap-1">
                     <IndianRupee className="w-4 h-4" />
-                    ₹{(booking.totalAmount || 0).toLocaleString()}
+                    {formatCurrency(booking.totalAmount || 0)}
                   </span>
                 </div>
               </div>
@@ -520,12 +521,12 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-600">Current Rate:</span>
-                          <span className="font-semibold text-green-700">₹{(room.rate || 0).toLocaleString()}</span>
+                          <span className="font-semibold text-green-700">{formatCurrency(room.rate || 0)}</span>
                         </div>
                         {room.roomId?.baseRate && (
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-gray-500">Base Rate:</span>
-                            <span className="text-xs text-gray-500">₹{room.roomId.baseRate.toLocaleString()}</span>
+                            <span className="text-xs text-gray-500">{formatCurrency(room.roomId.baseRate)}</span>
                           </div>
                         )}
                       </div>
@@ -839,7 +840,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-green-800">
-                      ₹{booking.totalAmount.toLocaleString()}
+                      {formatCurrency(booking.totalAmount)}
                     </div>
                   </div>
                   <div className="relative p-5 border-0 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100/70 shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -850,7 +851,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-blue-800">
-                      ₹{booking.paymentDetails.totalPaid.toLocaleString()}
+                      {formatCurrency(booking.paymentDetails.totalPaid)}
                     </div>
                   </div>
                   <div className="relative p-5 border-0 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100/70 shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -861,7 +862,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-orange-800">
-                      ₹{booking.paymentDetails.remainingAmount.toLocaleString()}
+                      {formatCurrency(booking.paymentDetails.remainingAmount)}
                     </div>
                   </div>
                 </div>
@@ -889,7 +890,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                       {booking.paymentDetails.paymentMethods.map((method, index) => (
                         <div key={`booking-paymentDetails-paymentMethods-${index}-${method.type}`} className="flex justify-between items-center p-2 border rounded">
                           <span className="text-sm">{method.type}</span>
-                          <span className="text-sm font-medium">₹{method.amount.toLocaleString()}</span>
+                          <span className="text-sm font-medium">{formatCurrency(method.amount)}</span>
                         </div>
                       ))}
                     </div>

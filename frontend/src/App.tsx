@@ -7,11 +7,10 @@ import { PropertyProvider } from './context/PropertyContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
-import { apiErrorInterceptor } from './services/apiErrorInterceptor';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsProvider } from './components/KeyboardShortcutsProvider';
 import RouteLoadingFallback from './components/ui/RouteLoadingFallback';
 import PageWrapper from './components/PageWrapper';
+import { adminUnroutedRoutes } from './routes/AdminUnroutedRoutes';
 
 // Public Pages
 import HomePage from './pages/public/HomePage';
@@ -63,6 +62,8 @@ const GuestDocuments = React.lazy(() => import('./pages/guest/GuestDocuments'));
 const ProfileSettings = React.lazy(() => import('./pages/guest/ProfileSettings'));
 const PreferencesSettings = React.lazy(() => import('./pages/guest/PreferencesSettings'));
 const PrivacySettings = React.lazy(() => import('./pages/guest/PrivacySettings'));
+const GuestSettings = React.lazy(() => import('./pages/guest/GuestSettings'));
+const ImprovedBookingPage = React.lazy(() => import('./pages/public/ImprovedBookingPage'));
 
 // Admin Pages (lazy loaded)
 const AdminDashboardWrapper = React.lazy(() => import('./pages/admin/AdminDashboardWrapper'));
@@ -122,12 +123,17 @@ const AdminInventoryRequests = React.lazy(() => import('./pages/admin/AdminInven
 const AdminServiceRequests = React.lazy(() => import('./pages/admin/AdminServiceRequests'));
 const AdminCheckoutInventoryManagement = React.lazy(() => import('./pages/admin/AdminCheckoutInventoryManagement'));
 const AdminTravelDashboard = React.lazy(() => import('./pages/admin/AdminTravelDashboard'));
+const TravelAgentForm = React.lazy(() => import('./pages/admin/TravelAgentForm'));
+const TravelAgentDetail = React.lazy(() => import('./pages/admin/TravelAgentDetail'));
 const AdminDocumentVerification = React.lazy(() => import('./pages/admin/AdminDocumentVerification'));
 const AdminDocumentAnalytics = React.lazy(() => import('./pages/admin/AdminDocumentAnalytics'));
 const AdminNotifications = React.lazy(() => import('./pages/admin/AdminNotifications'));
 const AdminGuestManagement = React.lazy(() => import('./pages/admin/AdminGuestManagement'));
 const PortfolioDashboard = React.lazy(() => import('./pages/admin/PortfolioDashboard'));
 const ApprovalManagement = React.lazy(() => import('./pages/admin/ApprovalManagement'));
+const AdminAuditLogPage = React.lazy(() => import('./pages/admin/AuditLog'));
+const AdminSettingsHubPage = React.lazy(() => import('./pages/admin/AdminSettings'));
+const AdminRevenueAnalyticsPage = React.lazy(() => import('./pages/admin/analytics/RevenueAnalytics'));
 
 // Admin Settings Pages (lazy loaded)
 const AdminProfileSettings = React.lazy(() => import('./pages/admin/settings/ProfileSettings'));
@@ -217,7 +223,7 @@ function App() {
           <PropertyProvider>
             <KeyboardShortcutsProvider>
               <ThemeProvider>
-                <ErrorBoundary>
+                <ErrorBoundary showErrorDetails>
               <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
               <Routes>
               {/* Public Routes - Accessible to all users */}
@@ -226,6 +232,7 @@ function App() {
                 <Route path="rooms" element={<RoomsPage />} />
                 <Route path="rooms/:type" element={<RoomDetailPage />} />
                 <Route path="booking" element={<BookingPage />} />
+                <Route path="improved-booking" element={<Suspense fallback={<RouteLoadingFallback />}><ImprovedBookingPage /></Suspense>} />
                 <Route path="contact" element={<ContactPage />} />
                 <Route path="reviews" element={<ReviewsPage />} />
               </Route>
@@ -265,6 +272,7 @@ function App() {
                 <Route path="settings/profile" element={<Suspense fallback={<RouteLoadingFallback />}><ProfileSettings /></Suspense>} />
                 <Route path="settings/preferences" element={<Suspense fallback={<RouteLoadingFallback />}><PreferencesSettings /></Suspense>} />
                 <Route path="settings/privacy" element={<Suspense fallback={<RouteLoadingFallback />}><PrivacySettings /></Suspense>} />
+                <Route path="settings" element={<Suspense fallback={<RouteLoadingFallback />}><GuestSettings /></Suspense>} />
                 <Route path="mobile-app" element={<Suspense fallback={<RouteLoadingFallback />}><ContactlessGuestApp /></Suspense>} />
               </Route>
 
@@ -303,12 +311,16 @@ function App() {
                 <Route path="room-types" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomTypes /></Suspense>} />
                 <Route path="room-pricing" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomPricing /></Suspense>} />
                 <Route path="room-allotments/create" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomAllotmentCreate /></Suspense>} />
+                <Route path="room-allotments/:id/edit" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomAllotmentCreate /></Suspense>} />
                 <Route path="room-allotments" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomTypeAllotments /></Suspense>} />
                 <Route path="reports" element={<Suspense fallback={<RouteLoadingFallback />}><AdminReports /></Suspense>} />
                 <Route path="bypass-checkout" element={<Suspense fallback={<RouteLoadingFallback />}><AdminBypassCheckoutPage /></Suspense>} />
                 <Route path="bypass-approvals" element={<Suspense fallback={<RouteLoadingFallback />}><AdminBypassApprovalsPage /></Suspense>} />
                 <Route path="security-dashboard" element={<Suspense fallback={<RouteLoadingFallback />}><AdminSecurityDashboardPage /></Suspense>} />
                 <Route path="financial-analytics" element={<Suspense fallback={<RouteLoadingFallback />}><AdminFinancialAnalyticsPage /></Suspense>} />
+                <Route path="analytics/revenue" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRevenueAnalyticsPage /></Suspense>} />
+                <Route path="audit-log" element={<Suspense fallback={<RouteLoadingFallback />}><AdminAuditLogPage /></Suspense>} />
+                <Route path="configuration" element={<Suspense fallback={<RouteLoadingFallback />}><AdminSettingsHubPage /></Suspense>} />
                 <Route path="ota" element={<Suspense fallback={<RouteLoadingFallback />}><AdminOTA /></Suspense>} />
                 <Route path="billing" element={<Suspense fallback={<RouteLoadingFallback />}><BillingHistory /></Suspense>} />
                 <Route path="tape-chart" element={<Suspense fallback={<RouteLoadingFallback />}><AdminTapeChart /></Suspense>} />
@@ -337,6 +349,9 @@ function App() {
                 <Route path="notifications" element={<Suspense fallback={<RouteLoadingFallback />}><AdminNotifications /></Suspense>} />
                 <Route path="notification-analytics" element={<Suspense fallback={<RouteLoadingFallback />}><NotificationAnalyticsDashboard /></Suspense>} />
                 <Route path="travel-dashboard" element={<Suspense fallback={<RouteLoadingFallback />}><AdminTravelDashboard /></Suspense>} />
+                <Route path="travel-agents/new" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentForm /></Suspense>} />
+                <Route path="travel-agents/:id" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentDetail /></Suspense>} />
+                <Route path="travel-agents/:id/edit" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentForm /></Suspense>} />
                 <Route path="approval-management" element={<Suspense fallback={<RouteLoadingFallback />}><ApprovalManagement /></Suspense>} />
 
                 {/* Admin Settings Routes */}
@@ -346,6 +361,8 @@ function App() {
                 <Route path="settings/hotel" element={<Suspense fallback={<RouteLoadingFallback />}><AdminHotelSettings /></Suspense>} />
                 <Route path="settings/system" element={<Suspense fallback={<RouteLoadingFallback />}><AdminSystemSettings /></Suspense>} />
                 <Route path="settings/integrations" element={<Suspense fallback={<RouteLoadingFallback />}><AdminIntegrationSettings /></Suspense>} />
+
+                {adminUnroutedRoutes}
               </Route>
 
               {/* FrontDesk Routes */}
@@ -387,9 +404,9 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentDashboard /></Suspense>} />
-                <Route path="dashboard" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentDashboard /></Suspense>} />
+                <Route path="dashboard" element={<Navigate to="/travel-agent" replace />} />
                 <Route path="notifications" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentNotifications /></Suspense>} />
-                <Route path="bookings" element={<Suspense fallback={<RouteLoadingFallback />}><TravelAgentDashboard /></Suspense>} />
+                <Route path="bookings" element={<Navigate to="/travel-agent" replace />} />
                 <Route path="booking/new" element={<Suspense fallback={<RouteLoadingFallback />}><BookingCreate /></Suspense>} />
                 <Route path="new-booking" element={<Suspense fallback={<RouteLoadingFallback />}><BookingCreate /></Suspense>} />
                 <Route path="multi-booking" element={<Suspense fallback={<RouteLoadingFallback />}><MultiBooking /></Suspense>} />

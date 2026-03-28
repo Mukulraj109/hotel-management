@@ -1,8 +1,50 @@
+import mongoose from 'mongoose';
 import Hotel from '../models/Hotel.js';
 import PropertyGroup from '../models/PropertyGroup.js';
 import { ApplicationError } from './errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+
+/**
+ * `User.properties` / `primaryProperty` / `hotelId` may be ObjectIds or populated hotel docs.
+ * Using `.toString()` on plain objects yields "[object Object]" and breaks `$in` queries.
+ * @param {unknown} ref
+ * @returns {string|null}
+ */
+function isObjectIdInstance(ref) {
+  return (
+    ref instanceof mongoose.Types.ObjectId ||
+    ref?.constructor?.name === 'ObjectId' ||
+    ref?.constructor?.name === 'ObjectID'
+  );
+}
+
+export function refToHotelIdString(ref) {
+  if (ref == null) return null;
+  if (typeof ref === 'string') {
+    const t = ref.trim();
+    if (t === '' || t === 'undefined' || t === 'null') return null;
+    return mongoose.Types.ObjectId.isValid(t) ? t : null;
+  }
+  if (typeof ref === 'object') {
+    // Must run before _id: Mongoose ObjectId defines _id getter and recursing ref._id overflows the stack
+    if (isObjectIdInstance(ref)) {
+      const s = ref.toString();
+      return mongoose.Types.ObjectId.isValid(s) ? s : null;
+    }
+    if (ref._id != null) return refToHotelIdString(ref._id);
+  }
+  return null;
+}
+
+/**
+ * Reject literal "undefined"/"null" from query strings and invalid ObjectIds (avoids CastError on Hotel.findById).
+ * @param {unknown} raw
+ * @returns {string|null}
+ */
+function normalizeHotelId(raw) {
+  return refToHotelIdString(raw);
+}
 
 /**
  * Property Access Middleware
@@ -23,10 +65,11 @@ import logger from '../utils/logger.js';
  */
 export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
   // Extract hotelId from multiple possible sources
-  const hotelId = req.params.hotelId ||
+  const rawHotelId = req.params.hotelId ||
                   req.query.hotelId ||
                   req.body.hotelId ||
                   req.user?.hotelId;
+  const hotelId = normalizeHotelId(rawHotelId);
 
   // If no hotelId specified, allow (will be filtered in controller)
   if (!hotelId) {
@@ -50,10 +93,10 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
     }
 
     const hotelIdStr = hotelId.toString();
-    const userProperties = req.user.properties?.map(p => p.toString()) || [];
-    const allowedProperties = req.user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-    const primaryProperty = req.user.primaryProperty?.toString();
-    const userHotelId = req.user.hotelId?.toString();
+    const userProperties = (req.user.properties || []).map(refToHotelIdString).filter(Boolean);
+    const allowedProperties = (req.user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+    const primaryProperty = refToHotelIdString(req.user.primaryProperty);
+    const userHotelId = refToHotelIdString(req.user.hotelId);
 
     const isOwner = property.ownerId?.toString() === req.user._id.toString() ||
                     property.createdBy?.toString() === req.user._id.toString();
@@ -112,10 +155,10 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
 
   // Check if user has this property in their properties array or multiPropertyAccess
   const hotelIdStr = hotelId.toString();
-  const userProperties = req.user.properties?.map(p => p.toString()) || [];
-  const allowedProperties = req.user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-  const primaryProperty = req.user.primaryProperty?.toString();
-  const userHotelId = req.user.hotelId?.toString();
+  const userProperties = (req.user.properties || []).map(refToHotelIdString).filter(Boolean);
+  const allowedProperties = (req.user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+  const primaryProperty = refToHotelIdString(req.user.primaryProperty);
+  const userHotelId = refToHotelIdString(req.user.hotelId);
 
   const hasAccess =
     userProperties.includes(hotelIdStr) ||
@@ -189,9 +232,10 @@ export const ensureGroupAccess = catchAsync(async (req, res, next) => {
  */
 export const filterByUserProperties = catchAsync(async (req, res, next) => {
   // Extract hotelId from multiple possible sources
-  const hotelId = req.params.hotelId ||
+  const rawHotelId = req.params.hotelId ||
                   req.query.hotelId ||
                   req.body.hotelId;
+  const hotelId = normalizeHotelId(rawHotelId);
 
   // If hotelId specified, verify access
   if (hotelId) {
@@ -210,10 +254,10 @@ export const filterByUserProperties = catchAsync(async (req, res, next) => {
 
     // Check if user has access through multi-property
     const hotelIdStr = hotelId.toString();
-    const userProperties = req.user.properties?.map(p => p.toString()) || [];
-    const allowedProperties = req.user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-    const primaryProperty = req.user.primaryProperty?.toString();
-    const userHotelId = req.user.hotelId?.toString();
+    const userProperties = (req.user.properties || []).map(refToHotelIdString).filter(Boolean);
+    const allowedProperties = (req.user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+    const primaryProperty = refToHotelIdString(req.user.primaryProperty);
+    const userHotelId = refToHotelIdString(req.user.hotelId);
 
     const hasAccess =
       userProperties.includes(hotelIdStr) ||
@@ -242,18 +286,20 @@ export const filterByUserProperties = catchAsync(async (req, res, next) => {
 
   // Combine owned properties with user's assigned properties
   const ownedPropertyIds = ownedProperties.map(p => p._id.toString());
-  const assignedPropertyIds = req.user.properties?.map(p => p.toString()) || [];
-  const allowedPropertyIds = req.user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
+  const assignedPropertyIds = (req.user.properties || []).map(refToHotelIdString).filter(Boolean);
+  const allowedPropertyIds = (req.user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+  const primaryP = refToHotelIdString(req.user.primaryProperty);
+  const tenantH = refToHotelIdString(req.user.hotelId);
 
   const allPropertyIds = [
     ...new Set([
       ...ownedPropertyIds,
       ...assignedPropertyIds,
       ...allowedPropertyIds,
-      ...(req.user.primaryProperty ? [req.user.primaryProperty.toString()] : []),
-      ...(req.user.hotelId ? [req.user.hotelId.toString()] : [])
+      ...(primaryP ? [primaryP] : []),
+      ...(tenantH ? [tenantH] : [])
     ])
-  ];
+  ].filter((id) => mongoose.Types.ObjectId.isValid(id));
 
   if (allPropertyIds.length === 0) {
     // User has no properties, return empty results
@@ -279,13 +325,14 @@ export const filterByUserProperties = catchAsync(async (req, res, next) => {
  */
 export const checkPropertyAccess = async (userId, hotelId, user = null) => {
   try {
-    if (!hotelId) {
+    const id = normalizeHotelId(hotelId);
+    if (!id) {
       return false;
     }
 
     // Check ownership first
     const hasOwnership = await Hotel.exists({
-      _id: hotelId,
+      _id: id,
       $or: [
         { ownerId: userId },
         { createdBy: userId }
@@ -298,11 +345,11 @@ export const checkPropertyAccess = async (userId, hotelId, user = null) => {
 
     // If user object provided, check multi-property access
     if (user) {
-      const hotelIdStr = hotelId.toString();
-      const userProperties = user.properties?.map(p => p.toString()) || [];
-      const allowedProperties = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-      const primaryProperty = user.primaryProperty?.toString();
-      const userHotelId = user.hotelId?.toString();
+      const hotelIdStr = id.toString();
+      const userProperties = (user.properties || []).map(refToHotelIdString).filter(Boolean);
+      const allowedProperties = (user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+      const primaryProperty = refToHotelIdString(user.primaryProperty);
+      const userHotelId = refToHotelIdString(user.hotelId);
 
       return (
         userProperties.includes(hotelIdStr) ||
@@ -315,7 +362,7 @@ export const checkPropertyAccess = async (userId, hotelId, user = null) => {
     return false;
 
   } catch (error) {
-    console.error('Operation failed:', error.message);
+    logger.error('Operation failed:', error.message);
     throw error;
   }
 };
@@ -337,22 +384,26 @@ export const getUserPropertyIds = async (userId, user = null) => {
       ]
     }).select('_id').lean().limit(1000);
 
-    const ownedPropertyIds = ownedProperties.map(p => p._id.toString());
+    const ownedPropertyIds = ownedProperties
+      .map((p) => refToHotelIdString(p._id))
+      .filter(Boolean);
 
     // If user object provided, include assigned properties
     if (user) {
-      const assignedPropertyIds = user.properties?.map(p => p.toString()) || [];
-      const allowedPropertyIds = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
+      const assignedPropertyIds = (user.properties || []).map(refToHotelIdString).filter(Boolean);
+      const allowedPropertyIds = (user.multiPropertyAccess?.allowedProperties || []).map(refToHotelIdString).filter(Boolean);
+      const primaryP = refToHotelIdString(user.primaryProperty);
+      const tenantH = refToHotelIdString(user.hotelId);
 
       const allPropertyIds = [
         ...new Set([
           ...ownedPropertyIds,
           ...assignedPropertyIds,
           ...allowedPropertyIds,
-          ...(user.primaryProperty ? [user.primaryProperty.toString()] : []),
-          ...(user.hotelId ? [user.hotelId.toString()] : [])
+          ...(primaryP ? [primaryP] : []),
+          ...(tenantH ? [tenantH] : [])
         ])
-      ];
+      ].filter((id) => mongoose.Types.ObjectId.isValid(id));
 
       return allPropertyIds;
     }
@@ -360,7 +411,7 @@ export const getUserPropertyIds = async (userId, user = null) => {
     return ownedPropertyIds;
 
   } catch (error) {
-    console.error('Operation failed:', error.message);
+    logger.error('Operation failed:', error.message);
     throw error;
   }
 };
@@ -401,6 +452,40 @@ export const ensurePropertyInGroup = catchAsync(async (req, res, next) => {
   req.propertyInGroup = property;
   next();
 });
+
+/**
+ * Verify user may operate as this hotel (multi-property switch, API tenant alignment).
+ */
+export async function assertUserCanAccessHotel(user, hotelId) {
+  const idStr = refToHotelIdString(hotelId);
+  if (!idStr) {
+    throw new ApplicationError('Invalid hotel id', 400);
+  }
+  const property = await Hotel.findById(idStr).lean();
+  if (!property) {
+    throw new ApplicationError('Hotel not found', 404);
+  }
+  const hotelIdStr = property._id.toString();
+  const uid = user._id.toString();
+  const isOwner =
+    property.ownerId?.toString() === uid ||
+    property.createdBy?.toString() === uid;
+  const userProperties = (user.properties || []).map(refToHotelIdString).filter(Boolean);
+  const allowedProperties = (user.multiPropertyAccess?.allowedProperties || [])
+    .map(refToHotelIdString)
+    .filter(Boolean);
+  const primaryProperty = refToHotelIdString(user.primaryProperty);
+  const userHotelId = refToHotelIdString(user.hotelId);
+  const hasAccess =
+    isOwner ||
+    userProperties.includes(hotelIdStr) ||
+    allowedProperties.includes(hotelIdStr) ||
+    primaryProperty === hotelIdStr ||
+    userHotelId === hotelIdStr;
+  if (!hasAccess) {
+    throw new ApplicationError('Access denied to this property', 403);
+  }
+}
 
 export default {
   ensurePropertyAccess,

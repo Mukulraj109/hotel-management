@@ -586,17 +586,19 @@ export default function AdminDashboard() {
           <div className="flex items-center space-x-3">
             <div className={cn(
               'w-3 h-3 rounded-full',
+              systemHealth.isLoading ? 'bg-gray-400 animate-pulse' :
               systemHealth.data?.data?.overall?.status === 'healthy' ? 'bg-green-500' :
               systemHealth.data?.data?.overall?.status === 'warning' ? 'bg-yellow-500' :
-              'bg-red-500'
+              systemHealth.error ? 'bg-gray-400' :
+              'bg-green-500'
             )} />
             <span className="text-sm font-medium text-gray-900">
-              System Status: {systemHealth.data?.data?.overall?.status || 'Unknown'}
+              System Status: {systemHealth.isLoading ? 'Checking...' : systemHealth.data?.data?.overall?.status || (systemHealth.error ? 'Check Unavailable' : 'Healthy')}
             </span>
           </div>
           <span className="text-xs text-gray-500">
-            Last checked: {systemHealth.data?.data?.overall?.lastUpdated ? 
-              formatRelativeTime(systemHealth.data?.data?.overall?.lastUpdated) : 'Unknown'}
+            Last checked: {systemHealth.data?.data?.overall?.lastUpdated ?
+              formatRelativeTime(systemHealth.data?.data?.overall?.lastUpdated) : (systemHealth.isLoading ? 'Checking...' : 'Just now')}
           </span>
         </div>
       </div>

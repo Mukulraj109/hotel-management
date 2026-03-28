@@ -124,8 +124,6 @@ const TaxCalculationDisplay: React.FC<TaxCalculationDisplayProps> = ({
 
     try {
       const { data } = await api.post(`/room-taxes/hotels/${hotelId}/calculate`, calculationParams);
-
-      const data = await response.json();
       setCalculationResult(data.data);
     } catch (error) {
       toast({

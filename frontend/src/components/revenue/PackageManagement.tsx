@@ -151,9 +151,9 @@ const PackageManagement: React.FC = () => {
     if (!confirm('Are you sure you want to delete this package?')) return;
 
     try {
-      // API endpoint not implemented yet, just update local state
-      setPackages(packages.filter(p => p._id !== id));
+      await revenueManagementService.deletePackage(id);
       toast.success('Package deleted successfully');
+      fetchPackages();
     } catch (error) {
       toast.error('Failed to delete package');
     }

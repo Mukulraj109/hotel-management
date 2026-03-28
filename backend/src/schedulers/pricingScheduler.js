@@ -129,10 +129,10 @@ class PricingScheduler {
       logger.info('🎯 Running automated dynamic pricing update...');
 
       // Get all hotels with active pricing strategies
-      const activeStrategies = await PricingStrategy.find({
+      const activeStrategies = await PricingStrategy.distinct('hotelId', {
         isActive: true,
         'dynamicPricing.enabled': true
-      }).distinct('hotelId').lean().limit(1000);
+      });
 
       if (activeStrategies.length === 0) {
         logger.info('No hotels with active dynamic pricing found');
@@ -258,7 +258,7 @@ class PricingScheduler {
       logger.info('📊 Calculating daily revenue KPIs...');
 
       // Get all unique hotel IDs
-      const roomTypes = await RoomType.find({ isActive: true }).distinct('hotelId').lean().limit(1000);
+      const roomTypes = await RoomType.distinct('hotelId', { isActive: true });
 
       for (const hotelId of roomTypes) {
         try {

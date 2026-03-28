@@ -240,16 +240,12 @@ const PhoneExtensionForm: React.FC<PhoneExtensionFormProps> = ({
       const { data: result } = extension
         ? await api.put(`/phone-extensions/${extension._id}`, submitData)
         : await api.post(`/phone-extensions/hotels/${hotelId}`, submitData);
-      {
-        toast({
-          title: 'Success',
-          description: result.message || `Phone extension ${extension ? 'updated' : 'created'} successfully`
-        });
-        onSuccess();
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save phone extension');
-      }
+
+      toast({
+        title: 'Success',
+        description: result.message || `Phone extension ${extension ? 'updated' : 'created'} successfully`
+      });
+      onSuccess();
     } catch (error) {
       toast({
         title: 'Error',

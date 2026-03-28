@@ -9,6 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Search, Star, Crown, DollarSign, Gift, TrendingUp, Users, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
+import { formatCurrency } from '../../utils/currencyUtils';
+import toast from 'react-hot-toast';
 
 interface GuestAnalytics {
   guestId: string;
@@ -107,7 +109,7 @@ const GuestInventoryTracker: React.FC = () => {
         setData(result.data);
       }
     } catch {
-      // Error handled silently
+      toast.error('Failed to load guest inventory data');
     } finally {
       setLoading(false);
     }
@@ -117,16 +119,19 @@ const GuestInventoryTracker: React.FC = () => {
     if (!selectedGuest) return;
 
     try {
-      // For demo purposes, we'll need roomId. In a real app, this would come from the guest's current booking
-      const roomId = 'sample_room_id'; // This would be dynamic
+      // Fetch recommendations based on guest's current booking context
+      const guest = data?.guestAnalytics?.find(g => g.guestId === selectedGuest);
+      const roomId = guest?.roomNumber || '';
+      const params = new URLSearchParams({ guestId: selectedGuest, serviceType: 'room_service' });
+      if (roomId) params.append('roomId', roomId);
 
-      const { data: result } = await api.get(`/inventory/consumption/guest/recommendations?guestId=${selectedGuest}&roomId=${roomId}&serviceType=room_service`);
+      const { data: result } = await api.get(`/inventory/consumption/guest/recommendations?${params}`);
 
       if (result.success) {
-        setRecommendations(result.data.recommendations);
+        setRecommendations(result.data.recommendations || []);
       }
     } catch {
-      // Error handled silently
+      toast.error('Failed to load guest recommendations');
     }
   };
 
@@ -225,7 +230,7 @@ const GuestInventoryTracker: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold">${data.summary.totalRevenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.summary.totalRevenue)}</p>
               </div>
               <DollarSign className="h-8 w-8 text-green-500" />
             </div>
@@ -251,7 +256,7 @@ const GuestInventoryTracker: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Avg Revenue/Guest</p>
-                <p className="text-2xl font-bold">${data.summary.avgRevenuePerGuest.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.summary.avgRevenuePerGuest)}</p>
               </div>
               <TrendingUp className="h-8 w-8 text-purple-500" />
             </div>
@@ -302,17 +307,17 @@ const GuestInventoryTracker: React.FC = () => {
 
                     <div className="flex items-center space-x-6">
                       <div className="text-right">
-                        <p className="text-sm font-medium">Revenue: ${guest.totalRevenue.toFixed(2)}</p>
-                        <p className="text-sm text-gray-600">Cost: ${guest.totalCost.toFixed(2)}</p>
+                        <p className="text-sm font-medium">Revenue: {formatCurrency(guest.totalRevenue)}</p>
+                        <p className="text-sm text-gray-600">Cost: {formatCurrency(guest.totalCost)}</p>
                         <p className={`text-sm font-medium ${getProfitColor(guest.profitMargin)}`}>
-                          Profit: ${guest.profitMargin.toFixed(2)}
+                          Profit: {guest.profitMargin.toFixed(1)}%
                         </p>
                       </div>
 
                       <div className="text-right">
                         <p className="text-sm text-gray-600">Complimentary</p>
                         <p className="text-sm font-medium text-green-600">
-                          ${guest.complimentaryValue.toFixed(2)}
+                          {formatCurrency(guest.complimentaryValue)}
                         </p>
                       </div>
 
@@ -359,14 +364,14 @@ const GuestInventoryTracker: React.FC = () => {
                             <div className="flex justify-between text-sm">
                               <span>Base Price:</span>
                               <span className={rec.pricing.vipDiscount > 0 ? 'line-through text-gray-400' : ''}>
-                                ${rec.pricing.basePrice.toFixed(2)}
+                                {formatCurrency(rec.pricing.basePrice)}
                               </span>
                             </div>
 
                             {rec.pricing.vipDiscount > 0 && (
                               <div className="flex justify-between text-sm text-green-600">
                                 <span>VIP Price:</span>
-                                <span>${rec.pricing.finalPrice.toFixed(2)}</span>
+                                <span>{formatCurrency(rec.pricing.finalPrice)}</span>
                               </div>
                             )}
 

@@ -43,7 +43,7 @@ const MetricCard = ({
   trend, 
   color = 'blue',
   loading = false,
-  formatter = (val: Record<string, unknown>) => val?.toString() || '0'
+  formatter = (val: unknown) => val?.toString() || '0'
 }: {
   title: string;
   value: unknown;
@@ -51,7 +51,7 @@ const MetricCard = ({
   trend?: { direction: 'up' | 'down'; value: string };
   color?: 'blue' | 'green' | 'red' | 'yellow' | 'purple';
   loading?: boolean;
-  formatter?: (val: Record<string, unknown>) => string;
+  formatter?: (val: unknown) => string;
 }) => {
   const colorClasses = {
     blue: 'bg-blue-50 text-blue-600 border-blue-200',
@@ -169,7 +169,7 @@ const POSReports: React.FC = () => {
       setLoading(true);
       const hotelId = user?.hotelId;
 
-      const [sales, outlets, payments, topItems, staff, peakHours] = await Promise.all([
+      const results = await Promise.allSettled([
         posReportsService.getSalesSummary({
           startDate: currentRange.startDate,
           endDate: currentRange.endDate,
@@ -204,12 +204,17 @@ const POSReports: React.FC = () => {
         })
       ]);
 
-      setSalesData(sales);
-      setOutletData(outlets);
-      setPaymentData(payments);
-      setTopItemsData(topItems);
-      setStaffData(staff);
-      setPeakHoursData(peakHours);
+      if (results[0].status === 'fulfilled') setSalesData(results[0].value);
+      if (results[1].status === 'fulfilled') setOutletData(results[1].value);
+      if (results[2].status === 'fulfilled') setPaymentData(results[2].value);
+      if (results[3].status === 'fulfilled') setTopItemsData(results[3].value);
+      if (results[4].status === 'fulfilled') setStaffData(results[4].value);
+      if (results[5].status === 'fulfilled') setPeakHoursData(results[5].value);
+
+      const failedCount = results.filter(r => r.status === 'rejected').length;
+      if (failedCount > 0) {
+        toast.error(`${failedCount} report section(s) failed to load`);
+      }
     } catch (error) {
       toast.error('Failed to load reports data');
     } finally {
@@ -340,7 +345,7 @@ const POSReports: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <MetricCard
               title="Total Sales"
-              value={salesData?.data.summary.totalSales}
+              value={salesData?.data?.summary?.totalSales ?? 0}
               icon={<IndianRupee className="w-6 h-6" />}
               color="green"
               loading={loading}
@@ -348,14 +353,14 @@ const POSReports: React.FC = () => {
             />
             <MetricCard
               title="Transactions"
-              value={salesData?.data.summary.totalTransactions}
+              value={salesData?.data?.summary?.totalTransactions ?? 0}
               icon={<Receipt className="w-6 h-6" />}
               color="blue"
               loading={loading}
             />
             <MetricCard
               title="Avg Transaction Value"
-              value={salesData?.data.summary.averageTransactionValue}
+              value={salesData?.data?.summary?.averageTransactionValue ?? 0}
               icon={<TrendingUp className="w-6 h-6" />}
               color="purple"
               loading={loading}

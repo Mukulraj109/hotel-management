@@ -5,17 +5,12 @@ import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
 import {
   TrendingUp,
-  TrendingDown,
   Target,
   Lightbulb,
-  AlertTriangle,
   CheckCircle,
   IndianRupee,
-  Calendar,
   Users,
   BarChart3,
-  ArrowUpRight,
-  ArrowDownRight,
   Zap,
   Clock,
   Star
@@ -101,7 +96,6 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
   properties,
   selectedProperty
 }) => {
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [impactFilter, setImpactFilter] = useState<string>('all');
 
@@ -110,16 +104,16 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
     if (properties.length === 0) return null;
 
     const activeProperties = properties.filter(p => p.status === 'active');
-    const total = activeProperties.length;
+    const total = activeProperties.length || 1; // Avoid division by zero
 
     return {
-      avgOccupancy: activeProperties.reduce((sum, p) => sum + p.performance.occupancyRate, 0) / total,
-      avgADR: activeProperties.reduce((sum, p) => sum + p.performance.adr, 0) / total,
-      avgRevPAR: activeProperties.reduce((sum, p) => sum + p.performance.revpar, 0) / total,
-      avgRevenue: activeProperties.reduce((sum, p) => sum + p.performance.revenue, 0) / total,
-      avgRating: activeProperties.reduce((sum, p) => sum + p.rating, 0) / total,
-      topPerformer: activeProperties.sort((a, b) => b.performance.revpar - a.performance.revpar)[0],
-      bottomPerformer: activeProperties.sort((a, b) => a.performance.revpar - b.performance.revpar)[0]
+      avgOccupancy: activeProperties.reduce((sum, p) => sum + (p.performance?.occupancyRate || 0), 0) / total,
+      avgADR: activeProperties.reduce((sum, p) => sum + (p.performance?.adr || 0), 0) / total,
+      avgRevPAR: activeProperties.reduce((sum, p) => sum + (p.performance?.revpar || 0), 0) / total,
+      avgRevenue: activeProperties.reduce((sum, p) => sum + (p.performance?.revenue || 0), 0) / total,
+      avgRating: activeProperties.reduce((sum, p) => sum + (p.rating || 0), 0) / total,
+      topPerformer: [...activeProperties].sort((a, b) => (b.performance?.revpar || 0) - (a.performance?.revpar || 0))[0],
+      bottomPerformer: [...activeProperties].sort((a, b) => (a.performance?.revpar || 0) - (b.performance?.revpar || 0))[0]
     };
   }, [properties]);
 
@@ -189,7 +183,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
         impact: 'medium',
         effort: 'high',
         category: 'operational',
-        potentialRevenue: 50000, // Estimated revenue from improved reputation
+        potentialRevenue: Math.max(50000, (currentProperty.performance?.revenue || 0) * 0.05), // ~5% of current revenue
         confidence: 70,
         timeframe: '90-180 days',
         recommendations: [
@@ -222,7 +216,9 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
           'Consider room upgrade opportunities during repairs',
           'Track maintenance response times'
         ],
-        currentValue: ((currentProperty.rooms.total - currentProperty.rooms.outOfOrder) / currentProperty.rooms.total) * 100,
+        currentValue: currentProperty.rooms.total > 0
+          ? ((currentProperty.rooms.total - currentProperty.rooms.outOfOrder) / currentProperty.rooms.total) * 100
+          : 0,
         targetValue: 98,
         unit: '%'
       });
@@ -240,7 +236,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
         impact: 'high',
         effort: 'high',
         category: 'amenities',
-        potentialRevenue: 200000, // Estimated revenue from amenity upgrade
+        potentialRevenue: Math.max(200000, (currentProperty.performance?.revenue || 0) * 0.15), // ~15% of current revenue
         confidence: 65,
         timeframe: '180-365 days',
         recommendations: [
@@ -258,7 +254,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
     return opportunities.sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   };
 
-  const opportunities = generateOpportunities();
+  const opportunities = useMemo(() => generateOpportunities(), [portfolioBenchmarks, selectedProperty, properties]);
 
   const filteredOpportunities = opportunities.filter(opp => {
     const categoryMatch = categoryFilter === 'all' || opp.category === categoryFilter;
@@ -311,7 +307,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
         <div className="flex items-center space-x-3">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="Category" />
+              <span>{categoryFilter === 'all' ? 'All Categories' : categoryFilter.charAt(0).toUpperCase() + categoryFilter.slice(1)}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
@@ -325,7 +321,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
 
           <Select value={impactFilter} onValueChange={setImpactFilter}>
             <SelectTrigger className="w-32">
-              <SelectValue placeholder="Impact" />
+              <span>{impactFilter === 'all' ? 'All Impact' : impactFilter.charAt(0).toUpperCase() + impactFilter.slice(1)}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Impact</SelectItem>
@@ -431,7 +427,7 @@ export const RevenueOptimizationInsights: React.FC<RevenueOptimizationInsightsPr
                       </span>
                     </div>
                     <Progress
-                      value={(opportunity.currentValue / opportunity.targetValue) * 100}
+                      value={opportunity.targetValue > 0 ? Math.min(100, (opportunity.currentValue / opportunity.targetValue) * 100) : 0}
                       className="h-2"
                     />
                   </div>

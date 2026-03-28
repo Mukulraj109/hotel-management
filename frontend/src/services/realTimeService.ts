@@ -127,6 +127,18 @@ class RealTimeService extends EventEmitter {
       this.shouldReconnect = true;
 
       try {
+        // Read accessToken from cookie for explicit auth
+        const accessToken = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('accessToken='))
+          ?.split('=')[1];
+
+        if (!accessToken) {
+          this.isConnecting = false;
+          reject(new Error('No auth token available — user not logged in'));
+          return;
+        }
+
         // Create Socket.IO connection
         this.socket = io(this.config.url, {
           path: '/ws/notifications',
@@ -136,7 +148,8 @@ class RealTimeService extends EventEmitter {
           transports: ['polling'], // Use only polling transport to avoid WebSocket issues
           forceNew: true, // Force new connection to avoid conflicts
           withCredentials: true,
-          upgrade: true // Allow upgrade to WebSocket after initial connection
+          upgrade: true, // Allow upgrade to WebSocket after initial connection
+          auth: { token: accessToken }
         });
 
         // Connection event handlers

@@ -32,6 +32,7 @@ import {
   BarChart3,
   Activity
 } from 'lucide-react';
+import { api } from '../../services/api';
 
 interface ForecastData {
   itemId: string;
@@ -106,13 +107,11 @@ const PredictiveDemandChart: React.FC = () => {
       });
 
       const { data } = await api.get(`/inventory/analytics/predictive-demand?${params}`);
-      {
-        setForecastData(data.data.forecast);
+      setForecastData(data.data.forecast);
 
-        // Auto-select first item for chart
-        if (data.data.forecast.length > 0) {
-          setSelectedItem(data.data.forecast[0].itemId);
-        }
+      // Auto-select first item for chart
+      if (data.data.forecast.length > 0) {
+        setSelectedItem(data.data.forecast[0].itemId);
       }
     } catch {
       // Error handled silently
@@ -125,51 +124,49 @@ const PredictiveDemandChart: React.FC = () => {
     try {
       // Get historical data for the selected item
       const { data } = await api.get(`/inventory/analytics/historical-trends?itemIds=${itemId}&granularity=daily`);
-      {
-        const item = forecastData.find(f => f.itemId === itemId);
+      const item = forecastData.find(f => f.itemId === itemId);
 
-        if (data.data.trends.length > 0 && item) {
-          const historicalData = data.data.trends[0];
-          const chartPoints: ChartDataPoint[] = [];
+      if (data.data.trends.length > 0 && item) {
+        const historicalData = data.data.trends[0];
+        const chartPoints: ChartDataPoint[] = [];
 
-          // Add historical data points
-          historicalData.periods.forEach((period: Record<string, unknown>, index: number) => {
-            const date = new Date();
-            date.setDate(date.getDate() - (historicalData.periods.length - index));
+        // Add historical data points
+        historicalData.periods.forEach((period: Record<string, unknown>, index: number) => {
+          const date = new Date();
+          date.setDate(date.getDate() - (historicalData.periods.length - index));
 
-            chartPoints.push({
-              date: date.toISOString().split('T')[0],
-              actual: period.avgStockLevel,
-              forecast: period.avgStockLevel, // Historical actual = forecast for past
-              lowerBound: period.minStock,
-              upperBound: period.maxStock,
-              consumption: period.avgConsumptionRate,
-              stockLevel: period.avgStockLevel
-            });
+          chartPoints.push({
+            date: date.toISOString().split('T')[0],
+            actual: period.avgStockLevel,
+            forecast: period.avgStockLevel, // Historical actual = forecast for past
+            lowerBound: period.minStock,
+            upperBound: period.maxStock,
+            consumption: period.avgConsumptionRate,
+            stockLevel: period.avgStockLevel
           });
+        });
 
-          // Add forecast data points
-          const forecastDaysNum = parseInt(forecastDays);
-          for (let i = 1; i <= forecastDaysNum; i++) {
-            const date = new Date();
-            date.setDate(date.getDate() + i);
+        // Add forecast data points
+        const forecastDaysNum = parseInt(forecastDays);
+        for (let i = 1; i <= forecastDaysNum; i++) {
+          const date = new Date();
+          date.setDate(date.getDate() + i);
 
-            const dayConsumption = item.adjustedAvgDailyConsumption;
-            const projectedStock = Math.max(0, item.currentStock - (dayConsumption * i));
+          const dayConsumption = item.adjustedAvgDailyConsumption;
+          const projectedStock = Math.max(0, item.currentStock - (dayConsumption * i));
 
-            chartPoints.push({
-              date: date.toISOString().split('T')[0],
-              actual: 0, // No actual data for future
-              forecast: projectedStock,
-              lowerBound: Math.max(0, projectedStock - item.confidence.marginOfError),
-              upperBound: projectedStock + item.confidence.marginOfError,
-              consumption: dayConsumption,
-              stockLevel: projectedStock
-            });
-          }
-
-          setChartData(chartPoints);
+          chartPoints.push({
+            date: date.toISOString().split('T')[0],
+            actual: 0, // No actual data for future
+            forecast: projectedStock,
+            lowerBound: Math.max(0, projectedStock - item.confidence.marginOfError),
+            upperBound: projectedStock + item.confidence.marginOfError,
+            consumption: dayConsumption,
+            stockLevel: projectedStock
+          });
         }
+
+        setChartData(chartPoints);
       }
     } catch {
       // Error handled silently

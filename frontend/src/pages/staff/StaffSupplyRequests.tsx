@@ -212,7 +212,7 @@ export default function StaffSupplyRequests() {
       }
 
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to create supply request');
+      toast.error(error instanceof Error ? error.message : 'Failed to create supply request');
     }
   };
 

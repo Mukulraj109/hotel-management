@@ -10,7 +10,6 @@ import { Separator } from '../ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ScrollArea } from '../ui/scroll-area';
 import {
-  Calendar,
   Download,
   Settings,
   BarChart3,
@@ -241,10 +240,16 @@ export const CustomReportBuilder: React.FC<CustomReportBuilderProps> = ({
             data[metric.id] = property.rooms.available;
             break;
           case 'maintenance_rooms':
-            data[metric.id] = property.rooms.maintenance;
+            data[metric.id] = property.rooms?.outOfOrder || 0;
+            break;
+          case 'guest_satisfaction':
+            data[metric.id] = property.rating || 0;
+            break;
+          case 'gross_profit':
+            data[metric.id] = property.performance?.revenue || 0;
             break;
           default:
-            data[metric.id] = Math.floor(Math.random() * 100);
+            data[metric.id] = 0;
         }
       });
 
@@ -534,10 +539,15 @@ export const CustomReportBuilder: React.FC<CustomReportBuilderProps> = ({
                     <Input
                       type="date"
                       value={format(reportConfig.dateRange.start, 'yyyy-MM-dd')}
-                      onChange={(e) => setReportConfig(prev => ({
-                        ...prev,
-                        dateRange: { ...prev.dateRange, start: new Date(e.target.value) }
-                      }))}
+                      max={format(reportConfig.dateRange.end, 'yyyy-MM-dd')}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const newStart = new Date(e.target.value);
+                        setReportConfig(prev => ({
+                          ...prev,
+                          dateRange: { ...prev.dateRange, start: newStart > prev.dateRange.end ? prev.dateRange.end : newStart }
+                        }));
+                      }}
                     />
                   </div>
                   <div>
@@ -545,10 +555,16 @@ export const CustomReportBuilder: React.FC<CustomReportBuilderProps> = ({
                     <Input
                       type="date"
                       value={format(reportConfig.dateRange.end, 'yyyy-MM-dd')}
-                      onChange={(e) => setReportConfig(prev => ({
-                        ...prev,
-                        dateRange: { ...prev.dateRange, end: new Date(e.target.value) }
-                      }))}
+                      min={format(reportConfig.dateRange.start, 'yyyy-MM-dd')}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const newEnd = new Date(e.target.value);
+                        setReportConfig(prev => ({
+                          ...prev,
+                          dateRange: { ...prev.dateRange, end: newEnd < prev.dateRange.start ? prev.dateRange.start : newEnd }
+                        }));
+                      }}
                     />
                   </div>
                 </div>

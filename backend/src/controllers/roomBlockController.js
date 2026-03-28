@@ -43,7 +43,7 @@ class RoomBlockController {
       const rooms = await Room.find({
         _id: { $in: roomIds },
         isActive: true,
-        ...(hotelId && { hotelId })
+        hotelId
       }).lean().limit(1000);
 
       if (rooms.length !== roomIds.length) {
@@ -57,7 +57,7 @@ class RoomBlockController {
       const conflictingBlocks = await RoomBlock.find({
         status: { $in: ['active', 'partially_released'] },
         'rooms.roomId': { $in: roomIds },
-        ...(hotelId && { hotelId }),
+        hotelId,
         $or: [
           { startDate: { $lt: endDate, $gte: startDate } },
           { endDate: { $gt: startDate, $lte: endDate } },
@@ -104,7 +104,7 @@ class RoomBlockController {
         amenities: amenities || [],
         cateringRequirements,
         createdBy: req.user._id,
-        ...(hotelId && { hotelId })
+        hotelId
       });
 
       await roomBlock.save();
@@ -135,7 +135,6 @@ class RoomBlockController {
   async getRoomBlocks(req, res) {
     try {
       const {
-        hotelId,
         status,
         eventType,
         startDate,
@@ -146,9 +145,8 @@ class RoomBlockController {
         sortOrder = 'asc'
       } = req.query;
 
-      const queryHotelId = hotelId || req.user?.hotelId || req.user?.hotel || req.tenantId;
-      const query = {};
-      if (queryHotelId) query.hotelId = queryHotelId;
+      const queryHotelId = req.user?.hotelId || req.user?.hotel || req.tenantId;
+      const query = { hotelId: queryHotelId };
       if (status) query.status = status;
       if (eventType) query.eventType = eventType;
       
@@ -431,8 +429,7 @@ class RoomBlockController {
   async getRoomBlockStats(req, res) {
     try {
       const hotelId = req.user?.hotelId || req.user?.hotel || req.tenantId;
-      const query = {};
-      if (hotelId) query.hotelId = hotelId;
+      const query = { hotelId };
 
       const stats = await RoomBlock.aggregate([
         { $match: query },

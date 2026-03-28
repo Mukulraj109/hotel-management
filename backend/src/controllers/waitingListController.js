@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import WaitingList from '../models/WaitingList.js';
 import Room from '../models/Room.js';
 import Hotel from '../models/Hotel.js';
@@ -22,16 +23,16 @@ class WaitingListController {
       } = req.query;
 
       // Get hotel from user context
-      const hotel = await Hotel.findOne().lean();
-      if (!hotel) {
-        return res.status(404).json({
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
           success: false,
-          message: 'Hotel not found'
+          message: 'Hotel context is required'
         });
       }
 
       // Build query
-      const query = { hotelId: hotel._id };
+      const query = { hotelId };
 
       if (status && status !== 'all') {
         query.status = status;
@@ -163,19 +164,19 @@ class WaitingListController {
         notificationPreferences
       } = req.body;
 
-      // Get hotel
-      const hotel = await Hotel.findOne().lean();
-      if (!hotel) {
-        return res.status(404).json({
+      // Get hotel from user context
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
           success: false,
-          message: 'Hotel not found'
+          message: 'Hotel context is required'
         });
       }
 
       // Check if guest is already on waitlist for same dates
       const existingEntry = await WaitingList.findOne({
         email: email.toLowerCase(),
-        hotelId: hotel._id,
+        hotelId,
         status: { $in: ['active', 'contacted'] },
         'preferredDates.checkIn': preferredDates.checkIn,
         'preferredDates.checkOut': preferredDates.checkOut
@@ -194,7 +195,7 @@ class WaitingListController {
         email: email.toLowerCase(),
         phone,
         roomType,
-        hotelId: hotel._id,
+        hotelId,
         preferredDates,
         alternativeDates: alternativeDates || [],
         guests: guests || 2,
@@ -517,18 +518,18 @@ class WaitingListController {
     try {
       const { checkIn, checkOut } = req.query;
 
-      // Get hotel
-      const hotel = await Hotel.findOne().lean();
-      if (!hotel) {
-        return res.status(404).json({
+      // Get hotel from user context
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
           success: false,
-          message: 'Hotel not found'
+          message: 'Hotel context is required'
         });
       }
 
       // Get all rooms grouped by type
       const roomTypes = await Room.aggregate([
-        { $match: { hotelId: hotel._id } },
+        { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
         {
           $group: {
             _id: '$roomType',
@@ -580,35 +581,35 @@ class WaitingListController {
   // Get waitlist statistics
   async getWaitlistStats(req, res) {
     try {
-      // Get hotel
-      const hotel = await Hotel.findOne().lean();
-      if (!hotel) {
-        return res.status(404).json({
+      // Get hotel from user context
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
           success: false,
-          message: 'Hotel not found'
+          message: 'Hotel context is required'
         });
       }
 
-      const stats = await WaitingList.getWaitlistStats(hotel._id);
+      const stats = await WaitingList.getWaitlistStats(hotelId);
 
       // Get additional metrics
       const [totalActive, vipCount, urgentCount, recentEntries] = await Promise.all([
         WaitingList.countDocuments({
-          hotelId: hotel._id,
+          hotelId,
           status: { $in: ['active', 'contacted'] }
         }),
         WaitingList.countDocuments({
-          hotelId: hotel._id,
+          hotelId,
           vipStatus: true,
           status: { $in: ['active', 'contacted'] }
         }),
         WaitingList.countDocuments({
-          hotelId: hotel._id,
+          hotelId,
           priority: 'high',
           status: { $in: ['active', 'contacted'] }
         }),
         WaitingList.find({
-          hotelId: hotel._id
+          hotelId
         })
           .sort({ addedDate: -1 })
           .limit(5)

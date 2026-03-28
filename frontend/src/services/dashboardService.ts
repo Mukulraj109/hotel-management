@@ -20,32 +20,14 @@ class DashboardService {
   private baseUrl = '/admin-dashboard';
 
   /**
-   * Get available hotels (for testing and hotel selection)
+   * Get available hotels (for hotel selection)
    */
   async getHotels(): Promise<unknown> {
     try {
-      // Since there's no hotels endpoint, we'll provide the seeded hotel
-      return {
-        status: 'success',
-        data: [
-          {
-            _id: '68c7ab1242a357d06adbb2aa',
-            name: 'THE PENTOUZ',
-            description: 'A luxury hotel in the heart of the city'
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        status: 'success',
-        data: [
-          {
-            _id: '68c7ab1242a357d06adbb2aa',
-            name: 'THE PENTOUZ',
-            description: 'A luxury hotel in the heart of the city'
-          }
-        ]
-      };
+      const response = await api.get('/hotels');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 

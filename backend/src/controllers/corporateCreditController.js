@@ -492,7 +492,7 @@ export const bulkApproveCreditTransactions = catchAsync(async (req, res, next) =
       hotelId: req.user.hotelId,
       status: 'pending'
     }),
-    CorporateCompany.find({}).lean() // will filter in map
+    CorporateCompany.find({ hotelId: req.user.hotelId }).lean()
   ]);
   const txnMap = new Map(transactions.map(t => [t._id.toString(), t]));
   const companyMap = new Map(allCompanies.map(c => [c._id.toString(), c]));

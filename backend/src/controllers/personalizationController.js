@@ -158,40 +158,10 @@ export const updatePersonalizationPreferences = catchAsync(async (req, res, next
 });
 
 export const getPersonalizationAnalytics = catchAsync(async (req, res, next) => {
-  const hotelId = req.user.hotelId;
-
-  // This would provide analytics on personalization effectiveness
-  // For now, return mock analytics data
-  const analytics = {
-    totalPersonalizedExperiences: 1250,
-    conversionRates: {
-      personalized: 8.5,
-      standard: 4.2,
-      improvement: 102.4
-    },
-    segmentPerformance: {
-      'high_value_prospects': { conversionRate: 12.8, avgBookingValue: 850 },
-      'luxury_seekers': { conversionRate: 15.2, avgBookingValue: 1250 },
-      'business_travelers': { conversionRate: 9.8, avgBookingValue: 420 },
-      'price_sensitive': { conversionRate: 6.5, avgBookingValue: 180 }
-    },
-    offerEffectiveness: {
-      'vip_experience': { clickRate: 18.5, conversionRate: 12.3 },
-      'loyalty_boost': { clickRate: 22.1, conversionRate: 8.7 },
-      'discount': { clickRate: 34.2, conversionRate: 15.6 },
-      'luxury_package': { clickRate: 8.9, conversionRate: 18.4 }
-    },
-    contentEngagement: {
-      personalizedHeadlines: { clickRate: 28.5 },
-      standardHeadlines: { clickRate: 14.2 },
-      personalizedRecommendations: { viewRate: 45.8 },
-      standardRecommendations: { viewRate: 23.1 }
-    }
-  };
-
-  res.status(200).json({
-    success: true,
-    data: analytics
+  res.status(501).json({
+    success: false,
+    message: 'Personalization analytics requires event tracking and aggregation infrastructure. Not available in current deployment.',
+    data: null
   });
 });
 

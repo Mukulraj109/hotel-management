@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,6 +29,9 @@ import { adminService } from '../../services/adminService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+import { checkPublicBookingAvailability } from '../../services/publicRoomCatalogService';
 
 // Room types data
 const ROOM_TYPES = {
@@ -84,15 +87,19 @@ const BookingPage: React.FC = () => {
   
   // Get URL parameters for pre-filling booking data
   const urlRoomType = searchParams.get('roomType') as keyof typeof ROOM_TYPES | null;
+  const urlRoomTypeId = searchParams.get('roomTypeId');
   const urlGuests = parseInt(searchParams.get('guests') || '1');
   const urlCheckIn = searchParams.get('checkIn') || '';
   const urlCheckOut = searchParams.get('checkOut') || '';
-  
+
+  const { data: publicCatalog } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
+
   // Booking state
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingData, setBookingData] = useState({
-    roomType: urlRoomType,
+    roomType: urlRoomType && urlRoomType in ROOM_TYPES ? urlRoomType : null,
+    roomTypeId: urlRoomTypeId || null as string | null,
     guests: urlGuests,
     checkIn: urlCheckIn,
     checkOut: urlCheckOut,
@@ -119,10 +126,54 @@ const BookingPage: React.FC = () => {
   };
 
   const nights = calculateNights();
-  const roomTypeData = bookingData.roomType ? ROOM_TYPES[bookingData.roomType] : null;
+  const roomTypeData = useMemo(() => {
+    if (bookingData.roomTypeId && publicCatalog?.length) {
+      const o = publicCatalog.find((c) => c.id === bookingData.roomTypeId);
+      if (o) {
+        return {
+          name: o.name,
+          description: `${o.code} — up to ${o.maxOccupancy} guests`,
+          baseRate: o.basePrice ?? o.baseRate ?? 0,
+          maxGuests: o.maxOccupancy || 2,
+          icon: Bed
+        };
+      }
+    }
+    if (bookingData.roomType && ROOM_TYPES[bookingData.roomType]) {
+      return ROOM_TYPES[bookingData.roomType];
+    }
+    return null;
+  }, [bookingData.roomType, bookingData.roomTypeId, publicCatalog]);
   const subtotal = roomTypeData ? roomTypeData.baseRate * nights : 0;
   const taxes = Math.round(subtotal * 0.18); // 18% GST
   const total = subtotal + taxes;
+
+  const catalogRows = useMemo(() => {
+    if (publicCatalog?.length) {
+      return publicCatalog.map((o) => ({
+        key: o.id,
+        roomTypeId: o.id as string | null,
+        roomType: null as keyof typeof ROOM_TYPES | null,
+        name: o.name,
+        description: `${o.code} — up to ${o.maxOccupancy} guests`,
+        baseRate: o.basePrice ?? o.baseRate ?? 0,
+        maxGuests: o.maxOccupancy || 2,
+        icon: Bed
+      }));
+    }
+    return (
+      Object.entries(ROOM_TYPES) as [keyof typeof ROOM_TYPES, (typeof ROOM_TYPES)['single']][]
+    ).map(([type, room]) => ({
+      key: type,
+      roomTypeId: null as string | null,
+      roomType: type,
+      name: room.name,
+      description: room.description,
+      baseRate: room.baseRate,
+      maxGuests: room.maxGuests,
+      icon: room.icon
+    }));
+  }, [publicCatalog]);
 
   // Step 1: Room Selection
   const renderStep1 = () => {
@@ -208,15 +259,17 @@ const BookingPage: React.FC = () => {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-gray-900">Choose Your Room Type</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            {Object.entries(ROOM_TYPES).map(([type, room]) => {
-              const Icon = room.icon;
-              const isSelected = bookingData.roomType === type;
-              const canAccommodate = bookingData.guests <= room.maxGuests;
-              const totalPrice = nights > 0 ? room.baseRate * nights : room.baseRate;
+            {catalogRows.map((row) => {
+              const Icon = row.icon;
+              const isSelected =
+                (row.roomTypeId != null && bookingData.roomTypeId === row.roomTypeId) ||
+                (row.roomType != null && bookingData.roomType === row.roomType);
+              const canAccommodate = bookingData.guests <= row.maxGuests;
+              const totalPrice = nights > 0 ? row.baseRate * nights : row.baseRate;
 
               return (
                 <Card
-                  key={type}
+                  key={row.key}
                   className={`cursor-pointer transition-all hover:shadow-lg ${
                     isSelected 
                       ? 'border-2 border-blue-500 shadow-md' 
@@ -224,10 +277,14 @@ const BookingPage: React.FC = () => {
                       ? 'border-2 border-gray-200 hover:border-blue-300' 
                       : 'border-2 border-gray-100 opacity-50 cursor-not-allowed'
                   }`}
-                  onClick={() => canAccommodate && setBookingData({
-                    ...bookingData,
-                    roomType: type as keyof typeof ROOM_TYPES
-                  })}
+                  onClick={() =>
+                    canAccommodate &&
+                    setBookingData({
+                      ...bookingData,
+                      roomTypeId: row.roomTypeId,
+                      roomType: row.roomType
+                    })
+                  }
                 >
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex items-start justify-between mb-4">
@@ -235,9 +292,9 @@ const BookingPage: React.FC = () => {
                         <Icon className={`h-6 w-6 mr-3 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
                         <div>
                           <h3 className={`font-semibold ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {room.name}
+                            {row.name}
                           </h3>
-                          <p className="text-sm text-gray-600">{room.description}</p>
+                          <p className="text-sm text-gray-600">{row.description}</p>
                         </div>
                       </div>
                       {isSelected && <CheckCircle className="h-5 w-5 text-blue-600" />}
@@ -247,14 +304,14 @@ const BookingPage: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Max Guests</span>
                         <Badge variant={canAccommodate ? "default" : "destructive"}>
-                          {room.maxGuests} Guest{room.maxGuests > 1 ? 's' : ''}
+                          {row.maxGuests} Guest{row.maxGuests > 1 ? 's' : ''}
                         </Badge>
                       </div>
 
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Per Night</span>
                         <span className="font-semibold text-gray-900">
-                          {formatIndianCurrency(room.baseRate)}
+                          {formatIndianCurrency(row.baseRate)}
                         </span>
                       </div>
 
@@ -270,7 +327,7 @@ const BookingPage: React.FC = () => {
                       {!canAccommodate && (
                         <div className="mt-3 p-2 bg-red-50 rounded-md">
                           <p className="text-xs text-red-600">
-                            This room can accommodate maximum {room.maxGuests} guest{room.maxGuests > 1 ? 's' : ''}
+                            This room can accommodate maximum {row.maxGuests} guest{row.maxGuests > 1 ? 's' : ''}
                           </p>
                         </div>
                       )}
@@ -563,7 +620,12 @@ const BookingPage: React.FC = () => {
                   return;
                 }
 
-                if (!bookingData.roomType || !bookingData.checkIn || !bookingData.checkOut || !bookingData.guestDetails) {
+                if (
+                  (!bookingData.roomType && !bookingData.roomTypeId) ||
+                  !bookingData.checkIn ||
+                  !bookingData.checkOut ||
+                  !bookingData.guestDetails
+                ) {
                   toast.error('Please complete all booking details');
                   return;
                 }
@@ -573,7 +635,12 @@ const BookingPage: React.FC = () => {
                   // Create booking without room allocation - admin will assign rooms later
                   
                   // Calculate the total amount for the booking
-                  const roomRate = ROOM_TYPES[bookingData.roomType].baseRate;
+                  const roomRate = roomTypeData?.baseRate ?? 0;
+                  const catalogOpt = publicCatalog?.find((c) => c.id === bookingData.roomTypeId);
+                  const lt = (catalogOpt?.legacyType || '').toLowerCase();
+                  const roomTypeForApi =
+                    bookingData.roomType ||
+                    (lt === 'single' || lt === 'double' || lt === 'suite' || lt === 'deluxe' ? lt : 'double');
                   const subtotalAmount = roomRate * nights;
                   const taxAmount = Math.round(subtotalAmount * 0.18); // 18% GST
                   const totalAmount = subtotalAmount + taxAmount;
@@ -592,7 +659,9 @@ const BookingPage: React.FC = () => {
                     // Additional metadata for the booking
                     totalAmount: totalAmount,
                     currency: 'INR',
-                    roomType: bookingData.roomType, // Store room type preference
+                    roomType: roomTypeForApi,
+                    ...(bookingData.roomTypeId ? { roomTypeId: bookingData.roomTypeId } : {}),
+                    primaryRoomQuantity: 1,
                     nights: nights,
                     ratePerNight: roomRate,
                     guestName: bookingData.guestDetails.name,
@@ -617,7 +686,8 @@ const BookingPage: React.FC = () => {
                     toast.error('Failed to create booking');
                   }
                 } catch (error: unknown) {
-                  toast.error(error.response?.data?.message || 'Failed to create booking');
+                  const err = error as { response?: { data?: { message?: string } } };
+                  toast.error(err.response?.data?.message || 'Failed to create booking');
                 } finally {
                   setIsSubmitting(false);
                 }

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { guestServiceRequestService, GuestServiceRequest, ServiceStatsResponse, StaffMember } from '@/services/guestServiceRequestService';
 import { toast } from 'react-hot-toast';
 import {
@@ -325,33 +326,40 @@ export const SpecialRequestTracker: React.FC = () => {
                 <CardTitle>Recent Requests</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {requests.slice(0, 5).map((request) => (
-                    <div key={request._id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {getRequestTypeIcon(request.serviceType)}
-                        <div>
-                          <div className="font-medium">{request.title}</div>
-                          <div className="text-sm text-gray-600">
-                            {request.userId?.name || 'Unknown Guest'} - Room {guestServiceRequestService.getRoomNumbers(request).join(', ') || 'No Room'}
+                {requests.length > 0 ? (
+                  <div className="space-y-3">
+                    {requests.slice(0, 5).map((request) => (
+                      <div key={request._id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          {getRequestTypeIcon(request.serviceType)}
+                          <div>
+                            <div className="font-medium">{request.title}</div>
+                            <div className="text-sm text-gray-600">
+                              {request.userId?.name || 'Unknown Guest'} - Room {guestServiceRequestService.getRoomNumbers(request).join(', ') || 'No Room'}
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getPriorityColor(request.priority)}>
+                            {request.priority.toUpperCase()}
+                          </Badge>
+                          <Badge className={getStatusColor(request.status)}>
+                            {getStatusIcon(request.status)}
+                            {request.status.replace('_', ' ').toUpperCase()}
+                          </Badge>
+                          {isOverdue(request) && (
+                            <Badge className="bg-red-100 text-red-800">OVERDUE</Badge>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={getPriorityColor(request.priority)}>
-                          {request.priority.toUpperCase()}
-                        </Badge>
-                        <Badge className={getStatusColor(request.status)}>
-                          {getStatusIcon(request.status)}
-                          {request.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                        {isOverdue(request) && (
-                          <Badge className="bg-red-100 text-red-800">OVERDUE</Badge>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-500">
+                    <p>No recent requests</p>
+                    <p className="text-xs mt-1">Special requests will appear here when submitted</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -485,7 +493,7 @@ export const SpecialRequestTracker: React.FC = () => {
                         {request.actualCost && (
                           <div>
                             <div className="font-medium">Cost</div>
-                            <div className="text-green-600 font-semibold">₹{request.actualCost}</div>
+                            <div className="text-green-600 font-semibold">{formatCurrency(request.actualCost)}</div>
                           </div>
                         )}
                       </div>

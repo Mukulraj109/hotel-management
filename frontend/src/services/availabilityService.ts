@@ -1,5 +1,39 @@
 import { api } from './api';
 
+export interface OverbookingCheckResult {
+  isOverbooked: boolean;
+  overbookingCount?: number;
+  availableRooms?: number;
+  date?: string;
+  roomType?: string;
+  suggestions?: unknown[];
+}
+
+export interface OverbookingStats {
+  totalRoomTypes: number;
+  overbookingEnabled: number;
+  activeAlerts: number;
+  revenueFromOverbooking: number;
+  occupancyImprovement: number;
+  baseOccupancy: number;
+  withOverbookingOccupancy: number;
+  successfulOverbooks: number;
+  avgRevenuePerOverbook: number;
+}
+
+export interface OverbookingAlert {
+  id: string;
+  roomTypeId: string;
+  roomTypeName: string;
+  date: string;
+  currentBookings: number;
+  availableRooms: number;
+  overbookingLevel: number;
+  overbookingLimit: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'active' | 'resolved';
+}
+
 export interface AvailabilityCheck {
   checkInDate: string;
   checkOutDate: string;
@@ -159,7 +193,7 @@ class AvailabilityService {
         hotelId: params.hotelId
       });
 
-      const response = await api.get(`/availability?${queryParams.toString()}`);
+      const response = await api.get(`/availability/check?${queryParams.toString()}`);
       return response.data.data;
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
@@ -182,7 +216,7 @@ class AvailabilityService {
       if (params.roomTypeId) queryParams.append('roomTypeId', params.roomTypeId);
       if (params.guestCount) queryParams.append('guestCount', params.guestCount.toString());
 
-      const response = await api.get(`/availability?${queryParams.toString()}`);
+      const response = await api.get(`/availability/check?${queryParams.toString()}`);
       return response.data.data;
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
@@ -249,7 +283,7 @@ class AvailabilityService {
     reason: string;
   }): Promise<unknown> {
     try {
-      const response = await api.post('/availability/block-rooms', params);
+      const response = await api.post('/availability/block', params);
       return response.data.data;
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
@@ -266,7 +300,7 @@ class AvailabilityService {
     endDate: string;
   }): Promise<unknown> {
     try {
-      const response = await api.post('/availability/unblock-rooms', params);
+      const response = await api.post('/availability/unblock', params);
       return response.data.data;
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
@@ -305,12 +339,14 @@ class AvailabilityService {
     checkOut: string;
     roomType: string;
     guestCount?: number;
+    hotelId: string;
   }): Promise<AlternativeRoom[]> {
     try {
       const queryParams = new URLSearchParams({
         checkIn: params.checkIn,
         checkOut: params.checkOut,
-        roomType: params.roomType
+        roomType: params.roomType,
+        hotelId: params.hotelId
       });
 
       if (params.guestCount) queryParams.append('guestCount', params.guestCount.toString());
@@ -324,15 +360,17 @@ class AvailabilityService {
   }
 
   /**
-   * Check for overbooking
+   * Check for overbooking on a specific date
    */
   async checkOverbooking(params: {
     date: string;
     roomType?: string;
-  }): Promise<unknown> {
+    hotelId: string;
+  }): Promise<OverbookingCheckResult> {
     try {
       const queryParams = new URLSearchParams({
-        date: params.date
+        date: params.date,
+        hotelId: params.hotelId
       });
 
       if (params.roomType) queryParams.append('roomType', params.roomType);
@@ -342,6 +380,34 @@ class AvailabilityService {
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
       throw new Error(axiosErr.response?.data?.message || 'Failed to check overbooking');
+    }
+  }
+
+  /**
+   * Get overbooking dashboard statistics
+   */
+  async getOverbookingStats(hotelId: string): Promise<OverbookingStats> {
+    try {
+      const response = await api.get(`/availability/overbooking/stats?hotelId=${hotelId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      throw new Error(axiosErr.response?.data?.message || 'Failed to get overbooking stats');
+    }
+  }
+
+  /**
+   * Get overbooking alerts for upcoming dates
+   */
+  async getOverbookingAlerts(hotelId: string, days?: number): Promise<OverbookingAlert[]> {
+    try {
+      const params = new URLSearchParams({ hotelId });
+      if (days) params.append('days', days.toString());
+      const response = await api.get(`/availability/overbooking/alerts?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      throw new Error(axiosErr.response?.data?.message || 'Failed to get overbooking alerts');
     }
   }
 

@@ -183,7 +183,8 @@ export default function AllotmentCalendar({
         throw new Error('Failed to load allotment data - invalid response structure');
       }
     } catch (error) {
-      toast.error('Failed to load allotment data: ' + (error.response?.data?.error || error.message));
+      const axiosErr = error as { response?: { data?: { error?: string } } };
+      toast.error('Failed to load allotment data: ' + (axiosErr.response?.data?.error || (error instanceof Error ? error.message : 'Unknown error')));
     } finally {
       setLoading(false);
     }
@@ -273,14 +274,14 @@ export default function AllotmentCalendar({
         })),
       });
 
-      if (response.data) {
+      if (response.data?.success !== false) {
         toast.success('Allocations updated successfully');
         setEditDialogOpen(false);
         loadAllotmentData();
       } else {
         throw new Error('Failed to update allocations');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to update allocations');
     }
   };
@@ -340,6 +341,19 @@ export default function AllotmentCalendar({
       <Card className="h-96 flex items-center justify-center">
         <CardContent>
           <p className="text-muted-foreground">Select a room type to view allotments</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Card className="h-96 flex items-center justify-center">
+        <CardContent>
+          <div className="flex flex-col items-center space-y-3">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+            <p className="text-muted-foreground">Loading allotment data...</p>
+          </div>
         </CardContent>
       </Card>
     );

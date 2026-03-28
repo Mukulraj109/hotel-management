@@ -938,18 +938,9 @@ router.get('/:id/download', authenticate, catchAsync(async (req, res) => {
  *         description: Invoice not found
  */
 router.get('/:id/view', catchAsync(async (req, res) => {
-  // Handle token from query parameter (for new tab opening)
-  let user = req.user;
-  if (!user && req.query.token) {
-    try {
-      const jwt = require('jsonwebtoken');
-      const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
-      const User = require('../models/User');
-      user = await User.findById(decoded.id).lean();
-    } catch (error) {
-      throw new ApplicationError('Invalid token', 401);
-    }
-  }
+  // Authentication via httpOnly cookie (handled by authenticate middleware if present)
+  // SECURITY: JWT in query parameters was removed - tokens must not appear in URLs
+  const user = req.user;
 
   if (!user) {
     throw new ApplicationError('Authentication required', 401);
@@ -1008,6 +999,17 @@ Status: ${invoice.status}
   `.trim());
 }
 
+// Escape HTML to prevent XSS in invoice views
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Helper function to generate HTML invoice view
 function generateInvoiceHTML(invoice) {
   return `
@@ -1031,7 +1033,7 @@ function generateInvoiceHTML(invoice) {
 <body>
     <div class="header">
         <h1>INVOICE</h1>
-        <h2>${invoice.hotelId.name}</h2>
+        <h2>${escapeHtml(invoice.hotelId.name)}</h2>
     </div>
 
     <div class="invoice-info">
@@ -1043,9 +1045,9 @@ function generateInvoiceHTML(invoice) {
         </div>
         <div>
             <strong>Bill To:</strong><br>
-            ${invoice.guestId.name}<br>
-            ${invoice.guestId.email}<br>
-            ${invoice.guestId.phone || ''}
+            ${escapeHtml(invoice.guestId.name)}<br>
+            ${escapeHtml(invoice.guestId.email)}<br>
+            ${escapeHtml(invoice.guestId.phone || '')}
         </div>
     </div>
 

@@ -22,6 +22,7 @@ import {
   Radar
 } from 'recharts';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '../../services/api';
 import {
   DollarSign,
   TrendingDown,
@@ -170,9 +171,7 @@ const CostOptimizationDashboard: React.FC = () => {
       });
 
       const { data } = await api.get(`/inventory/analytics/cost-optimization?${params}`);
-      {
-        setDashboardData(data.data);
-      }
+      setDashboardData(data.data);
     } catch {
       // Error handled silently
     } finally {
@@ -189,22 +188,22 @@ const CostOptimizationDashboard: React.FC = () => {
       });
 
       const { data } = await api.get(`/inventory/analytics/supplier-performance?${params}`);
-      {
-        setSupplierAnalysis(data.data.suppliers || []);
-      }
+      setSupplierAnalysis(data.data.suppliers || []);
     } catch {
       // Error handled silently
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    if (!isFinite(amount)) return '\u20B90.00';
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
   const formatPercentage = (value: number) => {
+    if (!isFinite(value)) return '0.0%';
     return `${value.toFixed(1)}%`;
   };
 

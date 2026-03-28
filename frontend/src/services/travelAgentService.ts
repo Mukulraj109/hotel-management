@@ -184,7 +184,7 @@ class TravelAgentService {
   async registerTravelAgent(data: Partial<TravelAgent>): Promise<TravelAgent> {
     try {
       const response = await api.post('/travel-agents', data);
-      return response.data.travelAgent;
+      return response.data.data?.travelAgent || response.data.travelAgent;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -206,7 +206,7 @@ class TravelAgentService {
   async getTravelAgentById(id: string): Promise<TravelAgent> {
     try {
       const response = await api.get(`/travel-agents/${id}`);
-      return response.data.travelAgent;
+      return response.data.data?.travelAgent || response.data.travelAgent;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -224,7 +224,7 @@ class TravelAgentService {
   async updateTravelAgent(id: string, data: Partial<TravelAgent>): Promise<TravelAgent> {
     try {
       const response = await api.put(`/travel-agents/${id}`, data);
-      return response.data.travelAgent;
+      return response.data.data?.travelAgent || response.data.travelAgent;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -237,7 +237,7 @@ class TravelAgentService {
   ): Promise<TravelAgent> {
     try {
       const response = await api.patch(`/travel-agents/${id}/status`, { status, reason });
-      return response.data.travelAgent;
+      return response.data.data?.travelAgent || response.data.travelAgent;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -389,7 +389,7 @@ class TravelAgentService {
   }> {
     try {
       const response = await api.get('/admin/travel-dashboard/pending-commissions');
-      return response.data;
+      return response.data.data || response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

@@ -2,19 +2,23 @@ import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Select imports available for future rule creation UI
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/utils/toast';
+import { formatCurrency } from '@/utils/currencyUtils';
+import revenueManagementService from '@/services/revenueManagementService';
 import {
-  TrendingUp, TrendingDown, Target, Brain, BarChart3, Zap,
+  TrendingUp, TrendingDown, Target, BarChart3, Zap,
   Settings, Eye, AlertTriangle, CheckCircle, DollarSign,
-  Users, Calendar, MapPin, Cloud, ThermometerSun, Plane,
-  Building2, Star, Trophy, Activity, Lightbulb, Sparkles
+  Users, Calendar, MapPin, ThermometerSun,
+  Building2, Star, Trophy, Activity, Lightbulb, Sparkles,
+  Loader2
 } from 'lucide-react';
-import { format, addDays, isWeekend } from 'date-fns';
+import { format } from 'date-fns';
 import { withErrorBoundary } from '../ErrorBoundary';
 
 // Dynamic Pricing Interfaces
@@ -81,8 +85,20 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
   const [optimalPricing, setOptimalPricing] = useState<OptimalPricing[]>([]);
   const [autoOptimization, setAutoOptimization] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [optimizationLoading, setOptimizationLoading] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<{
+    revPAR: number;
+    adr: number;
+    revenueGrowth: number;
+    marketShare: number;
+    pricingAccuracy: number;
+    rateOptimizationImpact: number;
+  } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [togglingRuleId, setTogglingRuleId] = useState<string | null>(null);
 
-  // Mock data generation for realistic business scenarios
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -90,224 +106,211 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
   }, []);
 
   useEffect(() => {
-    generateMockPricingRules();
-    generateMockMarketIntelligence();
-    generateMockOptimalPricing();
+    fetchPricingRules();
+    fetchMarketIntelligence();
+    fetchOptimalPricing();
+    fetchAnalyticsData();
   }, []);
 
-  const generateMockPricingRules = () => {
-    const rules: PricingRule[] = [
-      {
-        id: 'rule-1',
-        name: 'High Occupancy Premium',
-        type: 'occupancy',
-        condition: 'Occupancy > 85%',
-        adjustment: 15,
-        priority: 1,
-        isActive: true,
-        lastTriggered: '2025-09-23T14:30:00Z'
-      },
-      {
-        id: 'rule-2',
-        name: 'Weekend Surge Pricing',
-        type: 'seasonal',
-        condition: 'Weekend nights',
-        adjustment: 25,
-        priority: 2,
-        isActive: true,
-        lastTriggered: '2025-09-22T18:00:00Z'
-      },
-      {
-        id: 'rule-3',
-        name: 'Conference Event Premium',
-        type: 'event',
-        condition: 'Major local event',
-        adjustment: 40,
-        priority: 1,
-        isActive: true,
-        lastTriggered: '2025-09-20T09:15:00Z'
-      },
-      {
-        id: 'rule-4',
-        name: 'Competitor Undercutting',
-        type: 'competitor',
-        condition: 'Our rate > Competitor average + 10%',
-        adjustment: -8,
-        priority: 3,
-        isActive: true
-      },
-      {
-        id: 'rule-5',
-        name: 'Low Demand Discount',
-        type: 'demand',
-        condition: 'Booking velocity < 20% of target',
-        adjustment: -12,
-        priority: 4,
-        isActive: false
-      },
-      {
-        id: 'rule-6',
-        name: 'Perfect Weather Premium',
-        type: 'weather',
-        condition: 'Sunny, 22-28°C, No precipitation',
-        adjustment: 10,
-        priority: 3,
-        isActive: true
-      }
-    ];
-    setPricingRules(rules);
-  };
-
-  const generateMockMarketIntelligence = () => {
-    const intelligence: MarketIntelligence = {
-      competitorRates: [
-        {
-          hotelName: 'Grand Palace Hotel',
-          rating: 5,
-          distance: '0.3 km',
-          rate: 18500,
-          availability: true,
-          source: 'Booking.com'
-        },
-        {
-          hotelName: 'City Center Inn',
-          rating: 4,
-          distance: '0.8 km',
-          rate: 14200,
-          availability: true,
-          source: 'Expedia'
-        },
-        {
-          hotelName: 'Business Tower Hotel',
-          rating: 4,
-          distance: '1.2 km',
-          rate: 16800,
-          availability: false,
-          source: 'Agoda'
-        },
-        {
-          hotelName: 'Comfort Suites',
-          rating: 3,
-          distance: '2.1 km',
-          rate: 11500,
-          availability: true,
-          source: 'Hotels.com'
-        }
-      ],
-      localEvents: [
-        {
-          name: 'Tech Innovation Summit 2025',
-          date: '2025-09-28',
-          impact: 'high',
-          demandMultiplier: 2.4
-        },
-        {
-          name: 'International Food Festival',
-          date: '2025-10-05',
-          impact: 'medium',
-          demandMultiplier: 1.6
-        },
-        {
-          name: 'City Marathon',
-          date: '2025-10-12',
-          impact: 'medium',
-          demandMultiplier: 1.8
-        }
-      ],
-      weatherForecast: [
-        {
-          date: '2025-09-24',
-          condition: 'Sunny',
-          temperature: 26,
-          precipitation: 0,
-          impact: 'positive'
-        },
-        {
-          date: '2025-09-25',
-          condition: 'Partly Cloudy',
-          temperature: 24,
-          precipitation: 10,
-          impact: 'neutral'
-        },
-        {
-          date: '2025-09-26',
-          condition: 'Rainy',
-          temperature: 20,
-          precipitation: 85,
-          impact: 'negative'
-        }
-      ],
-      marketTrends: {
-        bookingVelocity: 127, // 27% above target
-        priceElasticity: 1.2,
-        demandIndex: 8.4,
-        competitivePosition: 'above'
-      }
-    };
-    setMarketData(intelligence);
-  };
-
-  const generateMockOptimalPricing = () => {
-    const roomTypes = ['Deluxe Room', 'Executive Suite', 'Presidential Suite', 'Standard Room'];
-    const pricing: OptimalPricing[] = [];
-
-    for (let i = 0; i < 7; i++) {
-      const date = addDays(new Date(), i);
-      roomTypes.forEach(roomType => {
-        const baseRate = roomType === 'Presidential Suite' ? 25000 :
-                        roomType === 'Executive Suite' ? 18000 :
-                        roomType === 'Deluxe Room' ? 15000 : 12000;
-
-        const isWeekendDate = isWeekend(date);
-        const demandMultiplier = isWeekendDate ? 1.3 : Math.random() * 0.4 + 0.8;
-
-        pricing.push({
-          roomType,
-          date: format(date, 'yyyy-MM-dd'),
-          currentRate: baseRate,
-          optimalRate: Math.round(baseRate * demandMultiplier),
-          confidence: Math.round(75 + Math.random() * 20),
-          reasoning: [
-            isWeekendDate ? 'Weekend premium applied' : 'Weekday rates',
-            demandMultiplier > 1.1 ? 'High demand detected' : 'Standard demand',
-            'Competitor analysis completed',
-            'Weather impact factored'
-          ],
-          projectedRevenue: Math.round(baseRate * demandMultiplier * (0.85 + Math.random() * 0.1)),
-          demandLevel: demandMultiplier > 1.2 ? 'high' : demandMultiplier > 0.9 ? 'medium' : 'low',
-          competitivePosition: 'Competitive with market leaders'
-        });
-      });
+  const fetchPricingRules = async () => {
+    setRulesLoading(true);
+    try {
+      const rules = await revenueManagementService.getPricingRules();
+      if (!isMountedRef.current) return;
+      // Map API response to component interface
+      const mapped: PricingRule[] = (rules as Record<string, unknown>[]).map((rule: Record<string, unknown>) => ({
+        id: (rule._id as string) || (rule.id as string) || '',
+        name: (rule.name as string) || '',
+        type: (rule.type as PricingRule['type']) || 'demand',
+        condition: (rule.condition as string) || (rule.description as string) || '',
+        adjustment: (rule.adjustment as number) || (rule.rateAdjustment as number) || 0,
+        priority: (rule.priority as number) || 5,
+        isActive: rule.isActive !== undefined ? (rule.isActive as boolean) : true,
+        lastTriggered: (rule.lastTriggered as string) || (rule.updatedAt as string) || undefined,
+      }));
+      setPricingRules(mapped);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      toast.error('Failed to load pricing rules');
+    } finally {
+      if (isMountedRef.current) setRulesLoading(false);
     }
+  };
 
-    setOptimalPricing(pricing);
+  const fetchMarketIntelligence = async () => {
+    setMarketLoading(true);
+    try {
+      const [competitorRatesRaw, demandForecastRaw, revenueSummaryRaw] = await Promise.all([
+        revenueManagementService.getCompetitorRates(),
+        revenueManagementService.getDemandForecast(),
+        revenueManagementService.getRevenueSummary(),
+      ]);
+      if (!isMountedRef.current) return;
+
+      // Map competitor rates
+      const competitorRates = (competitorRatesRaw || []).map((c: Record<string, unknown>) => ({
+        hotelName: (c.hotelName as string) || '',
+        rating: (c.rating as number) || 3,
+        distance: (c.distance as string) || 'N/A',
+        rate: (c.currentRate as number) || (c.rate as number) || 0,
+        availability: c.availability !== undefined
+          ? (typeof c.availability === 'boolean' ? c.availability : (c.availability as number) > 0)
+          : true,
+        source: (c.source as string) || 'API',
+      }));
+
+      // Map demand forecast to local events
+      const localEvents = (demandForecastRaw || [])
+        .filter((f: Record<string, unknown>) =>
+          f.demandLevel === 'high' || f.demandLevel === 'peak' || ((f.factors as string[]) || []).length > 0
+        )
+        .slice(0, 5)
+        .map((f: Record<string, unknown>) => ({
+          name: ((f.factors as string[]) || [])[0] || `${(f.demandLevel as string || 'medium').charAt(0).toUpperCase() + (f.demandLevel as string || 'medium').slice(1)} demand period`,
+          date: (f.date as string) || '',
+          impact: ((f.demandLevel as string) === 'peak' ? 'high' : (f.demandLevel as string)) as 'high' | 'medium' | 'low',
+          demandMultiplier: 1 + ((f.recommendedRateChange as number) || 0) / 100,
+        }));
+
+      // Static weather forecast (no weather API backend)
+      const weatherForecast = [
+        { date: format(new Date(), 'yyyy-MM-dd'), condition: 'Data unavailable', temperature: 0, precipitation: 0, impact: 'neutral' as const },
+      ];
+
+      // Map revenue summary to market trends
+      const summary = revenueSummaryRaw as Record<string, unknown> | null;
+      const marketTrends = {
+        bookingVelocity: (summary?.bookingVelocity as number) || 100,
+        priceElasticity: (summary?.priceElasticity as number) || 1.0,
+        demandIndex: (summary?.demandIndex as number) || 5.0,
+        competitivePosition: ((summary?.competitivePosition as string) || 'at') as 'above' | 'at' | 'below',
+      };
+
+      setMarketData({
+        competitorRates,
+        localEvents,
+        weatherForecast,
+        marketTrends,
+      });
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      toast.error('Failed to load market intelligence');
+    } finally {
+      if (isMountedRef.current) setMarketLoading(false);
+    }
+  };
+
+  const fetchOptimalPricing = async () => {
+    setOptimizationLoading(true);
+    try {
+      const recommendations = await revenueManagementService.getOptimizationRecommendations();
+      if (!isMountedRef.current) return;
+
+      // Map API recommendations to OptimalPricing interface
+      const recsArray = Array.isArray(recommendations)
+        ? recommendations
+        : (recommendations as Record<string, unknown>)?.recommendations
+          ? ((recommendations as Record<string, unknown>).recommendations as unknown[])
+          : [];
+
+      const mapped: OptimalPricing[] = (recsArray as Record<string, unknown>[]).map((rec: Record<string, unknown>) => ({
+        roomType: (rec.roomType as string) || (rec.roomTypeName as string) || 'Room',
+        date: (rec.date as string) || format(new Date(), 'yyyy-MM-dd'),
+        currentRate: (rec.currentRate as number) || 0,
+        optimalRate: (rec.optimalRate as number) || (rec.recommendedRate as number) || (rec.suggestedRate as number) || 0,
+        confidence: Math.round((rec.confidence as number) || 80),
+        reasoning: (rec.reasoning as string[]) || (rec.factors as string[]) || [],
+        projectedRevenue: (rec.projectedRevenue as number) || (rec.estimatedRevenue as number) || 0,
+        demandLevel: ((rec.demandLevel as string) || 'medium') as 'high' | 'medium' | 'low',
+        competitivePosition: (rec.competitivePosition as string) || 'Competitive with market',
+      }));
+
+      setOptimalPricing(mapped);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      toast.error('Failed to load optimization recommendations');
+    } finally {
+      if (isMountedRef.current) setOptimizationLoading(false);
+    }
+  };
+
+  const fetchAnalyticsData = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const dashboardMetrics = await revenueManagementService.getDashboardMetrics();
+      if (!isMountedRef.current) return;
+
+      const metrics = dashboardMetrics?.metrics;
+      const perf = dashboardMetrics?.performanceMetrics;
+      setAnalyticsData({
+        revPAR: metrics?.revPAR || 0,
+        adr: metrics?.adr || 0,
+        revenueGrowth: perf?.revenueGrowth || 0,
+        marketShare: perf?.marketShare || 0,
+        pricingAccuracy: perf?.rateOptimization || 0,
+        rateOptimizationImpact: metrics?.rateOptimizationImpact || 0,
+      });
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      toast.error('Failed to load analytics data');
+    } finally {
+      if (isMountedRef.current) setAnalyticsLoading(false);
+    }
   };
 
   const handleApplyOptimalPricing = async () => {
+    if (optimalPricing.length === 0) {
+      toast.error('No optimization recommendations available to apply');
+      return;
+    }
     setLoading(true);
     try {
-      // Simulate API call to apply pricing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    if (!isMountedRef.current) return;
+      const updates = optimalPricing.map(p => ({
+        id: p.roomType,
+        currentRate: p.optimalRate,
+      }));
+      await revenueManagementService.bulkUpdateRoomTypeRates(updates);
+      if (!isMountedRef.current) return;
 
       toast.success('Optimal pricing applied to all room types');
 
-      // Simulate rule triggering
-      setPricingRules(prev => prev.map(rule =>
-        rule.isActive ? { ...rule, lastTriggered: new Date().toISOString() } : rule
-      ));
-
+      // Refresh data after applying
+      fetchPricingRules();
+      fetchOptimalPricing();
     } catch (error) {
+      if (!isMountedRef.current) return;
       toast.error('Failed to apply optimal pricing');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
-  const toggleRule = (ruleId: string) => {
-    setPricingRules(prev => prev.map(rule =>
-      rule.id === ruleId ? { ...rule, isActive: !rule.isActive } : rule
+  const toggleRule = async (ruleId: string) => {
+    const rule = pricingRules.find(r => r.id === ruleId);
+    if (!rule) return;
+
+    setTogglingRuleId(ruleId);
+    // Optimistic update
+    setPricingRules(prev => prev.map(r =>
+      r.id === ruleId ? { ...r, isActive: !r.isActive } : r
     ));
+
+    try {
+      await revenueManagementService.updatePricingRule(ruleId, {
+        isActive: !rule.isActive,
+      });
+      if (!isMountedRef.current) return;
+      toast.success(`Rule "${rule.name}" ${!rule.isActive ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      // Revert optimistic update
+      setPricingRules(prev => prev.map(r =>
+        r.id === ruleId ? { ...r, isActive: rule.isActive } : r
+      ));
+      toast.error(`Failed to update rule "${rule.name}"`);
+    } finally {
+      if (isMountedRef.current) setTogglingRuleId(null);
+    }
   };
 
   const getDemandColor = (level: string) => {
@@ -338,6 +341,20 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
       default: return <BarChart3 className="h-4 w-4" />;
     }
   };
+
+  const LoadingSpinner = ({ text = 'Loading...' }: { text?: string }) => (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="h-6 w-6 animate-spin text-purple-600 mr-2" />
+      <span className="text-sm text-gray-500">{text}</span>
+    </div>
+  );
+
+  const EmptyState = ({ message }: { message: string }) => (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <AlertTriangle className="h-8 w-8 text-gray-400 mb-2" />
+      <p className="text-sm text-gray-500">{message}</p>
+    </div>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -405,7 +422,9 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-600">Revenue Impact</p>
-                      <p className="text-2xl font-bold text-green-700">+18.2%</p>
+                      <p className="text-2xl font-bold text-green-700">
+                        {analyticsData ? `+${analyticsData.rateOptimizationImpact.toFixed(1)}%` : '--'}
+                      </p>
                     </div>
                     <DollarSign className="h-8 w-8 text-green-600" />
                   </div>
@@ -418,7 +437,9 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-600">Optimal Pricing</p>
-                      <p className="text-2xl font-bold text-blue-700">94.3%</p>
+                      <p className="text-2xl font-bold text-blue-700">
+                        {analyticsData ? `${analyticsData.pricingAccuracy.toFixed(1)}%` : '--'}
+                      </p>
                     </div>
                     <Target className="h-8 w-8 text-blue-600" />
                   </div>
@@ -447,7 +468,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                     <div>
                       <p className="text-sm text-gray-600">Market Position</p>
                       <p className="text-2xl font-bold text-orange-700">
-                        {marketData?.marketTrends.competitivePosition.toUpperCase()}
+                        {marketData?.marketTrends.competitivePosition.toUpperCase() || '--'}
                       </p>
                     </div>
                     <Trophy className="h-8 w-8 text-orange-600" />
@@ -466,6 +487,11 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {rulesLoading ? (
+                  <LoadingSpinner text="Loading adjustments..." />
+                ) : pricingRules.filter(rule => rule.lastTriggered).length === 0 ? (
+                  <EmptyState message="No recent auto-adjustments recorded." />
+                ) : (
                 <div className="space-y-3">
                   {pricingRules
                     .filter(rule => rule.lastTriggered)
@@ -492,6 +518,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                     ))
                   }
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -505,6 +532,11 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
               </Button>
             </div>
 
+            {rulesLoading ? (
+              <LoadingSpinner text="Loading pricing rules..." />
+            ) : pricingRules.length === 0 ? (
+              <EmptyState message="No pricing rules configured. Click 'Add Rule' to create one." />
+            ) : (
             <div className="grid gap-4">
               {pricingRules.map((rule) => (
                 <Card key={rule.id} className={`transition-all ${rule.isActive ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}>
@@ -530,9 +562,16 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                           variant={rule.isActive ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => toggleRule(rule.id)}
+                          disabled={togglingRuleId === rule.id}
                           className={rule.isActive ? 'bg-green-600 hover:bg-green-700' : ''}
                         >
-                          {rule.isActive ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                          {togglingRuleId === rule.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : rule.isActive ? (
+                            <CheckCircle className="h-4 w-4" />
+                          ) : (
+                            <AlertTriangle className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -545,10 +584,15 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                 </Card>
               ))}
             </div>
+            )}
           </TabsContent>
 
           <TabsContent value="market" className="space-y-6">
-            {marketData && (
+            {marketLoading ? (
+              <LoadingSpinner text="Loading market intelligence..." />
+            ) : !marketData ? (
+              <EmptyState message="Market intelligence data is unavailable." />
+            ) : (
               <>
                 {/* Competitor Analysis */}
                 <Card>
@@ -559,6 +603,9 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
+                    {marketData.competitorRates.length === 0 ? (
+                      <EmptyState message="No competitor rate data available." />
+                    ) : (
                     <div className="space-y-3">
                       {marketData.competitorRates.map((competitor, index) => (
                         <div key={`marketData-competitorRates-${index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -574,7 +621,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="font-bold text-lg">₹{competitor.rate.toLocaleString()}</span>
+                            <span className="font-bold text-lg">{formatCurrency(competitor.rate)}</span>
                             <Badge variant={competitor.availability ? 'default' : 'secondary'}>
                               {competitor.availability ? 'Available' : 'Sold Out'}
                             </Badge>
@@ -582,6 +629,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                         </div>
                       ))}
                     </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -594,6 +642,9 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
+                    {marketData.localEvents.length === 0 ? (
+                      <EmptyState message="No upcoming events affecting demand." />
+                    ) : (
                     <div className="space-y-3">
                       {marketData.localEvents.map((event, index) => (
                         <div key={`marketData-localEvents-${index}-${event.name}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -610,12 +661,13 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                               {event.impact.toUpperCase()} Impact
                             </Badge>
                             <span className="text-sm font-medium">
-                              {event.demandMultiplier}x Demand
+                              {event.demandMultiplier.toFixed(1)}x Demand
                             </span>
                           </div>
                         </div>
                       ))}
                     </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -637,7 +689,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                             </p>
                             <div className="flex items-center justify-center gap-1 my-2">
                               {getImpactIcon(weather.impact)}
-                              <span className="text-lg font-bold">{weather.temperature}°C</span>
+                              <span className="text-lg font-bold">{weather.temperature > 0 ? `${weather.temperature}\u00B0C` : 'N/A'}</span>
                             </div>
                             <p className="text-xs text-gray-600">{weather.condition}</p>
                             <p className="text-xs text-gray-500">{weather.precipitation}% rain</p>
@@ -656,7 +708,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
               <h3 className="text-lg font-semibold">AI-Powered Rate Optimization</h3>
               <Button
                 onClick={handleApplyOptimalPricing}
-                disabled={loading}
+                disabled={loading || optimalPricing.length === 0}
                 className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
               >
                 {loading ? (
@@ -673,6 +725,11 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
               </Button>
             </div>
 
+            {optimizationLoading ? (
+              <LoadingSpinner text="Loading optimization recommendations..." />
+            ) : optimalPricing.length === 0 ? (
+              <EmptyState message="No optimization recommendations available at this time." />
+            ) : (
             <div className="grid gap-4">
               {optimalPricing.slice(0, 8).map((pricing, index) => (
                 <Card key={`-${index}-${pricing.date}`} className="transition-all hover:shadow-md">
@@ -694,21 +751,21 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                         <div className="text-right">
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-500 line-through">
-                              ₹{pricing.currentRate.toLocaleString()}
+                              {formatCurrency(pricing.currentRate)}
                             </span>
                             <span className="text-lg font-bold text-green-600">
-                              ₹{pricing.optimalRate.toLocaleString()}
+                              {formatCurrency(pricing.optimalRate)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Progress value={pricing.confidence} className="w-16 h-2" />
-                            <span className="text-xs text-gray-500">{pricing.confidence}% confidence</span>
+                            <span className="text-xs text-gray-500">{Math.round(pricing.confidence)}% confidence</span>
                           </div>
                         </div>
 
                         <div className="text-right">
                           <p className="text-sm font-medium text-green-600">
-                            ₹{pricing.projectedRevenue.toLocaleString()}
+                            {formatCurrency(pricing.projectedRevenue)}
                           </p>
                           <p className="text-xs text-gray-500">projected revenue</p>
                         </div>
@@ -726,9 +783,13 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                 </Card>
               ))}
             </div>
+            )}
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            {analyticsLoading ? (
+              <LoadingSpinner text="Loading analytics data..." />
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* AI Insights */}
               <Card>
@@ -783,44 +844,49 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Revenue Per Available Room</span>
-                      <span className="font-bold">₹12,450</span>
+                      <span className="font-bold">{analyticsData ? formatCurrency(analyticsData.revPAR) : '--'}</span>
                     </div>
-                    <Progress value={82} className="h-2" />
+                    <Progress value={analyticsData ? Math.min(Math.round((analyticsData.revPAR / 20000) * 100), 100) : 0} className="h-2" />
 
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Average Daily Rate</span>
-                      <span className="font-bold">₹16,750</span>
+                      <span className="font-bold">{analyticsData ? formatCurrency(analyticsData.adr) : '--'}</span>
                     </div>
-                    <Progress value={76} className="h-2" />
+                    <Progress value={analyticsData ? Math.min(Math.round((analyticsData.adr / 25000) * 100), 100) : 0} className="h-2" />
 
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Pricing Accuracy</span>
-                      <span className="font-bold">94.3%</span>
+                      <span className="font-bold">{analyticsData ? `${analyticsData.pricingAccuracy.toFixed(1)}%` : '--'}</span>
                     </div>
-                    <Progress value={94} className="h-2" />
+                    <Progress value={analyticsData?.pricingAccuracy || 0} className="h-2" />
 
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Market Share</span>
-                      <span className="font-bold">23.1%</span>
+                      <span className="font-bold">{analyticsData ? `${analyticsData.marketShare.toFixed(1)}%` : '--'}</span>
                     </div>
-                    <Progress value={68} className="h-2" />
+                    <Progress value={analyticsData?.marketShare || 0} className="h-2" />
                   </div>
 
                   <Separator />
 
                   <div className="grid grid-cols-2 gap-4 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-green-600">+18.2%</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {analyticsData ? `+${analyticsData.revenueGrowth.toFixed(1)}%` : '--'}
+                      </p>
                       <p className="text-xs text-gray-500">Revenue Growth</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-blue-600">-5.8%</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {analyticsData ? `${analyticsData.rateOptimizationImpact > 0 ? '-' : ''}${Math.abs(analyticsData.rateOptimizationImpact).toFixed(1)}%` : '--'}
+                      </p>
                       <p className="text-xs text-gray-500">Cost Reduction</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
+            )}
 
             {/* AI Learning Status */}
             <Card>
@@ -843,7 +909,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
                   <div className="text-center">
                     <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
                       <Target className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                      <p className="font-bold text-lg">94.3%</p>
+                      <p className="font-bold text-lg">{analyticsData ? `${analyticsData.pricingAccuracy.toFixed(1)}%` : '--'}</p>
                       <p className="text-sm text-gray-600">Model Accuracy</p>
                     </div>
                   </div>

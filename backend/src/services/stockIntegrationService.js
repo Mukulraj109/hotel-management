@@ -463,7 +463,6 @@ class StockIntegrationService {
             quantity: item.quantity,
             reason: `Maintenance - ${maintenanceType}`
           });
-          }
         }
       }
 

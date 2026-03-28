@@ -9,6 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { CalendarIcon, Download, FileText, Table, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { exportService, ExportData, ExportOptions } from '../../services/exportService';
+import { useToast } from '@/components/ui/use-toast';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -29,6 +31,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   properties,
   groups
 }) => {
+  const { toast } = useToast();
+  const { data: currentUser } = useCurrentUser();
   const [exportOptions, setExportOptions] = useState<ExportOptions>({
     format: 'excel',
     filename: `property_export_${format(new Date(), 'yyyy-MM-dd')}`,
@@ -47,7 +51,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const handleExport = async () => {
     if (!includeProperties && !includeGroups) {
-      alert('Please select at least one data type to export.');
+      toast({ variant: "destructive", title: "Validation Error", description: "Please select at least one data type to export." });
       return;
     }
 
@@ -62,7 +66,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           : undefined,
         metadata: {
           exportDate: new Date().toISOString(),
-          exportedBy: 'Admin User', // TODO: Get from auth context
+          exportedBy: currentUser?.name || currentUser?.email || 'Admin User',
           totalRecords: (includeProperties ? properties.length : 0) + (includeGroups ? groups.length : 0),
           filters: {
             includeProperties,
@@ -85,11 +89,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       await exportService.exportData(exportData, finalOptions);
 
-      // Show success message
-      alert(`Export completed successfully! File saved as ${exportOptions.filename}.${exportOptions.format}`);
+      toast({ title: "Success", description: `Export completed! File saved as ${exportOptions.filename}.${exportOptions.format}` });
       onClose();
-    } catch (error) {
-      alert('Export failed. Please try again.');
+    } catch {
+      toast({ variant: "destructive", title: "Export Failed", description: "Something went wrong. Please try again." });
     } finally {
       setIsExporting(false);
     }

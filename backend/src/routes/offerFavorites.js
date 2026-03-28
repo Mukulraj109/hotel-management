@@ -5,6 +5,7 @@ import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import OfferFavorite from '../models/OfferFavorite.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -18,12 +19,31 @@ router.use(ensurePropertyAccess);
  */
 router.get('/', authorizePolicy('offerFavorites', 'memberAccess'), catchAsync(async (req, res) => {
     const userId = req.user._id;
-    
-    // TODO: Implement favorite offers functionality
+    const {
+        page = 1,
+        limit = 20,
+        category,
+        type,
+        sortBy = 'createdAt',
+        sortOrder = -1
+    } = req.query;
+
+    const clampedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+
+    const result = await OfferFavorite.getUserFavorites(userId, {
+        page: pageNum,
+        limit: clampedLimit,
+        category,
+        type,
+        sortBy,
+        sortOrder: parseInt(sortOrder) || -1
+    });
+
     res.status(200).json({
         status: 'success',
-        data: [],
-        message: 'Favorite offers functionality not yet implemented'
+        data: result.favorites,
+        pagination: result.pagination
     });
 }));
 
@@ -33,11 +53,33 @@ router.get('/', authorizePolicy('offerFavorites', 'memberAccess'), catchAsync(as
 router.post('/:offerId', authorizePolicy('offerFavorites', 'memberAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const userId = req.user._id;
     const { offerId } = req.params;
-    
-    // TODO: Implement add to favorites functionality
-    res.status(200).json({
+    const hotelId = req.user.hotelId;
+    const { notifyOnExpiry, notifyOnUpdate, notes } = req.body;
+
+    // Check if already favorited
+    const existing = await OfferFavorite.findOne({ userId, offerId }).lean();
+    if (existing) {
+        return res.status(409).json({
+            status: 'error',
+            message: 'Offer is already in favorites'
+        });
+    }
+
+    const favorite = await OfferFavorite.create({
+        userId,
+        offerId,
+        hotelId,
+        notifyOnExpiry: notifyOnExpiry !== undefined ? notifyOnExpiry : true,
+        notifyOnUpdate: notifyOnUpdate !== undefined ? notifyOnUpdate : false,
+        notes
+    });
+
+    const populated = await OfferFavorite.findById(favorite._id).populate('offerId').lean();
+
+    res.status(201).json({
         status: 'success',
-        message: 'Add to favorites functionality not yet implemented'
+        message: 'Offer added to favorites',
+        data: populated
     });
 }));
 
@@ -47,11 +89,19 @@ router.post('/:offerId', authorizePolicy('offerFavorites', 'memberAccess'), vali
 router.delete('/:offerId', authorizePolicy('offerFavorites', 'memberAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const userId = req.user._id;
     const { offerId } = req.params;
-    
-    // TODO: Implement remove from favorites functionality
+
+    const deleted = await OfferFavorite.findOneAndDelete({ userId, offerId });
+
+    if (!deleted) {
+        return res.status(404).json({
+            status: 'error',
+            message: 'Offer not found in favorites'
+        });
+    }
+
     res.status(200).json({
         status: 'success',
-        message: 'Remove from favorites functionality not yet implemented'
+        message: 'Offer removed from favorites'
     });
 }));
 

@@ -256,9 +256,15 @@ export const getDashboardMetrics = async (req, res) => {
   try {
     const { period = '30d', hotel_id } = req.query;
     const userRole = req.user?.role || 'staff';
-    
+
+    // Resolve hotel context — mandatory for tenant isolation
+    const resolvedHotelId = hotel_id || req.user?.hotelId;
+    if (!resolvedHotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
+
     // Create cache key
-    const cacheKey = `dashboard_${period}_${hotel_id || 'all'}`;
+    const cacheKey = `dashboard_${period}_${resolvedHotelId}`;
     
     // Check cache first
     const cachedData = dashboardCache.get(cacheKey);
@@ -296,7 +302,7 @@ export const getDashboardMetrics = async (req, res) => {
     }
 
     // Get real data from database with role-based filtering
-    const dashboardData = await getRealDashboardData(startDate, endDate, hotel_id, userRole);
+    const dashboardData = await getRealDashboardData(startDate, endDate, resolvedHotelId, userRole);
     
     // Cache the result
     dashboardCache.set(cacheKey, {
@@ -429,11 +435,12 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
       checkIn: { $gte: startDate, $lte: endDate } // Only bookings checking in during period
     };
 
-    if (hotelId) {
-      filter.hotelId = mongoose.Types.ObjectId.isValid(hotelId)
-        ? new mongoose.Types.ObjectId(hotelId)
-        : hotelId;
+    if (!hotelId) {
+      throw new Error('Hotel context required for dashboard data');
     }
+    filter.hotelId = mongoose.Types.ObjectId.isValid(hotelId)
+      ? new mongoose.Types.ObjectId(hotelId)
+      : hotelId;
 
     logger.info('Booking filter applied', {
       filter,
@@ -805,18 +812,32 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
 
     // Add role-based data
     if (userRole === 'admin' || userRole === 'manager') {
+      // Calculate ADR change vs previous period
+      const previousADR = previousTotalBookedNights > 0 ? previousRevenue / previousTotalBookedNights : 0;
+      const adrChange = previousADR > 0 ? ((averageDailyRate - previousADR) / previousADR) * 100 : 0;
+
+      // Calculate year-over-year occupancy and ADR
+      const yearAgoRoomNights = yearAgoBookings.reduce((sum, booking) => {
+        const nights = Math.ceil((new Date(booking.checkOut) - new Date(booking.checkIn)) / (1000 * 60 * 60 * 24));
+        return sum + Math.max(1, nights);
+      }, 0);
+      const yearAgoADR = yearAgoRoomNights > 0 ? yearAgoRevenue / yearAgoRoomNights : 0;
+      const yearAgoOccupancy = (totalRooms > 0 && daysDiff > 0)
+        ? (yearAgoRoomNights / (totalRooms * daysDiff)) * 100
+        : 0;
+
       baseData.trends = trendData;
       baseData.forecasts = forecastData;
       baseData.comparisons = {
         previousPeriod: {
           revenue: revenueChange,
           occupancy: occupancyChange,
-          adr: 0 // Placeholder
+          adr: Math.round(adrChange * 100) / 100
         },
         yearOverYear: {
           revenue: yearAgoRevenue > 0 ? ((totalRevenue - yearAgoRevenue) / yearAgoRevenue) * 100 : 0,
-          occupancy: 0, // Placeholder
-          adr: 0 // Placeholder
+          occupancy: yearAgoOccupancy > 0 ? ((occupancyRate - yearAgoOccupancy) / yearAgoOccupancy) * 100 : 0,
+          adr: yearAgoADR > 0 ? ((averageDailyRate - yearAgoADR) / yearAgoADR) * 100 : 0
         }
       };
     }
@@ -1217,6 +1238,12 @@ export const getRoomTypeProfitability = async (req, res) => {
   try {
     const { period = '30d', hotel_id } = req.query;
 
+    // Resolve hotel context — mandatory for tenant isolation
+    const resolvedHotelId = hotel_id || req.user?.hotelId;
+    if (!resolvedHotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
+
     // Calculate date range
     let startDate, endDate = new Date();
     switch (period) {
@@ -1233,7 +1260,7 @@ export const getRoomTypeProfitability = async (req, res) => {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const roomTypeProfitability = await calculateRoomTypeProfitability(startDate, endDate, hotel_id);
+    const roomTypeProfitability = await calculateRoomTypeProfitability(startDate, endDate, resolvedHotelId);
 
     res.json({
       success: true,
@@ -1317,9 +1344,10 @@ async function calculateRoomTypeProfitability(startDate, endDate, hotelId) {
       ]
     };
 
-    if (hotelId) {
-      filter.hotelId = hotelId;
+    if (!hotelId) {
+      throw new Error('Hotel context required for room type profitability');
     }
+    filter.hotelId = hotelId;
 
     // Get all bookings with room details
     const bookings = await Booking.find(filter)
@@ -1434,12 +1462,10 @@ async function generateRevenueForecast(days, hotelId) {
         ? dayPatterns[dayOfWeek].totalRevenue / dayPatterns[dayOfWeek].count
         : 8000; // Default average
 
-      // Add some randomness and seasonal factors
-      const variance = 0.15; // 15% variance
-      const randomFactor = 1 + (Math.random() - 0.5) * variance;
+      // Deterministic seasonal and day-of-week adjustments (no random noise)
       const weekendBoost = (dayOfWeek === 5 || dayOfWeek === 6) ? 1.3 : 1.0;
 
-      const predictedRevenue = Math.round(historicalAvg * randomFactor * weekendBoost);
+      const predictedRevenue = Math.round(historicalAvg * weekendBoost);
       const predictedOccupancy = Math.min(95, Math.max(40, predictedRevenue / 150)); // Rough conversion
 
       // Calculate confidence based on historical data availability
@@ -1638,7 +1664,8 @@ export const getProfitabilityMetrics = async (req, res) => {
     const totalPossibleRoomNights = totalRooms * Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
     const occupancyRate = totalPossibleRoomNights > 0 ? (totalRoomNights / totalPossibleRoomNights) * 100 : 0;
     const averageDailyRate = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 0;
-    const revenuePAR = totalPossibleRoomNights > 0 ? totalRevenue / totalRooms / Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) : 0;
+    const daysDiff = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+    const revenuePAR = totalRooms > 0 ? totalRevenue / (totalRooms * daysDiff) : 0;
 
     // Calculate previous period for comparison
     const prevEndDate = new Date(startDate);
@@ -1736,23 +1763,21 @@ export const getProfitabilityMetrics = async (req, res) => {
       });
     }
 
-    // Generate forecast data (simplified prediction)
+    // Generate deterministic forecast based on historical average (no random noise)
     const forecast = [];
+    const dayCountForForecast = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+    const dailyAvgRevenueForForecast = totalRevenue / dayCountForForecast;
+    // Confidence based on data volume
+    const forecastConfidence = dayCountForForecast >= 60 ? 85 : dayCountForForecast >= 30 ? 75 : 60;
     for (let i = 0; i < 7; i++) {
       const futureDate = new Date(endDate);
       futureDate.setDate(endDate.getDate() + i + 1);
 
-      // Simple prediction based on historical average with some variation
-      const dailyAvgRevenue = totalRevenue / Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-      const variation = (Math.random() - 0.5) * 0.3; // ±15% variation
-      const predictedRevenue = dailyAvgRevenue * (1 + variation);
-      const predictedOccupancy = Math.min(95, occupancyRate * (1 + variation));
-
       forecast.push({
         date: futureDate.toISOString().split('T')[0],
-        predictedRevenue: Math.round(predictedRevenue),
-        predictedOccupancy: Math.round(predictedOccupancy * 10) / 10,
-        confidence: 75 + Math.random() * 20, // 75-95% confidence
+        predictedRevenue: Math.round(dailyAvgRevenueForForecast),
+        predictedOccupancy: Math.round(occupancyRate * 10) / 10,
+        confidence: forecastConfidence,
         factors: ['Historical trends', 'Seasonal patterns', 'Current bookings']
       });
     }

@@ -36,11 +36,17 @@ services:
     ports:
       - '4000:4000'
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=4000
       - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/${MONGO_INITDB_DATABASE}?authSource=admin
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     depends_on:
       - mongodb
       - redis
@@ -54,18 +60,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api/v1
+        - VITE_STRIPE_PUBLIC_KEY=${VITE_STRIPE_PUBLIC_KEY}
+        - VITE_APP_NAME=${VITE_APP_NAME:-Hotel Management System}
     container_name: hotel_frontend
     restart: always
     ports:
-      - '3000:3000'
-    environment:
-      - VITE_API_URL=http://localhost:4000/api/v1
-      - VITE_STRIPE_PUBLIC_KEY=${VITE_STRIPE_PUBLIC_KEY}
+      - '3000:80'
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     networks:
       - hotel-network
 

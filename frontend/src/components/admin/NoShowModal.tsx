@@ -122,7 +122,8 @@ const NoShowModal: React.FC<NoShowModalProps> = ({
     },
     onError: (error: unknown) => {
       // Handle axios error format
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to mark booking as no-show';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to mark booking as no-show');
       toast.error(errorMessage);
     }
   });

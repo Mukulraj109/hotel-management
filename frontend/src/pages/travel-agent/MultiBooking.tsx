@@ -24,6 +24,7 @@ import MultiBookingForm from '../../components/travel-agent/MultiBookingForm';
 import BulkPricingCalculator from '../../components/travel-agent/BulkPricingCalculator';
 import GroupReservationManager from '../../components/travel-agent/GroupReservationManager';
 import { travelAgentService } from '../../services/travelAgentService';
+import { useProperty } from '../../context/PropertyContext';
 
 interface RoomBooking {
   id: string;
@@ -75,7 +76,8 @@ const MultiBooking: React.FC = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<'details' | 'review' | 'confirm'>('details');
   const [loading, setLoading] = useState(false);
-  const [hotelId] = useState('68cd01414419c17b5f6b4c12'); // Use the actual hotel ID from seed data
+  const { selectedPropertyId } = useProperty();
+  const hotelId = selectedPropertyId || '';
 
   // Form state
   const [bookingDates, setBookingDates] = useState<BookingDates>({

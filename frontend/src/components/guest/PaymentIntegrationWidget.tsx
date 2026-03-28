@@ -253,7 +253,7 @@ export function PaymentIntegrationWidget({
       setPaymentState(prev => ({
         ...prev,
         processing: false,
-        error: error.message || 'Payment processing failed'
+        error: error instanceof Error ? error.message : 'Payment processing failed'
       }));
 
       if (onPaymentError) {

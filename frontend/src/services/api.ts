@@ -1,10 +1,8 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { API_CONFIG } from '../config/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ||
-  (import.meta.env.MODE === 'production'
-    ? 'https://hotel-management-xcsx.onrender.com/api/v1'  // Your deployed backend URL
-    : 'http://localhost:4000/api/v1');  // Use correct backend port
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 // Create axios instance
 const api = axios.create({
@@ -16,6 +14,10 @@ const api = axios.create({
   },
 });
 
+/**
+ * Axios `Idempotency-Key` header for these paths only.
+ * Booking create uses **body** `idempotencyKey` enforced in `backend/src/modules/booking/service.js` — do not duplicate here.
+ */
 const IDEMPOTENT_MUTATION_PATTERNS = [
   /^\/payments\/intent$/,
   /^\/payments\/confirm$/,
@@ -42,6 +44,14 @@ const createIdempotencyKey = () => {
   return `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 };
 
+/** localStorage sometimes holds the literal "undefined" / "null" — never send those as hotelId. */
+function sanitizeStoredPropertyId(raw: string | null): string | null {
+  if (raw == null) return null;
+  const t = raw.trim();
+  if (t === '' || t === 'null' || t === 'undefined') return null;
+  return t;
+}
+
 const isIdempotentProtectedMutation = (config: { method?: string; url?: string }) => {
   const method = (config.method || '').toLowerCase();
   if (!['post', 'put', 'patch'].includes(method)) {
@@ -57,7 +67,11 @@ const isIdempotentProtectedMutation = (config: { method?: string; url?: string }
 // Request interceptor to add CSRF token and selected property
 api.interceptors.request.use(
   (config) => {
-    const selectedPropertyId = localStorage.getItem('selectedPropertyId');
+    const rawStored = localStorage.getItem('selectedPropertyId');
+    const selectedPropertyId = sanitizeStoredPropertyId(rawStored);
+    if (rawStored !== null && !selectedPropertyId) {
+      localStorage.removeItem('selectedPropertyId');
+    }
 
     // Add CSRF token from cookie for state-changing requests
     if (['post', 'put', 'patch', 'delete'].includes(config.method || '')) {
@@ -77,9 +91,19 @@ api.interceptors.request.use(
       config.headers['Expires'] = '0';
     }
 
+    // Drop bogus hotelId from params (avoids hotelId=undefined in query string)
+    if (config.method?.toUpperCase() === 'GET' && config.params && typeof config.params === 'object') {
+      const p = config.params as Record<string, unknown>;
+      if ('hotelId' in p) {
+        const ok = sanitizeStoredPropertyId(p.hotelId == null ? null : String(p.hotelId));
+        if (!ok) delete p.hotelId;
+        else p.hotelId = ok;
+      }
+    }
+
     // Add selected property ID to requests if available
     // BUT: Skip for auth endpoints and certain other endpoints that don't need it
-    if (selectedPropertyId && selectedPropertyId !== 'null') {
+    if (selectedPropertyId) {
       if (config.method?.toUpperCase() === 'GET') {
         const skipHotelIdEndpoints = [
           '/auth/me',        // Getting current user - doesn't need hotelId
@@ -203,10 +227,9 @@ api.interceptors.response.use(
     }
 
     if (response?.status >= 500) {
-      toast.error('Server error. Please try again later.');
-    } else if (!response?.data?.message) {
-      toast.error('An unexpected error occurred.');
+      toast.error(response?.data?.error?.message || 'Server error. Please try again later.');
     }
+    // Let component-level catch handlers display specific error messages for 4xx errors
 
     return Promise.reject(error);
   }
@@ -326,6 +349,15 @@ export const apiRequest = async (url: string, options?: {
 
   const response = await api.request(config);
   return response.data;
+};
+
+// Departments API
+export const departmentsApi = {
+  getDepartments: (params?: Record<string, unknown>) => api.get('/departments', { params }),
+  getDepartmentById: (id: string) => api.get(`/departments/${id}`),
+  createDepartment: (data: Record<string, unknown>) => api.post('/departments', data),
+  updateDepartment: (id: string, data: Record<string, unknown>) => api.put(`/departments/${id}`, data),
+  deleteDepartment: (id: string) => api.delete(`/departments/${id}`),
 };
 
 export { api };

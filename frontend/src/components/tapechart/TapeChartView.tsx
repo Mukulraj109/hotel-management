@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '../../services/tapeChartService';
+import { api } from '../../services/api';
 import { formatCurrency } from '../../utils/currencyUtils';
 import { dragDropManager, DraggedReservation, DropTarget } from '../../utils/DragDropManager';
 import ReservationSidebar from './ReservationSidebar';
@@ -40,8 +41,8 @@ import { MobileExperience } from './MobileExperience';
 import { GuestIntelligence } from './GuestIntelligence';
 import { AdvancedHousekeeping } from './AdvancedHousekeeping';
 import { VoiceInterface } from './VoiceInterface';
-import { SecurityCompliance } from './SecurityCompliance';
 import { DayNightMode } from './DayNightMode';
+import { SecurityCompliance } from './SecurityCompliance';
 import { BusinessIntelligence } from './BusinessIntelligence';
 import { ColorCodedManagement } from './ColorCodedManagement';
 import BlockManagementPanel from './BlockManagementPanel';
@@ -267,7 +268,10 @@ const TapeChartView: React.FC = () => {
 
       // Open quick booking for multi-night stay
       const totalNights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      const baseRate = 15000;
+      // Get room rate from chart data; fall back to first available cell rate or 0
+      const roomRow = chartData?.rooms?.find((r: { roomId: string }) => r.roomId === roomId);
+      const firstCellRate = roomRow?.timeline?.[0]?.rate;
+      const baseRate = firstCellRate || 0;
 
       setQuickBookingModal({
         isOpen: true,
@@ -293,9 +297,16 @@ const TapeChartView: React.FC = () => {
   // Quick Booking Handler
   const handleQuickBookingConfirm = useCallback(async () => {
     try {
-      // Simulate booking creation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
+      await api.post('/bookings', {
+        roomId: quickBookingModal.roomId,
+        checkIn: quickBookingModal.startDate,
+        checkOut: quickBookingModal.endDate,
+        totalRate: quickBookingModal.totalRate,
+        roomNumber: quickBookingModal.roomNumber,
+        source: 'tapechart_quick_booking'
+      });
+
+      if (!isMountedRef.current) return;
 
       toast.success(`Booking created for Room ${quickBookingModal.roomNumber}!`);
 
@@ -311,7 +322,9 @@ const TapeChartView: React.FC = () => {
       // Refresh chart data
       fetchChartData();
     } catch (error) {
-      toast.error('Failed to create booking');
+      if (!isMountedRef.current) return;
+      const message = error instanceof Error ? error.message : 'Failed to create booking';
+      toast.error(message);
     }
   }, [quickBookingModal]);
 
@@ -1955,11 +1968,9 @@ const TapeChartView: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 {/* Compact View Selector */}
-                <Select value={selectedView} onValueChange={setSelectedView}>
+                <Select value={selectedView || undefined} onValueChange={setSelectedView}>
                   <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue placeholder="Select View">
-                      {views.find(v => v._id === selectedView)?.viewName || 'Weekly View'}
-                    </SelectValue>
+                    <SelectValue placeholder="Weekly View" />
                   </SelectTrigger>
                   <SelectContent>
                     {views.map(view => (
@@ -2773,7 +2784,7 @@ const TapeChartView: React.FC = () => {
                   <div>
                     <p className="text-gray-600">Total Rate</p>
                     <p className="font-bold text-green-700 text-lg">
-                      ₹{quickBookingModal.totalRate.toLocaleString()}
+                      {formatCurrency(quickBookingModal.totalRate)}
                     </p>
                   </div>
                   <div>

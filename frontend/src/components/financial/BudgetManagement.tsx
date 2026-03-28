@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import financialService from '@/services/financialService';
 
 interface Budget {
@@ -68,15 +67,16 @@ const BudgetManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [selectedTab, setSelectedTab] = useState('budgets');
   const [showBudgetDialog, setShowBudgetDialog] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   const [budgetFormData, setBudgetFormData] = useState({
     budgetName: '',
     fiscalYear: new Date().getFullYear(),
-    startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    endDate: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
     currency: 'INR',
     status: 'draft' as const
   });
@@ -88,55 +88,11 @@ const BudgetManagement: React.FC = () => {
     { value: 'closed', label: 'Closed', color: 'outline' }
   ];
 
-  // Mock data for now
-  const mockBudgets: Budget[] = [
-    {
-      _id: '1',
-      budgetName: 'Annual Budget 2024',
-      fiscalYear: 2024,
-      period: {
-        startDate: new Date(2024, 0, 1),
-        endDate: new Date(2024, 11, 31)
-      },
-      currency: 'INR',
-      status: 'approved',
-      budgetCategories: [
-        {
-          categoryName: 'Room Revenue',
-          accountId: 'acc1',
-          budgetedAmount: 25000000,
-          actualAmount: 21000000,
-          variance: -4000000,
-          variancePercentage: -16,
-          quarters: { q1: 6000000, q2: 6500000, q3: 6000000, q4: 6500000 }
-        },
-        {
-          categoryName: 'F&B Revenue',
-          accountId: 'acc2',
-          budgetedAmount: 8000000,
-          actualAmount: 7500000,
-          variance: -500000,
-          variancePercentage: -6.25,
-          quarters: { q1: 2000000, q2: 2000000, q3: 2000000, q4: 2000000 }
-        }
-      ],
-      totalBudgetedAmount: 33000000,
-      totalActualAmount: 28500000,
-      approvedDate: new Date(2023, 11, 15),
-      createdBy: 'admin',
-      lastUpdated: new Date()
-    }
-  ];
-
-  useEffect(() => {
-    fetchBudgets();
-  }, []);
-
-  const fetchBudgets = async () => {
+  const fetchBudgets = useCallback(async () => {
     try {
       setLoading(true);
       const filters: Record<string, unknown> = {};
-      if (filterStatus) filters.status = filterStatus;
+      if (filterStatus && filterStatus !== 'all') filters.status = filterStatus;
 
       const response = await financialService.getBudgets(filters);
       const budgetData = response.data?.budgets || [];
@@ -147,15 +103,17 @@ const BudgetManagement: React.FC = () => {
       }
 
     } catch (error: unknown) {
-      toast.error('Failed to load budgets from backend, using fallback data');
-
-      // Fallback to mock data
-      setBudgets(mockBudgets);
-      setSelectedBudget(mockBudgets[0]);
+      toast.error('Failed to load budgets');
+      setBudgets([]);
+      setSelectedBudget(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus]);
+
+  useEffect(() => {
+    fetchBudgets();
+  }, [fetchBudgets]);
 
   const handleCreateBudget = () => {
     setShowBudgetDialog(true);
@@ -164,6 +122,7 @@ const BudgetManagement: React.FC = () => {
   const handleSubmitBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       const budgetData = {
         budgetName: budgetFormData.budgetName,
         budgetType: 'Operating',
@@ -183,13 +142,13 @@ const BudgetManagement: React.FC = () => {
       setBudgetFormData({
         budgetName: '',
         fiscalYear: new Date().getFullYear(),
-        startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-        endDate: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
         currency: 'INR',
         status: 'draft'
       });
     } catch (error: unknown) {
-      toast.error('Failed to create budget: ' + error.message);
+      toast.error('Failed to create budget: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -205,21 +164,24 @@ const BudgetManagement: React.FC = () => {
     return <Target className="w-4 h-4 text-yellow-600" />;
   };
 
-  // Apply filtering after data is loaded
+  // Reset page when filters change
   useEffect(() => {
-    if (!loading) {
-      fetchBudgets();
-    }
-  }, [filterStatus]);
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus]);
 
   const filteredBudgets = budgets.filter(budget => {
-    const matchesSearch = budget.budgetName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = !filterStatus || budget.status.toLowerCase() === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesSearch = !searchTerm || budget.budgetName?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
   });
 
-  const budgetProgress = selectedBudget ? 
-    Math.round((selectedBudget.totalActualAmount / selectedBudget.totalBudgetedAmount) * 100) : 0;
+  const totalPages = Math.max(1, Math.ceil(filteredBudgets.length / ITEMS_PER_PAGE));
+  const paginatedBudgets = filteredBudgets.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  const budgetProgress = selectedBudget && selectedBudget.totalBudgetedAmount > 0
+    ? Math.round((selectedBudget.totalActualAmount / selectedBudget.totalBudgetedAmount) * 100) : 0;
 
   if (loading) {
     return (
@@ -246,11 +208,11 @@ const BudgetManagement: React.FC = () => {
           <p className="text-gray-600">Plan, track, and analyze your financial budgets</p>
         </div>
         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => toast.info('Budget import coming soon')}>
             <Upload className="w-4 h-4 mr-2" />
             Import
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => toast.info('Budget export coming soon')}>
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
@@ -299,11 +261,11 @@ const BudgetManagement: React.FC = () => {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className={`text-2xl font-bold ${getVarianceColor(
-                  ((selectedBudget.totalActualAmount - selectedBudget.totalBudgetedAmount) / selectedBudget.totalBudgetedAmount) * 100
+                  selectedBudget.totalBudgetedAmount > 0 ? ((selectedBudget.totalActualAmount - selectedBudget.totalBudgetedAmount) / selectedBudget.totalBudgetedAmount) * 100 : 0
                 )}`}>
                   {formatCurrency(selectedBudget.totalActualAmount - selectedBudget.totalBudgetedAmount)}
                 </p>
-                {getVarianceIcon(((selectedBudget.totalActualAmount - selectedBudget.totalBudgetedAmount) / selectedBudget.totalBudgetedAmount) * 100)}
+                {getVarianceIcon(selectedBudget.totalBudgetedAmount > 0 ? ((selectedBudget.totalActualAmount - selectedBudget.totalBudgetedAmount) / selectedBudget.totalBudgetedAmount) * 100 : 0)}
               </div>
             </CardContent>
           </Card>
@@ -359,7 +321,7 @@ const BudgetManagement: React.FC = () => {
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     {budgetStatuses.map(status => (
                       <SelectItem key={status.value} value={status.value}>
                         {status.label}
@@ -390,23 +352,30 @@ const BudgetManagement: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredBudgets.map((budget) => {
-                    const variance = budget.totalActualAmount - budget.totalBudgetedAmount;
-                    const variancePercentage = (variance / budget.totalBudgetedAmount) * 100;
-                    
+                  {paginatedBudgets.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        No budgets found
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedBudgets.map((budget) => {
+                    const variance = (budget.totalActualAmount || 0) - (budget.totalBudgetedAmount || 0);
+                    const variancePercentage = budget.totalBudgetedAmount > 0 ? (variance / budget.totalBudgetedAmount) * 100 : 0;
+                    const statusLower = budget.status?.toLowerCase() || 'draft';
+
                     return (
                       <TableRow key={budget._id}>
                         <TableCell>
-                          <div role="button" tabIndex={0} className="cursor-pointer" onClick={() => setSelectedBudget(budget)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedBudget(budget); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+                          <div role="button" tabIndex={0} className="cursor-pointer" onClick={() => setSelectedBudget(budget)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedBudget(budget); } }}>
                             <p className="font-medium">{budget.budgetName}</p>
                           </div>
                         </TableCell>
                         <TableCell>FY {budget.fiscalYear}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(budget.totalBudgetedAmount)}
+                          {formatCurrency(budget.totalBudgetedAmount || 0)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency(budget.totalActualAmount)}
+                          {formatCurrency(budget.totalActualAmount || 0)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className={`flex items-center justify-end ${getVarianceColor(variancePercentage)}`}>
@@ -418,12 +387,12 @@ const BudgetManagement: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={budgetStatuses.find(s => s.value === budget.status)?.color as unknown}>
-                            {budget.status.toUpperCase()}
+                          <Badge variant={(budgetStatuses.find(s => s.value === statusLower)?.color || 'secondary') as 'default' | 'secondary' | 'outline'}>
+                            {budget.status}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button size="sm" variant="outline">
+                          <Button size="sm" variant="outline" onClick={() => toast.info('Budget editing coming soon')}>
                             <Edit className="w-4 h-4" />
                           </Button>
                         </TableCell>
@@ -432,6 +401,37 @@ const BudgetManagement: React.FC = () => {
                   })}
                 </TableBody>
               </Table>
+              {/* Pagination Controls */}
+              {filteredBudgets.length > ITEMS_PER_PAGE && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-gray-600">
+                    Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+                    {Math.min(currentPage * ITEMS_PER_PAGE, filteredBudgets.length)} of{' '}
+                    {filteredBudgets.length} budgets
+                  </p>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <span className="flex items-center px-3 text-sm text-gray-600">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -454,22 +454,29 @@ const BudgetManagement: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedBudget.budgetCategories?.map((category, index) => (
-                      <TableRow key={`-${index}-${category.category}`}>
-                        <TableCell className="font-medium">{category.categoryName}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(category.budgetedAmount)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(category.actualAmount)}</TableCell>
-                        <TableCell className={`text-right ${getVarianceColor(category.variancePercentage)}`}>
-                          {formatCurrency(category.variance)} ({category.variancePercentage.toFixed(1)}%)
-                        </TableCell>
-                        <TableCell>
-                          <Progress 
-                            value={Math.min((category.actualAmount / category.budgetedAmount) * 100, 100)} 
-                            className="h-2"
-                          />
+                    {(!selectedBudget.budgetCategories || selectedBudget.budgetCategories.length === 0) ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                          No budget categories defined. Add budget line items to see category breakdowns.
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : selectedBudget.budgetCategories.map((category, index) => {
+                      const catVariancePct = category.budgetedAmount > 0 ? (category.variancePercentage ?? ((category.actualAmount - category.budgetedAmount) / category.budgetedAmount) * 100) : 0;
+                      const catProgress = category.budgetedAmount > 0 ? Math.min((category.actualAmount / category.budgetedAmount) * 100, 100) : 0;
+                      return (
+                        <TableRow key={`cat-${index}-${category.categoryName}`}>
+                          <TableCell className="font-medium">{category.categoryName}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(category.budgetedAmount)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(category.actualAmount)}</TableCell>
+                          <TableCell className={`text-right ${getVarianceColor(catVariancePct)}`}>
+                            {formatCurrency(category.variance || 0)} ({catVariancePct.toFixed(1)}%)
+                          </TableCell>
+                          <TableCell>
+                            <Progress value={catProgress} className="h-2" />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -490,11 +497,11 @@ const BudgetManagement: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Budget vs Actual report coming soon')}>
                   <BarChart3 className="w-4 h-4 mr-2" />
                   Budget vs Actual Report
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Variance analysis coming soon')}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Variance Analysis
                 </Button>
@@ -528,8 +535,10 @@ const BudgetManagement: React.FC = () => {
                 <Input
                   id="fiscalYear"
                   type="number"
+                  min={2020}
+                  max={2099}
                   value={budgetFormData.fiscalYear}
-                  onChange={(e) => setBudgetFormData({...budgetFormData, fiscalYear: parseInt(e.target.value)})}
+                  onChange={(e) => setBudgetFormData({...budgetFormData, fiscalYear: parseInt(e.target.value) || new Date().getFullYear()})}
                   required
                 />
               </div>
@@ -553,7 +562,9 @@ const BudgetManagement: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setShowBudgetDialog(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Create Budget</Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Creating...' : 'Create Budget'}
+              </Button>
             </div>
           </form>
         </DialogContent>

@@ -261,6 +261,20 @@ function AdminInventory() {
     }
   };
 
+  // Handle item deletion
+  const handleDeleteItem = async (itemId: string) => {
+    if (!window.confirm('Are you sure you want to delete this inventory item?')) return;
+    try {
+      setUpdating(true);
+      await adminService.deleteInventoryItem(itemId);
+      await fetchItems();
+    } catch {
+      // Error handled silently
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   // Reset form data
   const resetFormData = () => {
     setFormData({
@@ -413,9 +427,15 @@ function AdminInventory() {
 
     const costAnalysis = {
       totalValue: items.reduce((sum, item) => sum + (item.costPerUnit || 0) * item.quantity, 0),
-      averageCost: items.reduce((sum, item) => sum + (item.costPerUnit || 0), 0) / items.length,
-      highestCost: Math.max(...items.map(item => item.costPerUnit || 0)),
-      lowestCost: Math.min(...items.map(item => item.costPerUnit || 0))
+      averageCost: items.length > 0
+        ? items.reduce((sum, item) => sum + (item.costPerUnit || 0), 0) / items.length
+        : 0,
+      highestCost: items.length > 0
+        ? Math.max(...items.map(item => item.costPerUnit || 0))
+        : 0,
+      lowestCost: items.length > 0
+        ? Math.min(...items.map(item => item.costPerUnit || 0))
+        : 0
     };
 
     const supplierPerformance = items.reduce((acc, item) => {
@@ -465,7 +485,7 @@ function AdminInventory() {
       categoryBreakdown: Object.entries(analyticsData.categoryDistribution).map(([category, count]) => ({
         category,
         count,
-        percentage: ((count / items.length) * 100).toFixed(1)
+        percentage: items.length > 0 ? ((count / items.length) * 100).toFixed(1) : '0.0'
       })),
       lowStockItems: analyticsData.lowStockAlerts,
       topSuppliers: Object.entries(analyticsData.supplierPerformance)
@@ -585,7 +605,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
   };
 
   const getStockLevelColor = (item: InventoryItem) => {
-    const percentage = (item.quantity / item.maximumCapacity) * 100;
+    const percentage = item.maximumCapacity > 0 ? (item.quantity / item.maximumCapacity) * 100 : 0;
     if (percentage <= 20) return 'text-red-600';
     if (percentage <= 50) return 'text-yellow-600';
     return 'text-green-600';
@@ -659,7 +679,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                   row.isLowStock ? 'bg-yellow-500' : 'bg-green-500'
                 }`}
                 style={{ 
-                  width: `${Math.min((value / row.maximumCapacity) * 100, 100)}%` 
+                  width: `${row.maximumCapacity > 0 ? Math.min((value / row.maximumCapacity) * 100, 100) : 0}%`
                 }}
               />
             </div>
@@ -730,6 +750,13 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
             onClick={() => openRestockModal(row)}
           >
             <ShoppingCart className="h-4 w-4 text-blue-600" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDeleteItem(row._id)}
+          >
+            <Trash2 className="h-4 w-4 text-red-500" />
           </Button>
         </div>
       ),
@@ -1181,7 +1208,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium">{count}</span>
                               <span className="text-xs text-gray-500">
-                                ({((count / items.length) * 100).toFixed(1)}%)
+                                ({items.length > 0 ? ((count / items.length) * 100).toFixed(1) : '0.0'}%)
                               </span>
                             </div>
                           </div>
@@ -1558,7 +1585,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                     setShowEditModal(false);
                   }
                 }}
-                disabled={updating || !formData.name || !formData.sku}
+                disabled={updating || !formData.name || !formData.sku || formData.costPerUnit < 0 || formData.maximumCapacity < 0}
               >
                 <Save className="h-4 w-4 mr-2" />
                 {showCreateModal ? 'Create Item' : 'Update Item'}
@@ -1613,7 +1640,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                           selectedItem.isLowStock ? 'bg-yellow-500' : 'bg-green-500'
                         }`}
                         style={{ 
-                          width: `${Math.min((selectedItem.quantity / selectedItem.maximumCapacity) * 100, 100)}%` 
+                          width: `${selectedItem.maximumCapacity > 0 ? Math.min((selectedItem.quantity / selectedItem.maximumCapacity) * 100, 100) : 0}%`
                         }}
                       />
                     </div>

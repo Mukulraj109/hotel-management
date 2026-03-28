@@ -215,35 +215,8 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
     .limit(10)
     .lean(); // Use lean() for better performance
 
-  // If no actual bookings exist, generate mock recent bookings from agent performance data
-  if (recentBookings.length === 0) {
-    const agentsWithBookings = await TravelAgent.find(baseQuery)
-      .select('_id companyName agentCode performanceMetrics.totalBookings performanceMetrics.totalRevenue performanceMetrics.totalCommissionEarned')
-      .limit(5)
-      .lean();
-
-    recentBookings = agentsWithBookings.map((agent, index) => ({
-      _id: `mock_booking_${agent._id}_${index}`,
-      travelAgentId: {
-        _id: agent._id,
-        companyName: agent.companyName,
-        agentCode: agent.agentCode
-      },
-      hotelId: {
-        _id: '68cd01414419c17b5f6b4c12',
-        name: 'THE PENTOUZ'
-      },
-      createdAt: new Date(Date.now() - (index * 24 * 60 * 60 * 1000)), // Mock dates
-      pricing: {
-        totalAmount: Math.round(agent.performanceMetrics.totalRevenue / agent.performanceMetrics.totalBookings) || 0
-      },
-      commission: {
-        totalCommission: Math.round(agent.performanceMetrics.totalCommissionEarned / agent.performanceMetrics.totalBookings) || 0
-      },
-      confirmationNumber: `TA${agent.agentCode}-${1000 + index}`,
-      status: 'confirmed'
-    }));
-  }
+  // If no actual bookings exist, return empty array (no mock data)
+  // recentBookings remains empty — this is expected when no travel agent bookings have been made
 
   // Simplified monthly trends
   // Consider caching this aggregation result for 5 minutes
@@ -585,7 +558,9 @@ export const getTravelAgentRates = catchAsync(async (req, res) => {
         $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       }
     }).populate('travelAgentId', 'companyName agentCode')
-     .populate('roomTypeId', 'name'),
+     .populate('roomTypeId', 'name')
+     .lean()
+     .limit(100),
 
     // Rates by type
     TravelAgentRates.aggregate([
@@ -660,13 +635,11 @@ export const exportTravelData = catchAsync(async (req, res) => {
     { json: () => {} }
   );
 
-  // For now, return JSON format
-  // In a real implementation, you'd format as CSV for CSV requests
   if (format === 'csv') {
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=travel-dashboard-export.csv');
-    // Convert to CSV format here
-    res.send('CSV export not implemented yet');
+    return res.status(501).json({
+      success: false,
+      message: 'CSV export is not yet implemented. Use format=json instead.'
+    });
   } else {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename=travel-dashboard-export.json');
@@ -715,10 +688,15 @@ export const exportTravelData = catchAsync(async (req, res) => {
 export const getAdvancedBookingTrends = catchAsync(async (req, res) => {
   const { startDate, endDate, granularity = 'month', hotelId } = req.query;
 
+  const resolvedHotelId = hotelId || req.user?.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const filters = { granularity };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
-  if (hotelId) filters.hotelId = hotelId;
+  filters.hotelId = resolvedHotelId;
 
   const analytics = await analyticsService.analyzeBookingTrends(filters);
 
@@ -759,8 +737,13 @@ export const getAdvancedBookingTrends = catchAsync(async (req, res) => {
 export const getRevenueForecastAnalytics = catchAsync(async (req, res) => {
   const { periodsAhead = 6, granularity = 'month', hotelId } = req.query;
 
+  const resolvedHotelId = hotelId || req.user?.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const filters = { granularity };
-  if (hotelId) filters.hotelId = hotelId;
+  filters.hotelId = resolvedHotelId;
 
   const forecast = await analyticsService.forecastRevenue(filters, parseInt(periodsAhead));
 

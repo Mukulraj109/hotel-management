@@ -5,18 +5,21 @@ import logger from '../utils/logger.js';
 
 // Get all bank accounts
 export const getBankAccounts = catchAsync(async (req, res) => {
-  console.log('🚀 getBankAccounts controller called');
-  
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
-  const { 
+  logger.debug('getBankAccounts controller called');
+
+  const hotelId = req.user?.hotelId;
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+  const {
     accountType,
     isActive,
     includeTransactions = false,
     transactionLimit = 10
   } = req.query;
 
-  let filter = {}; // Remove hotelId filter temporarily
+  let filter = {};
+  filter.hotelId = hotelId;
   
   if (accountType) filter.accountType = accountType;
   // Only apply isActive filter if explicitly provided, otherwise get all accounts
@@ -24,22 +27,21 @@ export const getBankAccounts = catchAsync(async (req, res) => {
     filter.isActive = isActive === 'true';
   }
 
-  console.log('🔍 Filter being applied:', filter);
-  console.log('📞 Calling BankAccount.find()...');
+  logger.debug('getBankAccounts filter applied', { filter });
+  logger.debug('Calling BankAccount.find()');
 
   let accounts = await BankAccount.find(filter)
     .populate('glAccountId', 'accountCode accountName')
     .populate('createdBy', 'name email')
     .sort({ isPrimary: -1, accountName: 1 }).lean().limit(1000);
 
-  console.log('📊 Raw accounts found:', accounts.length);
-  console.log('📊 First account sample:', accounts[0]);
+  logger.debug('Raw accounts found', { count: accounts.length });
 
   // Include recent transactions if requested
   if (includeTransactions === 'true') {
     accounts = accounts.map(account => ({
-      ...account.toObject(),
-      recentTransactions: account.transactions
+      ...account,
+      recentTransactions: (account.transactions || [])
         .sort((a, b) => b.transactionDate - a.transactionDate)
         .slice(0, parseInt(transactionLimit))
     }));
@@ -54,11 +56,15 @@ export const getBankAccounts = catchAsync(async (req, res) => {
 
 // Get single bank account
 export const getBankAccount = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const hotelId = req.user?.hotelId;
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
   const { id } = req.params;
 
-  const account = await BankAccount.findOne({ _id: id })
+  const findFilter = { _id: id };
+  findFilter.hotelId = hotelId;
+  const account = await BankAccount.findOne(findFilter)
     .populate('glAccountId', 'accountCode accountName accountType')
     .populate('createdBy updatedBy', 'name email').lean();
 
@@ -78,7 +84,11 @@ export const getBankAccount = catchAsync(async (req, res) => {
 // Create new bank account
 export const createBankAccount = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
-  
+
+  if (!req.body.accountName || !req.body.bankName || !req.body.accountNumber) {
+    return res.status(400).json({ status: 'error', message: 'Account name, bank name, and account number are required' });
+  }
+
   // Check if GL account exists and is appropriate type
   if (req.body.glAccountId) {
     const glAccount = await ChartOfAccounts.findOne({
@@ -228,6 +238,10 @@ export const addTransaction = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
+  if (!req.body.description || !req.body.transactionType) {
+    return res.status(400).json({ status: 'error', message: 'Description and transaction type are required' });
+  }
+
   const creditAmount = req.body.creditAmount || 0;
   const debitAmount = req.body.debitAmount || 0;
   const balanceDelta = creditAmount - debitAmount;
@@ -298,9 +312,10 @@ export const addTransaction = catchAsync(async (req, res) => {
 
 // Get account transactions
 export const getTransactions = catchAsync(async (req, res) => {
-  console.log('🚀 getTransactions controller called');
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const hotelId = req.user?.hotelId;
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
   const { id } = req.params;
   const {
     startDate,
@@ -311,19 +326,19 @@ export const getTransactions = catchAsync(async (req, res) => {
     limit = 50
   } = req.query;
 
-  console.log('🔍 Looking for account with ID:', id);
-  const account = await BankAccount.findOne({ _id: id }).lean();
+  const txnFilter = { _id: id };
+  txnFilter.hotelId = hotelId;
+  const account = await BankAccount.findOne(txnFilter).lean();
   
   if (!account) {
-    console.log('❌ Bank account not found');
+    logger.debug('Bank account not found', { id });
     return res.status(404).json({
       status: 'error',
       message: 'Bank account not found'
     });
   }
 
-  console.log('✅ Found account:', account.accountName);
-  console.log('💰 Account has transactions:', account.transactions?.length || 0);
+  logger.debug('Found account for transactions', { accountName: account.accountName, transactionCount: account.transactions?.length || 0 });
   
   let transactions = account.transactions;
 

@@ -328,7 +328,7 @@ class BookingWorkflowEngine {
       const expiredBookings = await Booking.find({
         status: 'pending',
         reservedUntil: { $lt: now }
-      }).limit(100).lean();
+      }).limit(100);
 
       for (const booking of expiredBookings) {
         await this.processTrigger('scheduled_check', booking, {
@@ -366,7 +366,7 @@ class BookingWorkflowEngine {
       const potentialNoShows = await Booking.find({
         status: 'confirmed',
         checkIn: { $lt: graceEndTime }
-      }).limit(50).lean();
+      }).limit(50);
 
       for (const booking of potentialNoShows) {
         await this.processTrigger('scheduled_check', booking, {

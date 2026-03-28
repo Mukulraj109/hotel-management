@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,39 +7,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/utils/toast';
 import {
-  Smartphone, Tablet, QrCode, Camera, MapPin, Clock,
-  Wifi, Battery, Signal, CheckCircle, User, Bed,
-  Settings, Scan, Hand, Zap, Bell, RefreshCw
+  Smartphone, QrCode, Clock,
+  Wifi, CheckCircle, User,
+  Settings, Scan, Hand, Bell, RefreshCw,
+  Key, ShieldCheck, XCircle, AlertTriangle, Loader2, Plus, Trash2
 } from 'lucide-react';
+import { digitalKeyService, DigitalKey, KeyStats } from '@/services/digitalKeyService';
 
-// Mobile Experience Interfaces
-interface MobileDevice {
-  id: string;
-  name: string;
-  type: 'smartphone' | 'tablet';
-  user: string;
-  location: string;
-  battery: number;
-  signal: number;
-  status: 'online' | 'offline' | 'syncing';
-  lastSync: string;
-  features: {
-    qrScanning: boolean;
-    photoCapture: boolean;
-    offlineMode: boolean;
-    voiceCommands: boolean;
-  };
-}
-
-interface QRScanResult {
-  id: string;
-  roomNumber: string;
-  scanTime: string;
-  staff: string;
-  action: 'check_status' | 'clean_complete' | 'maintenance_request';
-  status: 'success' | 'error';
-}
-
+// Interfaces for client-side-only tabs (Touch Control, Offline Mode)
 interface TouchGesture {
   id: string;
   gesture: 'swipe_left' | 'swipe_right' | 'tap' | 'long_press';
@@ -53,121 +28,131 @@ interface MobileExperienceProps {}
 export const MobileExperience: React.FC<MobileExperienceProps> = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('devices');
-  const [mobileDevices, setMobileDevices] = useState<MobileDevice[]>([]);
-  const [qrScans, setQrScans] = useState<QRScanResult[]>([]);
+
+  // Digital Keys tab state
+  const [digitalKeys, setDigitalKeys] = useState<DigitalKey[]>([]);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [keysPage, setKeysPage] = useState(1);
+  const [keysTotalPages, setKeysTotalPages] = useState(1);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
+
+  // QR / Stats tab state
+  const [keyStats, setKeyStats] = useState<KeyStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // Touch Control tab state (client-side only)
   const [touchGestures, setTouchGestures] = useState<TouchGesture[]>([]);
+
+  // Offline Mode tab state (client-side only)
   const [offlineModeEnabled, setOfflineModeEnabled] = useState(true);
-  const [loading, setLoading] = useState(false);
 
-  // Generate mock data for mobile features
+  // Generate key dialog state
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [generateBookingId, setGenerateBookingId] = useState('');
+  const [generateKeyType, setGenerateKeyType] = useState<'primary' | 'temporary' | 'emergency'>('primary');
+  const [generating, setGenerating] = useState(false);
+
   const isMountedRef = useRef(true);
-
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
 
+  // Initialize default gesture configuration (client-side settings)
   useEffect(() => {
-    generateMockDevices();
-    generateMockQRScans();
-    generateMockTouchGestures();
+    initializeDefaultGestures();
   }, []);
 
-  const generateMockDevices = () => {
-    const devices: MobileDevice[] = [
-      {
-        id: 'dev-001',
-        name: 'iPhone 14 Pro',
-        type: 'smartphone',
-        user: 'Sarah (Housekeeping)',
-        location: 'Floor 3',
-        battery: 85,
-        signal: 92,
-        status: 'online',
-        lastSync: new Date().toISOString(),
-        features: {
-          qrScanning: true,
-          photoCapture: true,
-          offlineMode: true,
-          voiceCommands: false
-        }
-      },
-      {
-        id: 'dev-002',
-        name: 'iPad Air',
-        type: 'tablet',
-        user: 'Mike (Maintenance)',
-        location: 'Floor 1',
-        battery: 68,
-        signal: 87,
-        status: 'syncing',
-        lastSync: new Date(Date.now() - 300000).toISOString(),
-        features: {
-          qrScanning: true,
-          photoCapture: true,
-          offlineMode: true,
-          voiceCommands: true
-        }
-      },
-      {
-        id: 'dev-003',
-        name: 'Samsung Galaxy',
-        type: 'smartphone',
-        user: 'Lisa (Front Desk)',
-        location: 'Lobby',
-        battery: 45,
-        signal: 95,
-        status: 'online',
-        lastSync: new Date(Date.now() - 60000).toISOString(),
-        features: {
-          qrScanning: true,
-          photoCapture: false,
-          offlineMode: true,
-          voiceCommands: true
-        }
-      }
-    ];
-    setMobileDevices(devices);
+  // Fetch digital keys when dialog opens or page changes
+  const fetchDigitalKeys = useCallback(async () => {
+    setKeysLoading(true);
+    setKeysError(null);
+    try {
+      const response = await digitalKeyService.getAdminKeys({ page: keysPage, limit: 20 });
+      if (!isMountedRef.current) return;
+      setDigitalKeys(response.keys);
+      setKeysTotalPages(response.pagination.totalPages);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      const message = err instanceof Error ? err.message : 'Failed to load digital keys';
+      setKeysError(message);
+    } finally {
+      if (isMountedRef.current) setKeysLoading(false);
+    }
+  }, [keysPage]);
+
+  // Fetch stats for the QR/stats tab
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      const stats = await digitalKeyService.getStats();
+      if (!isMountedRef.current) return;
+      setKeyStats(stats);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      const message = err instanceof Error ? err.message : 'Failed to load key statistics';
+      setStatsError(message);
+    } finally {
+      if (isMountedRef.current) setStatsLoading(false);
+    }
+  }, []);
+
+  // Load data when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchDigitalKeys();
+      fetchStats();
+    }
+  }, [isOpen, fetchDigitalKeys, fetchStats]);
+
+  // Generate a new key
+  const handleGenerateKey = async () => {
+    if (!generateBookingId.trim()) {
+      toast.error('Please enter a booking ID');
+      return;
+    }
+    setGenerating(true);
+    try {
+      await digitalKeyService.generateKey({
+        bookingId: generateBookingId.trim(),
+        type: generateKeyType,
+      });
+      toast.success('Digital key generated successfully');
+      setGenerateDialogOpen(false);
+      setGenerateBookingId('');
+      setGenerateKeyType('primary');
+      // Refresh both tabs
+      fetchDigitalKeys();
+      fetchStats();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate key';
+      toast.error(message);
+    } finally {
+      if (isMountedRef.current) setGenerating(false);
+    }
   };
 
-  const generateMockQRScans = () => {
-    const scans: QRScanResult[] = [
-      {
-        id: 'scan-001',
-        roomNumber: '301',
-        scanTime: new Date().toISOString(),
-        staff: 'Sarah',
-        action: 'clean_complete',
-        status: 'success'
-      },
-      {
-        id: 'scan-002',
-        roomNumber: '205',
-        scanTime: new Date(Date.now() - 180000).toISOString(),
-        staff: 'Mike',
-        action: 'maintenance_request',
-        status: 'success'
-      },
-      {
-        id: 'scan-003',
-        roomNumber: '112',
-        scanTime: new Date(Date.now() - 360000).toISOString(),
-        staff: 'Lisa',
-        action: 'check_status',
-        status: 'error'
-      }
-    ];
-    setQrScans(scans);
+  // Revoke a key
+  const handleRevokeKey = async (keyId: string) => {
+    setRevokingKeyId(keyId);
+    try {
+      await digitalKeyService.revokeKey(keyId);
+      toast.success('Digital key revoked successfully');
+      // Refresh both tabs
+      fetchDigitalKeys();
+      fetchStats();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to revoke key';
+      toast.error(message);
+    } finally {
+      if (isMountedRef.current) setRevokingKeyId(null);
+    }
   };
 
-  const generateMockTouchGestures = () => {
+  const initializeDefaultGestures = () => {
     const gestures: TouchGesture[] = [
       {
         id: 'gesture-1',
@@ -201,68 +186,69 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
     setTouchGestures(gestures);
   };
 
-  const handleSyncAllDevices = async () => {
-    setLoading(true);
-    try {
-      // Simulate sync process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    if (!isMountedRef.current) return;
-
-      // Update all devices to syncing status
-      setMobileDevices(prev => prev.map(device => ({
-        ...device,
-        status: 'syncing'
-      })));
-
-      // After sync, mark as online
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        setMobileDevices(prev => prev.map(device => ({
-          ...device,
-          status: 'online',
-          lastSync: new Date().toISOString()
-        })));
-        toast.success('All mobile devices synchronized successfully');
-      }, 1500);
-
-    } catch (error) {
-      toast.error('Failed to sync mobile devices');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const toggleGesture = (gestureId: string) => {
     setTouchGestures(prev => prev.map(gesture =>
       gesture.id === gestureId ? { ...gesture, enabled: !gesture.enabled } : gesture
     ));
   };
 
-  const getStatusColor = (status: string) => {
+  const getKeyStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'text-green-600 bg-green-50';
-      case 'offline': return 'text-red-600 bg-red-50';
-      case 'syncing': return 'text-yellow-600 bg-yellow-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case 'active': return 'bg-green-100 text-green-800';
+      case 'expired': return 'bg-gray-100 text-gray-800';
+      case 'revoked': return 'bg-red-100 text-red-800';
+      case 'used': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getBatteryColor = (battery: number) => {
-    if (battery > 60) return 'text-green-600';
-    if (battery > 30) return 'text-yellow-600';
-    return 'text-red-600';
+  const getKeyTypeColor = (type: string) => {
+    switch (type) {
+      case 'primary': return 'bg-blue-100 text-blue-800';
+      case 'temporary': return 'bg-yellow-100 text-yellow-800';
+      case 'emergency': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  const getSignalBars = (signal: number) => {
-    const bars = Math.ceil(signal / 25);
-    return Array.from({length: 4}, (_, i) => (
-      <div
-        key={i}
-        className={`w-1 rounded-sm ${i < bars ? 'bg-blue-500' : 'bg-gray-300'}`}
-        style={{height: `${(i + 1) * 3}px`}}
-      />
-    ));
+  const getActivityActionColor = (action: string) => {
+    switch (action) {
+      case 'generated': return 'bg-blue-100 text-blue-700';
+      case 'accessed': return 'bg-green-100 text-green-700';
+      case 'shared': return 'bg-purple-100 text-purple-700';
+      case 'revoked': return 'bg-red-100 text-red-700';
+      case 'expired': return 'bg-gray-100 text-gray-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
   };
+
+  // Shared loading component
+  const LoadingState = ({ message }: { message: string }) => (
+    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+      <Loader2 className="h-8 w-8 animate-spin mb-3 text-blue-500" />
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+
+  // Shared error component
+  const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+      <AlertTriangle className="h-8 w-8 mb-3 text-red-400" />
+      <p className="text-sm text-red-600 mb-3">{message}</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RefreshCw className="h-4 w-4 mr-2" />
+        Retry
+      </Button>
+    </div>
+  );
+
+  // Shared empty component
+  const EmptyState = ({ message, icon: Icon }: { message: string; icon: React.ElementType }) => (
+    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+      <Icon className="h-10 w-10 mb-3" />
+      <p className="text-sm">{message}</p>
+    </div>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -301,8 +287,8 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="devices" className="flex items-center gap-2">
-              <Tablet className="h-4 w-4" />
-              Devices
+              <Key className="h-4 w-4" />
+              Digital Keys
             </TabsTrigger>
             <TabsTrigger value="qr" className="flex items-center gap-2">
               <QrCode className="h-4 w-4" />
@@ -318,194 +304,358 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
             </TabsTrigger>
           </TabsList>
 
+          {/* ===== DIGITAL KEYS TAB (API-backed) ===== */}
           <TabsContent value="devices" className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Connected Mobile Devices</h3>
-              <Button
-                onClick={handleSyncAllDevices}
-                disabled={loading}
-                className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Sync All
-                  </>
-                )}
-              </Button>
-            </div>
-
-            <div className="grid gap-4">
-              {mobileDevices.map((device) => (
-                <Card key={device.id} className="transition-all hover:shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2 rounded-lg bg-gray-100">
-                          {device.type === 'smartphone' ? (
-                            <Smartphone className="h-6 w-6 text-blue-600" />
-                          ) : (
-                            <Tablet className="h-6 w-6 text-purple-600" />
-                          )}
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{device.name}</h4>
-                          <p className="text-sm text-gray-600">{device.user}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            <Badge className={getStatusColor(device.status)}>
-                              {device.status.toUpperCase()}
-                            </Badge>
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3 text-gray-500" />
-                              <span className="text-xs text-gray-500">{device.location}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-6">
-                        {/* Battery */}
-                        <div className="flex items-center gap-1">
-                          <Battery className={`h-4 w-4 ${getBatteryColor(device.battery)}`} />
-                          <span className={`text-sm font-medium ${getBatteryColor(device.battery)}`}>
-                            {device.battery}%
-                          </span>
-                        </div>
-
-                        {/* Signal */}
-                        <div className="flex items-center gap-1">
-                          <div className="flex items-end gap-0.5">
-                            {getSignalBars(device.signal)}
-                          </div>
-                          <span className="text-sm text-gray-600">{device.signal}%</span>
-                        </div>
-
-                        {/* Features */}
-                        <div className="flex gap-2">
-                          {device.features.qrScanning && (
-                            <QrCode className="h-4 w-4 text-green-600" title="QR Scanning" />
-                          )}
-                          {device.features.photoCapture && (
-                            <Camera className="h-4 w-4 text-blue-600" title="Photo Capture" />
-                          )}
-                          {device.features.offlineMode && (
-                            <Wifi className="h-4 w-4 text-purple-600" title="Offline Mode" />
-                          )}
-                          {device.features.voiceCommands && (
-                            <Zap className="h-4 w-4 text-orange-600" title="Voice Commands" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 text-xs text-gray-500">
-                      Last sync: {new Date(device.lastSync).toLocaleTimeString()}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="qr" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">QR Code Scanning Activity</h3>
+              <h3 className="text-lg font-semibold">Digital Keys</h3>
               <div className="flex items-center gap-2">
-                <Badge className="bg-green-100 text-green-700">
-                  {qrScans.filter(s => s.status === 'success').length} Successful
-                </Badge>
-                <Badge className="bg-red-100 text-red-700">
-                  {qrScans.filter(s => s.status === 'error').length} Failed
-                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGenerateDialogOpen(true)}
+                  className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:from-green-100 hover:to-emerald-100"
+                >
+                  <Plus className="h-4 w-4 mr-2 text-green-600" />
+                  Generate Key
+                </Button>
+                <Button
+                  onClick={fetchDigitalKeys}
+                  disabled={keysLoading}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+                >
+                  {keysLoading ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* QR Scan Instructions */}
-              <Card className="md:col-span-1">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Scan className="h-5 w-5 text-blue-600" />
-                    How to Use QR Scanning
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <QrCode className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium text-blue-900">Room Identification</span>
-                    </div>
-                    <p className="text-sm text-blue-800">
-                      Scan QR code on room door to instantly identify and update room status
-                    </p>
+            {/* Generate Key Dialog */}
+            {generateDialogOpen && (
+              <Card className="border-green-200 bg-green-50/30">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Plus className="h-4 w-4 text-green-600" />
+                      Generate New Digital Key
+                    </h4>
+                    <Button variant="ghost" size="sm" onClick={() => setGenerateDialogOpen(false)}>
+                      <XCircle className="h-4 w-4" />
+                    </Button>
                   </div>
-
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-green-900">Quick Actions</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Booking ID</label>
+                      <input
+                        type="text"
+                        value={generateBookingId}
+                        onChange={(e) => setGenerateBookingId(e.target.value)}
+                        placeholder="Enter booking ID"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
                     </div>
-                    <p className="text-sm text-green-800">
-                      Mark rooms as clean, report maintenance issues, or check guest status
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Camera className="h-4 w-4 text-purple-600" />
-                      <span className="font-medium text-purple-900">Photo Documentation</span>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Key Type</label>
+                      <select
+                        value={generateKeyType}
+                        onChange={(e) => setGenerateKeyType(e.target.value as 'primary' | 'temporary' | 'emergency')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="primary">Primary</option>
+                        <option value="temporary">Temporary</option>
+                        <option value="emergency">Emergency</option>
+                      </select>
                     </div>
-                    <p className="text-sm text-purple-800">
-                      Capture photos of room conditions and attach to maintenance reports
-                    </p>
+                    <div className="flex items-end">
+                      <Button
+                        onClick={handleGenerateKey}
+                        disabled={generating}
+                        className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                      >
+                        {generating ? (
+                          <>
+                            <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Key className="h-4 w-4 mr-2" />
+                            Generate
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+            )}
 
-              {/* Recent Scans */}
-              <div className="md:col-span-2 space-y-4">
-                <h4 className="font-medium">Recent QR Scans</h4>
-                {qrScans.map((scan) => (
-                  <Card key={scan.id} className="transition-all hover:shadow-sm">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            scan.status === 'success' ? 'bg-green-100' : 'bg-red-100'
-                          }`}>
-                            <Bed className={`h-4 w-4 ${
-                              scan.status === 'success' ? 'text-green-600' : 'text-red-600'
-                            }`} />
+            {/* Keys List */}
+            {keysLoading && digitalKeys.length === 0 ? (
+              <LoadingState message="Loading digital keys..." />
+            ) : keysError ? (
+              <ErrorState message={keysError} onRetry={fetchDigitalKeys} />
+            ) : digitalKeys.length === 0 ? (
+              <EmptyState message="No digital keys found. Generate a key to get started." icon={Key} />
+            ) : (
+              <>
+                <div className="grid gap-4">
+                  {digitalKeys.map((key) => (
+                    <Card key={key._id} className="transition-all hover:shadow-md">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="p-2 rounded-lg bg-gray-100">
+                              <Key className="h-6 w-6 text-blue-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium font-mono text-sm">{key.keyCode}</h4>
+                              <p className="text-sm text-gray-600">
+                                {key.roomId?.number ? `Room ${key.roomId.number}` : 'No room assigned'}
+                                {key.bookingId?.bookingNumber && (
+                                  <span className="text-gray-400 ml-2">
+                                    (Booking #{key.bookingId.bookingNumber})
+                                  </span>
+                                )}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1">
+                                <Badge className={getKeyStatusColor(key.status)}>
+                                  {key.status.toUpperCase()}
+                                </Badge>
+                                <Badge variant="outline" className={getKeyTypeColor(key.type)}>
+                                  {key.type.toUpperCase()}
+                                </Badge>
+                                {key.qrCode && (
+                                  <QrCode className="h-4 w-4 text-purple-500" title="QR code available" />
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <h5 className="font-medium">Room {scan.roomNumber}</h5>
-                            <p className="text-sm text-gray-600">by {scan.staff}</p>
+
+                          <div className="flex items-center gap-6">
+                            {/* Usage Info */}
+                            <div className="text-right text-sm">
+                              <div className="text-gray-500">
+                                Uses: {key.currentUses}/{key.maxUses === -1 ? 'Unlimited' : key.maxUses}
+                              </div>
+                              {key.lastUsedAt && (
+                                <div className="text-xs text-gray-400">
+                                  Last used: {digitalKeyService.formatTimeAgo(key.lastUsedAt)}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-400">
+                                Expires: {new Date(key.validUntil).toLocaleDateString()}
+                              </div>
+                            </div>
+
+                            {/* Shared users indicator */}
+                            {key.sharedWith && key.sharedWith.length > 0 && (
+                              <div className="flex items-center gap-1" title={`Shared with ${key.sharedWith.length} user(s)`}>
+                                <User className="h-4 w-4 text-purple-500" />
+                                <span className="text-xs text-purple-600">{key.sharedWith.length}</span>
+                              </div>
+                            )}
+
+                            {/* Security indicator */}
+                            {key.securitySettings?.requirePin && (
+                              <ShieldCheck className="h-4 w-4 text-green-600" title="PIN required" />
+                            )}
+
+                            {/* Revoke button */}
+                            {key.status === 'active' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRevokeKey(key._id)}
+                                disabled={revokingKeyId === key._id}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Revoke key"
+                              >
+                                {revokingKeyId === key._id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <Badge className={scan.status === 'success' ?
-                            'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }>
-                            {scan.action.replace('_', ' ').toUpperCase()}
-                          </Badge>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {new Date(scan.scanTime).toLocaleTimeString()}
-                          </p>
+                        <div className="mt-3 text-xs text-gray-500">
+                          Created: {new Date(key.createdAt).toLocaleString()}
+                          {key.hotelId?.name && (
+                            <span className="ml-4">Hotel: {key.hotelId.name}</span>
+                          )}
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {keysTotalPages > 1 && (
+                  <div className="flex items-center justify-center gap-4 pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={keysPage <= 1 || keysLoading}
+                      onClick={() => setKeysPage(p => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      Page {keysPage} of {keysTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={keysPage >= keysTotalPages || keysLoading}
+                      onClick={() => setKeysPage(p => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
           </TabsContent>
 
+          {/* ===== QR SCANNING / STATS TAB (API-backed) ===== */}
+          <TabsContent value="qr" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Digital Key Statistics</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchStats}
+                disabled={statsLoading}
+              >
+                {statsLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Refresh
+              </Button>
+            </div>
+
+            {statsLoading && !keyStats ? (
+              <LoadingState message="Loading key statistics..." />
+            ) : statsError ? (
+              <ErrorState message={statsError} onRetry={fetchStats} />
+            ) : !keyStats ? (
+              <EmptyState message="No statistics available" icon={QrCode} />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Stats Overview Cards */}
+                <Card className="md:col-span-1">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Scan className="h-5 w-5 text-blue-600" />
+                      Key Overview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-3 bg-blue-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-blue-900">Total Keys</span>
+                        <span className="text-lg font-bold text-blue-700">{keyStats.totalKeys}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-green-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-green-900">Active Keys</span>
+                        <span className="text-lg font-bold text-green-700">{keyStats.activeKeys}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-900">Expired Keys</span>
+                        <span className="text-lg font-bold text-gray-700">{keyStats.expiredKeys}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-purple-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-purple-900">Shared Keys</span>
+                        <span className="text-lg font-bold text-purple-700">{keyStats.sharedKeys}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-orange-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-orange-900">Total Uses</span>
+                        <span className="text-lg font-bold text-orange-700">{keyStats.totalUses}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Activity */}
+                <div className="md:col-span-2 space-y-4">
+                  <h4 className="font-medium">Recent Activity</h4>
+                  {keyStats.recentActivity && keyStats.recentActivity.length > 0 ? (
+                    keyStats.recentActivity.map((activity, index) => (
+                      <Card key={`${activity.keyId}-${index}`} className="transition-all hover:shadow-sm">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-lg ${
+                                activity.action === 'revoked' ? 'bg-red-100' :
+                                activity.action === 'accessed' ? 'bg-green-100' :
+                                activity.action === 'generated' ? 'bg-blue-100' :
+                                activity.action === 'shared' ? 'bg-purple-100' :
+                                'bg-gray-100'
+                              }`}>
+                                <Key className={`h-4 w-4 ${
+                                  activity.action === 'revoked' ? 'text-red-600' :
+                                  activity.action === 'accessed' ? 'text-green-600' :
+                                  activity.action === 'generated' ? 'text-blue-600' :
+                                  activity.action === 'shared' ? 'text-purple-600' :
+                                  'text-gray-600'
+                                }`} />
+                              </div>
+                              <div>
+                                <h5 className="font-medium text-sm">Key {activity.keyId.slice(-8)}</h5>
+                                <p className="text-xs text-gray-500">
+                                  {digitalKeyService.formatTimeAgo(activity.timestamp)}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <Badge className={getActivityActionColor(activity.action)}>
+                                {activity.action.toUpperCase()}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <Card className="bg-gray-50">
+                      <CardContent className="p-6 text-center text-gray-400">
+                        <Clock className="h-8 w-8 mx-auto mb-2" />
+                        <p className="text-sm">No recent activity</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ===== TOUCH CONTROL TAB (client-side only) ===== */}
           <TabsContent value="gestures" className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Touch Gesture Controls</h3>
@@ -557,6 +707,7 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
             </Card>
           </TabsContent>
 
+          {/* ===== OFFLINE MODE TAB (client-side only) ===== */}
           <TabsContent value="offline" className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Offline Mode Configuration</h3>

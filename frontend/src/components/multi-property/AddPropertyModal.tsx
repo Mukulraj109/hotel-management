@@ -24,6 +24,8 @@ import {
 import { api } from '../../services/api';
 import { RoomSetupWizard } from './RoomSetupWizard';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { useToast } from '@/components/ui/use-toast';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 interface AddPropertyModalProps {
   isOpen: boolean;
@@ -142,6 +144,8 @@ export const AddPropertyModal: React.FC<AddPropertyModalProps> = ({
   onClose,
   onSuccess
 }) => {
+  const { toast } = useToast();
+  const { data: currentUser } = useCurrentUser();
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     description: '',
@@ -196,8 +200,7 @@ export const AddPropertyModal: React.FC<AddPropertyModalProps> = ({
     setLoadingGroups(true);
     try {
       // Only fetch property groups for admin users
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      if (user.role === 'admin') {
+      if (currentUser?.role === 'admin') {
         const response = await api.get('/property-rooms/property-groups');
         if (response.data.success) {
           setPropertyGroups(response.data.data || []);
@@ -306,8 +309,13 @@ export const AddPropertyModal: React.FC<AddPropertyModalProps> = ({
       });
       setRoomsConfig(null);
       setShowRoomWizard(false);
-    } catch (error) {
-      // Handle error (show toast notification)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to create property. Please try again."
+      });
     } finally {
       setIsLoading(false);
     }
@@ -374,8 +382,7 @@ export const AddPropertyModal: React.FC<AddPropertyModalProps> = ({
 
             {/* PropertyGroup selection - Admin only */}
             {(() => {
-              const user = JSON.parse(localStorage.getItem('user') || '{}');
-              return user.role === 'admin' && (
+              return currentUser?.role === 'admin' && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     Property Group (Optional)

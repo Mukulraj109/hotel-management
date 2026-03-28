@@ -667,6 +667,6 @@ dynamicPricingSchema.pre('save', function(next) {
   next();
 });
 
-const DynamicPricing = mongoose.model('DynamicPricing', dynamicPricingSchema);
+const DynamicPricing = mongoose.models.DynamicPricing || mongoose.model('DynamicPricing', dynamicPricingSchema);
 
 export default DynamicPricing;

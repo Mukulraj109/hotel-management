@@ -4,16 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { Calendar, AlertTriangle, CheckCircle, Settings, TrendingUp, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Settings, TrendingUp } from 'lucide-react';
 import { roomTypeService, RoomType } from '@/services/roomTypeService';
-import { availabilityService } from '@/services/availabilityService';
+import { availabilityService, OverbookingStats, OverbookingAlert as ApiOverbookingAlert } from '@/services/availabilityService';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
+import { useProperty } from '@/context/PropertyContext';
 
 interface OverbookingRule {
   id: string;
@@ -22,47 +23,25 @@ interface OverbookingRule {
   allowOverbooking: boolean;
   overbookingLimit: number;
   requiresApproval: boolean;
-  seasonalRules?: {
-    season: 'peak' | 'off-peak' | 'shoulder';
-    startDate: string;
-    endDate: string;
-    overbookingLimit: number;
-  }[];
   lastUpdated: string;
-  createdBy: string;
-}
-
-interface OverbookingAlert {
-  id: string;
-  roomTypeId: string;
-  roomTypeName: string;
-  date: string;
-  currentBookings: number;
-  availableRooms: number;
-  overbookingLevel: number;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  status: 'active' | 'resolved';
-}
-
-interface OverbookingStats {
-  totalRoomTypes: number;
-  overbookingEnabled: number;
-  activeAlerts: number;
-  revenueFromOverbooking: number;
-  occupancyImprovement: number;
 }
 
 export default function OverbookingConfiguration() {
   const { user } = useAuth();
+  const { selectedPropertyId } = useProperty();
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [overbookingRules, setOverbookingRules] = useState<OverbookingRule[]>([]);
-  const [alerts, setAlerts] = useState<OverbookingAlert[]>([]);
+  const [alerts, setAlerts] = useState<ApiOverbookingAlert[]>([]);
   const [stats, setStats] = useState<OverbookingStats>({
     totalRoomTypes: 0,
     overbookingEnabled: 0,
     activeAlerts: 0,
     revenueFromOverbooking: 0,
-    occupancyImprovement: 0
+    occupancyImprovement: 0,
+    baseOccupancy: 0,
+    withOverbookingOccupancy: 0,
+    successfulOverbooks: 0,
+    avgRevenuePerOverbook: 0,
   });
   const [selectedRoomType, setSelectedRoomType] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -74,29 +53,41 @@ export default function OverbookingConfiguration() {
   const [requiresApproval, setRequiresApproval] = useState(false);
 
   // Get hotel ID from authenticated user context
-  const hotelId = user?.hotelId || '68bc094f80c86bfe258e172b'; // Fallback to default if not in user context
+  const hotelIdFromUser =
+    typeof user?.hotelId === 'string'
+      ? user.hotelId
+      : user?.hotelId && typeof user.hotelId === 'object' && '_id' in user.hotelId
+        ? (user.hotelId as { _id: string })._id
+        : undefined;
+  const hotelId = hotelIdFromUser || selectedPropertyId || undefined;
 
   useEffect(() => {
-    if (hotelId) {
-      loadData();
+    if (!hotelId) {
+      setLoading(false);
+      return;
     }
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotelId]);
-
-  // Debug effect to monitor state changes
-  useEffect(() => {
-    if (selectedRoomType) {
-    }
-  }, [selectedRoomType, allowOverbooking, overbookingLimit, requiresApproval]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      
-      // Load room types
-      const roomTypesData = await roomTypeService.getRoomTypes(hotelId, { isActive: true });
+      setSelectedRoomType('');
+      setAllowOverbooking(false);
+      setOverbookingLimit(0);
+      setRequiresApproval(false);
+
+      // Load room types, stats, and alerts in parallel from real backend
+      const [roomTypesData, statsData, alertsData] = await Promise.all([
+        roomTypeService.getRoomTypes(hotelId, { isActive: true }),
+        availabilityService.getOverbookingStats(hotelId!).catch(() => null),
+        availabilityService.getOverbookingAlerts(hotelId!, 14).catch(() => []),
+      ]);
+
       setRoomTypes(roomTypesData);
 
-      // Convert room types to overbooking rules format
+      // Convert room types to overbooking rules
       const rules: OverbookingRule[] = roomTypesData.map(rt => ({
         id: rt._id,
         roomTypeId: rt._id,
@@ -105,48 +96,29 @@ export default function OverbookingConfiguration() {
         overbookingLimit: rt.settings?.overbookingLimit || 0,
         requiresApproval: rt.settings?.requiresApproval || false,
         lastUpdated: rt.updatedAt,
-        createdBy: 'admin'
       }));
-      
       setOverbookingRules(rules);
 
-      // Generate mock alerts for demonstration
-      const mockAlerts: OverbookingAlert[] = [
-        {
-          id: '1',
-          roomTypeId: roomTypesData[0]?._id || '',
-          roomTypeName: roomTypesData[0]?.name || 'Deluxe Room',
-          date: new Date().toISOString().split('T')[0],
-          currentBookings: 25,
-          availableRooms: 20,
-          overbookingLevel: 5,
-          severity: 'medium',
-          status: 'active'
-        },
-        {
-          id: '2',
-          roomTypeId: roomTypesData[1]?._id || '',
-          roomTypeName: roomTypesData[1]?.name || 'Suite',
-          date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-          currentBookings: 12,
-          availableRooms: 10,
-          overbookingLevel: 2,
-          severity: 'low',
-          status: 'active'
-        }
-      ];
-      setAlerts(mockAlerts);
+      // Use real alerts from backend
+      setAlerts(alertsData);
 
-      // Calculate stats
-      const enabledCount = rules.filter(rule => rule.allowOverbooking).length;
-      setStats({
-        totalRoomTypes: rules.length,
-        overbookingEnabled: enabledCount,
-        activeAlerts: mockAlerts.filter(alert => alert.status === 'active').length,
-        revenueFromOverbooking: 15420,
-        occupancyImprovement: 8.5
-      });
-
+      // Use real stats from backend, fall back to computed values from room types
+      if (statsData) {
+        setStats(statsData);
+      } else {
+        const enabledCount = rules.filter(r => r.allowOverbooking).length;
+        setStats({
+          totalRoomTypes: rules.length,
+          overbookingEnabled: enabledCount,
+          activeAlerts: alertsData.length,
+          revenueFromOverbooking: 0,
+          occupancyImprovement: 0,
+          baseOccupancy: 0,
+          withOverbookingOccupancy: 0,
+          successfulOverbooks: 0,
+          avgRevenuePerOverbook: 0,
+        });
+      }
     } catch (error) {
       toast.error('Failed to load overbooking configuration');
     } finally {
@@ -155,12 +127,10 @@ export default function OverbookingConfiguration() {
   };
 
   const handleRoomTypeSelect = (roomTypeId: string) => {
-    
     setSelectedRoomType(roomTypeId);
     const rule = overbookingRules.find(r => r.roomTypeId === roomTypeId);
     const roomType = roomTypes.find(rt => rt._id === roomTypeId);
-    
-    
+
     if (rule) {
       setAllowOverbooking(rule.allowOverbooking);
       setOverbookingLimit(rule.overbookingLimit);
@@ -184,7 +154,7 @@ export default function OverbookingConfiguration() {
 
     try {
       setSaving(true);
-      
+
       // Update room type with overbooking settings
       await roomTypeService.updateRoomType(selectedRoomType, {
         settings: {
@@ -194,9 +164,9 @@ export default function OverbookingConfiguration() {
         }
       });
 
-      // Update local state
-      setOverbookingRules(prev => prev.map(rule => 
-        rule.roomTypeId === selectedRoomType 
+      // Update local rules state immediately for responsive UI
+      setOverbookingRules(prev => prev.map(rule =>
+        rule.roomTypeId === selectedRoomType
           ? {
               ...rule,
               allowOverbooking,
@@ -207,19 +177,15 @@ export default function OverbookingConfiguration() {
           : rule
       ));
 
-      // Recalculate stats
-      const updatedRules = overbookingRules.map(rule => 
-        rule.roomTypeId === selectedRoomType 
-          ? { ...rule, allowOverbooking }
-          : rule
-      );
-      const enabledCount = updatedRules.filter(rule => rule.allowOverbooking).length;
-      setStats(prev => ({
-        ...prev,
-        overbookingEnabled: enabledCount
-      }));
-
       toast.success('Overbooking configuration saved successfully');
+
+      // Reload real stats and alerts from backend
+      const [statsData, alertsData] = await Promise.all([
+        availabilityService.getOverbookingStats(hotelId!).catch(() => null),
+        availabilityService.getOverbookingAlerts(hotelId!, 14).catch(() => []),
+      ]);
+      if (statsData) setStats(statsData);
+      setAlerts(alertsData);
     } catch (error) {
       toast.error('Failed to save configuration');
     } finally {
@@ -227,17 +193,19 @@ export default function OverbookingConfiguration() {
     }
   };
 
-  const checkOverbookingStatus = async (date: string, roomTypeId?: string) => {
+  const checkOverbookingStatus = async (date: string) => {
     try {
+      // Note: the legacy checkOverbooking endpoint uses Room.type (string enum),
+      // not RoomType ObjectId, so we check the whole hotel for the given date
       const result = await availabilityService.checkOverbooking({
         date,
-        roomType: roomTypeId
+        hotelId: hotelId!,
       });
-      
+
       if (result.isOverbooked) {
-        toast.error(`Overbooking detected: ${result.overbookingCount} rooms over capacity`);
+        toast.error(`Overbooking detected: ${result.overbookingCount || 0} rooms over capacity`);
       } else {
-        toast.success(`No overbooking detected. ${result.availableRooms} rooms available`);
+        toast.success(`No overbooking detected. ${result.availableRooms || 0} rooms available`);
       }
     } catch (error) {
       toast.error('Failed to check overbooking status');
@@ -258,6 +226,19 @@ export default function OverbookingConfiguration() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (!hotelId) {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            No property selected. Choose a hotel in the property switcher or ensure your account is linked to a hotel.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -337,7 +318,7 @@ export default function OverbookingConfiguration() {
               </div>
               <div className="ml-3 sm:ml-4 min-w-0 flex-1">
                 <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Additional Revenue</p>
-                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">₹{stats.revenueFromOverbooking.toLocaleString()}</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">₹{stats.revenueFromOverbooking.toLocaleString('en-IN')}</p>
               </div>
             </div>
           </CardContent>
@@ -413,14 +394,16 @@ export default function OverbookingConfiguration() {
                             {roomTypes.find(rt => rt._id === selectedRoomType)?.name || 'Room Type Not Found'}
                           </h5>
                           <p className="text-xs sm:text-sm text-gray-600">
-                            Current: {allowOverbooking 
-                              ? `${overbookingLimit} rooms allowed for overbooking`
+                            Current: {allowOverbooking
+                              ? overbookingLimit > 0
+                                ? `${overbookingLimit} ${overbookingLimit === 1 ? 'room' : 'rooms'} allowed for overbooking`
+                                : 'Overbooking enabled (no limit set)'
                               : 'Overbooking disabled'
                             }
                           </p>
-                          {allowOverbooking && (
+                          {allowOverbooking && overbookingLimit > 0 && (
                             <p className="text-xs text-blue-600 font-medium">
-                              Overbooking Rooms: {overbookingLimit} {overbookingLimit === 1 ? 'room' : 'rooms'}
+                              Max {overbookingLimit} extra {overbookingLimit === 1 ? 'booking' : 'bookings'} beyond capacity
                             </p>
                           )}
                         </div>
@@ -457,23 +440,20 @@ export default function OverbookingConfiguration() {
                     </div>
 
                     {allowOverbooking && (
-                      <>
-                        <div>
-                          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                            Overbooking Limit (rooms)
-                          </label>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="50"
-                            value={overbookingLimit}
-                            onChange={(e) => setOverbookingLimit(parseInt(e.target.value) || 0)}
-                            placeholder="Maximum rooms to overbook"
-                            className="text-sm"
-                          />
-                        </div>
-
-                      </>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                          Overbooking Limit (rooms)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="50"
+                          value={overbookingLimit}
+                          onChange={(e) => setOverbookingLimit(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))}
+                          placeholder="Maximum rooms to overbook"
+                          className="text-sm"
+                        />
+                      </div>
                     )}
 
                     <Button 
@@ -494,39 +474,49 @@ export default function OverbookingConfiguration() {
                 <CardTitle className="text-base sm:text-lg">Current Overbooking Rules</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {overbookingRules.map(rule => (
-                    <div role="button" tabIndex={0} 
-                      key={rule.id} 
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedRoomType === rule.roomTypeId 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => handleRoomTypeSelect(rule.roomTypeId)}
-                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleRoomTypeSelect(rule.roomTypeId); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-medium text-sm sm:text-base text-gray-900 truncate">{rule.roomTypeName}</h4>
-                          <p className="text-xs sm:text-sm text-gray-600">
-                            {rule.allowOverbooking 
-                              ? `Limit: ${rule.overbookingLimit} rooms`
-                              : 'Overbooking disabled'
-                            }
-                          </p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge 
-                            variant={rule.allowOverbooking ? "default" : "secondary"}
-                            className="text-xs"
-                          >
-                            {rule.allowOverbooking ? 'Enabled' : 'Disabled'}
-                          </Badge>
+                {overbookingRules.length > 0 ? (
+                  <div className="space-y-3">
+                    {overbookingRules.map(rule => (
+                      <div role="button" tabIndex={0}
+                        key={rule.id}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                          selectedRoomType === rule.roomTypeId
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => handleRoomTypeSelect(rule.roomTypeId)}
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRoomTypeSelect(rule.roomTypeId); } }}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-medium text-sm sm:text-base text-gray-900 truncate">{rule.roomTypeName}</h4>
+                            <p className="text-xs sm:text-sm text-gray-600">
+                              {rule.allowOverbooking
+                                ? rule.overbookingLimit > 0
+                                  ? `Limit: ${rule.overbookingLimit} ${rule.overbookingLimit === 1 ? 'room' : 'rooms'}`
+                                  : 'Enabled (no limit set)'
+                                : 'Overbooking disabled'
+                              }
+                            </p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Badge
+                              variant={rule.allowOverbooking ? "default" : "secondary"}
+                              className="text-xs"
+                            >
+                              {rule.allowOverbooking ? 'Enabled' : 'Disabled'}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Settings className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-sm sm:text-base text-gray-600">No room types configured yet</p>
+                    <p className="text-xs text-gray-500 mt-1">Add room types to set up overbooking rules</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -547,8 +537,8 @@ export default function OverbookingConfiguration() {
                         <TableHead className="text-xs sm:text-sm">Room Type</TableHead>
                         <TableHead className="text-xs sm:text-sm">Date</TableHead>
                         <TableHead className="text-xs sm:text-sm">Bookings</TableHead>
-                        <TableHead className="text-xs sm:text-sm">Available</TableHead>
-                        <TableHead className="text-xs sm:text-sm">Overbooking</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Capacity</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Over Limit</TableHead>
                         <TableHead className="text-xs sm:text-sm">Severity</TableHead>
                         <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                       </TableRow>
@@ -557,7 +547,7 @@ export default function OverbookingConfiguration() {
                       {alerts.map(alert => (
                         <TableRow key={alert.id}>
                           <TableCell className="font-medium text-xs sm:text-sm">{alert.roomTypeName}</TableCell>
-                          <TableCell className="text-xs sm:text-sm">{new Date(alert.date).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{new Date(alert.date + 'T00:00:00').toLocaleDateString('en-IN')}</TableCell>
                           <TableCell className="text-xs sm:text-sm">{alert.currentBookings}</TableCell>
                           <TableCell className="text-xs sm:text-sm">{alert.availableRooms}</TableCell>
                           <TableCell className="text-xs sm:text-sm">{alert.overbookingLevel}</TableCell>
@@ -570,7 +560,7 @@ export default function OverbookingConfiguration() {
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => checkOverbookingStatus(alert.date, alert.roomTypeId)}
+                              onClick={() => checkOverbookingStatus(alert.date)}
                               className="text-xs"
                             >
                               Check Status
@@ -593,61 +583,73 @@ export default function OverbookingConfiguration() {
 
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-4 sm:space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Occupancy Improvement</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs sm:text-sm font-medium text-gray-600">Base Occupancy</span>
-                    <span className="text-xs sm:text-sm font-bold">78.5%</span>
-                  </div>
-                  <Progress value={78.5} className="h-2" />
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs sm:text-sm font-medium text-gray-600">With Overbooking</span>
-                    <span className="text-xs sm:text-sm font-bold">87%</span>
-                  </div>
-                  <Progress value={87} className="h-2" />
-                  
-                  <div className="bg-green-50 p-3 rounded-lg">
-                    <p className="text-xs sm:text-sm text-green-800">
-                      <strong>+{stats.occupancyImprovement}%</strong> improvement in occupancy rate
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {stats.overbookingEnabled > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base sm:text-lg">Occupancy Improvement</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs sm:text-sm font-medium text-gray-600">Base Occupancy</span>
+                      <span className="text-xs sm:text-sm font-bold">{stats.baseOccupancy}%</span>
+                    </div>
+                    <Progress value={stats.baseOccupancy} className="h-2" />
 
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs sm:text-sm font-medium text-gray-600">With Overbooking</span>
+                      <span className="text-xs sm:text-sm font-bold">{stats.withOverbookingOccupancy}%</span>
+                    </div>
+                    <Progress value={stats.withOverbookingOccupancy} className="h-2" />
+
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <p className="text-xs sm:text-sm text-green-800">
+                        <strong>+{stats.occupancyImprovement}%</strong> improvement in occupancy rate
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base sm:text-lg">Revenue Impact</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <p className="text-2xl sm:text-3xl font-bold text-green-600">
+                        ₹{stats.revenueFromOverbooking.toLocaleString('en-IN')}
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600">Additional revenue (last 30 days)</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      <div className="text-center p-3 bg-blue-50 rounded-lg">
+                        <p className="text-base sm:text-lg font-semibold text-blue-600">{stats.successfulOverbooks}</p>
+                        <p className="text-xs text-blue-800">Successful Overbooks</p>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 rounded-lg">
+                        <p className="text-base sm:text-lg font-semibold text-purple-600">₹{stats.avgRevenuePerOverbook.toLocaleString('en-IN')}</p>
+                        <p className="text-xs text-purple-800">Avg. Revenue/Overbook</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Revenue Impact</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <p className="text-2xl sm:text-3xl font-bold text-green-600">
-                      ₹{stats.revenueFromOverbooking.toLocaleString()}
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-600">Additional revenue this month</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-base sm:text-lg font-semibold text-blue-600">42</p>
-                      <p className="text-xs text-blue-800">Successful Overbooks</p>
-                    </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-base sm:text-lg font-semibold text-purple-600">₹367</p>
-                      <p className="text-xs text-purple-800">Avg. Revenue/Overbook</p>
-                    </div>
-                  </div>
+              <CardContent className="py-12">
+                <div className="text-center">
+                  <TrendingUp className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-sm sm:text-base text-gray-600">No analytics data available</p>
+                  <p className="text-xs text-gray-500 mt-1">Enable overbooking on at least one room type to see analytics</p>
                 </div>
               </CardContent>
             </Card>
-          </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

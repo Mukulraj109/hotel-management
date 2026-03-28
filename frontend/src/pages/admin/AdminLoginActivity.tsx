@@ -107,6 +107,41 @@ interface SecurityAlert {
   userAgent: string;
 }
 
+function getDateRangeOptions(): Array<{ label: string; value: string }> {
+  const today = new Date();
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  const todayStr = formatDate(today);
+
+  const daysAgo = (n: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - n);
+    return formatDate(d);
+  };
+
+  return [
+    { label: 'All Time', value: '' },
+    { label: 'Last 24 Hours', value: JSON.stringify({ start: daysAgo(1), end: todayStr }) },
+    { label: 'Last 7 Days', value: JSON.stringify({ start: daysAgo(7), end: todayStr }) },
+    { label: 'Last 30 Days', value: JSON.stringify({ start: daysAgo(30), end: todayStr }) },
+    { label: 'Last 90 Days', value: JSON.stringify({ start: daysAgo(90), end: todayStr }) },
+  ];
+}
+
+function DateRangeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options = getDateRangeOptions();
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+    >
+      {options.map((opt) => (
+        <option key={opt.label} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
+
 const AdminLoginActivity: React.FC = () => {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [analytics, setAnalytics] = useState<LoginAnalytics | null>(null);
@@ -359,17 +394,10 @@ const AdminLoginActivity: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Date Range
               </label>
-              <select
+              <DateRangeSelect
                 value={filters.dateRange}
-                onChange={(e) => setFilters({ ...filters, dateRange: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Time</option>
-                <option value='{"start":"2024-01-01","end":"2024-12-31"}'>2024</option>
-                <option value='{"start":"2024-11-01","end":"2024-11-30"}'>Last 30 Days</option>
-                <option value='{"start":"2024-11-25","end":"2024-12-01"}'>Last 7 Days</option>
-                <option value='{"start":"2024-11-30","end":"2024-12-01"}'>Last 24 Hours</option>
-              </select>
+                onChange={(value) => setFilters({ ...filters, dateRange: value })}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -381,9 +409,9 @@ const AdminLoginActivity: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Risk Levels</option>
-                <option value="high">High Risk (>70)</option>
+                <option value="high">High Risk (&gt;70)</option>
                 <option value="medium">Medium Risk (30-70)</option>
-                <option value="low">Low Risk (<30)</option>
+                <option value="low">Low Risk (&lt;30)</option>
               </select>
             </div>
             <div>

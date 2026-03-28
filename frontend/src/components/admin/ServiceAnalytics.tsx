@@ -12,20 +12,15 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   Area,
   AreaChart
 } from 'recharts';
 import {
   TrendingUp,
-  TrendingDown,
   Clock,
-  Users,
   CheckCircle,
   AlertCircle,
   Star,
-  Calendar,
   Filter,
   Download,
   BarChart3,
@@ -36,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { serviceTypeService } from '../../services/serviceTypeService';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '@/services/api';
 
 interface ServiceAnalyticsData {
   totalRequests: number;
@@ -104,67 +100,46 @@ const ServiceAnalytics: React.FC = () => {
     try {
       setLoading(true);
 
-      // Get service type statistics
+      // Get service type statistics from real API
       const stats = await serviceTypeService.getServiceTypeStats(user?.hotelId);
 
-      // Generate mock enhanced analytics data based on real service types
-      const mockAnalyticsData: ServiceAnalyticsData = {
-        totalRequests: stats.totalRequests || 150,
-        completedRequests: stats.totalCompletedRequests || 135,
-        pendingRequests: (stats.totalRequests || 150) - (stats.totalCompletedRequests || 135),
-        averageResponseTime: stats.averageResponseTime || 12,
-        averageCompletionTime: stats.averageCompletionTime || 45,
-        averageRating: stats.averageRating || 4.2,
-        completionRate: stats.totalRequests > 0 ? Math.round((stats.totalCompletedRequests / stats.totalRequests) * 100) : 90,
-        serviceTypeBreakdown: stats.serviceTypeBreakdown.map(item => ({
-          type: item.type,
-          name: item.name,
-          requests: item.totalRequests,
-          completionRate: item.completionRate,
-          avgRating: item.averageRating,
-          revenue: item.basePrice * item.completedRequests
+      // Also fetch real stats from guest-services endpoint
+      const statsResponse = await api.get('/guest-services/stats').catch(() => null);
+      const overall = statsResponse?.data?.data?.overall || {};
+
+      const totalRequests = overall.totalRequests || stats.totalRequests || 0;
+      const completedRequests = overall.completedCount || stats.totalCompletedRequests || 0;
+
+      const analyticsData: ServiceAnalyticsData = {
+        totalRequests,
+        completedRequests,
+        pendingRequests: (overall.pendingCount || 0) || Math.max(0, totalRequests - completedRequests),
+        averageResponseTime: stats.averageResponseTime || 0,
+        averageCompletionTime: stats.averageCompletionTime || 0,
+        averageRating: overall.avgRating || stats.averageRating || 0,
+        completionRate: totalRequests > 0 ? Math.round((completedRequests / totalRequests) * 100) : 0,
+        serviceTypeBreakdown: (stats.serviceTypeBreakdown || []).map((item: Record<string, unknown>) => ({
+          type: item.type as string,
+          name: item.name as string,
+          requests: (item.totalRequests as number) || 0,
+          completionRate: (item.completionRate as number) || 0,
+          avgRating: (item.averageRating as number) || 0,
+          revenue: ((item.basePrice as number) || 0) * ((item.completedRequests as number) || 0)
         })),
-        dailyTrends: generateDailyTrends(selectedTimeFilter.days),
-        responseTimeDistribution: [
-          { timeRange: '0-5 min', count: 45 },
-          { timeRange: '5-15 min', count: 60 },
-          { timeRange: '15-30 min', count: 30 },
-          { timeRange: '30+ min', count: 15 }
-        ],
-        ratingDistribution: [
-          { rating: 5, count: 85 },
-          { rating: 4, count: 40 },
-          { rating: 3, count: 8 },
-          { rating: 2, count: 2 },
-          { rating: 1, count: 0 }
-        ]
+        // Daily trends: empty until a real analytics endpoint provides time-series data
+        dailyTrends: [],
+        // Response time distribution: empty until backend aggregates this data
+        responseTimeDistribution: [],
+        // Rating distribution: empty until backend aggregates this data
+        ratingDistribution: []
       };
 
-      setAnalyticsData(mockAnalyticsData);
+      setAnalyticsData(analyticsData);
     } catch (error) {
       toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateDailyTrends = (days: number) => {
-    const trends = [];
-    const today = new Date();
-
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-
-      trends.push({
-        date: date.toISOString().split('T')[0],
-        requests: Math.floor(Math.random() * 20) + 5,
-        completed: Math.floor(Math.random() * 18) + 3,
-        revenue: Math.floor(Math.random() * 5000) + 1000
-      });
-    }
-
-    return trends;
   };
 
   const exportAnalytics = async () => {
@@ -264,7 +239,7 @@ const ServiceAnalytics: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">{analyticsData.totalRequests}</div>
             <p className="text-xs text-muted-foreground">
-              +12% from last period
+              {analyticsData.pendingRequests} pending
             </p>
           </CardContent>
         </Card>
@@ -277,7 +252,7 @@ const ServiceAnalytics: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">{analyticsData.completionRate}%</div>
             <p className="text-xs text-muted-foreground">
-              +2% from last period
+              {analyticsData.completedRequests} completed
             </p>
           </CardContent>
         </Card>
@@ -288,9 +263,9 @@ const ServiceAnalytics: React.FC = () => {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{analyticsData.averageResponseTime}m</div>
+            <div className="text-2xl font-bold">{analyticsData.averageResponseTime > 0 ? `${analyticsData.averageResponseTime}m` : 'N/A'}</div>
             <p className="text-xs text-muted-foreground">
-              -3m from last period
+              minutes to first response
             </p>
           </CardContent>
         </Card>
@@ -301,9 +276,9 @@ const ServiceAnalytics: React.FC = () => {
             <Star className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{analyticsData.averageRating.toFixed(1)}</div>
+            <div className="text-2xl font-bold">{analyticsData.averageRating > 0 ? analyticsData.averageRating.toFixed(1) : 'N/A'}</div>
             <p className="text-xs text-muted-foreground">
-              +0.2 from last period
+              from guest feedback
             </p>
           </CardContent>
         </Card>

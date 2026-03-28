@@ -1,7 +1,22 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import availabilityService from '../services/availabilityService.js';
 import rateManagementService from '../services/rateManagementService.js';
 import RoomType from '../models/RoomType.js';
+import Room from '../models/Room.js';
+import Booking from '../models/Booking.js';
+import mongoose from 'mongoose';
+
+/** Public availability routes must scope by property — legacy check omits hotel filter when absent. */
+function requireQueryHotelId(req, res) {
+  const raw = req.query.hotelId;
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    res.status(400).json({
+      success: false,
+      message: 'hotelId is required'
+    });
+    return null;
+  }
+  return String(raw).trim();
+}
 
 class AvailabilityController {
   /**
@@ -14,9 +29,11 @@ class AvailabilityController {
         checkOutDate,
         roomType,     // Legacy: room type string
         roomTypeId,   // New: room type ObjectId
-        guestCount = 1,
-        hotelId
+        guestCount = 1
       } = req.query;
+
+      const scopedHotelId = requireQueryHotelId(req, res);
+      if (!scopedHotelId) return;
 
       if (!checkInDate || !checkOutDate) {
         return res.status(400).json({
@@ -28,15 +45,15 @@ class AvailabilityController {
       let finalRoomTypeId = roomTypeId;
 
       // Handle legacy roomType parameter
-      if (!finalRoomTypeId && roomType && hotelId) {
-        const roomTypeObj = await RoomType.findByLegacyType(hotelId, roomType);
+      if (!finalRoomTypeId && roomType && scopedHotelId) {
+        const roomTypeObj = await RoomType.findByLegacyType(scopedHotelId, roomType);
         finalRoomTypeId = roomTypeObj?._id;
       }
 
       // Use new V2 availability checking if we have roomTypeId
-      if (finalRoomTypeId && hotelId) {
+      if (finalRoomTypeId && scopedHotelId) {
         const availability = await availabilityService.checkAvailabilityV2({
-          hotelId,
+          hotelId: scopedHotelId,
           roomTypeId: finalRoomTypeId,
           checkIn: checkInDate,
           checkOut: checkOutDate,
@@ -54,7 +71,7 @@ class AvailabilityController {
           checkOutDate,
           roomType,
           parseInt(guestCount),
-          hotelId
+          scopedHotelId
         );
 
         // Get rates for available rooms
@@ -87,7 +104,10 @@ class AvailabilityController {
    */
   async getAvailabilityCalendar(req, res) {
     try {
-      const { year, month, roomType, hotelId } = req.query;
+      const { year, month, roomType } = req.query;
+
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
 
       if (!year || !month) {
         return res.status(400).json({
@@ -309,6 +329,9 @@ class AvailabilityController {
     try {
       const { date, roomType } = req.query;
 
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
+
       if (!date) {
         return res.status(400).json({
           success: false,
@@ -318,7 +341,8 @@ class AvailabilityController {
 
       const overbookingInfo = await availabilityService.handleOverbooking(
         new Date(date),
-        roomType
+        roomType,
+        hotelId
       );
 
       res.json({
@@ -343,9 +367,11 @@ class AvailabilityController {
       const {
         checkInDate,
         checkOutDate,
-        guestCount = 1,
-        hotelId
+        guestCount = 1
       } = req.query;
+
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
 
       if (!checkInDate || !checkOutDate) {
         return res.status(400).json({
@@ -424,9 +450,11 @@ class AvailabilityController {
         maxPrice,
         amenities,
         floor,
-        roomType,
-        hotelId
+        roomType
       } = req.query;
+
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
 
       if (!checkInDate || !checkOutDate) {
         return res.status(400).json({
@@ -483,8 +511,9 @@ class AvailabilityController {
         );
 
         if (bestRate) {
+          const plain = typeof room.toObject === 'function' ? room.toObject() : { ...room };
           const roomWithRate = {
-            ...room.toObject(),
+            ...plain,
             bestRate
           };
 
@@ -522,6 +551,292 @@ class AvailabilityController {
       res.status(500).json({
         success: false,
         message: error.message
+      });
+    }
+  }
+  /**
+   * Get overbooking statistics for the dashboard
+   */
+  async getOverbookingStats(req, res) {
+    try {
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
+
+      if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+        return res.status(400).json({ success: false, message: 'Invalid hotelId format' });
+      }
+      const hotelOid = new mongoose.Types.ObjectId(hotelId);
+
+      // Get room types with overbooking settings
+      const roomTypes = await RoomType.find({ hotelId, isActive: true })
+        .select('name settings')
+        .lean()
+        .limit(200);
+
+      const totalRoomTypes = roomTypes.length;
+      const overbookingEnabled = roomTypes.filter(
+        rt => rt.settings?.allowOverbooking
+      ).length;
+
+      // Count total rooms and current bookings for occupancy metrics
+      const totalRooms = await Room.countDocuments({ hotelId, isActive: true });
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      // Current occupancy (today)
+      const todayBookings = await Booking.countDocuments({
+        hotelId: hotelOid,
+        status: { $in: ['confirmed', 'checked_in'] },
+        checkIn: { $lt: tomorrow },
+        checkOut: { $gt: now },
+      });
+
+      const baseOccupancy = totalRooms > 0
+        ? Math.round((todayBookings / totalRooms) * 1000) / 10
+        : 0;
+
+      // Room counts per RoomType (uses roomTypeId ObjectId ref)
+      const roomsByType = await Room.aggregate([
+        { $match: { hotelId: hotelOid, isActive: true, roomTypeId: { $ne: null } } },
+        { $group: { _id: '$roomTypeId', count: { $sum: 1 } } },
+      ]);
+      const capacityMap = {};
+      for (const rt of roomsByType) {
+        if (rt._id) capacityMap[rt._id.toString()] = rt.count;
+      }
+
+      // Find dates with overbooking in the last 30 days
+      let successfulOverbooks = 0;
+      let totalOverbookRevenue = 0;
+
+      const enabledRoomTypes = roomTypes.filter(rt => rt.settings?.allowOverbooking);
+
+      for (const rt of enabledRoomTypes) {
+        const capacity = capacityMap[rt._id.toString()] || 0;
+        if (capacity === 0) continue;
+        const rtIdStr = rt._id.toString();
+
+        // For each day in last 30 days, check if bookings exceeded capacity
+        for (let d = 0; d < 30; d++) {
+          const date = new Date(thirtyDaysAgo.getTime() + d * 24 * 60 * 60 * 1000);
+          const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+
+          const bookingCount = await Booking.countDocuments({
+            hotelId: hotelOid,
+            'rooms.roomTypeId': rtIdStr,
+            status: { $in: ['confirmed', 'checked_in', 'completed'] },
+            checkIn: { $lt: nextDay },
+            checkOut: { $gt: date },
+          });
+
+          if (bookingCount > capacity) {
+            const overbooked = bookingCount - capacity;
+            successfulOverbooks += overbooked;
+
+            // Get average rate for revenue calculation
+            const revenueAgg = await Booking.aggregate([
+              {
+                $match: {
+                  hotelId: hotelOid,
+                  'rooms.roomTypeId': rtIdStr,
+                  status: { $in: ['confirmed', 'checked_in', 'completed'] },
+                  checkIn: { $lt: nextDay },
+                  checkOut: { $gt: date },
+                },
+              },
+              { $group: { _id: null, avgRate: { $avg: '$totalAmount' } } },
+            ]);
+            const avgRate = revenueAgg[0]?.avgRate || 0;
+            totalOverbookRevenue += overbooked * avgRate;
+          }
+        }
+      }
+
+      const avgRevenuePerOverbook = successfulOverbooks > 0
+        ? Math.round(totalOverbookRevenue / successfulOverbooks)
+        : 0;
+
+      // Estimate occupancy boost from overbooking
+      const totalCapacityDays = totalRooms * 30;
+      const occupancyBoost = totalCapacityDays > 0
+        ? Math.round((successfulOverbooks / totalCapacityDays) * 1000) / 10
+        : 0;
+      const withOverbookingOccupancy = Math.min(100,
+        Math.round((baseOccupancy + occupancyBoost) * 10) / 10
+      );
+
+      // Count active alerts (upcoming dates with overbooking)
+      let activeAlerts = 0;
+      for (const rt of enabledRoomTypes) {
+        const capacity = capacityMap[rt._id.toString()] || 0;
+        if (capacity === 0) continue;
+        const rtIdStr = rt._id.toString();
+
+        for (let d = 0; d < 7; d++) {
+          const date = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+          const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+
+          const bookingCount = await Booking.countDocuments({
+            hotelId: hotelOid,
+            'rooms.roomTypeId': rtIdStr,
+            status: { $in: ['confirmed', 'checked_in'] },
+            checkIn: { $lt: nextDay },
+            checkOut: { $gt: date },
+          });
+
+          if (bookingCount > capacity) {
+            activeAlerts++;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          totalRoomTypes,
+          overbookingEnabled,
+          activeAlerts,
+          revenueFromOverbooking: Math.round(totalOverbookRevenue),
+          occupancyImprovement: occupancyBoost,
+          baseOccupancy,
+          withOverbookingOccupancy,
+          successfulOverbooks,
+          avgRevenuePerOverbook,
+        },
+      });
+    } catch (error) {
+      console.error('Error getting overbooking stats:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get overbooking alerts for upcoming dates
+   */
+  async getOverbookingAlerts(req, res) {
+    try {
+      const hotelId = requireQueryHotelId(req, res);
+      if (!hotelId) return;
+
+      if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+        return res.status(400).json({ success: false, message: 'Invalid hotelId format' });
+      }
+      const days = Math.min(parseInt(req.query.days) || 14, 30);
+      const hotelOid = new mongoose.Types.ObjectId(hotelId);
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      // Get room types with overbooking enabled
+      const roomTypes = await RoomType.find({
+        hotelId,
+        isActive: true,
+        'settings.allowOverbooking': true,
+      })
+        .select('name settings')
+        .lean()
+        .limit(200);
+
+      if (roomTypes.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
+
+      // Get room counts per type (using roomTypeId ObjectId ref)
+      const roomsByType = await Room.aggregate([
+        { $match: { hotelId: hotelOid, isActive: true, roomTypeId: { $ne: null } } },
+        { $group: { _id: '$roomTypeId', count: { $sum: 1 } } },
+      ]);
+      const capacityMap = {};
+      for (const rt of roomsByType) {
+        if (rt._id) capacityMap[rt._id.toString()] = rt.count;
+      }
+
+      const alerts = [];
+
+      for (const rt of roomTypes) {
+        const capacity = capacityMap[rt._id.toString()] || 0;
+        if (capacity === 0) continue;
+
+        const overbookingLimit = rt.settings?.overbookingLimit || 0;
+        const rtIdStr = rt._id.toString();
+
+        for (let d = 0; d < days; d++) {
+          const date = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+          const nextDay = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+
+          const currentBookings = await Booking.countDocuments({
+            hotelId: hotelOid,
+            'rooms.roomTypeId': rtIdStr,
+            status: { $in: ['confirmed', 'checked_in'] },
+            checkIn: { $lt: nextDay },
+            checkOut: { $gt: date },
+          });
+
+          // Alert when bookings exceed capacity (even within limit)
+          if (currentBookings > capacity) {
+            const overbookingLevel = currentBookings - capacity;
+            let severity = 'low';
+            if (overbookingLevel > overbookingLimit) {
+              severity = 'critical';
+            } else if (overbookingLevel >= overbookingLimit * 0.8) {
+              severity = 'high';
+            } else if (overbookingLevel >= overbookingLimit * 0.5) {
+              severity = 'medium';
+            }
+
+            alerts.push({
+              id: `${rt._id}-${date.toISOString().split('T')[0]}`,
+              roomTypeId: rt._id.toString(),
+              roomTypeName: rt.name,
+              date: date.toISOString().split('T')[0],
+              currentBookings,
+              availableRooms: capacity,
+              overbookingLevel,
+              overbookingLimit,
+              severity,
+              status: 'active',
+            });
+          } else if (currentBookings >= capacity * 0.9) {
+            // Near-capacity warning
+            alerts.push({
+              id: `${rt._id}-${date.toISOString().split('T')[0]}`,
+              roomTypeId: rt._id.toString(),
+              roomTypeName: rt.name,
+              date: date.toISOString().split('T')[0],
+              currentBookings,
+              availableRooms: capacity,
+              overbookingLevel: 0,
+              overbookingLimit,
+              severity: 'low',
+              status: 'active',
+            });
+          }
+        }
+      }
+
+      // Sort by severity (critical first) then date
+      const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      alerts.sort((a, b) => {
+        const sevDiff = (severityOrder[a.severity] || 4) - (severityOrder[b.severity] || 4);
+        if (sevDiff !== 0) return sevDiff;
+        return a.date.localeCompare(b.date);
+      });
+
+      res.json({
+        success: true,
+        data: alerts.slice(0, 50),
+      });
+    } catch (error) {
+      console.error('Error getting overbooking alerts:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
       });
     }
   }

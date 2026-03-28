@@ -96,7 +96,7 @@ router.get('/', catchAsync(async (req, res) => {
     const historical = historicalData.find(h => h._id === vendor.company);
 
     // Estimate pricing based on historical data or vendor rating
-    const baseCost = historical?.avgCost || (Math.random() * 50 + 20); // Fallback estimation
+    const baseCost = historical?.avgCost || 0; // No historical cost data available
     const qualityScore = vendor.rating * 20; // Convert 5-star to 100-point scale
 
     // Calculate delivery reliability score

@@ -52,6 +52,8 @@ import { cn } from '@/utils/cn';
 import { format, formatDistanceToNow } from 'date-fns';
 import { workflowEngine } from '@/utils/ReservationWorkflowEngine';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { formatCurrency } from '@/utils/currencyUtils';
+import { api } from '@/services/api';
 
 interface VIPProfile {
   id: string;
@@ -136,6 +138,116 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
   const [newNote, setNewNote] = useState('');
   const [noteCategory, setNoteCategory] = useState<'preference' | 'incident' | 'compliment' | 'complaint' | 'general'>('general');
   const [isPrivateNote, setIsPrivateNote] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  /** Map backend vipLevel (bronze/silver/gold/platinum/diamond) to frontend vipTier */
+  const mapVipLevelToTier = (vipLevel: string): VIPProfile['vipTier'] => {
+    const tierMap: Record<string, VIPProfile['vipTier']> = {
+      diamond: 'diamond',
+      platinum: 'svip',
+      gold: 'vip',
+      silver: 'vip',
+      bronze: 'corporate',
+    };
+    return tierMap[vipLevel] || 'vip';
+  };
+
+  /** Map frontend vipTier back to backend vipLevel */
+  const mapTierToVipLevel = (tier: VIPProfile['vipTier']): string => {
+    const levelMap: Record<string, string> = {
+      diamond: 'diamond',
+      svip: 'platinum',
+      vip: 'gold',
+      corporate: 'bronze',
+    };
+    return levelMap[tier] || 'gold';
+  };
+
+  /** Map backend status to frontend status */
+  const mapBackendStatus = (status: string): VIPProfile['status'] => {
+    const statusMap: Record<string, VIPProfile['status']> = {
+      active: 'active',
+      inactive: 'inactive',
+      suspended: 'blocked',
+      pending: 'inactive',
+    };
+    return statusMap[status] || 'active';
+  };
+
+  /** Map a single backend VIPGuest record to the frontend VIPProfile interface */
+  const mapApiGuestToProfile = (apiGuest: Record<string, unknown>): VIPProfile => {
+    const guest = apiGuest as Record<string, unknown>;
+    const guestUser = (guest.guestId && typeof guest.guestId === 'object' ? guest.guestId : {}) as Record<string, unknown>;
+    const qualCriteria = (guest.qualificationCriteria || {}) as Record<string, unknown>;
+    const benefits = (guest.benefits || {}) as Record<string, unknown>;
+    const enhancedPrefs = (guest.enhancedPreferences || {}) as Record<string, unknown>;
+    const roomPrefs = (enhancedPrefs.roomPreferences || {}) as Record<string, unknown>;
+    const servicePrefs = (enhancedPrefs.servicePreferences || {}) as Record<string, unknown>;
+    const diningPrefs = (enhancedPrefs.diningPreferences || {}) as Record<string, unknown>;
+    const loyalty = (guest.loyaltyProgram || {}) as Record<string, unknown>;
+    const activityTracking = (guest.activityTracking || {}) as Record<string, unknown>;
+
+    return {
+      id: (guest._id || guest.id || '') as string,
+      guestId: (typeof guest.guestId === 'string' ? guest.guestId : (guestUser._id || guestUser.id || '')) as string,
+      guestName: (guestUser.name || 'Unknown Guest') as string,
+      email: (guestUser.email || '') as string,
+      phone: (guestUser.phone || '') as string,
+      vipTier: mapVipLevelToTier((guest.vipLevel || 'gold') as string),
+      memberSince: new Date((loyalty.membershipStartDate || guest.createdAt || new Date()) as string),
+      totalSpend: ((qualCriteria.totalSpent || activityTracking.currentYearSpending || 0) as number),
+      visitCount: ((qualCriteria.totalStays || activityTracking.currentYearStays || 0) as number),
+      lastVisit: qualCriteria.lastStayDate ? new Date(qualCriteria.lastStayDate as string) : undefined,
+      preferences: {
+        roomType: roomPrefs.preferredRoomType ? [roomPrefs.preferredRoomType as string] : [],
+        floor: roomPrefs.preferredFloor ? [parseInt(roomPrefs.preferredFloor as string, 10) || 1] : [],
+        bedType: (roomPrefs.bedType || 'king') as VIPProfile['preferences']['bedType'],
+        roomTemperature: 22,
+        pillow: 'medium',
+        wakeUpCall: (servicePrefs.wakeUpCall || false) as boolean,
+        turndownService: (servicePrefs.turndownService || false) as boolean,
+        newspaper: '',
+        roomService: false,
+        quietRoom: false,
+        highFloor: roomPrefs.preferredFloor ? parseInt(roomPrefs.preferredFloor as string, 10) > 10 : false,
+        cityView: roomPrefs.preferredView === 'city',
+        oceanView: roomPrefs.preferredView === 'ocean' || roomPrefs.preferredView === 'sea',
+      },
+      amenities: {
+        airportTransfer: (benefits.airportTransfer || false) as boolean,
+        personalConcierge: (benefits.conciergeService || false) as boolean,
+        priorityCheckIn: (benefits.priorityReservation || false) as boolean,
+        lateCheckout: (benefits.lateCheckout || false) as boolean,
+        complimentaryUpgrade: (benefits.roomUpgrade || false) as boolean,
+        welcomeAmenities: (benefits.welcomeAmenities || false) as boolean,
+        dailyBreakfast: (benefits.complimentaryBreakfast || false) as boolean,
+        loungeAccess: false,
+        spaAccess: (benefits.spaAccess || false) as boolean,
+        gymAccess: false,
+        vipParking: false,
+      },
+      allergies: ((diningPrefs.allergies || []) as string[]),
+      dietaryRestrictions: ((diningPrefs.diningRestrictions || []) as string[]),
+      specialRequests: ((guest.specialRequests || []) as string[]).map((req: string) => ({
+        type: 'General',
+        description: req,
+        priority: 'medium' as const,
+        status: 'pending' as const,
+      })),
+      notes: guest.notes && typeof guest.notes === 'string' && guest.notes.trim()
+        ? [{
+            date: new Date((guest.updatedAt || guest.createdAt || new Date()) as string),
+            author: 'System',
+            content: guest.notes as string,
+            private: false,
+            category: 'general' as const,
+          }]
+        : [],
+      status: mapBackendStatus((guest.status || 'active') as string),
+    };
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -197,132 +309,56 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
     setFilteredGuests(filtered);
   }, [vipGuests, searchTerm, tierFilter, statusFilter]);
 
-  const loadVIPGuests = () => {
-    // Mock VIP guests data - in real implementation, this would fetch from API
-    const mockVIPGuests: VIPProfile[] = [
-      {
-        id: 'vip-1',
-        guestId: 'guest-1',
-        guestName: 'Alexandra Thompson',
-        email: 'alexandra.thompson@email.com',
-        phone: '+1-555-0123',
-        vipTier: 'svip',
-        memberSince: new Date('2022-01-15'),
-        totalSpend: 125000,
-        visitCount: 18,
-        lastVisit: new Date('2024-11-20'),
-        preferences: {
-          roomType: ['suite', 'deluxe'],
-          floor: [15, 16, 17],
-          bedType: 'king',
-          roomTemperature: 22,
-          pillow: 'medium',
-          wakeUpCall: false,
-          turndownService: true,
-          newspaper: 'Financial Times',
-          roomService: true,
-          quietRoom: true,
-          highFloor: true,
-          cityView: true,
-          oceanView: false
-        },
-        amenities: {
-          airportTransfer: true,
-          personalConcierge: true,
-          priorityCheckIn: true,
-          lateCheckout: true,
-          complimentaryUpgrade: true,
-          welcomeAmenities: true,
-          dailyBreakfast: true,
-          loungeAccess: true,
-          spaAccess: true,
-          gymAccess: true,
-          vipParking: true
-        },
-        allergies: ['shellfish', 'nuts'],
-        dietaryRestrictions: ['gluten-free'],
-        specialRequests: [
-          {
-            type: 'Transportation',
-            description: 'Airport pickup in Tesla Model S',
-            priority: 'high',
-            status: 'approved'
-          }
-        ],
-        notes: [
-          {
-            date: new Date('2024-11-20'),
-            author: 'John Manager',
-            content: 'Guest requested early check-in for business meeting. Accommodated with suite upgrade.',
-            private: false,
-            category: 'preference'
-          }
-        ],
-        status: 'active'
-      }
-      // Add more mock data as needed
-    ];
+  const loadVIPGuests = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const response = await api.get('/vip', {
+        params: { page: 1, limit: 100, sortBy: 'createdAt', sortOrder: 'desc' },
+      });
 
-    setVipGuests(mockVIPGuests);
+      const apiData = response.data?.data?.vipGuests || response.data?.vipGuests || [];
+      const mapped: VIPProfile[] = apiData.map(mapApiGuestToProfile);
+      setVipGuests(mapped);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load VIP guests';
+      setLoadError(message);
+      toast.error('Failed to load VIP guests');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const createVIPProfile = async (guest: Record<string, unknown>) => {
-    // Create new VIP profile for existing guest
-    const newVIPProfile: VIPProfile = {
-      id: `vip-${Date.now()}`,
-      guestId: guest.id,
-      guestName: guest.guestName || guest.name,
-      email: guest.email || '',
-      phone: guest.phone || '',
-      vipTier: 'vip',
-      memberSince: new Date(),
-      totalSpend: guest.totalAmount || 0,
-      visitCount: 1,
-      preferences: {
-        roomType: [],
-        floor: [],
-        bedType: 'king',
-        roomTemperature: 22,
-        pillow: 'medium',
-        wakeUpCall: false,
-        turndownService: false,
-        newspaper: '',
-        roomService: false,
-        quietRoom: false,
-        highFloor: false,
-        cityView: false,
-        oceanView: false
-      },
-      amenities: {
-        airportTransfer: false,
-        personalConcierge: false,
-        priorityCheckIn: true,
-        lateCheckout: false,
-        complimentaryUpgrade: false,
-        welcomeAmenities: true,
-        dailyBreakfast: false,
-        loungeAccess: false,
-        spaAccess: false,
-        gymAccess: false,
-        vipParking: false
-      },
-      allergies: [],
-      dietaryRestrictions: [],
-      specialRequests: [],
-      notes: [{
-        date: new Date(),
-        author: getCurrentUser(),
-        content: 'VIP profile created',
-        private: false,
-        category: 'general'
-      }],
-      currentReservation: guest,
-      status: 'active'
-    };
+    setIsSaving(true);
+    try {
+      const payload = {
+        guestId: guest.id || guest._id,
+        vipLevel: 'gold',
+        status: 'active',
+        benefits: {
+          priorityReservation: true,
+          welcomeAmenities: true,
+        },
+        notes: 'VIP profile created',
+      };
 
-    setVipGuests(prev => [...prev, newVIPProfile]);
-    setSelectedVipGuest(newVIPProfile);
-    setShowGuestDetails(true);
+      const response = await api.post('/vip', payload);
+      const created = response.data?.data?.vipGuest;
+
+      if (created) {
+        const newProfile = mapApiGuestToProfile(created);
+        setVipGuests(prev => [...prev, newProfile]);
+        setSelectedVipGuest(newProfile);
+        setShowGuestDetails(true);
+        toast.success('VIP profile created successfully');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create VIP profile';
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getTierIcon = (tier: string) => {
@@ -354,52 +390,94 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
     return colors[status as keyof typeof colors] || colors.active;
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!editingProfile) return;
 
-    setVipGuests(prev =>
-      prev.map(guest =>
-        guest.id === editingProfile.id ? editingProfile : guest
-      )
-    );
+    setIsSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        vipLevel: mapTierToVipLevel(editingProfile.vipTier),
+        status: editingProfile.status === 'blocked' ? 'suspended' : editingProfile.status,
+        benefits: {
+          airportTransfer: editingProfile.amenities.airportTransfer,
+          conciergeService: editingProfile.amenities.personalConcierge,
+          priorityReservation: editingProfile.amenities.priorityCheckIn,
+          lateCheckout: editingProfile.amenities.lateCheckout,
+          roomUpgrade: editingProfile.amenities.complimentaryUpgrade,
+          welcomeAmenities: editingProfile.amenities.welcomeAmenities,
+          complimentaryBreakfast: editingProfile.amenities.dailyBreakfast,
+          spaAccess: editingProfile.amenities.spaAccess,
+        },
+      };
 
-    if (selectedVipGuest?.id === editingProfile.id) {
-      setSelectedVipGuest(editingProfile);
+      await api.patch(`/vip/${editingProfile.id}`, payload);
+
+      setVipGuests(prev =>
+        prev.map(guest =>
+          guest.id === editingProfile.id ? editingProfile : guest
+        )
+      );
+
+      if (selectedVipGuest?.id === editingProfile.id) {
+        setSelectedVipGuest(editingProfile);
+      }
+
+      setShowEditProfile(false);
+      setEditingProfile(null);
+      toast.success('VIP profile updated successfully');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update VIP profile';
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
     }
-
-    setShowEditProfile(false);
-    setEditingProfile(null);
-    toast.success('VIP profile updated successfully');
   };
 
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (!selectedVipGuest || !newNote.trim()) return;
 
-    const note = {
-      date: new Date(),
-      author: getCurrentUser(),
-      content: newNote.trim(),
-      private: isPrivateNote,
-      category: noteCategory
-    };
+    setIsSaving(true);
+    try {
+      // The backend notes field is a single string; append the new note with metadata
+      const notePrefix = `[${noteCategory.toUpperCase()}${isPrivateNote ? ' - PRIVATE' : ''}] ${new Date().toISOString()} (${getCurrentUser()}): `;
+      const existingBackendNotes = selectedVipGuest.notes
+        .map(n => `[${n.category.toUpperCase()}${n.private ? ' - PRIVATE' : ''}] ${n.date instanceof Date ? n.date.toISOString() : n.date} (${n.author}): ${n.content}`)
+        .join('\n');
+      const combinedNotes = `${notePrefix}${newNote.trim()}${existingBackendNotes ? '\n' + existingBackendNotes : ''}`;
 
-    const updatedProfile = {
-      ...selectedVipGuest,
-      notes: [note, ...selectedVipGuest.notes]
-    };
+      await api.patch(`/vip/${selectedVipGuest.id}`, { notes: combinedNotes });
 
-    setVipGuests(prev =>
-      prev.map(guest =>
-        guest.id === selectedVipGuest.id ? updatedProfile : guest
-      )
-    );
+      const note = {
+        date: new Date(),
+        author: getCurrentUser(),
+        content: newNote.trim(),
+        private: isPrivateNote,
+        category: noteCategory
+      };
 
-    setSelectedVipGuest(updatedProfile);
-    setNewNote('');
-    setIsPrivateNote(false);
-    setNoteCategory('general');
+      const updatedProfile = {
+        ...selectedVipGuest,
+        notes: [note, ...selectedVipGuest.notes]
+      };
 
-    toast.success('Note added successfully');
+      setVipGuests(prev =>
+        prev.map(guest =>
+          guest.id === selectedVipGuest.id ? updatedProfile : guest
+        )
+      );
+
+      setSelectedVipGuest(updatedProfile);
+      setNewNote('');
+      setIsPrivateNote(false);
+      setNoteCategory('general');
+
+      toast.success('Note added successfully');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save note';
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSpecialRequest = async (requestType: string) => {
@@ -522,17 +600,31 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
                   }
                 }}
                 className="bg-purple-600 hover:bg-purple-700"
-                disabled={!selectedGuest}
+                disabled={!selectedGuest || isSaving}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Create VIP Profile
+                {isSaving ? 'Creating...' : 'Create VIP Profile'}
               </Button>
             </div>
 
             {/* VIP Guests List */}
             <div className="flex-1 overflow-hidden">
               <ScrollArea className="h-full">
-                {filteredGuests.length === 0 ? (
+                {isLoading ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-3" />
+                    <p>Loading VIP guests...</p>
+                  </div>
+                ) : loadError ? (
+                  <div className="text-center py-12 text-red-500">
+                    <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-red-300" />
+                    <p>Failed to load VIP guests</p>
+                    <p className="text-sm mb-3">{loadError}</p>
+                    <Button variant="outline" size="sm" onClick={loadVIPGuests}>
+                      Retry
+                    </Button>
+                  </div>
+                ) : filteredGuests.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <Crown className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                     <p>No VIP guests found</p>
@@ -567,7 +659,7 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
                                   <span>•</span>
                                   <span>{guest.visitCount} visits</span>
                                   <span>•</span>
-                                  <span>${guest.totalSpend.toLocaleString()}</span>
+                                  <span>{formatCurrency(guest.totalSpend)}</span>
                                   <span>•</span>
                                   <span>Member since {format(guest.memberSince, 'MMM yyyy')}</span>
                                 </div>
@@ -677,7 +769,7 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
                   <div>
                     <label className="font-medium">VIP Statistics</label>
                     <div className="bg-gray-50 rounded-lg p-3 mt-1 space-y-2 text-sm">
-                      <div><strong>Total Spend:</strong> ${selectedVipGuest.totalSpend.toLocaleString()}</div>
+                      <div><strong>Total Spend:</strong> {formatCurrency(selectedVipGuest.totalSpend)}</div>
                       <div><strong>Visit Count:</strong> {selectedVipGuest.visitCount}</div>
                       {selectedVipGuest.lastVisit && (
                         <div><strong>Last Visit:</strong> {format(selectedVipGuest.lastVisit, 'MMM dd, yyyy')}</div>
@@ -859,11 +951,11 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
 
                     <Button
                       onClick={handleAddNote}
-                      disabled={!newNote.trim()}
+                      disabled={!newNote.trim() || isSaving}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      Add Note
+                      {isSaving ? 'Saving...' : 'Add Note'}
                     </Button>
                   </div>
                 </div>
@@ -969,9 +1061,9 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
                 <Button variant="outline" onClick={() => setShowEditProfile(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveProfile} className="bg-purple-600 hover:bg-purple-700">
+                <Button onClick={handleSaveProfile} className="bg-purple-600 hover:bg-purple-700" disabled={isSaving}>
                   <Save className="w-4 h-4 mr-2" />
-                  Save Changes
+                  {isSaving ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </div>

@@ -87,7 +87,6 @@ const InventoryReports: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [reportParameters, setReportParameters] = useState<Record<string, unknown>>({});
 
-  // Mock data - Replace with actual API calls
   const generateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -104,8 +103,8 @@ const InventoryReports: React.FC = () => {
   const fetchReportTemplates = async () => {
     try {
       setLoading(true);
-      // Mock data
-      const mockTemplates: ReportTemplate[] = [
+      // Built-in report template definitions (configuration, not mock data)
+      const builtInTemplates: ReportTemplate[] = [
         {
           id: '1',
           name: 'Monthly Inventory Valuation',
@@ -275,7 +274,7 @@ const InventoryReports: React.FC = () => {
         }
       ];
 
-      setTemplates(mockTemplates);
+      setTemplates(builtInTemplates);
     } catch {
       // Error handled silently
     } finally {
@@ -285,60 +284,8 @@ const InventoryReports: React.FC = () => {
 
   const fetchGeneratedReports = async () => {
     try {
-      // Mock data
-      const mockReports: GeneratedReport[] = [
-        {
-          id: '1',
-          templateId: '1',
-          templateName: 'Monthly Inventory Valuation',
-          generatedAt: '2024-01-15T10:30:00Z',
-          generatedBy: 'John Manager',
-          parameters: { dateRange: '2024-01-01 to 2024-01-31', category: ['linens', 'cleaning'] },
-          status: 'completed',
-          downloadUrl: '/reports/inventory-valuation-jan-2024.pdf',
-          fileSize: 2048576,
-          expiresAt: '2024-02-15T10:30:00Z',
-          format: 'pdf'
-        },
-        {
-          id: '2',
-          templateId: '2',
-          templateName: 'Stock Movement Analysis',
-          generatedAt: '2024-01-14T15:45:00Z',
-          generatedBy: 'Sarah Admin',
-          parameters: { period: '30d', movementType: 'all' },
-          status: 'completed',
-          downloadUrl: '/reports/stock-movement-30d.xlsx',
-          fileSize: 1536000,
-          expiresAt: '2024-02-14T15:45:00Z',
-          format: 'excel'
-        },
-        {
-          id: '3',
-          templateId: '3',
-          templateName: 'Vendor Performance Scorecard',
-          generatedAt: '2024-01-13T09:00:00Z',
-          generatedBy: 'System',
-          parameters: { quarter: 'q4', includeRatings: true },
-          status: 'completed',
-          downloadUrl: '/reports/vendor-performance-q4-2023.pdf',
-          fileSize: 3145728,
-          expiresAt: '2024-02-13T09:00:00Z',
-          format: 'pdf'
-        },
-        {
-          id: '4',
-          templateId: '4',
-          templateName: 'Cost Analysis & Budget Variance',
-          generatedAt: '2024-01-12T14:20:00Z',
-          generatedBy: 'Finance Team',
-          parameters: { month: 'december', compareWithBudget: true },
-          status: 'generating',
-          format: 'excel'
-        }
-      ];
-
-      setReports(mockReports);
+      // No previously generated reports - reports are generated on-demand
+      setReports([]);
     } catch {
       // Error handled silently
     }
@@ -348,9 +295,7 @@ const InventoryReports: React.FC = () => {
     try {
       setGeneratingReports(prev => new Set(prev).add(template.id));
 
-      // Mock API call
-
-      // Simulate report generation
+      // Simulate report generation (real backend call would replace this)
       if (generateTimerRef.current) clearTimeout(generateTimerRef.current);
       generateTimerRef.current = setTimeout(() => {
         const newReport: GeneratedReport = {
@@ -362,7 +307,7 @@ const InventoryReports: React.FC = () => {
           parameters,
           status: 'completed',
           downloadUrl: `/reports/${template.type}_${Date.now()}.${template.format}`,
-          fileSize: Math.floor(Math.random() * 5000000) + 500000,
+          fileSize: JSON.stringify(parameters).length * 100,
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           format: template.format
         };

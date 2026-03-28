@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/utils/toast';
+import { api } from '@/services/api';
 import {
   Users,
   Calendar as CalendarIcon,
@@ -184,16 +185,32 @@ const GroupBookingFlow: React.FC<GroupBookingFlowProps> = ({
   const fetchAvailableRooms = async () => {
     setIsLoading(true);
     try {
-      // Mock API call - replace with actual service
-      const mockRooms: AvailableRoom[] = [
-        { id: '101', roomNumber: '101', roomType: 'standard', floor: 1, rate: 150, isAvailable: true, amenities: ['WiFi', 'TV'] },
-        { id: '102', roomNumber: '102', roomType: 'standard', floor: 1, rate: 150, isAvailable: true, amenities: ['WiFi', 'TV'] },
-        { id: '201', roomNumber: '201', roomType: 'deluxe', floor: 2, rate: 200, isAvailable: true, amenities: ['WiFi', 'TV', 'Minibar'] },
-        { id: '301', roomNumber: '301', roomType: 'suite', floor: 3, rate: 350, isAvailable: true, amenities: ['WiFi', 'TV', 'Minibar', 'Balcony'] }
-      ];
-      setAvailableRooms(mockRooms);
-    } catch (error) {
+      const response = await api.get('/rooms', {
+        params: {
+          checkIn: bookingData.checkInDate?.toISOString(),
+          checkOut: bookingData.checkOutDate?.toISOString(),
+          available: true,
+          limit: 50
+        }
+      });
+      const data = response.data?.data;
+      if (Array.isArray(data)) {
+        const rooms: AvailableRoom[] = data.map((room: Record<string, unknown>) => ({
+          id: String(room._id || room.id || ''),
+          roomNumber: String(room.roomNumber || ''),
+          roomType: String(room.roomType || room.type || 'standard'),
+          floor: Number(room.floor || 1),
+          rate: Number(room.rate || room.baseRate || 0),
+          isAvailable: room.isAvailable !== false,
+          amenities: Array.isArray(room.amenities) ? room.amenities.map(String) : []
+        }));
+        setAvailableRooms(rooms);
+      } else {
+        setAvailableRooms([]);
+      }
+    } catch {
       toast.error('Failed to fetch available rooms');
+      setAvailableRooms([]);
     } finally {
       setIsLoading(false);
     }

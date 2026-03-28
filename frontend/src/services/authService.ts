@@ -15,10 +15,30 @@ interface LoginData {
 }
 
 class AuthService {
+  private normalizeAuthPayload(payload: unknown): AuthResponse {
+    const responseData = payload as {
+      status?: string;
+      token?: string;
+      user?: User;
+      data?: { user?: User; token?: string; status?: string };
+    };
+
+    const nested = responseData?.data || {};
+    const user = responseData?.user || nested.user;
+    const token = responseData?.token || nested.token;
+    const status = responseData?.status || nested.status || 'success';
+
+    if (!user) {
+      throw new Error('Invalid authentication response: missing user');
+    }
+
+    return { status, token, user };
+  }
+
   async login(data: LoginData): Promise<AuthResponse> {
     try {
       const response = await api.post('/auth/login', data);
-      return response.data;
+      return this.normalizeAuthPayload(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -27,7 +47,7 @@ class AuthService {
   async register(data: RegisterData): Promise<AuthResponse> {
     try {
       const response = await api.post('/auth/register', data);
-      return response.data;
+      return this.normalizeAuthPayload(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -36,7 +56,16 @@ class AuthService {
   async getCurrentUser(): Promise<User> {
     try {
       const response = await api.get('/auth/me');
-      return response.data.user;
+      return this.normalizeAuthPayload(response.data).user;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  async switchHotel(hotelId: string): Promise<AuthResponse> {
+    try {
+      const response = await api.post('/auth/switch-hotel', { hotelId });
+      return this.normalizeAuthPayload(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

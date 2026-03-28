@@ -109,6 +109,15 @@ class AdminService {
     }
   }
 
+  async deleteInventoryItem(id: string): Promise<ApiResponse<{ message: string }>> {
+    try {
+      const response = await api.delete(`/inventory/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
   async createSupplyRequest(itemId: string, quantity: number, reason?: string): Promise<unknown> {
     try {
       const response = await api.post('/inventory/request', { itemId, quantity, reason });

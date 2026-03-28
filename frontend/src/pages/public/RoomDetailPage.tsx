@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Users, 
@@ -23,6 +23,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatIndianCurrency } from '../../utils/currency';
+import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+
+const API_FALLBACK_IMAGES = [
+  'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
+  'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800',
+  'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=800'
+];
+
+function isLikelyObjectId(s: string) {
+  return /^[a-f0-9]{24}$/i.test(s);
+}
 
 // Same room types data as other pages
 const ROOM_TYPES = {
@@ -107,8 +119,31 @@ export default function RoomDetailPage() {
     guests: parseInt(searchParams.get('guests') || '2')
   });
 
-  const roomType = type as keyof typeof ROOM_TYPES;
-  const room = ROOM_TYPES[roomType];
+  const { data: catalog } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
+
+  const room = useMemo(() => {
+    if (!type) return null;
+    if (isLikelyObjectId(type) && catalog?.length) {
+      const o = catalog.find((c) => c.id === type);
+      if (o) {
+        return {
+          name: o.name,
+          description: `${o.code} — up to ${o.maxOccupancy} guests`,
+          longDescription: `Stay in our ${o.name}.`,
+          baseRate: o.basePrice ?? o.baseRate ?? 0,
+          maxGuests: o.maxOccupancy || 2,
+          icon: Bed,
+          amenities: ['Free WiFi', 'AC', 'TV', 'Room Service'],
+          images: API_FALLBACK_IMAGES,
+          features: ['Comfortable stay', 'Modern amenities', 'Daily housekeeping'],
+          roomSize: '—',
+          bedType: o.code
+        };
+      }
+    }
+    const roomType = type as keyof typeof ROOM_TYPES;
+    return ROOM_TYPES[roomType] ?? null;
+  }, [type, catalog]);
 
   if (!room) {
     return (
@@ -138,8 +173,12 @@ export default function RoomDetailPage() {
     if (bookingDates.checkIn) params.set('checkIn', bookingDates.checkIn);
     if (bookingDates.checkOut) params.set('checkOut', bookingDates.checkOut);
     if (bookingDates.guests) params.set('guests', bookingDates.guests.toString());
-    params.set('roomType', roomType);
-    
+    if (type && isLikelyObjectId(type) && catalog?.some((c) => c.id === type)) {
+      params.set('roomTypeId', type);
+    } else if (type) {
+      params.set('roomType', type);
+    }
+
     navigate(`/booking?${params.toString()}`);
   };
 

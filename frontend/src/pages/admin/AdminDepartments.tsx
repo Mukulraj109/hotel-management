@@ -35,7 +35,7 @@ import {
   Business as BusinessIcon,
   Group as GroupIcon,
   Analytics as AnalyticsIcon,
-  Hierarchy as HierarchyIcon,
+  AccountTree as HierarchyIcon,
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -48,6 +48,7 @@ import { AlertCircle } from 'lucide-react';
 import DepartmentTree from '../../components/departments/DepartmentTree';
 import DepartmentMetrics from '../../components/departments/DepartmentMetrics';
 import { departmentsApi } from '../../services/api';
+import { departmentService } from '../../services/departmentService';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
@@ -201,8 +202,8 @@ const AdminDepartments: React.FC = () => {
       setLoading(true);
       const [departmentsResponse, hierarchyResponse, summaryResponse] = await Promise.all([
         departmentsApi.getDepartments({ populate: true }),
-        departmentsApi.getDepartmentHierarchy(),
-        departmentsApi.getDepartmentSummary()
+        departmentService.getDepartmentHierarchy(),
+        departmentService.getDepartmentSummary()
       ]);
 
       setDepartments(departmentsResponse.data.departments);
@@ -258,7 +259,7 @@ const AdminDepartments: React.FC = () => {
     
     if (newName && newCode) {
       try {
-        await departmentsApi.cloneDepartment(department._id, { newName, newCode });
+        await departmentService.cloneDepartment(department._id, newName, newCode);
         await loadData();
       } catch {
         // Error handled silently

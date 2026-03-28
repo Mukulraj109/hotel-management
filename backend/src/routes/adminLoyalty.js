@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Offer from '../models/Offer.js';
 import Loyalty from '../models/Loyalty.js';
 import User from '../models/User.js';
@@ -7,7 +8,6 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
-import { v4 as uuidv4 } from 'uuid';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
@@ -49,6 +49,217 @@ const bulkOperationSchema = Joi.object({
   offerIds: Joi.array().items(Joi.string()).min(1).required(),
   operation: Joi.string().valid('activate', 'deactivate', 'delete').required()
 });
+
+/**
+ * @swagger
+ * /admin/loyalty/analytics:
+ *   get:
+ *     summary: Get loyalty program analytics
+ *     tags: [Admin Loyalty]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: dateFrom
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: dateTo
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Loyalty analytics data
+ */
+// FIX: /analytics must be registered BEFORE /offers/:id to avoid being caught by the :id catch-all
+router.get('/analytics', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  const hotelId = req.user.hotelId;
+
+  // Build date filter
+  const dateFilter = {};
+  if (dateFrom || dateTo) {
+    dateFilter.createdAt = {};
+    if (dateFrom) dateFilter.createdAt.$gte = new Date(dateFrom);
+    if (dateTo) dateFilter.createdAt.$lte = new Date(dateTo);
+  }
+
+  // FIX: Add hotelId filter to all analytics queries for tenant isolation
+  const hotelIdObj = new mongoose.Types.ObjectId(hotelId);
+
+  // Get offer performance analytics
+  const offerPerformance = await Loyalty.aggregate([
+    { $match: { type: 'redeemed', hotelId: hotelIdObj, ...dateFilter } },
+    {
+      $group: {
+        _id: '$offerId',
+        totalRedemptions: { $sum: 1 },
+        totalPointsRedeemed: { $sum: { $abs: '$points' } }
+      }
+    },
+    {
+      $lookup: {
+        from: 'offers',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'offer'
+      }
+    },
+    { $unwind: '$offer' },
+    {
+      $project: {
+        offerTitle: '$offer.title',
+        offerCategory: '$offer.category',
+        offerType: '$offer.type',
+        totalRedemptions: 1,
+        totalPointsRedeemed: 1
+      }
+    },
+    { $sort: { totalRedemptions: -1 } },
+    { $limit: 10 }
+  ]);
+
+  // Get category breakdown
+  const categoryBreakdown = await Loyalty.aggregate([
+    { $match: { type: 'redeemed', hotelId: hotelIdObj, ...dateFilter } },
+    {
+      $lookup: {
+        from: 'offers',
+        localField: 'offerId',
+        foreignField: '_id',
+        as: 'offer'
+      }
+    },
+    { $unwind: '$offer' },
+    {
+      $group: {
+        _id: '$offer.category',
+        totalRedemptions: { $sum: 1 },
+        totalPointsRedeemed: { $sum: { $abs: '$points' } }
+      }
+    },
+    { $sort: { totalRedemptions: -1 } }
+  ]);
+
+  // Get overall stats
+  const overallStats = await Loyalty.aggregate([
+    { $match: { hotelId: hotelIdObj, ...dateFilter } },
+    {
+      $group: {
+        _id: '$type',
+        count: { $sum: 1 },
+        totalPoints: { $sum: '$points' }
+      }
+    }
+  ]);
+
+  // FIX: Add hotelId filter for offer counts
+  const activeOffersCount = await Offer.countDocuments({ hotelId, isActive: true });
+  const totalOffersCount = await Offer.countDocuments({ hotelId });
+
+  // Get user tier distribution (scoped to hotel)
+  const tierDistribution = await User.aggregate([
+    { $match: { role: 'guest', hotelId: hotelIdObj } },
+    {
+      $group: {
+        _id: '$loyalty.tier',
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      offerPerformance,
+      categoryBreakdown,
+      overallStats,
+      offers: {
+        active: activeOffersCount,
+        total: totalOffersCount,
+        inactive: totalOffersCount - activeOffersCount
+      },
+      tierDistribution
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /admin/loyalty/offers/bulk:
+ *   post:
+ *     summary: Perform bulk operations on offers
+ *     tags: [Admin Loyalty]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               offerIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               operation:
+ *                 type: string
+ *                 enum: [activate, deactivate, delete]
+ *     responses:
+ *       200:
+ *         description: Bulk operation completed
+ */
+// FIX: /offers/bulk must be registered BEFORE /offers/:id to avoid "bulk" being treated as an :id
+router.post('/offers/bulk',
+  authenticate,
+  authorizePolicy('adminLoyalty', 'managerAccess'),
+  ensurePropertyAccess,
+  validate(bulkOperationSchema),
+  catchAsync(async (req, res) => {
+    const { offerIds, operation } = req.body;
+    const hotelId = req.user.hotelId;
+
+    logger.debug(`Performing bulk ${operation} on offers`, { count: offerIds.length });
+
+    let result;
+
+    // FIX: Add hotelId filter to all bulk operations for tenant isolation
+    switch (operation) {
+      case 'activate':
+        result = await Offer.updateMany(
+          { _id: { $in: offerIds }, hotelId },
+          { isActive: true }
+        );
+        break;
+      case 'deactivate':
+        result = await Offer.updateMany(
+          { _id: { $in: offerIds }, hotelId },
+          { isActive: false }
+        );
+        break;
+      case 'delete':
+        result = await Offer.deleteMany({ _id: { $in: offerIds }, hotelId });
+        break;
+      default:
+        throw new ApplicationError('Invalid operation', 400);
+    }
+
+    logger.debug(`Bulk ${operation} completed`, { modifiedCount: result.modifiedCount || result.deletedCount });
+
+    res.json({
+      status: 'success',
+      data: {
+        operation,
+        affectedCount: result.modifiedCount || result.deletedCount,
+        details: result
+      }
+    });
+  })
+);
 
 /**
  * @swagger
@@ -97,13 +308,17 @@ router.get('/offers', authenticate, authorizePolicy('adminLoyalty', 'managerAcce
     search
   } = req.query;
 
-  // Build query
-  const query = {};
-  
+  // FIX: Enforce max limit to prevent unbounded queries
+  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+  const parsedPage = parseInt(page) || 1;
+
+  // FIX: Add hotelId filter for tenant isolation
+  const query = { hotelId: req.user.hotelId };
+
   if (category) query.category = category;
   if (type) query.type = type;
   if (isActive !== undefined) query.isActive = isActive === 'true';
-  
+
   // Add search functionality
   if (search) {
     const escapedSearch = escapeRegex(search);
@@ -114,29 +329,30 @@ router.get('/offers', authenticate, authorizePolicy('adminLoyalty', 'managerAcce
   }
 
   // Calculate pagination
-  const skip = (page - 1) * limit;
+  const skip = (parsedPage - 1) * parsedLimit;
 
   // Get offers with pagination
-  const offers = await Offer.find(query)
-    .populate('hotelId', 'name')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit)).lean();
-
-  // Get total count
-  const total = await Offer.countDocuments(query);
+  const [offers, total] = await Promise.all([
+    Offer.find(query)
+      .populate('hotelId', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    Offer.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
     data: {
       offers,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: parsedPage,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
         totalItems: total,
-        itemsPerPage: parseInt(limit),
-        hasNext: page * limit < total,
-        hasPrev: page > 1
+        itemsPerPage: parsedLimit,
+        hasNext: parsedPage * parsedLimit < total,
+        hasPrev: parsedPage > 1
       }
     }
   });
@@ -167,23 +383,112 @@ router.post('/offers',
   validate(createOfferSchema),
   catchAsync(async (req, res) => {
     logger.debug('Creating new offer');
-    
+
     const offerData = {
       ...req.body,
       hotelId: req.user.hotelId // Associate with admin's hotel
     };
-    
+
     const offer = new Offer(offerData);
     await offer.save();
-    
+
     logger.debug('Offer created successfully', { offerId: offer._id });
-    
+
     res.status(201).json({
       status: 'success',
       data: offer
     });
   })
 );
+
+/**
+ * @swagger
+ * /admin/loyalty/offers/{id}/stats:
+ *   get:
+ *     summary: Get detailed statistics for a specific offer
+ *     tags: [Admin Loyalty]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Detailed offer statistics
+ */
+// FIX: /offers/:id/stats must be registered BEFORE /offers/:id to avoid being caught by the :id route
+router.get('/offers/:id/stats', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const offerId = req.params.id;
+  const hotelId = req.user.hotelId;
+
+  // FIX: Add hotelId filter for tenant isolation
+  const offer = await Offer.findOne({ _id: offerId, hotelId }).lean();
+  if (!offer) {
+    throw new ApplicationError('Offer not found', 404);
+  }
+
+  // Get redemption timeline
+  const timeline = await Loyalty.aggregate([
+    { $match: { offerId: offer._id, type: 'redeemed' } },
+    {
+      $group: {
+        _id: {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+          day: { $dayOfMonth: '$createdAt' }
+        },
+        redemptions: { $sum: 1 },
+        pointsRedeemed: { $sum: { $abs: '$points' } }
+      }
+    },
+    { $sort: { '_id.year': -1, '_id.month': -1, '_id.day': -1 } },
+    { $limit: 30 } // Last 30 days
+  ]);
+
+  // Get user tier breakdown for this offer
+  const tierBreakdown = await Loyalty.aggregate([
+    { $match: { offerId: offer._id, type: 'redeemed' } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'user'
+      }
+    },
+    { $unwind: '$user' },
+    {
+      $group: {
+        _id: '$user.loyalty.tier',
+        redemptions: { $sum: 1 }
+      }
+    },
+    { $sort: { redemptions: -1 } }
+  ]);
+
+  // Get recent redemptions
+  const recentRedemptions = await Loyalty.find({
+    offerId: offer._id,
+    type: 'redeemed'
+  })
+    .populate('userId', 'name email')
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .lean();
+
+  res.json({
+    status: 'success',
+    data: {
+      offer,
+      timeline,
+      tierBreakdown,
+      recentRedemptions
+    }
+  });
+}));
 
 /**
  * @swagger
@@ -204,13 +509,16 @@ router.post('/offers',
  *         description: Offer details
  */
 router.get('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const offer = await Offer.findById(req.params.id)
+  const hotelId = req.user.hotelId;
+
+  // FIX: Add hotelId filter for tenant isolation
+  const offer = await Offer.findOne({ _id: req.params.id, hotelId })
     .populate('hotelId', 'name').lean();
-    
+
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
-  
+
   // Get redemption statistics
   const redemptionStats = await Loyalty.aggregate([
     { $match: { offerId: offer._id } },
@@ -264,20 +572,22 @@ router.put('/offers/:id',
   ensurePropertyAccess,
   validate(updateOfferSchema),
   catchAsync(async (req, res) => {
+    const hotelId = req.user.hotelId;
     logger.debug('Updating offer', { offerId: req.params.id });
-    
-    const offer = await Offer.findByIdAndUpdate(
-      req.params.id,
+
+    // FIX: Add hotelId filter for tenant isolation
+    const offer = await Offer.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
       req.body,
       { new: true, runValidators: true }
     ).populate('hotelId', 'name');
-    
+
     if (!offer) {
       throw new ApplicationError('Offer not found', 404);
     }
-    
+
     logger.debug('Offer updated successfully', { offerId: offer._id });
-    
+
     res.json({
       status: 'success',
       data: offer
@@ -304,308 +614,21 @@ router.put('/offers/:id',
  *         description: Offer deleted successfully
  */
 router.delete('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const hotelId = req.user.hotelId;
   logger.debug('Deleting offer', { offerId: req.params.id });
-  
-  const offer = await Offer.findByIdAndDelete(req.params.id);
-  
+
+  // FIX: Add hotelId filter for tenant isolation
+  const offer = await Offer.findOneAndDelete({ _id: req.params.id, hotelId });
+
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
-  
+
   logger.debug('Offer deleted successfully', { offerId: req.params.id });
-  
+
   res.status(204).json({
     status: 'success',
     data: null
-  });
-}));
-
-/**
- * @swagger
- * /admin/loyalty/offers/bulk:
- *   post:
- *     summary: Perform bulk operations on offers
- *     tags: [Admin Loyalty]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               offerIds:
- *                 type: array
- *                 items:
- *                   type: string
- *               operation:
- *                 type: string
- *                 enum: [activate, deactivate, delete]
- *     responses:
- *       200:
- *         description: Bulk operation completed
- */
-router.post('/offers/bulk',
-  authenticate,
-  authorizePolicy('adminLoyalty', 'managerAccess'),
-  ensurePropertyAccess,
-  validate(bulkOperationSchema),
-  catchAsync(async (req, res) => {
-    const { offerIds, operation } = req.body;
-    
-    logger.debug(`Performing bulk ${operation} on offers`, { count: offerIds.length });
-    
-    let result;
-    
-    switch (operation) {
-      case 'activate':
-        result = await Offer.updateMany(
-          { _id: { $in: offerIds } },
-          { isActive: true }
-        );
-        break;
-      case 'deactivate':
-        result = await Offer.updateMany(
-          { _id: { $in: offerIds } },
-          { isActive: false }
-        );
-        break;
-      case 'delete':
-        result = await Offer.deleteMany({ _id: { $in: offerIds } });
-        break;
-      default:
-        throw new ApplicationError('Invalid operation', 400);
-    }
-    
-    logger.debug(`Bulk ${operation} completed`, { modifiedCount: result.modifiedCount || result.deletedCount });
-    
-    res.json({
-      status: 'success',
-      data: {
-        operation,
-        affectedCount: result.modifiedCount || result.deletedCount,
-        details: result
-      }
-    });
-  })
-);
-
-/**
- * @swagger
- * /admin/loyalty/analytics:
- *   get:
- *     summary: Get loyalty program analytics
- *     tags: [Admin Loyalty]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: dateFrom
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: dateTo
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Loyalty analytics data
- */
-router.get('/analytics', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const { dateFrom, dateTo } = req.query;
-  
-  // Build date filter
-  const dateFilter = {};
-  if (dateFrom || dateTo) {
-    dateFilter.createdAt = {};
-    if (dateFrom) dateFilter.createdAt.$gte = new Date(dateFrom);
-    if (dateTo) dateFilter.createdAt.$lte = new Date(dateTo);
-  }
-  
-  // Get offer performance analytics
-  const offerPerformance = await Loyalty.aggregate([
-    { $match: { type: 'redeemed', ...dateFilter } },
-    {
-      $group: {
-        _id: '$offerId',
-        totalRedemptions: { $sum: 1 },
-        totalPointsRedeemed: { $sum: { $abs: '$points' } }
-      }
-    },
-    {
-      $lookup: {
-        from: 'offers',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'offer'
-      }
-    },
-    { $unwind: '$offer' },
-    {
-      $project: {
-        offerTitle: '$offer.title',
-        offerCategory: '$offer.category',
-        offerType: '$offer.type',
-        totalRedemptions: 1,
-        totalPointsRedeemed: 1
-      }
-    },
-    { $sort: { totalRedemptions: -1 } },
-    { $limit: 10 }
-  ]);
-  
-  // Get category breakdown
-  const categoryBreakdown = await Loyalty.aggregate([
-    { $match: { type: 'redeemed', ...dateFilter } },
-    {
-      $lookup: {
-        from: 'offers',
-        localField: 'offerId',
-        foreignField: '_id',
-        as: 'offer'
-      }
-    },
-    { $unwind: '$offer' },
-    {
-      $group: {
-        _id: '$offer.category',
-        totalRedemptions: { $sum: 1 },
-        totalPointsRedeemed: { $sum: { $abs: '$points' } }
-      }
-    },
-    { $sort: { totalRedemptions: -1 } }
-  ]);
-  
-  // Get overall stats
-  const overallStats = await Loyalty.aggregate([
-    { $match: dateFilter },
-    {
-      $group: {
-        _id: '$type',
-        count: { $sum: 1 },
-        totalPoints: { $sum: '$points' }
-      }
-    }
-  ]);
-  
-  // Get active offers count
-  const activeOffersCount = await Offer.countDocuments({ isActive: true });
-  const totalOffersCount = await Offer.countDocuments({});
-  
-  // Get user tier distribution
-  const tierDistribution = await User.aggregate([
-    { $match: { role: 'guest' } },
-    {
-      $group: {
-        _id: '$loyalty.tier',
-        count: { $sum: 1 }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ]);
-  
-  res.json({
-    status: 'success',
-    data: {
-      offerPerformance,
-      categoryBreakdown,
-      overallStats,
-      offers: {
-        active: activeOffersCount,
-        total: totalOffersCount,
-        inactive: totalOffersCount - activeOffersCount
-      },
-      tierDistribution
-    }
-  });
-}));
-
-/**
- * @swagger
- * /admin/loyalty/offers/{id}/stats:
- *   get:
- *     summary: Get detailed statistics for a specific offer
- *     tags: [Admin Loyalty]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Detailed offer statistics
- */
-router.get('/offers/:id/stats', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const offerId = req.params.id;
-  
-  // Verify offer exists
-  const offer = await Offer.findById(offerId).lean();
-  if (!offer) {
-    throw new ApplicationError('Offer not found', 404);
-  }
-  
-  // Get redemption timeline
-  const timeline = await Loyalty.aggregate([
-    { $match: { offerId: offer._id, type: 'redeemed' } },
-    {
-      $group: {
-        _id: {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' },
-          day: { $dayOfMonth: '$createdAt' }
-        },
-        redemptions: { $sum: 1 },
-        pointsRedeemed: { $sum: { $abs: '$points' } }
-      }
-    },
-    { $sort: { '_id.year': -1, '_id.month': -1, '_id.day': -1 } },
-    { $limit: 30 } // Last 30 days
-  ]);
-  
-  // Get user tier breakdown for this offer
-  const tierBreakdown = await Loyalty.aggregate([
-    { $match: { offerId: offer._id, type: 'redeemed' } },
-    {
-      $lookup: {
-        from: 'users',
-        localField: 'userId',
-        foreignField: '_id',
-        as: 'user'
-      }
-    },
-    { $unwind: '$user' },
-    {
-      $group: {
-        _id: '$user.loyalty.tier',
-        redemptions: { $sum: 1 }
-      }
-    },
-    { $sort: { redemptions: -1 } }
-  ]);
-  
-  // Get recent redemptions
-  const recentRedemptions = await Loyalty.find({ 
-    offerId: offer._id, 
-    type: 'redeemed' 
-  })
-    .populate('userId', 'name email')
-    .sort({ createdAt: -1 })
-    .limit(10).lean();
-  
-  res.json({
-    status: 'success',
-    data: {
-      offer,
-      timeline,
-      tierBreakdown,
-      recentRedemptions
-    }
   });
 }));
 

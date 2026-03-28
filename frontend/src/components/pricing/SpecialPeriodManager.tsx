@@ -9,7 +9,7 @@ import {
   Repeat,
   Ban,
   Filter,
-  Sort,
+  ArrowUpDown as Sort,
   Eye,
   Plus
 } from 'lucide-react';

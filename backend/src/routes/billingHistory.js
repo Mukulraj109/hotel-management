@@ -214,19 +214,18 @@ router.get('/', catchAsync(async (req, res) => {
       search
     } = req.query;
 
-  // Build base query based on user role
+  // Build base query based on user role - hotelId is always mandatory for tenant isolation
   let baseQuery = {};
-  
+  const targetHotelId = hotelId || req.user.hotelId;
+
+  if (!targetHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  baseQuery.hotelId = new mongoose.Types.ObjectId(targetHotelId);
+
   if (req.user.role === 'guest') {
     baseQuery.guestId = req.user._id;
-  } else if (req.user.role === 'staff') {
-    baseQuery.hotelId = req.user.hotelId;
-  } else if (req.user.role === 'admin') {
-    // Admin can see all hotels, or filter by specific hotel if provided
-    if (hotelId) {
-      baseQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-    }
-    // If no hotelId provided, admin sees all data (no baseQuery.hotelId filter)
   }
 
   // Apply additional filters
@@ -242,9 +241,9 @@ router.get('/', catchAsync(async (req, res) => {
   const skip = (page - 1) * limit;
   let historyItems = [];
   
-  // Debug: Check what exists in database
-  const totalInvoices = await Invoice.countDocuments();
-  const totalPayments = await Payment.countDocuments();
+  // Debug: Check what exists in database (scoped to hotel)
+  const totalInvoices = await Invoice.countDocuments({ hotelId: new mongoose.Types.ObjectId(targetHotelId) });
+  const totalPayments = await Payment.countDocuments({ hotelId: new mongoose.Types.ObjectId(targetHotelId) });
   
   logger.debug('Billing history request', {
     userRole: req.user.role,

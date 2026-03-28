@@ -134,9 +134,13 @@ router.get('/sync-history',
     try {
       const SyncHistory = (await import('../models/SyncHistory.js')).default;
       
-      // Build query filters
+      // Build query filters with mandatory tenant isolation
+      const resolvedHotelId = hotelId || req.body.hotelId || req.user?.hotelId;
+      if (!resolvedHotelId) {
+        throw new ApplicationError('Hotel context required', 400);
+      }
       const filters = {};
-      if (hotelId) filters.hotelId = hotelId;
+      filters.hotelId = resolvedHotelId;
       if (provider) filters.provider = provider;
       if (status) filters.status = status;
 

@@ -42,7 +42,7 @@ import {
   TrendingUp as AnalyticsIcon,
   ContentCopy as CloneIcon,
   PowerSettingsNew as StatusIcon,
-  TestTube as TestIcon,
+  Science as TestIcon,
   CreditCard as CreditCardIcon,
   Payment as PaymentIcon,
   Money as MoneyIcon,

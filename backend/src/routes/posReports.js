@@ -29,20 +29,19 @@ router.get('/sales-summary', authorize('admin', 'staff'), catchAsync(async (req,
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] }, // Only completed transactions
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  // Filter by hotel
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   // Date format for grouping
   let dateFormat;
@@ -134,19 +133,19 @@ router.get('/outlet-performance', authorize('admin', 'staff'), catchAsync(async 
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },
@@ -179,7 +178,7 @@ router.get('/outlet-performance', authorize('admin', 'staff'), catchAsync(async 
 
   // Get outlet details
   const outletDetails = await POSOutlet.find({
-    hotelId: req.user.role === 'staff' ? req.user.hotelId : hotelId,
+    hotelId: targetHotelId,
     isActive: true
   }).select('name type location outletId').lean().limit(1000);
 
@@ -226,7 +225,14 @@ router.get('/transaction-history', authorize('admin', 'staff'), catchAsync(async
     hotelId
   } = req.query;
 
-  const matchQuery = {};
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
+  const matchQuery = {
+    hotelId: new mongoose.Types.ObjectId(targetHotelId)
+  };
 
   // Date filter
   if (startDate && endDate) {
@@ -244,13 +250,6 @@ router.get('/transaction-history', authorize('admin', 'staff'), catchAsync(async
   // Payment method filter
   if (paymentMethod) {
     matchQuery.paymentMethod = paymentMethod;
-  }
-
-  // Hotel filter
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
   }
 
   // Outlet filter (requires looking into items)
@@ -332,19 +331,19 @@ router.get('/payment-methods', authorize('admin', 'staff'), catchAsync(async (re
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },
@@ -400,19 +399,19 @@ router.get('/top-items', authorize('admin', 'staff'), catchAsync(async (req, res
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },
@@ -481,19 +480,19 @@ router.get('/staff-performance', authorize('admin', 'staff'), catchAsync(async (
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },
@@ -558,19 +557,19 @@ router.get('/guest-analytics', authorize('admin', 'staff'), catchAsync(async (re
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },
@@ -652,19 +651,19 @@ router.get('/peak-hours', authorize('admin', 'staff'), catchAsync(async (req, re
     throw new ApplicationError('Start date and end date are required', 400);
   }
 
+  const targetHotelId = hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const matchQuery = {
     status: { $in: ['paid', 'room_charged'] },
+    hotelId: new mongoose.Types.ObjectId(targetHotelId),
     paidAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     }
   };
-
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-  }
 
   const pipeline = [
     { $match: matchQuery },

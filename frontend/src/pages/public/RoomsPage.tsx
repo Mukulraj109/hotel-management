@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Calendar, Users, Wifi, Tv, Coffee, Car, Bed, Crown, Star, CheckCircle } from 'lucide-react';
+import { Calendar, Users, Wifi, Tv, Coffee, Car, Bed, Crown, Star, CheckCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatIndianCurrency } from '../../utils/currency';
+import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
 
-// Room types data - same as BookingPage
+// Room types data - same as BookingPage (fallback when API has no rows)
 const ROOM_TYPES = {
   single: {
     name: 'Single Room',
@@ -51,6 +53,26 @@ const ROOM_TYPES = {
   }
 };
 
+const API_IMAGES = [
+  'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
+  'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800',
+  'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=800',
+  'https://images.pexels.com/photos/1743229/pexels-photo-1743229.jpeg?auto=compress&cs=tinysrgb&w=800'
+];
+
+type DisplayRow = {
+  slug: string;
+  roomTypeId?: string;
+  name: string;
+  description: string;
+  baseRate: number;
+  maxGuests: number;
+  icon: LucideIcon;
+  image: string;
+  features: string[];
+  amenities: string[];
+};
+
 export default function RoomsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -60,6 +82,39 @@ export default function RoomsPage() {
     roomType: searchParams.get('type') || '',
     guests: parseInt(searchParams.get('guests') || searchParams.get('adults') || '2'),
   });
+
+  const { data: apiOptions, isLoading: catalogLoading } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
+
+  const displayRows: DisplayRow[] = useMemo(() => {
+    if (apiOptions && apiOptions.length > 0) {
+      return apiOptions.map((opt, i) => ({
+        slug: opt.id,
+        roomTypeId: opt.id,
+        name: opt.name,
+        description: `${opt.name} — sleeps up to ${opt.maxOccupancy} guests`,
+        baseRate: opt.basePrice ?? opt.baseRate ?? 0,
+        maxGuests: opt.maxOccupancy || 2,
+        icon: Bed,
+        image: API_IMAGES[i % API_IMAGES.length],
+        features: ['Comfortable stay', 'Modern amenities', 'Daily housekeeping'],
+        amenities: ['WiFi', 'AC', 'TV', 'Room Service']
+      }));
+    }
+    return (Object.entries(ROOM_TYPES) as [keyof typeof ROOM_TYPES, typeof ROOM_TYPES['single']][]).map(
+      ([slug, room]) => ({
+        slug,
+        roomTypeId: undefined,
+        name: room.name,
+        description: room.description,
+        baseRate: room.baseRate,
+        maxGuests: room.maxGuests,
+        icon: room.icon,
+        image: room.image,
+        features: room.features,
+        amenities: room.amenities
+      })
+    );
+  }, [apiOptions]);
 
   const calculateNights = () => {
     if (!filters.checkIn || !filters.checkOut) return 0;
@@ -74,19 +129,20 @@ export default function RoomsPage() {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleBookNow = (roomType: string) => {
+  const handleBookNow = (slug: string, roomTypeId?: string) => {
     const params = new URLSearchParams();
     if (filters.checkIn) params.set('checkIn', filters.checkIn);
     if (filters.checkOut) params.set('checkOut', filters.checkOut);
     if (filters.guests) params.set('guests', filters.guests.toString());
-    params.set('roomType', roomType);
-    
+    if (roomTypeId) params.set('roomTypeId', roomTypeId);
+    else params.set('roomType', slug);
+
     navigate(`/booking?${params.toString()}`);
   };
 
-  const filteredRoomTypes = Object.entries(ROOM_TYPES).filter(([type, room]) => {
-    if (filters.roomType && filters.roomType !== type) return false;
-    if (filters.guests > room.maxGuests) return false;
+  const filteredRows = displayRows.filter((row) => {
+    if (filters.roomType && filters.roomType !== row.slug) return false;
+    if (filters.guests > row.maxGuests) return false;
     return true;
   });
 
@@ -149,10 +205,11 @@ export default function RoomsPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Types</option>
-                  <option value="single">Single Room</option>
-                  <option value="double">Double Room</option>
-                  <option value="suite">Suite</option>
-                  <option value="deluxe">Deluxe Room</option>
+                  {displayRows.map((row) => (
+                    <option key={row.slug} value={row.slug}>
+                      {row.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -170,22 +227,24 @@ export default function RoomsPage() {
 
       {/* Room Types Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {filteredRoomTypes.length === 0 ? (
+        {catalogLoading && !apiOptions?.length ? (
+          <div className="text-center py-12 text-gray-600">Loading room types…</div>
+        ) : filteredRows.length === 0 ? (
           <div className="text-center py-12 sm:py-16">
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">No room types available</h2>
             <p className="text-gray-600">Try adjusting your search criteria</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-            {filteredRoomTypes.map(([type, room]) => {
+            {filteredRows.map((room) => {
               const Icon = room.icon;
               const canAccommodate = filters.guests <= room.maxGuests;
               const totalPrice = nights > 0 ? room.baseRate * nights : room.baseRate;
-              const isRecommended = type === 'double'; // Highlight double room as recommended
+              const isRecommended = room.name.toLowerCase().includes('double');
 
               return (
                 <Card
-                  key={type}
+                  key={room.slug}
                   className={`overflow-hidden hover:shadow-xl transition-all duration-300 ${
                     !canAccommodate ? 'opacity-60' : ''
                   } ${isRecommended ? 'ring-2 ring-blue-500' : ''}`}
@@ -295,13 +354,17 @@ export default function RoomsPage() {
                     <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
                       <Button
                         variant="outline"
-                        onClick={() => navigate(`/rooms/${type}?checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`)}
+                        onClick={() =>
+                          navigate(
+                            `/rooms/${room.slug}?checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`
+                          )
+                        }
                         className="flex-1"
                       >
                         View Details
                       </Button>
                       <Button
-                        onClick={() => handleBookNow(type)}
+                        onClick={() => handleBookNow(room.slug, room.roomTypeId)}
                         disabled={!canAccommodate}
                         className="flex-1"
                         size="lg"

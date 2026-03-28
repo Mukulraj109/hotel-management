@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -22,9 +22,11 @@ import {
   Download,
   Filter,
   RefreshCw,
-  Activity
+  Activity,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { api } from '../../services/api';
 
 interface AuditLogEntry {
   id: string;
@@ -53,82 +55,7 @@ interface AuditLogViewerProps {
   onExport?: (filters: Record<string, unknown>) => void;
 }
 
-// Mock data for demonstration
-const mockAuditLogs: AuditLogEntry[] = [
-  {
-    id: 'audit-1',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    userId: 'user-1',
-    userName: 'John Admin',
-    userEmail: 'john@hotel.com',
-    action: 'UPDATE',
-    resourceType: 'property',
-    resourceId: 'prop-1',
-    resourceName: 'Grand Hotel Mumbai',
-    changes: [
-      { field: 'status', oldValue: 'inactive', newValue: 'active' },
-      { field: 'rooms.total', oldValue: 120, newValue: 125 }
-    ],
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 Chrome/91.0',
-    severity: 'medium',
-    status: 'success'
-  },
-  {
-    id: 'audit-2',
-    timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
-    userId: 'user-2',
-    userName: 'Sarah Manager',
-    userEmail: 'sarah@hotel.com',
-    action: 'CREATE',
-    resourceType: 'group',
-    resourceId: 'group-1',
-    resourceName: 'Luxury Properties',
-    changes: [
-      { field: 'name', oldValue: null, newValue: 'Luxury Properties' },
-      { field: 'type', oldValue: null, newValue: 'premium' }
-    ],
-    ipAddress: '192.168.1.101',
-    userAgent: 'Mozilla/5.0 Safari/14.0',
-    severity: 'low',
-    status: 'success'
-  },
-  {
-    id: 'audit-3',
-    timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-    userId: 'user-1',
-    userName: 'John Admin',
-    userEmail: 'john@hotel.com',
-    action: 'DELETE',
-    resourceType: 'user',
-    resourceId: 'user-3',
-    resourceName: 'Former Employee',
-    changes: [
-      { field: 'status', oldValue: 'active', newValue: 'deleted' }
-    ],
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 Chrome/91.0',
-    severity: 'high',
-    status: 'success'
-  },
-  {
-    id: 'audit-4',
-    timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
-    userId: 'user-4',
-    userName: 'Mike Staff',
-    userEmail: 'mike@hotel.com',
-    action: 'LOGIN_FAILED',
-    resourceType: 'system',
-    resourceId: 'auth-system',
-    resourceName: 'Authentication System',
-    changes: [],
-    ipAddress: '192.168.1.102',
-    userAgent: 'Mozilla/5.0 Firefox/89.0',
-    severity: 'medium',
-    status: 'failed',
-    metadata: { reason: 'Invalid password', attempts: 3 }
-  }
-];
+// Audit log data is fetched from the API inside the component
 
 const getSeverityColor = (severity: string) => {
   switch (severity) {
@@ -164,6 +91,9 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({
   propertyGroupId,
   onExport
 }) => {
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
   const [resourceFilter, setResourceFilter] = useState('all');
@@ -174,35 +104,70 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const isMountedRef = useRef(true);
 
-  // Filter logs based on criteria
-  const filteredLogs = useMemo(() => {
-    return mockAuditLogs.filter(log => {
-      const matchesSearch = !searchTerm ||
-        log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.resourceName.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
-      const matchesAction = actionFilter === 'all' || log.action === actionFilter;
-      const matchesResource = resourceFilter === 'all' || log.resourceType === resourceFilter;
-      const matchesSeverity = severityFilter === 'all' || log.severity === severityFilter;
-      const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
+  const fetchAuditLogs = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params: Record<string, unknown> = {
+        page: currentPage,
+        limit: itemsPerPage,
+      };
+      if (searchTerm) params.search = searchTerm;
+      if (actionFilter !== 'all') params.action = actionFilter;
+      if (resourceFilter !== 'all') params.resourceType = resourceFilter;
+      if (severityFilter !== 'all') params.severity = severityFilter;
+      if (statusFilter !== 'all') params.status = statusFilter;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      if (propertyGroupId) params.propertyGroupId = propertyGroupId;
 
-      const matchesDateFrom = !dateFrom || log.timestamp >= new Date(dateFrom);
-      const matchesDateTo = !dateTo || log.timestamp <= new Date(dateTo + 'T23:59:59');
+      const response = await api.get('/audit-trail', { params });
+      if (!isMountedRef.current) return;
 
-      return matchesSearch && matchesAction && matchesResource &&
-             matchesSeverity && matchesStatus && matchesDateFrom && matchesDateTo;
-    });
-  }, [searchTerm, actionFilter, resourceFilter, severityFilter, statusFilter, dateFrom, dateTo]);
+      const responseData = response.data?.data || response.data;
+      const logs = Array.isArray(responseData)
+        ? responseData
+        : (responseData?.logs || responseData?.auditLogs || []);
 
-  // Paginate results
-  const paginatedLogs = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredLogs.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredLogs, currentPage, itemsPerPage]);
+      // Parse timestamps to Date objects
+      const parsedLogs: AuditLogEntry[] = logs.map((log: Record<string, unknown>) => ({
+        ...log,
+        id: (log._id || log.id) as string,
+        timestamp: new Date(log.timestamp as string || log.createdAt as string),
+        changes: Array.isArray(log.changes) ? log.changes : [],
+      }));
 
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+      setAuditLogs(parsedLogs);
+      setTotalCount(response.data?.totalCount || response.data?.total || parsedLogs.length);
+    } catch {
+      if (isMountedRef.current) {
+        setError('Failed to load audit logs. Please try again.');
+        setAuditLogs([]);
+      }
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [currentPage, itemsPerPage, searchTerm, actionFilter, resourceFilter, severityFilter, statusFilter, dateFrom, dateTo, propertyGroupId]);
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [fetchAuditLogs]);
+
+  // Client-side filtering is no longer needed since we pass filters to the API,
+  // but we keep filtering logic for any extra client-side refinement
+  const filteredLogs = auditLogs;
+
+  // Pagination is now server-side
+  const paginatedLogs = filteredLogs;
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
 
   const handleExport = () => {
     const filters = {
@@ -268,8 +233,8 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({
                   <Download className="h-4 w-4 mr-2" />
                   Export
                 </Button>
-                <Button variant="outline">
-                  <RefreshCw className="h-4 w-4 mr-2" />
+                <Button variant="outline" onClick={fetchAuditLogs} disabled={isLoading}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
@@ -316,6 +281,26 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Loading / Error / Empty States */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-8 text-gray-500">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Loading audit logs...
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            {!isLoading && !error && paginatedLogs.length === 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+                No audit log entries found.
+              </div>
+            )}
 
             {/* Audit Log Entries */}
             <div className="space-y-2">

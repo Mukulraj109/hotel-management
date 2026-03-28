@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Area, AreaChart, ScatterChart, Scatter
 } from 'recharts';
-import { 
+import {
   TrendingUp, TrendingDown, IndianRupee, Globe, Users, Calendar,
   Filter, Download, Refresh, Settings, AlertTriangle, CheckCircle,
   Target, Zap, BarChart3, PieChart as PieChartIcon, Activity,
@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Progress } from '../ui/progress';
+import { api } from '../../services/api';
 
 interface RevenueData {
   period: string;
@@ -73,100 +74,128 @@ const CURRENCY_SYMBOLS = {
   INR: '₹'
 };
 
+interface RevenueApiResponse {
+  revenueData?: RevenueData[];
+  regionalData?: RegionalData[];
+  languageData?: LanguageData[];
+  channelData?: ChannelData[];
+  kpis?: {
+    totalRevenue?: number;
+    revenueChange?: number;
+    occupancyRate?: number;
+    occupancyChange?: number;
+    adr?: number;
+    adrChange?: number;
+    revpar?: number;
+    revparChange?: number;
+  };
+}
+
 export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, className = '' }) => {
   const [timeRange, setTimeRange] = useState('30d');
   const [currency, setCurrency] = useState('USD');
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
+  const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
+  const [regionalData, setRegionalData] = useState<RegionalData[]>([]);
+  const [languageData, setLanguageData] = useState<LanguageData[]>([]);
+  const [channelData, setChannelData] = useState<ChannelData[]>([]);
+  const [apiKpis, setApiKpis] = useState<RevenueApiResponse['kpis']>(undefined);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  // Mock data - in real implementation, this would come from APIs
-  const revenueData: RevenueData[] = [
-    { period: 'Jan', revenue: 45000, occupancy: 68, adr: 185, revpar: 125.8, previousRevenue: 42000, currency: 'USD' },
-    { period: 'Feb', revenue: 52000, occupancy: 72, adr: 190, revpar: 136.8, previousRevenue: 48000, currency: 'USD' },
-    { period: 'Mar', revenue: 58000, occupancy: 75, adr: 195, revpar: 146.25, previousRevenue: 55000, currency: 'USD' },
-    { period: 'Apr', revenue: 65000, occupancy: 78, adr: 200, revpar: 156, previousRevenue: 60000, currency: 'USD' },
-    { period: 'May', revenue: 72000, occupancy: 82, adr: 205, revpar: 168.1, previousRevenue: 68000, currency: 'USD' },
-    { period: 'Jun', revenue: 78000, occupancy: 85, adr: 210, revpar: 178.5, previousRevenue: 75000, currency: 'USD' }
-  ];
-
-  const regionalData: RegionalData[] = [
-    { region: 'US', regionName: 'United States', revenue: 125000, growth: 15.5, marketShare: 35.2, currency: 'USD', performance: 'high' },
-    { region: 'EU', regionName: 'Europe', revenue: 98000, growth: 12.3, marketShare: 28.1, currency: 'EUR', performance: 'high' },
-    { region: 'GB', regionName: 'United Kingdom', revenue: 65000, growth: 8.7, marketShare: 18.5, currency: 'GBP', performance: 'medium' },
-    { region: 'CN', regionName: 'China', revenue: 45000, growth: 22.1, marketShare: 12.8, currency: 'CNY', performance: 'high' },
-    { region: 'JP', regionName: 'Japan', revenue: 32000, growth: 5.2, marketShare: 9.1, currency: 'JPY', performance: 'medium' },
-    { region: 'CA', regionName: 'Canada', revenue: 28000, growth: 11.8, marketShare: 8.0, currency: 'CAD', performance: 'medium' }
-  ];
-
-  const languageData: LanguageData[] = [
-    { language: 'en', languageName: 'English', revenue: 145000, bookings: 856, conversionRate: 12.5, satisfaction: 4.3, translationQuality: 100 },
-    { language: 'es', languageName: 'Spanish', revenue: 78000, bookings: 445, conversionRate: 9.8, satisfaction: 4.1, translationQuality: 87 },
-    { language: 'fr', languageName: 'French', revenue: 65000, bookings: 332, conversionRate: 11.2, satisfaction: 4.2, translationQuality: 91 },
-    { language: 'de', languageName: 'German', revenue: 58000, bookings: 298, conversionRate: 13.1, satisfaction: 4.4, translationQuality: 89 },
-    { language: 'zh', languageName: 'Chinese', revenue: 42000, bookings: 234, conversionRate: 8.7, satisfaction: 3.9, translationQuality: 82 },
-    { language: 'ja', languageName: 'Japanese', revenue: 35000, bookings: 187, conversionRate: 10.5, satisfaction: 4.0, translationQuality: 85 }
-  ];
-
-  const channelData: ChannelData[] = [
-    { channel: 'Direct', revenue: 89000, bookings: 445, commission: 0, profitability: 95, growth: 18.5 },
-    { channel: 'Booking.com', revenue: 125000, bookings: 756, commission: 18, profitability: 82, growth: 12.3 },
-    { channel: 'Expedia', revenue: 78000, bookings: 423, commission: 15, profitability: 85, growth: 8.7 },
-    { channel: 'Agoda', revenue: 45000, bookings: 267, commission: 16, profitability: 84, growth: 15.2 },
-    { channel: 'Corporate', revenue: 52000, bookings: 189, commission: 5, profitability: 92, growth: 22.1 }
-  ];
-
-  const kpiCards = useMemo(() => [
-    {
-      title: 'Total Revenue',
-      value: `${CURRENCY_SYMBOLS[currency] || '$'}350K`,
-      change: '+15.5%',
-      trend: 'up',
-      icon: IndianRupee,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50'
-    },
-    {
-      title: 'Occupancy Rate',
-      value: '78.5%',
-      change: '+3.2%',
-      trend: 'up',
-      icon: Users,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50'
-    },
-    {
-      title: 'ADR',
-      value: `${CURRENCY_SYMBOLS[currency] || '$'}195`,
-      change: '+8.7%',
-      trend: 'up',
-      icon: TrendingUp,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50'
-    },
-    {
-      title: 'RevPAR',
-      value: `${CURRENCY_SYMBOLS[currency] || '$'}153`,
-      change: '+12.1%',
-      trend: 'up',
-      icon: Target,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-50'
+  const fetchRevenueData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/analytics/reports/revenue-analysis', {
+        params: { timeRange, currency }
+      });
+      if (!isMountedRef.current) return;
+      const data = response.data?.data || response.data || {};
+      setRevenueData(data.revenueData || []);
+      setRegionalData(data.regionalData || []);
+      setLanguageData(data.languageData || []);
+      setChannelData(data.channelData || []);
+      setApiKpis(data.kpis || undefined);
+      setLastUpdated(new Date());
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setError('Failed to load revenue data. Please try again later.');
+      setRevenueData([]);
+      setRegionalData([]);
+      setLanguageData([]);
+      setChannelData([]);
+      setApiKpis(undefined);
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
     }
-  ], [currency]);
+  }, [timeRange, currency]);
+
+  useEffect(() => {
+    fetchRevenueData();
+  }, [fetchRevenueData]);
+
+  const kpiCards = useMemo(() => {
+    const sym = CURRENCY_SYMBOLS[currency as keyof typeof CURRENCY_SYMBOLS] || '$';
+    const totalRevenue = apiKpis?.totalRevenue;
+    const occupancy = apiKpis?.occupancyRate;
+    const adr = apiKpis?.adr;
+    const revpar = apiKpis?.revpar;
+
+    const fmtValue = (v: number | undefined, prefix: string, suffix = '') =>
+      v != null ? `${prefix}${v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v.toFixed(0)}${suffix}` : '--';
+    const fmtChange = (v: number | undefined) =>
+      v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '--';
+    const trend = (v: number | undefined) => (v != null && v >= 0 ? 'up' : 'down');
+
+    return [
+      {
+        title: 'Total Revenue',
+        value: fmtValue(totalRevenue, sym),
+        change: fmtChange(apiKpis?.revenueChange),
+        trend: trend(apiKpis?.revenueChange),
+        icon: IndianRupee,
+        color: 'text-green-600',
+        bgColor: 'bg-green-50'
+      },
+      {
+        title: 'Occupancy Rate',
+        value: occupancy != null ? `${occupancy.toFixed(1)}%` : '--',
+        change: fmtChange(apiKpis?.occupancyChange),
+        trend: trend(apiKpis?.occupancyChange),
+        icon: Users,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50'
+      },
+      {
+        title: 'ADR',
+        value: adr != null ? `${sym}${adr.toFixed(0)}` : '--',
+        change: fmtChange(apiKpis?.adrChange),
+        trend: trend(apiKpis?.adrChange),
+        icon: TrendingUp,
+        color: 'text-purple-600',
+        bgColor: 'bg-purple-50'
+      },
+      {
+        title: 'RevPAR',
+        value: revpar != null ? `${sym}${revpar.toFixed(0)}` : '--',
+        change: fmtChange(apiKpis?.revparChange),
+        trend: trend(apiKpis?.revparChange),
+        icon: Target,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-50'
+      }
+    ];
+  }, [currency, apiKpis]);
 
   const handleRefresh = async () => {
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
-    setLastUpdated(new Date());
-    setIsLoading(false);
+    await fetchRevenueData();
   };
 
   const formatCurrency = (value: number, currencyCode: string = currency) => {
@@ -256,6 +285,19 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
           </Button>
         </div>
       </div>
+
+      {/* Error / Empty State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {!isLoading && !error && revenueData.length === 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+          No revenue data available for the selected period.
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

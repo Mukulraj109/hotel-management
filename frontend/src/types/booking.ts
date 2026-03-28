@@ -83,6 +83,9 @@ export interface CreateBookingRequest {
     specialRequests?: string;
   };
   roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
+  /** RoomType ObjectId when using live catalog / inventory holds */
+  roomTypeId?: string;
+  primaryRoomQuantity?: number;
   totalAmount: number;
   currency?: string;
   idempotencyKey?: string;

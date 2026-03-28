@@ -14,11 +14,11 @@ export const QUERY_KEYS = {
 
 // Transform hotel data to property format with real metrics
 const transformHotelToProperty = async (hotel: Record<string, unknown>) => {
-  // Get real metrics from analytics API
-  const realMetrics = await fetchHotelMetrics(hotel._id);
+  const hotelIdStr = hotel._id != null ? String(hotel._id) : '';
+  const realMetrics = await fetchHotelMetrics(hotelIdStr);
 
   return {
-    id: hotel._id,
+    id: hotelIdStr,
     name: hotel.name || 'Unknown Hotel',
     brand: hotel.brand || 'Independent',
     type: hotel.type || 'hotel',
@@ -55,7 +55,7 @@ const transformHotelToProperty = async (hotel: Record<string, unknown>) => {
       }
     },
     amenities: hotel.amenities || [],
-    rating: hotel.rating || 4.2,
+    rating: typeof hotel.rating === 'number' && !Number.isNaN(hotel.rating) ? hotel.rating : 0,
     status: hotel.isActive ? 'active' : 'inactive',
     features: {
       pms: true,
@@ -76,73 +76,102 @@ const transformHotelToProperty = async (hotel: Record<string, unknown>) => {
   };
 };
 
-// Fetch real hotel metrics using the working occupancy endpoint
+const emptyHotelMetrics = {
+  occupiedRooms: 0,
+  availableRooms: 0,
+  oooRooms: 0,
+  totalRooms: 0,
+  occupancyRate: 0,
+  averageDailyRate: 0,
+  revenuePerAvailableRoom: 0,
+  totalRevenue: 0,
+  lastMonth: {
+    occupancyRate: 0,
+    averageDailyRate: 0,
+    revenuePerAvailableRoom: 0,
+    totalRevenue: 0,
+  },
+};
+
+/** Occupancy + revenue APIs — no hardcoded ADR/RevPAR (those caused identical cards across hotels). */
 const fetchHotelMetrics = async (hotelId: string) => {
+  const hid = (hotelId || '').trim();
+  if (!hid || hid === 'undefined' || hid === 'null') {
+    return emptyHotelMetrics;
+  }
   try {
-    // Use the same working occupancy endpoint as the room management modal
-    const response = await api.get(`/admin-dashboard/occupancy?hotelId=${hotelId}`);
-    const data = response.data.data;
+    const [occRes, revRes] = await Promise.all([
+      api.get(`/admin-dashboard/occupancy?hotelId=${encodeURIComponent(hid)}`),
+      api.get(`/admin-dashboard/revenue?hotelId=${encodeURIComponent(hid)}&period=month`).catch(() => null),
+    ]);
 
+    const data = occRes.data?.data;
+    const ov = data?.overallMetrics;
+    const revPayload = revRes?.data?.data;
+    const overview = revPayload?.overview;
+    const charts = revPayload?.charts;
+    const comparison = revPayload?.insights?.revenueComparison;
 
-    if (data && data.overallMetrics) {
-      const overallMetrics = data.overallMetrics;
-
-
-      // Calculate occupancy rate
-      const totalRooms = overallMetrics.totalRooms || 0;
-      const occupiedRooms = overallMetrics.occupiedRooms || 0;
-      const availableRooms = overallMetrics.availableRooms || 0;
-      const outOfOrderRooms = overallMetrics.outOfOrderRooms || 0;
-      const maintenanceRooms = overallMetrics.maintenanceRooms || 0;
-
-
-      const occupancyRate = totalRooms > 0
-        ? Math.round((occupiedRooms / totalRooms) * 100)
-        : 0;
-
-      const metrics = {
-        occupiedRooms: occupiedRooms,
-        availableRooms: availableRooms,
-        oooRooms: outOfOrderRooms + maintenanceRooms, // Combine maintenance and out-of-order
-        totalRooms: totalRooms,
-        occupancyRate: occupancyRate,
-        averageDailyRate: totalRooms > 0 ? 3500 : 0,
-        revenuePerAvailableRoom: totalRooms > 0 ? Math.floor(3500 * (occupancyRate / 100)) : 0,
-        totalRevenue: totalRooms > 0 ? Math.floor(occupiedRooms * 3500) : 0,
-        lastMonth: {
-          occupancyRate: totalRooms > 0 ? Math.max(0, occupancyRate - 5) : 0,
-          averageDailyRate: totalRooms > 0 ? 3200 : 0,
-          revenuePerAvailableRoom: totalRooms > 0 ? Math.floor(3200 * (Math.max(0, occupancyRate - 5) / 100)) : 0,
-          totalRevenue: totalRooms > 0 ? Math.floor(occupiedRooms * 3200) : 0
-        }
-      };
-
-      return metrics;
+    if (!ov) {
+      const analyticsResponse = await api.get(`/analytics/hotel/${hid}/metrics`).catch(() => null);
+      const alt = analyticsResponse?.data?.data;
+      if (alt && typeof alt === 'object') {
+        return { ...emptyHotelMetrics, ...alt };
+      }
+      return emptyHotelMetrics;
     }
 
-    // Fallback to analytics API if occupancy API fails
-    const analyticsResponse = await api.get(`/analytics/hotel/${hotelId}/metrics`);
-    return analyticsResponse.data.data || {};
-  } catch (error) {
-    // Return zero metrics for new properties with no rooms
-    // Don't assume default room counts - let the property be set up first
-    const fallbackMetrics = {
-      occupiedRooms: 0,
-      availableRooms: 0,
-      oooRooms: 0,
-      totalRooms: 0,
-      occupancyRate: 0,
-      averageDailyRate: 0,
-      revenuePerAvailableRoom: 0,
-      totalRevenue: 0,
+    const totalRooms = ov.totalRooms || 0;
+    const occupiedRooms = ov.occupiedRooms || 0;
+    const availableRooms = ov.availableRooms || 0;
+    const maintenanceRooms = ov.maintenanceRooms || 0;
+    const outOfOrderRooms = ov.outOfOrderRooms || 0;
+    const occupancyRate =
+      typeof ov.occupancyRate === 'number'
+        ? ov.occupancyRate
+        : totalRooms > 0
+          ? Math.round((occupiedRooms / totalRooms) * 100)
+          : 0;
+
+    const roomRevenue = overview?.roomRevenue ?? 0;
+    const totalRevenue = overview?.totalRevenue ?? 0;
+    const period = overview?.period as { start?: string; end?: string } | undefined;
+    let days = 30;
+    if (period?.start && period?.end) {
+      const a = new Date(period.start).getTime();
+      const b = new Date(period.end).getTime();
+      days = Math.max(1, Math.ceil((b - a) / 86400000));
+    }
+
+    const totalNights =
+      charts?.revenueByRoomType?.reduce(
+        (s: number, t: { totalNights?: number }) => s + (t.totalNights || 0),
+        0
+      ) ?? 0;
+    const adr = totalNights > 0 ? Math.round(roomRevenue / totalNights) : 0;
+    const revpar =
+      totalRooms > 0 && days > 0 ? Math.round(totalRevenue / (totalRooms * days)) : 0;
+
+    const prevRevenue = typeof comparison?.previous === 'number' ? comparison.previous : 0;
+
+    return {
+      occupiedRooms,
+      availableRooms,
+      oooRooms: outOfOrderRooms + maintenanceRooms,
+      totalRooms,
+      occupancyRate,
+      averageDailyRate: adr,
+      revenuePerAvailableRoom: revpar,
+      totalRevenue,
       lastMonth: {
         occupancyRate: 0,
         averageDailyRate: 0,
         revenuePerAvailableRoom: 0,
-        totalRevenue: 0
-      }
+        totalRevenue: prevRevenue,
+      },
     };
-    return fallbackMetrics;
+  } catch {
+    return emptyHotelMetrics;
   }
 };
 
@@ -159,12 +188,6 @@ export const useProperties = () => {
         hotels.map(async (hotel: Record<string, unknown>, index: number) => {
 
           const property = await transformHotelToProperty(hotel);
-
-
-          // Calculate RevPAR based on real data
-          property.performance.revpar = (property.performance.occupancyRate / 100) * property.performance.adr;
-          property.performance.lastMonth.revpar = (property.performance.lastMonth.occupancyRate / 100) * property.performance.lastMonth.adr;
-
           return property;
         })
       );
@@ -173,8 +196,8 @@ export const useProperties = () => {
 
       return properties;
     },
-    staleTime: 0, // Disable cache for debugging
-    cacheTime: 0, // Don't cache at all
+    staleTime: 2 * 60 * 1000,  // 2 minutes
+    cacheTime: 5 * 60 * 1000,  // 5 minutes
   });
 };
 

@@ -292,7 +292,7 @@ const ServiceTypeManager: React.FC = () => {
                   type: '',
                   name: '',
                   description: '',
-                  category: serviceCategories[0],
+                  category: 'room_service',
                   basePrice: 0,
                   estimatedDuration: 30,
                   slaTime: 60,

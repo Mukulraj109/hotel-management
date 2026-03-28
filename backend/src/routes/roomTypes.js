@@ -1,10 +1,23 @@
 import express from 'express';
+import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
 import roomTypeController from '../controllers/roomTypeController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
+import { catchAsync } from '../utils/catchAsync.js';
+import availabilityService from '../services/availabilityService.js';
 import Joi from 'joi';
+
+const publicBookingAvailabilityLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { status: 'error', message: 'Too many availability checks' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -153,6 +166,36 @@ router.get('/hotel/:hotelId', authenticate, ensurePropertyAccess, authorizePolic
  *         description: Room type options
  */
 router.get('/hotel/:hotelId/options', roomTypeController.getRoomTypeOptions);
+
+/** Public: pre-booking inventory check (RoomAvailability; skips if calendar not maintained). */
+router.get(
+  '/hotel/:hotelId/booking-availability',
+  publicBookingAvailabilityLimit,
+  catchAsync(async (req, res) => {
+    const { hotelId } = req.params;
+    const { roomTypeId, checkIn, checkOut, roomsCount } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(String(hotelId))) {
+      throw new ApplicationError('Invalid hotel id', 400);
+    }
+    if (!roomTypeId || !mongoose.Types.ObjectId.isValid(String(roomTypeId))) {
+      throw new ApplicationError('Valid roomTypeId query parameter is required', 400);
+    }
+    if (!checkIn || !checkOut) {
+      throw new ApplicationError('checkIn and checkOut query parameters are required', 400);
+    }
+
+    const data = await availabilityService.canAccommodateRoomType({
+      hotelId,
+      roomTypeId,
+      checkIn,
+      checkOut,
+      roomsCount: roomsCount ?? 1
+    });
+
+    res.json({ status: 'success', data });
+  })
+);
 
 /**
  * @swagger

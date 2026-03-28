@@ -42,12 +42,15 @@ class BookingFormService {
   /**
    * Update booking form template
    */
-  async updateTemplate(templateId, updateData, userId) {
+  async updateTemplate(templateId, updateData, userId, hotelId) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      const template = await BookingFormTemplate.findById(templateId);
+      const query = hotelId
+        ? { _id: templateId, hotelId }
+        : { _id: templateId };
+      const template = await BookingFormTemplate.findOne(query);
       if (!template) {
         throw new Error('Template not found');
       }
@@ -99,7 +102,8 @@ class BookingFormService {
         throw new Error('Template not found');
       }
 
-      const duplicateData = originalTemplate.toObject();
+      // .lean() already returns a plain object, no need for .toObject()
+      const duplicateData = { ...originalTemplate };
       delete duplicateData._id;
       delete duplicateData.createdAt;
       delete duplicateData.updatedAt;
@@ -148,7 +152,8 @@ class BookingFormService {
     session.startTransaction();
 
     try {
-      const template = await BookingFormTemplate.findById(templateId).lean();
+      // Do NOT use .lean() — we need instance methods (validateForm, incrementSubmissions)
+      const template = await BookingFormTemplate.findById(templateId);
       if (!template) {
         throw new Error('Form template not found');
       }
@@ -402,7 +407,8 @@ class BookingFormService {
    */
   async generateFormStructure(templateId, language = 'en') {
     try {
-      const template = await BookingFormTemplate.findById(templateId).lean();
+      // Do NOT use .lean() — we need the incrementViews instance method
+      const template = await BookingFormTemplate.findById(templateId);
       if (!template) {
         throw new Error('Template not found');
       }
@@ -411,7 +417,7 @@ class BookingFormService {
         throw new Error('Template is not published');
       }
 
-      // Increment views
+      // Increment views atomically
       await template.incrementViews();
 
       // Generate form structure
@@ -469,19 +475,26 @@ class BookingFormService {
   /**
    * Get form analytics
    */
-  async getFormAnalytics(templateId, dateRange = {}) {
+  async getFormAnalytics(templateId, dateRange = {}, hotelId = null) {
     try {
-      const template = await BookingFormTemplate.findById(templateId).lean();
+      const query = hotelId
+        ? { _id: templateId, hotelId }
+        : { _id: templateId };
+      const template = await BookingFormTemplate.findOne(query).lean();
       if (!template) {
         throw new Error('Template not found');
       }
 
-      // Basic analytics from template
+      // Basic analytics from template (compute conversion rate since .lean() strips virtuals)
+      const views = template.usage?.views || 0;
+      const submissions = template.usage?.submissions || 0;
+      const conversionRate = views > 0 ? Math.round((submissions / views) * 100 * 100) / 100 : 0;
+
       const basicAnalytics = {
-        views: template.usage.views,
-        submissions: template.usage.submissions,
-        conversionRate: template.calculatedConversionRate,
-        lastUsed: template.usage.lastUsed
+        views,
+        submissions,
+        conversionRate,
+        lastUsed: template.usage?.lastUsed
       };
 
       // Enhanced analytics from audit logs (if date range specified)
@@ -621,11 +634,16 @@ class BookingFormService {
   /**
    * Export form submissions
    */
-  async exportSubmissions(templateId, format = 'json', dateRange = {}) {
+  async exportSubmissions(templateId, format = 'json', dateRange = {}, hotelId = null) {
     try {
       const query = {
         formTemplateId: templateId
       };
+
+      if (!hotelId) {
+        throw new Error('Hotel context required for exporting submissions');
+      }
+      query.hotelId = hotelId;
 
       if (dateRange.startDate && dateRange.endDate) {
         query.createdAt = {
@@ -673,8 +691,262 @@ class BookingFormService {
     ]);
 
     return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""').replace(/\n/g, ' ')}"`).join(','))
       .join('\n');
+  }
+
+  /**
+   * Export a template to JSON, CSV, or XML format
+   */
+  async exportTemplate(template, format = 'json') {
+    try {
+      const exportData = {
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        fields: template.fields,
+        styling: template.styling,
+        settings: template.settings,
+        tags: template.tags,
+        metadata: template.metadata,
+        version: template.version,
+        exportedAt: new Date().toISOString()
+      };
+
+      switch (format) {
+        case 'csv': {
+          const headers = ['Field ID', 'Type', 'Label', 'Required', 'Order', 'Width', 'Placeholder'];
+          const rows = (template.fields || []).map(f => [
+            f.id, f.type, f.label, f.required ? 'Yes' : 'No',
+            f.order, f.width || '100', f.placeholder || ''
+          ]);
+          return [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+        }
+        case 'xml': {
+          const esc = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+          const fieldsXml = (template.fields || []).map(f =>
+            `    <field id="${esc(f.id)}" type="${esc(f.type)}" label="${esc(f.label)}" required="${f.required || false}" order="${f.order}" />`
+          ).join('\n');
+          return `<?xml version="1.0" encoding="UTF-8"?>\n<template>\n  <name>${esc(template.name)}</name>\n  <category>${esc(template.category)}</category>\n  <fields>\n${fieldsXml}\n  </fields>\n</template>`;
+        }
+        case 'json':
+        default:
+          return JSON.stringify(exportData, null, 2);
+      }
+    } catch (error) {
+      logger.error('Error exporting template:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Import a template from exported data
+   */
+  async importTemplate(data, options = {}) {
+    try {
+      const { hotelId, createdBy, updatedBy, overwrite = false } = options;
+
+      // Parse data if it's a string
+      const templateData = typeof data === 'string' ? JSON.parse(data) : data;
+
+      if (!templateData.name || !templateData.fields) {
+        throw new Error('Invalid template data: name and fields are required');
+      }
+
+      // Check for existing template with same name
+      if (!overwrite) {
+        const existing = await BookingFormTemplate.findOne({
+          hotelId,
+          name: templateData.name
+        });
+        if (existing) {
+          templateData.name = `${templateData.name} (Imported)`;
+        }
+      }
+
+      const newTemplate = new BookingFormTemplate({
+        ...templateData,
+        hotelId,
+        createdBy,
+        updatedBy,
+        status: 'draft',
+        isPublished: false,
+        usage: { views: 0, submissions: 0, conversionRate: 0 }
+      });
+
+      // Remove any imported _id to generate a new one
+      newTemplate._id = undefined;
+
+      await newTemplate.save();
+
+      try {
+        await AuditLog.logFormAction(newTemplate, 'template_imported', createdBy, {
+          source: 'booking_form_service',
+          originalName: templateData.name
+        });
+      } catch (auditError) {
+        logger.warn('Failed to log form action:', auditError.message);
+      }
+
+      return newTemplate;
+    } catch (error) {
+      logger.error('Error importing template:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Record an A/B test event (view, submit, abandon)
+   */
+  async recordABTestEvent(templateId, variantId, action, metadata = {}) {
+    try {
+      const template = await BookingFormTemplate.findById(templateId);
+      if (!template) {
+        throw new Error('Template not found');
+      }
+
+      if (!template.abTest?.isEnabled) {
+        return { recorded: false, reason: 'A/B testing not enabled' };
+      }
+
+      const variant = template.abTest.variants?.find(
+        v => v._id?.toString() === variantId || v.name === variantId
+      );
+
+      if (!variant) {
+        return { recorded: false, reason: 'Variant not found' };
+      }
+
+      // Record the event via audit log
+      try {
+        await AuditLog.logFormAction(template, `ab_test_${action}`, null, {
+          source: 'booking_form_service',
+          variantId,
+          variantName: variant.name,
+          action,
+          ...metadata
+        });
+      } catch (auditError) {
+        logger.warn('Failed to log A/B test event:', auditError.message);
+      }
+
+      // Update usage counters atomically based on action
+      if (action === 'view') {
+        await BookingFormTemplate.updateOne(
+          { _id: templateId },
+          { $inc: { 'usage.views': 1 }, $set: { 'usage.lastUsed': new Date() } }
+        );
+      } else if (action === 'submit') {
+        await BookingFormTemplate.updateOne(
+          { _id: templateId },
+          { $inc: { 'usage.submissions': 1 }, $set: { 'usage.lastUsed': new Date() } }
+        );
+      }
+
+      return {
+        recorded: true,
+        templateId,
+        variantId,
+        action
+      };
+    } catch (error) {
+      logger.error('Error recording A/B test event:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Render form for public display
+   */
+  async renderForm(template, options = {}) {
+    const { preview = false } = options;
+
+    return {
+      id: template._id,
+      name: template.name,
+      description: template.description,
+      fields: (template.fields || []).map(field => ({
+        id: field.id,
+        type: field.type,
+        label: field.label,
+        placeholder: field.placeholder,
+        helpText: field.helpText,
+        required: field.required,
+        order: field.order,
+        width: field.width,
+        options: field.options,
+        validation: field.validation,
+        conditional: field.conditionalLogic
+      })),
+      styling: template.styling,
+      settings: {
+        successMessage: template.settings?.successMessage,
+        errorMessage: template.settings?.errorMessage,
+        enableProgressBar: template.settings?.enableProgressBar,
+        enableCaptcha: template.settings?.enableCaptcha,
+        submitButtonText: template.settings?.submitButtonText
+      },
+      preview
+    };
+  }
+
+  /**
+   * Validate a form submission against template rules
+   */
+  async validateSubmission(template, formData) {
+    const errors = [];
+
+    for (const field of (template.fields || [])) {
+      const value = formData[field.id];
+
+      if (field.required && (!value || value === '')) {
+        errors.push({
+          fieldId: field.id,
+          message: `${field.label || field.id} is required`
+        });
+        continue;
+      }
+
+      if (value && field.validation) {
+        for (const rule of field.validation) {
+          let isValid = true;
+
+          switch (rule.type) {
+            case 'min_length':
+              isValid = String(value).length >= (rule.value || 0);
+              break;
+            case 'max_length':
+              isValid = String(value).length <= (rule.value || 1000);
+              break;
+            case 'email':
+              isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value));
+              break;
+            case 'phone':
+              isValid = /^\+?[\d\s\-()]+$/.test(String(value));
+              break;
+            case 'regex':
+              try {
+                isValid = new RegExp(rule.value).test(String(value).slice(0, 1000));
+              } catch {
+                isValid = false;
+              }
+              break;
+          }
+
+          if (!isValid) {
+            errors.push({
+              fieldId: field.id,
+              message: rule.message || `${field.label || field.id} is invalid`
+            });
+          }
+        }
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
   }
 }
 

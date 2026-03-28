@@ -30,6 +30,7 @@ import { format } from 'date-fns';
 import { AdvancedReservation } from '@/services/advancedReservationsService';
 import advancedReservationsService from '@/services/advancedReservationsService';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { formatCurrency } from '@/utils/currencyUtils';
 
 interface AdvancedReservationDetailsProps {
   reservation: AdvancedReservation;
@@ -225,7 +226,7 @@ const AdvancedReservationDetails: React.FC<AdvancedReservationDetailsProps> = ({
                 {reservation.bookingId.totalAmount && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Total Amount:</span>
-                    <span className="font-medium">${reservation.bookingId.totalAmount.toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(reservation.bookingId.totalAmount)}</span>
                   </div>
                 )}
               </CardContent>
@@ -573,7 +574,7 @@ const AdvancedReservationDetails: React.FC<AdvancedReservationDetailsProps> = ({
                       {upgrade.additionalCharge > 0 && (
                         <div className="text-right">
                           <p className="font-semibold text-green-600">
-                            +${upgrade.additionalCharge.toFixed(2)}
+                            +{formatCurrency(upgrade.additionalCharge)}
                           </p>
                         </div>
                       )}
@@ -619,7 +620,7 @@ const AdvancedReservationDetails: React.FC<AdvancedReservationDetailsProps> = ({
                             <span>Due: {format(new Date(request.dueDate), 'MMM dd, yyyy')}</span>
                           )}
                           {request.cost && (
-                            <span className="font-medium text-green-600">${request.cost.toFixed(2)}</span>
+                            <span className="font-medium text-green-600">{formatCurrency(request.cost)}</span>
                           )}
                         </div>
                         {request.notes && (

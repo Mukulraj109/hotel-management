@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, CrownIcon, ChartBarIcon, StarIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, SparklesIcon as CrownIcon, ChartBarIcon, StarIcon } from '@heroicons/react/24/outline';
 import { IndianRupee } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';

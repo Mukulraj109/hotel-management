@@ -375,51 +375,27 @@ router.get('/logs', catchAsync(async (req, res) => {
             timeRange = 24
     } = req.query;
 
-    // Simulate log retrieval
+    // Integration log storage is not configured.
     // In production, this would query actual log storage (ELK, CloudWatch, etc.)
+    // Returning empty results until a log backend is connected.
     const logs = [];
-    const logTypes = ['inventory', 'automation', 'notification', 'financial'];
-    const logLevels = ['info', 'warn', 'error'];
-
-    for (let i = 0; i < parseInt(limit); i++) {
-        const logType = logTypes[Math.floor(Math.random() * logTypes.length)];
-        const logLevel = logLevels[Math.floor(Math.random() * logLevels.length)];
-
-        if (service !== 'all' && logType !== service) continue;
-        if (level !== 'all' && logLevel !== level) continue;
-
-        logs.push({
-            id: `log_${Date.now()}_${i}`,
-            timestamp: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000),
-            service: logType,
-            level: logLevel,
-            message: `Sample ${logType} ${logLevel} message ${i}`,
-            metadata: {
-                hotelId: req.user.hotelId,
-                userId: req.user._id,
-                component: `${logType}_service`
-            }
-        });
-    }
-
-    // Sort by timestamp (newest first)
-    logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     res.status(200).json({
         status: 'success',
         data: {
-            logs: logs.slice(parseInt(offset), parseInt(offset) + parseInt(limit)),
+            logs,
             pagination: {
-                total: logs.length,
+                total: 0,
                 limit: parseInt(limit),
                 offset: parseInt(offset),
-                hasMore: logs.length > parseInt(offset) + parseInt(limit)
+                hasMore: false
             },
             filters: {
                 service,
                 level,
                 timeRange: `${timeRange} hours`
-            }
+            },
+            notice: 'Log storage backend is not configured. Connect ELK, CloudWatch, or another log provider to populate integration logs.'
         }
     });
 }));

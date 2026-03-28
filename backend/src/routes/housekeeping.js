@@ -14,7 +14,51 @@ import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
 const router = express.Router();
-const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+const createTaskSchema = Joi.object({
+  title: Joi.string().trim().min(1).max(200).required(),
+  roomId: Joi.string().required(),
+  taskType: Joi.string().valid('cleaning', 'maintenance', 'inspection', 'deep_clean', 'checkout_clean').required(),
+  priority: Joi.string().valid('low', 'medium', 'high', 'urgent').optional(),
+  description: Joi.string().max(1000).allow('', null).optional(),
+  notes: Joi.string().max(1000).allow('', null).optional(),
+  assignedToUserId: Joi.string().allow(null).optional(),
+  assignedTo: Joi.string().allow(null).optional(),
+  estimatedDuration: Joi.number().integer().min(1).max(480).optional(),
+  status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'inspected', 'cancelled').optional()
+}).unknown(true);
+
+const updateTaskSchema = Joi.object({
+  title: Joi.string().trim().min(1).max(200).optional(),
+  roomId: Joi.string().optional(),
+  taskType: Joi.string().valid('cleaning', 'maintenance', 'inspection', 'deep_clean', 'checkout_clean').optional(),
+  priority: Joi.string().valid('low', 'medium', 'high', 'urgent').optional(),
+  description: Joi.string().max(1000).allow('', null).optional(),
+  notes: Joi.string().max(1000).allow('', null).optional(),
+  assignedToUserId: Joi.string().allow(null).optional(),
+  assignedTo: Joi.string().allow(null).optional(),
+  estimatedDuration: Joi.number().integer().min(1).max(480).optional(),
+  status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'inspected', 'cancelled').optional(),
+  startedAt: Joi.date().allow(null).optional(),
+  completedAt: Joi.date().allow(null).optional(),
+  roomStatus: Joi.string().valid('dirty', 'clean', 'inspected', 'maintenance_required').optional()
+}).unknown(true);
+
+const inspectTaskSchema = Joi.object({
+  passed: Joi.boolean().required(),
+  rating: Joi.number().integer().min(1).max(5).optional(),
+  notes: Joi.string().max(1000).allow('', null).optional(),
+  failureReasons: Joi.array().items(Joi.object({
+    category: Joi.string().valid('cleanliness', 'amenities', 'damage', 'safety', 'other').optional(),
+    description: Joi.string().optional(),
+    severity: Joi.string().valid('minor', 'major', 'critical').optional()
+  })).optional(),
+  qaChecklist: Joi.array().items(Joi.object({
+    item: Joi.string().optional(),
+    passed: Joi.boolean().optional(),
+    notes: Joi.string().allow('', null).optional()
+  })).optional()
+}).unknown(true);
 
 // Get housekeeping tasks
 router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
@@ -35,48 +79,55 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
     limit = 10
   } = req.query;
 
-  const query = {};
-  
-  if (req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
   }
-  
+
+  const query = { hotelId };
+
   if (status) query.status = status;
   if (roomId) query.roomId = roomId;
   if (taskType) query.taskType = taskType;
   if (priority) query.priority = priority;
-  
-  // Handle assignedToUserId and search with proper $or logic
-  const orConditions = [];
-  
+
+  // Build $and conditions to safely combine $or clauses
+  const andConditions = [];
+
   if (assignedToUserId) {
     if (assignedToUserId === 'unassigned') {
-      query.$or = [
-        { assignedToUserId: { $exists: false } },
-        { assignedToUserId: null },
-        { assignedTo: { $exists: false } },
-        { assignedTo: null }
-      ];
+      andConditions.push({
+        $or: [
+          { assignedToUserId: { $exists: false } },
+          { assignedToUserId: null },
+          { assignedTo: { $exists: false } },
+          { assignedTo: null }
+        ]
+      });
     } else {
       // Check both field names for backward compatibility
-      orConditions.push(
-        { assignedToUserId: assignedToUserId },
-        { assignedTo: assignedToUserId }
-      );
+      andConditions.push({
+        $or: [
+          { assignedToUserId: assignedToUserId },
+          { assignedTo: assignedToUserId }
+        ]
+      });
     }
   }
-  
+
   if (search) {
     const escapedSearch = escapeRegex(search);
-    orConditions.push(
-      { title: { $regex: escapedSearch, $options: 'i' } },
-      { description: { $regex: escapedSearch, $options: 'i' } },
-      { notes: { $regex: escapedSearch, $options: 'i' } }
-    );
+    andConditions.push({
+      $or: [
+        { title: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } },
+        { notes: { $regex: escapedSearch, $options: 'i' } }
+      ]
+    });
   }
-  
-  if (orConditions.length > 0) {
-    query.$or = orConditions;
+
+  if (andConditions.length > 0) {
+    query.$and = andConditions;
   }
   
   // Date range filters
@@ -111,55 +162,53 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
     }
   }
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const safePage = Math.max(1, parseInt(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 10));
+  const skip = (safePage - 1) * safeLimit;
 
-  const tasks = await Housekeeping.find(query)
-    .populate('roomId', 'roomNumber type floor')
-    .populate('assignedToUserId', 'name')
-    .populate('assignedTo', 'name')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit)).lean();
-
-  const total = await Housekeeping.countDocuments(query);
+  const [tasks, total] = await Promise.all([
+    Housekeeping.find(query)
+      .populate('roomId', 'roomNumber type floor')
+      .populate('assignedToUserId', 'name')
+      .populate('assignedTo', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    Housekeeping.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
     results: tasks.length,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: safePage,
+      limit: safeLimit,
       total,
-      pages: Math.ceil(total / parseInt(limit))
+      pages: Math.ceil(total / safeLimit)
     },
     data: { tasks }
   });
 }));
 
 // Create housekeeping task
-router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  logger.debug('Received housekeeping task creation request', { hotelId: req.user.hotelId });
-  
+router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(createTaskSchema), catchAsync(async (req, res) => {
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  logger.debug('Received housekeeping task creation request', { hotelId });
+
   const taskData = {
     ...req.body,
-    hotelId: req.user.hotelId
+    hotelId
   };
 
   logger.debug('Final housekeeping task data prepared', { title: taskData.title, roomId: taskData.roomId });
 
-  // Validate required fields
-  if (!taskData.title) {
-    throw new ApplicationError('Task title is required', 400);
-  }
-  if (!taskData.roomId) {
-    throw new ApplicationError('Room ID is required', 400);
-  }
-  if (!taskData.taskType) {
-    throw new ApplicationError('Task type is required', 400);
-  }
-
   const task = await Housekeeping.create(taskData);
-  
+
   await task.populate('roomId', 'roomNumber type');
 
   logger.debug('Housekeeping task created', { taskId: task._id });
@@ -170,60 +219,23 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeepin
   });
 }));
 
-// Update housekeeping task
-router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
-
-  logger.debug('Updating housekeeping task', { id });
-
-  // Validate ObjectId format
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    logger.debug('Invalid ObjectId format for housekeeping task', { id });
-    throw new ApplicationError('Invalid task ID format', 400);
-  }
-
-  // If task is being started, set startedAt
-  if (updateData.status === 'in_progress' && !updateData.startedAt) {
-    updateData.startedAt = new Date();
-  }
-
-  // If task is being completed, set completedAt
-  if (updateData.status === 'completed' && !updateData.completedAt) {
-    updateData.completedAt = new Date();
-  }
-
-  const task = await Housekeeping.findOneAndUpdate(
-    { _id: id, hotelId: req.user.hotelId },
-    updateData,
-    { new: true, runValidators: true }
-  ).populate('roomId assignedToUserId assignedTo');
-
-  if (!task) {
-    logger.debug('Housekeeping task not found', { id });
-    throw new ApplicationError('Housekeeping task not found', 404);
-  }
-
-  logger.debug('Housekeeping task updated', { taskId: task._id });
-
-  res.json({
-    status: 'success',
-    data: { task }
-  });
-}));
+// --- Literal routes BEFORE /:id catch-all ---
 
 // Get task statistics
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const query = req.user.hotelId ? { hotelId: req.user.hotelId } : {};
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
 
   const stats = await Housekeeping.aggregate([
-    { $match: query },
+    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
     {
       $group: {
         _id: '$status',
         count: { $sum: 1 },
-        avgDuration: { 
-          $avg: { 
+        avgDuration: {
+          $avg: {
             $cond: [
               { $and: ['$startedAt', '$completedAt'] },
               { $subtract: ['$completedAt', '$startedAt'] },
@@ -247,9 +259,117 @@ router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('houseke
   });
 }));
 
+// --- Parameterised routes ---
+
+// Get single housekeeping task
+router.get('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApplicationError('Invalid task ID format', 400);
+  }
+
+  const task = await Housekeeping.findOne({ _id: id, hotelId })
+    .populate('roomId', 'roomNumber type floor')
+    .populate('assignedToUserId', 'name')
+    .populate('assignedTo', 'name')
+    .lean();
+
+  if (!task) {
+    throw new ApplicationError('Housekeeping task not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { task }
+  });
+}));
+
+// Update housekeeping task
+router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(updateTaskSchema), catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  const updateData = req.body;
+
+  logger.debug('Updating housekeeping task', { id });
+
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    logger.debug('Invalid ObjectId format for housekeeping task', { id });
+    throw new ApplicationError('Invalid task ID format', 400);
+  }
+
+  // If task is being started, set startedAt
+  if (updateData.status === 'in_progress' && !updateData.startedAt) {
+    updateData.startedAt = new Date();
+  }
+
+  // If task is being completed, set completedAt
+  if (updateData.status === 'completed' && !updateData.completedAt) {
+    updateData.completedAt = new Date();
+  }
+
+  const task = await Housekeeping.findOneAndUpdate(
+    { _id: id, hotelId },
+    updateData,
+    { new: true, runValidators: true }
+  ).populate('roomId assignedToUserId assignedTo');
+
+  if (!task) {
+    logger.debug('Housekeeping task not found', { id });
+    throw new ApplicationError('Housekeeping task not found', 404);
+  }
+
+  logger.debug('Housekeeping task updated', { taskId: task._id });
+
+  res.json({
+    status: 'success',
+    data: { task }
+  });
+}));
+
+// Delete housekeeping task
+router.delete('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApplicationError('Invalid task ID format', 400);
+  }
+
+  const task = await Housekeeping.findOneAndDelete({ _id: id, hotelId });
+
+  if (!task) {
+    throw new ApplicationError('Housekeeping task not found', 404);
+  }
+
+  logger.debug('Housekeeping task deleted', { taskId: id });
+
+  res.json({
+    status: 'success',
+    data: null
+  });
+}));
+
 // Inspect a completed housekeeping task (QA workflow)
-router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const task = await Housekeeping.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
+router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, validate(inspectTaskSchema), catchAsync(async (req, res) => {
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  const task = await Housekeeping.findOne({ _id: req.params.id, hotelId });
 
   if (!task) {
     throw new ApplicationError('Housekeeping task not found', 404);

@@ -113,55 +113,10 @@ const DiscountManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => 
   const fetchDiscounts = async () => {
     try {
       setLoading(true);
-      // const response = await api.get(`/discount-pricing/discounts?type=${typeFilter}&category=${categoryFilter}&status=${statusFilter}`);
-      // setDiscounts(response.data.discounts);
-      
-      // Mock data for demonstration
-      setDiscounts([
-        {
-          _id: '1',
-          name: 'Early Bird Special',
-          code: 'EARLY20',
-          description: '20% off for bookings made 30+ days in advance',
-          type: 'early_bird',
-          category: 'booking',
-          discountValue: 20,
-          discountType: 'percentage',
-          maxDiscountAmount: 100,
-          minBookingValue: 200,
-          minNights: 2,
-          dates: { startDate: '2024-01-01T00:00:00Z', endDate: '2024-12-31T23:59:59Z' },
-          usageLimits: { maxUsagePerGuest: 1, maxTotalUsage: 1000, currentUsage: 245 },
-          isActive: true,
-          isPublic: true,
-          priority: 1,
-          analytics: { totalBookings: 245, totalRevenue: 61250, totalDiscountGiven: 12250, averageBookingValue: 250, conversionRate: 15.2, lastUsed: '2024-01-15T14:30:00Z' },
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-01T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        },
-        {
-          _id: '2',
-          name: 'Corporate Rate',
-          code: 'CORP15',
-          description: '15% discount for corporate bookings',
-          type: 'corporate',
-          category: 'booking',
-          discountValue: 15,
-          discountType: 'percentage',
-          minBookingValue: 500,
-          dates: { startDate: '2024-01-01T00:00:00Z', endDate: '2024-12-31T23:59:59Z' },
-          usageLimits: { maxUsagePerGuest: 5, maxTotalUsage: 500, currentUsage: 89 },
-          isActive: true,
-          isPublic: false,
-          priority: 2,
-          analytics: { totalBookings: 89, totalRevenue: 44500, totalDiscountGiven: 6675, averageBookingValue: 500, conversionRate: 8.5, lastUsed: '2024-01-14T16:45:00Z' },
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-01T10:00:00Z',
-          updatedAt: '2024-01-14T10:00:00Z'
-        }
-      ]);
-    } catch (error) {
+      // Discount-pricing backend routes exist but are NOT registered in registerApiRoutes
+      // Set empty to show the "not configured" state
+      setDiscounts([]);
+    } catch {
       showSnackbar('Error fetching discounts', 'error');
     } finally {
       setLoading(false);
@@ -283,7 +238,7 @@ const DiscountManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => 
   const getDaysRemaining = (discount: SpecialDiscount) => {
     const now = new Date();
     const endDate = new Date(discount.dates.endDate);
-    const diffTime = endDate - now;
+    const diffTime = endDate.getTime() - now.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
@@ -349,6 +304,21 @@ const DiscountManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => 
         </Box>
       </Box>
 
+      {discounts.length === 0 && !loading ? (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Box textAlign="center" py={6}>
+              <LocalOffer sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+              <Typography variant="h6" gutterBottom>
+                Discount management is not yet configured
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                The discount pricing backend routes are not yet registered. Contact your system administrator to enable this feature.
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      ) : (
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -479,6 +449,7 @@ const DiscountManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => 
           </TableBody>
         </Table>
       </TableContainer>
+      )}
 
       {/* Form Dialog */}
       <Dialog

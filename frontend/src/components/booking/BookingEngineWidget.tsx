@@ -1023,7 +1023,7 @@ const BookingEngineWidget: React.FC = () => {
                 <h3 className="text-xl font-bold mb-2">Booking Complete!</h3>
                 <p className="text-gray-600">Thank you for your reservation. You'll receive a confirmation email shortly.</p>
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Booking Reference: <strong>BK-2024-{Math.random().toString(36).substr(2, 6).toUpperCase()}</strong></p>
+                  <p className="text-sm text-gray-600">Booking confirmed - check your email for details</p>
                 </div>
               </CardContent>
             </Card>

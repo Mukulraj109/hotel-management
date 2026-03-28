@@ -12,11 +12,13 @@ const pricingEngine = new DynamicPricingEngine();
 // Pricing Rules Management
 export const createPricingRule = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const ruleData = {
       ...req.body,
+      hotelId,
       ruleId: uuidv4()
     };
-    
+
     const rule = new PricingRule(ruleData);
     await rule.save();
     
@@ -34,7 +36,8 @@ export const createPricingRule = async (req, res) => {
 
 export const getPricingRules = async (req, res) => {
   try {
-    const rules = await PricingRule.find()
+    const hotelId = req.user?.hotelId;
+    const rules = await PricingRule.find({ hotelId })
       .populate('applicableRoomTypes', 'name')
       .sort({ priority: -1, createdAt: -1 }).lean().limit(1000);
     
@@ -170,7 +173,8 @@ export const generateDemandForecast = async (req, res) => {
 export const getDemandForecast = async (req, res) => {
   try {
     const { startDate, endDate, roomTypeId } = req.query;
-    const filter = {};
+    const hotelId = req.user?.hotelId;
+    const filter = { hotelId };
     
     if (startDate && endDate) {
       filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
@@ -199,7 +203,8 @@ export const getDemandForecast = async (req, res) => {
 // Rate Shopping
 export const addCompetitorRate = async (req, res) => {
   try {
-    const rateData = new RateShopping(req.body);
+    const hotelId = req.user?.hotelId;
+    const rateData = new RateShopping({ ...req.body, hotelId });
     await rateData.save();
     
     res.status(201).json({
@@ -217,7 +222,8 @@ export const addCompetitorRate = async (req, res) => {
 export const getCompetitorRates = async (req, res) => {
   try {
     const { date, competitorId } = req.query;
-    const filter = { isActive: true };
+    const hotelId = req.user?.hotelId;
+    const filter = { hotelId, isActive: true };
 
     if (competitorId) {
       filter.competitorId = competitorId;
@@ -306,11 +312,13 @@ export const updateCompetitorRates = async (req, res) => {
 // Packages Management
 export const createPackage = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const packageData = {
       ...req.body,
+      hotelId,
       packageId: uuidv4()
     };
-    
+
     const newPackage = new Package(packageData);
     await newPackage.save();
     
@@ -328,7 +336,8 @@ export const createPackage = async (req, res) => {
 
 export const getPackages = async (req, res) => {
   try {
-    const packages = await Package.find({ isActive: true })
+    const hotelId = req.user?.hotelId;
+    const packages = await Package.find({ hotelId, isActive: true })
       .sort({ createdAt: -1 }).lean().limit(1000);
 
     res.json({
@@ -374,11 +383,13 @@ export const updatePackage = async (req, res) => {
 // Corporate Rates
 export const createCorporateRate = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const rateData = {
       ...req.body,
+      hotelId,
       contractId: uuidv4()
     };
-    
+
     const corporateRate = new CorporateRate(rateData);
     await corporateRate.save();
     
@@ -396,7 +407,8 @@ export const createCorporateRate = async (req, res) => {
 
 export const getCorporateRates = async (req, res) => {
   try {
-    const rates = await CorporateRate.find({ isActive: true })
+    const hotelId = req.user?.hotelId;
+    const rates = await CorporateRate.find({ hotelId, isActive: true })
       .populate('company', 'name')
       .populate('roomTypes.roomType', 'name')
       .sort({ createdAt: -1 }).lean().limit(1000);
@@ -413,12 +425,85 @@ export const getCorporateRates = async (req, res) => {
   }
 };
 
+export const updateCorporateRate = async (req, res) => {
+  try {
+    const updatedRate = await CorporateRate.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedRate) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corporate rate not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: updatedRate
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const deleteCorporateRate = async (req, res) => {
+  try {
+    const rate = await CorporateRate.findByIdAndDelete(req.params.id);
+
+    if (!rate) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corporate rate not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Corporate rate deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const deletePackage = async (req, res) => {
+  try {
+    const pkg = await Package.findByIdAndDelete(req.params.id);
+
+    if (!pkg) {
+      return res.status(404).json({
+        success: false,
+        message: 'Package not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Package deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 // Revenue Analytics
 export const getRevenueAnalytics = async (req, res) => {
   try {
     const { startDate, endDate, roomTypeId, groupBy = 'day' } = req.query;
-    
-    const matchStage = {};
+    const hotelId = req.user?.hotelId;
+    const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
     
     if (startDate && endDate) {
       matchStage.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
@@ -509,8 +594,9 @@ export const getRevenueSummary = async (req, res) => {
     // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
 
     
+    const hotelId = req.user?.hotelId;
     const summary = await RevenueAnalytics.aggregate([
-      { $match: { date: dateRange } },
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), date: dateRange } },
       {
         $group: {
           _id: null,
@@ -550,14 +636,15 @@ export const getRevenueSummary = async (req, res) => {
 // Optimization Recommendations
 export const getOptimizationRecommendations = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const recommendations = [];
-    
+
     // Analyze recent performance
     const lastWeek = new Date();
     lastWeek.setDate(lastWeek.getDate() - 7);
-    
+
     const recentAnalytics = await RevenueAnalytics.find({
-      date: { $gte: lastWeek }
+      hotelId, date: { $gte: lastWeek }
     }).sort({ date: -1 }).lean().limit(1000);
     
     if (recentAnalytics.length === 0) {
@@ -595,6 +682,7 @@ export const getOptimizationRecommendations = async (req, res) => {
     
     // Check competitor rates
     const recentCompetitorRates = await RateShopping.find({
+      hotelId,
       'rates.date': { $gte: lastWeek },
       isActive: true
     }).lean().limit(1000);
@@ -611,7 +699,7 @@ export const getOptimizationRecommendations = async (req, res) => {
     
     // Forecast-based recommendations
     const upcomingForecasts = await DemandForecast.find({
-      date: { $gte: new Date(), $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
+      hotelId, date: { $gte: new Date(), $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
     }).sort({ date: 1 }).lean().limit(1000);
     
     const highDemandDays = upcomingForecasts.filter(forecast => 
@@ -647,8 +735,8 @@ export const getOptimizationRecommendations = async (req, res) => {
 // Dashboard Metrics - Get real data from bookings
 export const getDashboardMetrics = async (req, res) => {
   try {
-    console.log('Dashboard metrics endpoint called with query:', req.query);
-    
+    const hotelId = req.user?.hotelId;
+
     const { startDate, endDate } = req.query;
     const today = new Date();
     const thirtyDaysAgo = new Date();
@@ -744,6 +832,7 @@ export const getDashboardMetrics = async (req, res) => {
     
     // Calculate competitive index from rate shopping data
     const competitorRates = await RateShopping.find({
+      hotelId,
       isActive: true,
       'rates.date': { $gte: dateRange.$gte, $lte: dateRange.$lte }
     }).lean().limit(1000);
@@ -754,7 +843,7 @@ export const getDashboardMetrics = async (req, res) => {
 
     if (competitorRates.length > 0) {
       const avgCompetitorRate = competitorRates.reduce((sum, comp) => {
-        const avgRate = comp.rates.reduce((rateSum, r) => rateSum + r.rate, 0) / comp.rates.length;
+        const avgRate = comp.rates.length > 0 ? comp.rates.reduce((rateSum, r) => rateSum + r.rate, 0) / comp.rates.length : 0;
         return sum + avgRate;
       }, 0) / competitorRates.length;
 
@@ -776,6 +865,7 @@ export const getDashboardMetrics = async (req, res) => {
     
     // Get real rate shopping data from database
     const realRateShopping = await RateShopping.find({
+      hotelId,
       isActive: true,
       'rates.date': { $gte: dateRange.$gte, $lte: dateRange.$lte }
     }).populate('competitorId').lean().limit(1000);
@@ -784,21 +874,17 @@ export const getDashboardMetrics = async (req, res) => {
       competitors: realRateShopping.length > 0 ? realRateShopping.map(comp => ({
         hotelName: comp.competitorName,
         roomType: comp.roomType || 'Standard',
-        currentRate: comp.rates && comp.rates.length > 0 ? comp.rates[comp.rates.length - 1].rate : Math.round(adr * 0.95),
-        availability: Math.floor(Math.random() * 20) + 5, // This would need inventory integration
+        currentRate: comp.rates && comp.rates.length > 0 ? comp.rates[comp.rates.length - 1].rate : 0,
+        availability: null, // Competitor inventory not tracked
         lastUpdated: comp.rates && comp.rates.length > 0 ? comp.rates[comp.rates.length - 1].lastUpdated : new Date(),
         source: 'Database'
-      })) : [
-        { hotelName: 'Grand Plaza', roomType: 'Standard', currentRate: Math.round(adr * 0.95), availability: 15, lastUpdated: new Date(), source: 'System' },
-        { hotelName: 'Royal Palace', roomType: 'Standard', currentRate: Math.round(adr * 1.07), availability: 8, lastUpdated: new Date(), source: 'System' },
-        { hotelName: 'City Center', roomType: 'Standard', currentRate: Math.round(adr * 0.90), availability: 22, lastUpdated: new Date(), source: 'System' }
-      ],
+      })) : [], // No competitor data — add competitors via the rate shopping API
       marketPosition: marketPosition === 'leader' ? 'leader' : marketPosition === 'follower' ? 'follower' : 'competitive',
       priceGap: Math.round(priceGap),
-      recommendations: [
+      recommendations: realRateShopping.length > 0 ? [
         { action: 'Increase weekend rates by 10%', impact: `+₹${Math.round(totalRevenue * 0.1 / 1000)}K revenue`, urgency: 'high' },
         { action: 'Optimize corporate rates', impact: '+8% corporate revenue', urgency: 'medium' }
-      ]
+      ] : []
     };
     
     // Get real demand forecast data from database aggregated by date
@@ -809,6 +895,7 @@ export const getDashboardMetrics = async (req, res) => {
     const existingForecasts = await DemandForecast.aggregate([
       {
         $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
           date: { $gte: new Date(), $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) }
         }
       },
@@ -838,7 +925,8 @@ export const getDashboardMetrics = async (req, res) => {
         const occupancy = Math.round(dayForecast.avgOccupancy);
         const confidence = Math.round(dayForecast.avgConfidence);
         const demandLevel = occupancy > 75 ? 'HIGH' : occupancy > 50 ? 'MEDIUM' : 'LOW';
-        const rateChange = occupancy > 80 ? Math.random() * 10 + 5 : occupancy < 40 ? -(Math.random() * 8 + 2) : 0;
+        // Deterministic rate change based on occupancy thresholds
+        const rateChange = occupancy > 80 ? 8 : occupancy < 40 ? -5 : 0;
 
         return {
           date: dayForecast._id,
@@ -848,13 +936,12 @@ export const getDashboardMetrics = async (req, res) => {
           factors: occupancy > 75 ? ['High seasonal demand', 'Local events'] :
                   occupancy > 50 ? ['Regular business travel', 'Market stability'] :
                   ['Low season', 'Economic factors'],
-          recommendedRateChange: `${Math.round(rateChange)}%`,
+          recommendedRateChange: `${rateChange}%`,
           potentialRevenue: Math.round(dayForecast.totalRevenue || (dayForecast.avgADR * 50))
         };
       });
     } else {
-      // Generate diverse forecasts based on historical booking patterns
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      // Deterministic forecasts based on historical booking patterns (no random noise)
       for (let i = 0; i < 7; i++) {
         const futureDate = new Date();
         futureDate.setDate(futureDate.getDate() + i);
@@ -864,38 +951,38 @@ export const getDashboardMetrics = async (req, res) => {
         const isMonday = dayOfWeek === 1;
         const isFriday = dayOfWeek === 5;
 
-        // Create more realistic occupancy patterns
+        // Deterministic occupancy adjustments based on day-of-week patterns
         let baseOccupancy = occupancyRate || 45;
         if (isWeekend) baseOccupancy += 25;
         else if (isFriday) baseOccupancy += 15;
         else if (isMonday) baseOccupancy -= 5;
 
-        // Add seasonal and random variation
+        // Deterministic seasonal adjustment based on month
         const seasonalBoost = Math.sin((futureDate.getMonth() + 1) * Math.PI / 6) * 8;
-        const randomVariation = (Math.random() - 0.5) * 15;
-        const predictedOccupancy = Math.max(25, Math.min(90, baseOccupancy + seasonalBoost + randomVariation));
+        const predictedOccupancy = Math.max(25, Math.min(90, Math.round(baseOccupancy + seasonalBoost)));
 
-        const confidence = Math.max(70, Math.min(95, 85 + (Math.random() - 0.5) * 15));
+        // Confidence based on data availability, not randomness
+        const confidence = dayCount >= 60 ? 85 : dayCount >= 30 ? 75 : 60;
         const demandLevel = predictedOccupancy > 75 ? 'HIGH' : predictedOccupancy > 50 ? 'MEDIUM' : 'LOW';
 
-        // Calculate rate change based on demand
+        // Deterministic rate change based on demand level
         let rateChange = 0;
-        if (predictedOccupancy > 80) rateChange = 8 + Math.random() * 7;
-        else if (predictedOccupancy > 65) rateChange = 2 + Math.random() * 5;
-        else if (predictedOccupancy < 40) rateChange = -(5 + Math.random() * 8);
-        else rateChange = (Math.random() - 0.5) * 4;
+        if (predictedOccupancy > 80) rateChange = 10;
+        else if (predictedOccupancy > 65) rateChange = 4;
+        else if (predictedOccupancy < 40) rateChange = -8;
 
+        const dailyAvgRevenue = dayCount > 0 ? totalRevenue / dayCount : 0;
         demandForecast.push({
           date: futureDate.toISOString().split('T')[0],
           demandLevel: demandLevel,
-          predictedOccupancy: `${Math.round(predictedOccupancy)}%`,
-          confidence: `${Math.round(confidence)}%`,
+          predictedOccupancy: `${predictedOccupancy}%`,
+          confidence: `${confidence}%`,
           factors: isWeekend ? ['Weekend leisure demand', 'Tourism peak'] :
                   isFriday ? ['Business travel', 'Weekend anticipation'] :
                   isMonday ? ['Week start', 'Corporate bookings'] :
                   ['Mid-week business', 'Regular demand'],
-          recommendedRateChange: `${Math.round(rateChange)}%`,
-          potentialRevenue: Math.round((totalRevenue / dayCount) * (1 + predictedOccupancy / 100) * (1 + rateChange / 100))
+          recommendedRateChange: `${rateChange}%`,
+          potentialRevenue: Math.round(dailyAvgRevenue * (1 + predictedOccupancy / 100) * (1 + rateChange / 100))
         });
       }
     }
@@ -1184,8 +1271,11 @@ export default {
   createPackage,
   getPackages,
   updatePackage,
+  deletePackage,
   createCorporateRate,
   getCorporateRates,
+  updateCorporateRate,
+  deleteCorporateRate,
   getRevenueAnalytics,
   getRevenueSummary,
   getOptimizationRecommendations,

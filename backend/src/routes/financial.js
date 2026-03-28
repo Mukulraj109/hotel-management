@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext, requireTenantInBulkOps } from '../middleware/tenantIsolation.js';
@@ -18,6 +19,12 @@ import * as financialReportsController from '../controllers/financialReportsCont
 import FinancialService from '../services/financialService.js';
 import logger from '../utils/logger.js';
 
+// Import models (static imports instead of dynamic imports in route handlers)
+import FinancialPayment from '../models/FinancialPayment.js';
+import FinancialInvoice from '../models/FinancialInvoice.js';
+import Hotel from '../models/Hotel.js';
+import ChartOfAccounts from '../models/ChartOfAccounts.js';
+
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
@@ -29,36 +36,28 @@ const financialLimiter = rateLimit({
 });
 router.use(financialLimiter);
 
-// === TEST ENDPOINT (temporary) ===
-router.get('/test-dashboard', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
-  try {
-    const financialService = new FinancialService();
-    const dashboard = await financialService.generateFinancialDashboard('month');
-    res.json({ success: true, data: dashboard });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
 // === DASHBOARD ===
-router.get('/dashboard', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
+router.get('/dashboard', authenticate, (req, res, next) => {
+  // Preserve the client-selected propertyId before tenantIsolation overwrites it
+  req._selectedPropertyId = req.query.hotelId || null;
+  next();
+}, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
   try {
     const financialService = new FinancialService();
-    const period = req.query.period || 'month';
-    
-    // For now, get the first hotel's data for testing
-    const Hotel = (await import('../models/Hotel.js')).default;
-    const mongoose = (await import('mongoose')).default;
-    
-    const firstHotel = await Hotel.findOne().lean();
-    const hotelId = firstHotel ? new mongoose.Types.ObjectId(firstHotel._id) : null;
-    
-    logger.debug('Dashboard API called', { period, hotelId: hotelId?.toString() });
-    
-    const dashboard = await financialService.generateFinancialDashboard(period, hotelId);
+    const period = req.query.period || 'all';
+    const customStartDate = req.query.startDate || null;
+    const customEndDate = req.query.endDate || null;
+
+    // Use the property selector value (saved before middleware), fall back to user's hotelId
+    const rawHotelId = req._selectedPropertyId || req.query.hotelId || req.user?.hotelId;
+    if (rawHotelId && !mongoose.Types.ObjectId.isValid(rawHotelId)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid hotel ID format' });
+    }
+    const hotelId = rawHotelId ? new mongoose.Types.ObjectId(rawHotelId) : null;
+
+    logger.debug('Dashboard API called', { period, hotelId: hotelId?.toString(), customStartDate, customEndDate });
+
+    const dashboard = await financialService.generateFinancialDashboard(period, hotelId, customStartDate, customEndDate);
     logger.debug('Dashboard generated');
     
     res.json({ success: true, data: dashboard });
@@ -76,7 +75,95 @@ router.use(authenticate);
 router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
+// === INTEGRATION SETTINGS ===
+router.put('/integrations/:integrationId/settings', authorize('admin', 'manager'), async (req, res) => {
+  try {
+    const { integrationId } = req.params;
+    const hotelId = req.user?.hotelId;
+    const settings = req.body;
+
+    // Store integration settings in hotel config
+    const hotel = await Hotel.findById(hotelId);
+    if (!hotel) {
+      return res.status(404).json({ success: false, message: 'Hotel not found' });
+    }
+
+    // Save to hotel's integrationSettings (or create the field)
+    if (!hotel.integrationSettings) {
+      hotel.integrationSettings = {};
+    }
+    hotel.integrationSettings[integrationId] = {
+      ...settings,
+      updatedAt: new Date(),
+      updatedBy: req.user?._id
+    };
+    hotel.markModified('integrationSettings');
+    await hotel.save();
+
+    res.json({
+      success: true,
+      data: hotel.integrationSettings[integrationId],
+      message: 'Integration settings saved successfully'
+    });
+  } catch (error) {
+    logger.error('Failed to save integration settings', { error: error.message });
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // === CHART OF ACCOUNTS ROUTES ===
+router.post('/chart-of-accounts/initialize', authorize('admin', 'manager'), async (req, res) => {
+  try {
+    const hotelId = req.user?.hotelId;
+    if (!hotelId) return res.status(400).json({ success: false, message: 'Hotel ID required' });
+
+    const existing = await ChartOfAccounts.countDocuments({ hotelId });
+    if (existing > 0) {
+      return res.json({ success: true, message: 'Accounts already exist', count: existing });
+    }
+
+    const defaultAccounts = [
+      { code: '1001', name: 'Cash - Operating Account', type: 'Asset', subType: 'Current Asset', category: 'current_assets', normalBalance: 'Debit' },
+      { code: '1002', name: 'Petty Cash', type: 'Asset', subType: 'Current Asset', category: 'current_assets', normalBalance: 'Debit' },
+      { code: '1100', name: 'Accounts Receivable', type: 'Asset', subType: 'Current Asset', category: 'current_assets', normalBalance: 'Debit' },
+      { code: '1200', name: 'Inventory', type: 'Asset', subType: 'Current Asset', category: 'current_assets', normalBalance: 'Debit' },
+      { code: '1500', name: 'Property & Equipment', type: 'Asset', subType: 'Fixed Asset', category: 'fixed_assets', normalBalance: 'Debit' },
+      { code: '2000', name: 'Accounts Payable', type: 'Liability', subType: 'Current Liability', category: 'current_liabilities', normalBalance: 'Credit' },
+      { code: '2100', name: 'Sales Tax Payable (GST)', type: 'Liability', subType: 'Current Liability', category: 'current_liabilities', normalBalance: 'Credit' },
+      { code: '2500', name: 'Long-term Debt', type: 'Liability', subType: 'Long-term Liability', category: 'long_term_liabilities', normalBalance: 'Credit' },
+      { code: '3000', name: 'Owner Capital', type: 'Equity', subType: 'Owner Equity', category: 'equity', normalBalance: 'Credit' },
+      { code: '3100', name: 'Retained Earnings', type: 'Equity', subType: 'Retained Earnings', category: 'equity', normalBalance: 'Credit' },
+      { code: '4000', name: 'Room Revenue', type: 'Revenue', subType: 'Operating Revenue', category: 'revenue', normalBalance: 'Credit' },
+      { code: '4100', name: 'Food & Beverage Revenue', type: 'Revenue', subType: 'Operating Revenue', category: 'revenue', normalBalance: 'Credit' },
+      { code: '4200', name: 'Other Revenue', type: 'Revenue', subType: 'Other Revenue', category: 'revenue', normalBalance: 'Credit' },
+      { code: '5000', name: 'Cost of Goods Sold', type: 'Expense', subType: 'Cost of Goods Sold', category: 'cost_of_goods_sold', normalBalance: 'Debit' },
+      { code: '6000', name: 'Salaries & Wages', type: 'Expense', subType: 'Operating Expense', category: 'operating_expenses', normalBalance: 'Debit' },
+      { code: '6100', name: 'Utilities', type: 'Expense', subType: 'Operating Expense', category: 'operating_expenses', normalBalance: 'Debit' },
+      { code: '6200', name: 'Marketing & Advertising', type: 'Expense', subType: 'Operating Expense', category: 'operating_expenses', normalBalance: 'Debit' },
+      { code: '6300', name: 'Administrative Expenses', type: 'Expense', subType: 'Operating Expense', category: 'operating_expenses', normalBalance: 'Debit' },
+    ];
+
+    const docs = defaultAccounts.map(acc => ({
+      accountCode: acc.code,
+      accountName: acc.name,
+      accountType: acc.type,
+      accountSubType: acc.subType,
+      category: acc.category,
+      normalBalance: acc.normalBalance,
+      hotelId,
+      isActive: true,
+      currentBalance: 0,
+      createdBy: req.user?._id
+    }));
+
+    await ChartOfAccounts.insertMany(docs);
+    res.json({ success: true, message: 'Default accounts created', count: docs.length });
+  } catch (error) {
+    logger.error('Failed to initialize chart of accounts', { error: error.message });
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.route('/chart-of-accounts')
   .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccounts)
   .post(authorize('admin', 'manager'), chartOfAccountsController.createAccount);
@@ -161,11 +248,13 @@ router.post('/budgets/:id/revise', authorizePolicy('financial', 'budgetSubmitRev
 router.route('/invoices')
   .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
     try {
-      const FinancialInvoice = (await import('../models/FinancialInvoice.js')).default;
-      const mongoose = (await import('mongoose')).default;
-      // Temporarily bypass hotel filtering for testing
-      // const hotelId = req.user?.hotelId ? new mongoose.Types.ObjectId(req.user.hotelId) : null;
-      const invoices = await FinancialInvoice.find({})
+      const hotelId = req.user.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+      }
+      const invoiceFilter = {};
+      invoiceFilter.hotelId = hotelId;
+      const invoices = await FinancialInvoice.find(invoiceFilter)
         .populate('customer.guestId', 'name email')
         .populate('bookingReference', 'bookingNumber')
         .sort({ createdAt: -1 }).lean().limit(1000);
@@ -185,7 +274,11 @@ router.route('/invoices')
   })
   .post(authorize('admin', 'staff', 'manager'), async (req, res) => {
     try {
-      const FinancialInvoice = (await import('../models/FinancialInvoice.js')).default;
+      const { customer, lineItems } = req.body;
+      if (!customer?.name) {
+        return res.status(400).json({ status: 'error', message: 'Customer name is required' });
+      }
+
       const invoiceData = {
         ...req.body,
         hotelId: req.user?.hotelId,
@@ -262,11 +355,13 @@ async function calculatePaymentStatistics(FinancialPayment, query = {}) {
 router.route('/payments')
   .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
     try {
-      const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
-      const mongoose = (await import('mongoose')).default;
-
-      // Build query filters
+      // Build query filters with tenant isolation
+      const hotelId = req.user.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+      }
       let query = {};
+      query.hotelId = hotelId;
       if (req.query.status) query.status = req.query.status;
       if (req.query.method) query.method = req.query.method;
       if (req.query.type) query.type = req.query.type;
@@ -303,13 +398,20 @@ router.route('/payments')
   })
   .post(authorize('admin', 'staff', 'manager'), async (req, res) => {
     try {
-      const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
+      const { amount, method, type } = req.body;
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ status: 'error', message: 'Valid payment amount is required' });
+      }
+      if (!method) {
+        return res.status(400).json({ status: 'error', message: 'Payment method is required' });
+      }
+
       const paymentData = {
         ...req.body,
         hotelId: req.user?.hotelId,
         createdBy: req.user?.id
       };
-      
+
       const payment = new FinancialPayment(paymentData);
       await payment.save();
       
@@ -332,10 +434,13 @@ router.route('/payments')
 // === PAYMENT STATISTICS ===
 router.get('/payments/statistics', authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
   try {
-    const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
-
-    // Build query filters (same logic as main payments endpoint)
+    // Build query filters with tenant isolation
+    const hotelId = req.user.hotelId;
+    if (!hotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
     let query = {};
+    query.hotelId = hotelId;
     if (req.query.status) query.status = req.query.status;
     if (req.query.method) query.method = req.query.method;
     if (req.query.type) query.type = req.query.type;

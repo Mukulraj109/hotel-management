@@ -25,6 +25,12 @@ import {
   type TranslationProgress 
 } from '@/services/roomTypeLocalizationService';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 interface RoomTypeTranslationManagerProps {
   hotelId: string;
 }
@@ -54,7 +60,7 @@ const RoomTypeTranslationManager: React.FC<RoomTypeTranslationManagerProps> = ({
       setRoomTypes(roomTypesResponse.data);
       setAvailableLanguages(languagesResponse);
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to load data');
+      toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -71,7 +77,7 @@ const RoomTypeTranslationManager: React.FC<RoomTypeTranslationManagerProps> = ({
       toast.success('Translations initialized successfully');
       await loadData(); // Reload to get updated status
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to initialize translations');
+      toast.error(getErrorMessage(error));
     } finally {
       setIsInitializingTranslations(false);
     }
@@ -97,7 +103,7 @@ const RoomTypeTranslationManager: React.FC<RoomTypeTranslationManagerProps> = ({
       setSelectedLanguages([]);
       await loadData();
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to bulk initialize translations');
+      toast.error(getErrorMessage(error));
     } finally {
       setIsInitializingTranslations(false);
     }

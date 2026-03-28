@@ -77,7 +77,8 @@ class AIPricingRecommendationService {
         }
       };
 
-      if (hotelId) matchCriteria.hotelId = hotelId;
+      if (!hotelId) throw new Error('Hotel context required for pricing analysis');
+      matchCriteria.hotelId = hotelId;
       if (roomTypeId) matchCriteria['rooms.roomType'] = roomTypeId;
 
       const historicalData = await Booking.aggregate([
@@ -214,7 +215,8 @@ class AIPricingRecommendationService {
         }
       };
 
-      if (hotelId) matchCriteria.hotelId = hotelId;
+      if (!hotelId) throw new Error('Hotel context required for seasonal demand analysis');
+      matchCriteria.hotelId = hotelId;
       if (roomTypeId) matchCriteria['rooms.roomType'] = roomTypeId;
 
       const seasonalPatterns = await Booking.aggregate([
@@ -253,7 +255,8 @@ class AIPricingRecommendationService {
         }
       };
 
-      if (hotelId) matchCriteria.hotelId = hotelId;
+      if (!hotelId) throw new Error('Hotel context required for demand trends analysis');
+      matchCriteria.hotelId = hotelId;
       if (roomTypeId) matchCriteria['rooms.roomType'] = roomTypeId;
 
       const monthlyData = await Booking.aggregate([

@@ -109,13 +109,14 @@ export default function AdminStaffManagement() {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to create staff member');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || err.message || 'Failed to create staff member');
     }
   });
 
   // Update staff mutation
   const updateStaffMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateStaffData }) => 
+    mutationFn: ({ id, data }: { id: string; data: UpdateStaffData }) =>
       staffService.updateStaffMember(id, data),
     onSuccess: () => {
       toast.success('Staff member updated successfully');
@@ -124,7 +125,8 @@ export default function AdminStaffManagement() {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to update staff member');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || err.message || 'Failed to update staff member');
     }
   });
 
@@ -138,7 +140,8 @@ export default function AdminStaffManagement() {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to delete staff member');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || err.message || 'Failed to delete staff member');
     }
   });
 
@@ -466,10 +469,26 @@ export default function AdminStaffManagement() {
             <div className="flex items-center justify-center h-64">
               <LoadingSpinner />
             </div>
+          ) : staffData?.staff?.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <Users className="w-12 h-12 text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-1">No staff members found</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {searchTerm || roleFilter !== 'all' || statusFilter !== 'all'
+                  ? 'Try adjusting your search or filter criteria.'
+                  : 'Get started by adding your first staff member.'}
+              </p>
+              {!isFrontDesk && !searchTerm && roleFilter === 'all' && statusFilter === 'all' && (
+                <Button onClick={() => setIsCreateModalOpen(true)}>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Add Staff Member
+                </Button>
+              )}
+            </div>
           ) : (
             <DataTable
               columns={columns}
-              data={staffData?.staff?.filter(s => s.role === 'staff' || s.role === 'admin') || []}
+              data={staffData?.staff || []}
               pagination={staffData?.pagination}
             />
           )}
@@ -501,7 +520,7 @@ export default function AdminStaffManagement() {
             setIsEditModalOpen(false);
             setSelectedStaff(null);
           }}
-          user={selectedStaff as unknown}
+          user={selectedStaff as any}
         />
       )}
 

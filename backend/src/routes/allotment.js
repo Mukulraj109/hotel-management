@@ -9,6 +9,8 @@ import { validate } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import logger from '../utils/logger.js';
 import Joi from 'joi';
+import { catchAsync } from '../utils/catchAsync.js';
+import RoomTypeAllotment from '../models/RoomTypeAllotment.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true);
@@ -498,6 +500,71 @@ router.get('/room-type/:roomTypeId',
   ],
   allotmentController.getAllotmentByRoomType
 );
+
+// Calendar view - daily allotment entries for a date range
+router.get('/calendar', catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+  const { roomTypeId, startDate, endDate } = req.query;
+
+  if (!hotelId) return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  if (!startDate || !endDate) return res.status(400).json({ status: 'error', message: 'startDate and endDate required' });
+
+  const query = { hotelId };
+  if (roomTypeId) query.roomTypeId = roomTypeId;
+
+  const allotments = await RoomTypeAllotment.find(query)
+    .populate('roomTypeId', 'name code')
+    .sort({ 'name': 1 })
+    .limit(500)
+    .lean();
+
+  // Transform into calendar format (daily entries) from dailyAllotments
+  const startMs = new Date(startDate).getTime();
+  const endMs = new Date(endDate).getTime();
+  const calendarData = [];
+  for (const allotment of allotments) {
+    const dailyEntries = (allotment.dailyAllotments || []).filter(d => {
+      const dateMs = new Date(d.date).getTime();
+      return dateMs >= startMs && dateMs <= endMs;
+    });
+    for (const day of dailyEntries) {
+      calendarData.push({
+        date: new Date(day.date).toISOString().split('T')[0],
+        allotmentId: allotment._id,
+        roomTypeName: allotment.roomTypeId?.name || 'Unknown',
+        totalRooms: day.totalInventory || 0,
+        bookedRooms: day.totalSold || 0,
+        availableRooms: (day.totalInventory || 0) - (day.totalSold || 0),
+        status: allotment.status
+      });
+    }
+  }
+
+  res.json({ status: 'success', data: { calendar: calendarData } });
+}));
+
+// Bulk update allotments
+router.put('/bulk-update', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+  const { updates } = req.body;
+
+  if (!hotelId) return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ status: 'error', message: 'Updates array required' });
+  if (updates.length > 50) return res.status(400).json({ status: 'error', message: 'Maximum 50 updates per request' });
+
+  const results = [];
+  for (const update of updates) {
+    const { id, ...data } = update;
+    const allotment = await RoomTypeAllotment.findOneAndUpdate(
+      { _id: id, hotelId },
+      { $set: data },
+      { new: true, runValidators: true }
+    );
+    results.push({ id, success: !!allotment, allotment });
+  }
+
+  res.json({ status: 'success', data: { results, updated: results.filter(r => r.success).length } });
+}));
 
 router.get('/:id', allotmentIdValidation, allotmentController.getAllotment);
 router.put('/:id', validate(mutationBaselineSchema), updateAllotmentValidation, allotmentController.updateAllotment);

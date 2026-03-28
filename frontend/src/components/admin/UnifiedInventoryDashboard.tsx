@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -13,8 +13,10 @@ import {
   Plus,
   RefreshCw,
   Download,
-  Search
+  Search,
+  Info
 } from 'lucide-react';
+import { api } from '@/services/api';
 
 interface InventoryStats {
   totalItems: number;
@@ -84,121 +86,27 @@ interface CostAnalytics {
 
 const UnifiedInventoryDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
 
-  // Mock data - Replace with actual API calls
   const [stats, setStats] = useState<InventoryStats>({
-    totalItems: 450,
-    lowStockItems: 23,
-    pendingOrders: 8,
-    totalValue: 125000,
-    monthlyConsumption: 18500,
-    avgCostPerItem: 278,
-    activeVendors: 12,
-    reorderAlerts: 15
+    totalItems: 0,
+    lowStockItems: 0,
+    pendingOrders: 0,
+    totalValue: 0,
+    monthlyConsumption: 0,
+    avgCostPerItem: 0,
+    activeVendors: 0,
+    reorderAlerts: 0
   });
 
-  const [recentActivity, setRecentActivity] = useState<StockMovement[]>([
-    {
-      id: '1',
-      itemName: 'Premium Bath Towels',
-      type: 'IN',
-      quantity: 50,
-      timestamp: '2024-01-15T10:30:00Z',
-      user: 'John Smith',
-      unitPrice: 25
-    },
-    {
-      id: '2',
-      itemName: 'Cleaning Spray',
-      type: 'OUT',
-      quantity: 12,
-      timestamp: '2024-01-15T09:45:00Z',
-      user: 'Sarah Johnson',
-      reason: 'Room cleaning'
-    },
-    {
-      id: '3',
-      itemName: 'Toilet Paper',
-      type: 'ADJUSTMENT',
-      quantity: -5,
-      timestamp: '2024-01-15T08:20:00Z',
-      user: 'Mike Wilson',
-      reason: 'Stock audit adjustment'
-    }
-  ]);
-
-  const [criticalAlerts, setCriticalAlerts] = useState<InventoryAlert[]>([
-    {
-      id: '1',
-      type: 'LOW_STOCK',
-      title: 'Critical Low Stock Alert',
-      message: 'Premium Bed Sheets are critically low (3 remaining, threshold: 20)',
-      severity: 'critical',
-      itemName: 'Premium Bed Sheets',
-      currentStock: 3,
-      threshold: 20,
-      createdAt: '2024-01-15T08:00:00Z'
-    },
-    {
-      id: '2',
-      type: 'REORDER',
-      title: 'Automatic Reorder Triggered',
-      message: 'Shampoo bottles have reached reorder point, PO created automatically',
-      severity: 'medium',
-      itemName: 'Shampoo Bottles',
-      currentStock: 15,
-      threshold: 15,
-      createdAt: '2024-01-15T07:30:00Z'
-    },
-    {
-      id: '3',
-      type: 'OVERDUE',
-      title: 'Overdue Delivery',
-      message: 'PO-2024-001 from ABC Supplies is 3 days overdue',
-      severity: 'high',
-      createdAt: '2024-01-15T06:00:00Z'
-    }
-  ]);
-
-  const [topVendors, setTopVendors] = useState<VendorPerformance[]>([
-    {
-      id: '1',
-      name: 'ABC Hotel Supplies',
-      overallRating: 4.8,
-      totalOrders: 25,
-      onTimeDeliveryRate: 96,
-      totalOrderValue: 45000,
-      lastOrderDate: '2024-01-10T00:00:00Z'
-    },
-    {
-      id: '2',
-      name: 'Premium Linens Co.',
-      overallRating: 4.6,
-      totalOrders: 18,
-      onTimeDeliveryRate: 89,
-      totalOrderValue: 32000,
-      lastOrderDate: '2024-01-08T00:00:00Z'
-    }
-  ]);
-
-  const [costTrends, setCostTrends] = useState<CostAnalytics[]>([
-    {
-      period: 'January 2024',
-      totalCost: 18500,
-      categories: [
-        { name: 'Linens', cost: 7400, percentage: 40 },
-        { name: 'Cleaning', cost: 4625, percentage: 25 },
-        { name: 'Toiletries', cost: 3700, percentage: 20 },
-        { name: 'Others', cost: 2775, percentage: 15 }
-      ],
-      trend: 'up',
-      changePercentage: 8.5
-    }
-  ]);
+  const [recentActivity, setRecentActivity] = useState<StockMovement[]>([]);
+  const [criticalAlerts, setCriticalAlerts] = useState<InventoryAlert[]>([]);
+  const [topVendors, setTopVendors] = useState<VendorPerformance[]>([]);
+  const [costTrends, setCostTrends] = useState<CostAnalytics[]>([]);
 
   const quickActions: QuickAction[] = [
     {
@@ -235,29 +143,105 @@ const UnifiedInventoryDashboard: React.FC = () => {
     }
   ];
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchInventoryData = useCallback(async () => {
+    try {
+      setError(null);
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const endDate = new Date().toISOString();
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+      const [itemsRes, analyticsRes, notificationsRes] = await Promise.allSettled([
+        api.get('/inventory', { params: { limit: 100, page: 1 } }),
+        api.get('/inventory/analytics', { params: { startDate, endDate } }),
+        api.get('/inventory-notifications/summary')
+      ]);
 
-  useEffect(() => {
-    // Simulate API loading
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
+      // Process inventory items
+      if (itemsRes.status === 'fulfilled') {
+        const rawItems = itemsRes.value.data?.data?.items || itemsRes.value.data?.data || [];
+        const items = Array.isArray(rawItems) ? rawItems : [];
+        const totalValue = items.reduce((sum: number, item: Record<string, unknown>) =>
+          sum + ((item.unitPrice as number || 0) * (item.currentStock as number || 0)), 0);
+        const lowStock = items.filter((item: Record<string, unknown>) =>
+          (item.currentStock as number || 0) <= (item.stockThreshold as number || 0));
+
+        setStats(prev => ({
+          ...prev,
+          totalItems: items.length,
+          lowStockItems: lowStock.length,
+          totalValue,
+          avgCostPerItem: items.length > 0 ? totalValue / items.length : 0,
+        }));
+
+        // Map low stock items to alerts
+        setCriticalAlerts(lowStock.slice(0, 10).map((item: Record<string, unknown>, idx: number) => ({
+          id: (item._id as string) || String(idx),
+          type: 'LOW_STOCK' as const,
+          title: `Low Stock: ${item.name}`,
+          message: `${item.name} is low. Current: ${item.currentStock}, Threshold: ${item.stockThreshold}`,
+          severity: ((item.currentStock as number || 0) < ((item.stockThreshold as number || 0) / 2) ? 'critical' : 'medium') as 'critical' | 'medium',
+          itemId: (item._id as string) || '',
+          itemName: (item.name as string) || '',
+          currentStock: (item.currentStock as number) || 0,
+          threshold: (item.stockThreshold as number) || 0,
+          createdAt: (item.updatedAt as string) || new Date().toISOString(),
+        })));
+      }
+
+      // Process analytics
+      if (analyticsRes.status === 'fulfilled') {
+        const analyticsData = analyticsRes.value.data?.data || {};
+        const costAnalytics = analyticsData.costAnalytics || [];
+        const totalMonthlyCost = costAnalytics.reduce((sum: number, c: Record<string, unknown>) =>
+          sum + ((c.totalCost as number) || 0), 0);
+
+        if (costAnalytics.length > 0) {
+          const categories = costAnalytics.map((c: Record<string, unknown>) => ({
+            name: (c._id as string) || (c.category as string) || 'Other',
+            cost: (c.totalCost as number) || 0,
+            percentage: totalMonthlyCost > 0
+              ? Math.round(((c.totalCost as number || 0) / totalMonthlyCost) * 100)
+              : 0,
+          }));
+
+          setCostTrends([{
+            period: new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+            totalCost: totalMonthlyCost,
+            categories,
+            trend: 'stable',
+            changePercentage: 0,
+          }]);
+        }
+
+        setStats(prev => ({
+          ...prev,
+          monthlyConsumption: totalMonthlyCost,
+          reorderAlerts: analyticsData.lowStockItems?.length || prev.lowStockItems,
+        }));
+      }
+
+      // Process notifications summary for additional stats
+      if (notificationsRes.status === 'fulfilled') {
+        const summary = notificationsRes.value.data?.data || {};
+        setStats(prev => ({
+          ...prev,
+          pendingOrders: summary.pendingCount || 0,
+        }));
+      }
+    } catch {
+      setError('Failed to load inventory data. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchInventoryData();
+  }, [fetchInventoryData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Simulate API refresh
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await fetchInventoryData();
+    setRefreshing(false);
   };
 
   const formatCurrency = (amount: number) => {
@@ -313,6 +297,41 @@ const UnifiedInventoryDashboard: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Inventory Data</h2>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4 mr-2 inline" />
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (stats.totalItems === 0 && criticalAlerts.length === 0 && costTrends.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+            <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">No Inventory Data</h2>
+            <p className="text-gray-600">No inventory items have been added yet. Add items to start tracking your inventory.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
@@ -341,9 +360,9 @@ const UnifiedInventoryDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Items</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.totalItems}</p>
-                <p className="text-sm text-green-600 flex items-center">
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  +12% from last month
+                <p className="text-sm text-gray-500 flex items-center">
+                  <Package className="w-4 h-4 mr-1" />
+                  Tracked items
                 </p>
               </div>
               <Package className="w-12 h-12 text-blue-500" />
@@ -369,9 +388,9 @@ const UnifiedInventoryDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Value</p>
                 <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalValue)}</p>
-                <p className="text-sm text-green-600 flex items-center">
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  +5.2% this month
+                <p className="text-sm text-gray-500 flex items-center">
+                  <DollarSign className="w-4 h-4 mr-1" />
+                  Current inventory
                 </p>
               </div>
               <DollarSign className="w-12 h-12 text-green-500" />
@@ -385,7 +404,7 @@ const UnifiedInventoryDashboard: React.FC = () => {
                 <p className="text-3xl font-bold text-gray-900">{stats.pendingOrders}</p>
                 <p className="text-sm text-yellow-600 flex items-center">
                   <Calendar className="w-4 h-4 mr-1" />
-                  2 overdue
+                  Awaiting delivery
                 </p>
               </div>
               <ShoppingCart className="w-12 h-12 text-yellow-500" />
@@ -447,6 +466,9 @@ const UnifiedInventoryDashboard: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Inventory Distribution</h3>
+                  {costTrends.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-4">No cost distribution data available.</p>
+                  ) : (
                   <div className="space-y-3">
                     {costTrends[0].categories.map((category, index) => (
                       <div key={`categories-${index}-${category.name}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -461,6 +483,7 @@ const UnifiedInventoryDashboard: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
 
                 <div>
@@ -495,6 +518,9 @@ const UnifiedInventoryDashboard: React.FC = () => {
                     {criticalAlerts.length} Active
                   </span>
                 </div>
+                {criticalAlerts.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-8 text-center">No inventory alerts at this time.</p>
+                ) : (
                 <div className="space-y-4">
                   {criticalAlerts.map((alert) => (
                     <div key={alert.id} className={`p-4 rounded-lg border ${getAlertColor(alert.severity)}`}>
@@ -531,12 +557,16 @@ const UnifiedInventoryDashboard: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             )}
 
             {activeTab === 'activity' && (
               <div>
-                <div className="flex items-center justify-between mb-4">
+                {recentActivity.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-8 text-center">No recent stock movements recorded.</p>
+                ) : (
+                <><div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium text-gray-900">Recent Stock Movements</h3>
                   <div className="flex items-center space-x-3">
                     <div className="relative">
@@ -587,12 +617,17 @@ const UnifiedInventoryDashboard: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                </>
+                )}
               </div>
             )}
 
             {activeTab === 'vendors' && (
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Top Performing Vendors</h3>
+                {topVendors.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-8 text-center">No vendor data available.</p>
+                ) : (
                 <div className="space-y-4">
                   {topVendors.map((vendor, index) => (
                     <div key={vendor.id} className="p-4 bg-gray-50 rounded-lg">
@@ -644,12 +679,16 @@ const UnifiedInventoryDashboard: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             )}
 
             {activeTab === 'analytics' && (
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Cost Analytics</h3>
+                {costTrends.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-8 text-center">No cost analytics data available yet.</p>
+                ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between mb-4">
@@ -703,6 +742,7 @@ const UnifiedInventoryDashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             )}
           </div>

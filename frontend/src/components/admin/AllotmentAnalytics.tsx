@@ -96,6 +96,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
   };
 
   const formatCurrency = (value: number) => {
+    if (!isFinite(value)) return '₹0';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -103,6 +104,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
   };
 
   const formatPercentage = (value: number) => {
+    if (!isFinite(value)) return '0.0%';
     return `${value.toFixed(1)}%`;
   };
 
@@ -197,14 +199,14 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getMetricColor(analyticsData.summary.averageOccupancy, 'occupancy')}`}>
-              {formatPercentage(analyticsData.summary.averageOccupancy)}
+            <div className={`text-2xl font-bold ${getMetricColor(analyticsData.summary?.averageOccupancy || 0, 'occupancy')}`}>
+              {formatPercentage(analyticsData.summary?.averageOccupancy || 0)}
             </div>
             <div className="flex items-center text-xs text-muted-foreground">
-              {getTrendIcon(analyticsData.summary.occupancyTrend)}
+              {getTrendIcon(analyticsData.summary?.occupancyTrend || 0)}
               <span className="ml-1">
-                {analyticsData.summary.occupancyTrend > 0 ? '+' : ''}
-                {formatPercentage(analyticsData.summary.occupancyTrend)} from last period
+                {(analyticsData.summary?.occupancyTrend || 0) > 0 ? '+' : ''}
+                {formatPercentage(analyticsData.summary?.occupancyTrend || 0)} from last period
               </span>
             </div>
           </CardContent>
@@ -217,13 +219,13 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(analyticsData.summary.totalRevenue)}
+              {formatCurrency(analyticsData.summary?.totalRevenue || 0)}
             </div>
             <div className="flex items-center text-xs text-muted-foreground">
-              {getTrendIcon(analyticsData.summary.revenueTrend)}
+              {getTrendIcon(analyticsData.summary?.revenueTrend || 0)}
               <span className="ml-1">
-                {analyticsData.summary.revenueTrend > 0 ? '+' : ''}
-                {formatPercentage(analyticsData.summary.revenueTrend)} from last period
+                {(analyticsData.summary?.revenueTrend || 0) > 0 ? '+' : ''}
+                {formatPercentage(analyticsData.summary?.revenueTrend || 0)} from last period
               </span>
             </div>
           </CardContent>
@@ -236,13 +238,13 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {analyticsData.summary.totalBookings.toLocaleString()}
+              {(analyticsData.summary?.totalBookings || 0).toLocaleString()}
             </div>
             <div className="flex items-center text-xs text-muted-foreground">
-              {getTrendIcon(analyticsData.summary.bookingsTrend)}
+              {getTrendIcon(analyticsData.summary?.bookingsTrend || 0)}
               <span className="ml-1">
-                {analyticsData.summary.bookingsTrend > 0 ? '+' : ''}
-                {analyticsData.summary.bookingsTrend.toFixed(1)} from last period
+                {(analyticsData.summary?.bookingsTrend || 0) > 0 ? '+' : ''}
+                {(analyticsData.summary?.bookingsTrend || 0).toFixed(1)} from last period
               </span>
             </div>
           </CardContent>
@@ -255,11 +257,11 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
           </CardHeader>
           <CardContent>
             <div className="text-lg font-bold">
-              {analyticsData.summary.topChannel.name}
+              {analyticsData.summary?.topChannel?.name || 'N/A'}
             </div>
             <div className="flex items-center text-xs text-muted-foreground">
               <Badge variant="secondary" className="text-xs">
-                {formatPercentage(analyticsData.summary.topChannel.occupancy)} occupancy
+                {formatPercentage(analyticsData.summary?.topChannel?.occupancy || 0)} occupancy
               </Badge>
             </div>
           </CardContent>
@@ -287,7 +289,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
             <CardContent>
               <div className="h-64 sm:h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={analyticsData.dailyPerformance}>
+                  <AreaChart data={analyticsData.dailyPerformance || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="date" 
@@ -340,7 +342,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               <CardContent>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.utilizationByDay}>
+                    <BarChart data={analyticsData.utilizationByDay || []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="day" />
                       <YAxis />
@@ -362,7 +364,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={analyticsData.leadTimeDistribution}
+                        data={analyticsData.leadTimeDistribution || []}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -371,7 +373,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                         fill="#8884d8"
                         dataKey="count"
                       >
-                        {analyticsData.leadTimeDistribution.map((entry: Record<string, unknown>, index: number) => (
+                        {(analyticsData.leadTimeDistribution || []).map((entry: Record<string, unknown>, index: number) => (
                           <Cell key={`cell-${index}`} fill={CHANNEL_COLORS[index % CHANNEL_COLORS.length]} />
                         ))}
                       </Pie>
@@ -396,7 +398,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
             <CardContent>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analyticsData.channelPerformance}>
+                  <BarChart data={analyticsData.channelPerformance || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="channelName" />
                     <YAxis yAxisId="left" />
@@ -436,7 +438,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                     </tr>
                   </thead>
                   <tbody>
-                    {analyticsData.channelPerformance.map((channel: Record<string, unknown>, index: number) => (
+                    {(analyticsData.channelPerformance || []).map((channel: Record<string, unknown>, index: number) => (
                       <tr key={`channel-${channel.channelName || index}`} className="border-b hover:bg-gray-50">
                         <td className="p-2">
                           <div className="flex items-center space-x-2">
@@ -444,18 +446,18 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                               className="w-3 h-3 rounded-full"
                               style={{ backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }}
                             />
-                            <span className="font-medium">{channel.channelName}</span>
+                            <span className="font-medium">{String(channel.channelName || 'Unknown')}</span>
                           </div>
                         </td>
-                        <td className="text-right p-2">{channel.bookings}</td>
-                        <td className="text-right p-2">{formatCurrency(channel.revenue)}</td>
+                        <td className="text-right p-2">{(channel.bookings as number) || 0}</td>
+                        <td className="text-right p-2">{formatCurrency((channel.revenue as number) || 0)}</td>
                         <td className="text-right p-2">
-                          <span className={getMetricColor(channel.occupancy, 'occupancy')}>
-                            {formatPercentage(channel.occupancy)}
+                          <span className={getMetricColor((channel.occupancy as number) || 0, 'occupancy')}>
+                            {formatPercentage((channel.occupancy as number) || 0)}
                           </span>
                         </td>
-                        <td className="text-right p-2">{formatCurrency(channel.adr)}</td>
-                        <td className="text-right p-2">{formatPercentage(channel.commission)}</td>
+                        <td className="text-right p-2">{formatCurrency((channel.adr as number) || 0)}</td>
+                        <td className="text-right p-2">{formatPercentage((channel.commission as number) || 0)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -475,7 +477,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
             <CardContent>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analyticsData.dailyPerformance}>
+                  <LineChart data={analyticsData.dailyPerformance || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="date" 
@@ -510,7 +512,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               <CardContent>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.seasonalPatterns}>
+                    <BarChart data={analyticsData.seasonalPatterns || []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
@@ -530,7 +532,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               <CardContent>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.bookingPatterns}>
+                    <BarChart data={analyticsData.bookingPatterns || []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="day" />
                       <YAxis />
@@ -554,23 +556,23 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {analyticsData.recommendations.map((rec: Record<string, unknown>, index: number) => (
+                  {(analyticsData.recommendations || []).map((rec: Record<string, unknown>, index: number) => (
                     <div key={`rec-${index}-${rec.priority}`} className="flex items-start justify-between p-4 border rounded-lg">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-2">
                           <Badge variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}>
-                            {rec.priority} priority
+                            {String(rec.priority || 'low')} priority
                           </Badge>
                           <span className="text-sm text-gray-500">
-                            Confidence: {rec.confidence}%
+                            Confidence: {rec.confidence || 0}%
                           </span>
                         </div>
                         <h4 className="font-medium capitalize mb-1">
-                          {rec.type.replace('_', ' ')}
+                          {String(rec.type || '').replace('_', ' ')}
                         </h4>
-                        <p className="text-sm text-gray-600 mb-2">{rec.impact}</p>
+                        <p className="text-sm text-gray-600 mb-2">{String(rec.impact || '')}</p>
                         <p className="text-xs text-gray-500">
-                          Expected impact: {rec.expectedImpact}
+                          Expected impact: {String(rec.expectedImpact || 'N/A')}
                         </p>
                       </div>
                       <Button size="sm" variant="outline">
@@ -593,7 +595,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               <CardContent>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.channelEfficiency}>
+                    <BarChart data={analyticsData.channelEfficiency || []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="channelName" />
                       <YAxis />
@@ -612,20 +614,20 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {analyticsData.allocationEfficiency.map((method: Record<string, unknown>, index: number) => (
+                  {(analyticsData.allocationEfficiency || []).map((method: Record<string, unknown>, index: number) => (
                     <div key={`method-${method.method || index}`} className="flex items-center justify-between">
                       <span className="text-sm font-medium capitalize">
-                        {method.method.replace('_', ' ')}
+                        {String(method.method || '').replace('_', ' ')}
                       </span>
                       <div className="flex items-center space-x-2">
                         <div className="w-32 bg-gray-200 rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${method.efficiency}%` }}
+                            style={{ width: `${(method.efficiency as number) || 0}%` }}
                           />
                         </div>
                         <span className="text-sm text-gray-600 w-12">
-                          {formatPercentage(method.efficiency)}
+                          {formatPercentage((method.efficiency as number) || 0)}
                         </span>
                       </div>
                     </div>

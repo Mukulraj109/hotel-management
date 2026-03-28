@@ -66,7 +66,7 @@ const AssignmentRules: React.FC = () => {
       setAssignmentRules(result.data);
       setPagination(result.pagination);
     } catch {
-      // Error handled silently
+      toast.error('Failed to load assignment rules');
     } finally {
       setLoading(false);
     }
@@ -77,7 +77,7 @@ const AssignmentRules: React.FC = () => {
       const statsData = await assignmentRulesService.getAssignmentRulesStats();
       setStats(statsData);
     } catch {
-      // Error handled silently
+      toast.error('Failed to load assignment rule statistics');
     }
   };
 
@@ -111,7 +111,7 @@ const AssignmentRules: React.FC = () => {
         prev.map(r => r._id === rule._id ? { ...updatedRule, isActive: !rule.isActive } : r)
       );
     } catch {
-      // Error handled silently
+      toast.error('Failed to update assignment rule status');
     }
   };
 

@@ -26,6 +26,7 @@ export function PropertySelector() {
     isLoading,
     setSelectedPropertyId,
     setViewMode,
+    isSwitchingProperty,
   } = useProperty();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -90,7 +91,16 @@ export function PropertySelector() {
     : selectedProperty?.name || 'Select Property';
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="flex flex-col items-end gap-1">
+      {isSwitchingProperty && (
+        <p
+          className="max-w-[min(100vw-2rem,20rem)] rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-left text-xs text-blue-950 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100"
+          role="status"
+        >
+          Switching property…
+        </p>
+      )}
+      <div className="relative" ref={dropdownRef}>
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -199,6 +209,7 @@ export function PropertySelector() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

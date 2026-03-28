@@ -151,9 +151,7 @@ const RoomTaxForm: React.FC<RoomTaxFormProps> = ({
   const fetchRoomTypes = async () => {
     try {
       const { data } = await api.get(`/room-types?hotelId=${hotelId}`);
-      {
-        setRoomTypes(data.data.roomTypes || []);
-      }
+      setRoomTypes(data.data.roomTypes || []);
     } catch {
       // Error handled silently
     }

@@ -123,8 +123,8 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
     }
 
     // Password length validation
-    if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+    if (formData.password.length < 8) {
+      toast.error('Password must be at least 8 characters');
       return;
     }
 
@@ -143,7 +143,16 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         ...formData,
         hotelId,
         properties: selectedProperties.length > 0 ? selectedProperties : [hotelId],
-        primaryProperty: formData.primaryProperty || hotelId
+        primaryProperty: formData.primaryProperty || hotelId,
+        multiPropertyAccess: {
+          enabled: selectedProperties.length > 1,
+          allowedProperties: selectedProperties,
+          restrictions: {
+            canCreateProperties: formData.multiPropertyAccess?.canCreateProperties || false,
+            canDeleteProperties: formData.multiPropertyAccess?.canDeleteProperties || false,
+            canManageGroups: formData.multiPropertyAccess?.canManageGroups || false,
+          }
+        }
       };
 
       await userManagementService.createUser(userData);
@@ -173,7 +182,8 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       });
       setSelectedProperties([]);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to create user');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || err.message || 'Failed to create user');
     } finally {
       setLoading(false);
     }

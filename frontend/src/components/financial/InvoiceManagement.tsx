@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Search, Filter, Eye, Download, Mail, Calendar, User, Building } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Download, Mail, Calendar, User, Building, FileText } from 'lucide-react';
 import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
@@ -101,7 +101,7 @@ const InvoiceManagement: React.FC = () => {
       setInvoices(invoicesData);
       
     } catch (error: unknown) {
-      toast.error('Failed to fetch invoices: ' + error.message);
+      toast.error('Failed to fetch invoices: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -185,7 +185,61 @@ const InvoiceManagement: React.FC = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-gray-600">Invoice creation form coming soon...</p>
+              <div>
+                <Label>Invoice Type</Label>
+                <Select defaultValue="guest">
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="guest">Guest Invoice</SelectItem>
+                    <SelectItem value="corporate">Corporate Invoice</SelectItem>
+                    <SelectItem value="credit_note">Credit Note</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Guest / Company Name *</Label>
+                  <Input id="inv-customer" placeholder="Enter customer name" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Amount (INR) *</Label>
+                  <Input id="inv-amount" type="number" min="0" step="0.01" placeholder="0.00" className="mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label>Description</Label>
+                <Input id="inv-description" placeholder="Invoice description" className="mt-1" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Due Date</Label>
+                  <Input id="inv-dueDate" type="date" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Reference</Label>
+                  <Input id="inv-reference" placeholder="Booking ref / PO number" className="mt-1" />
+                </div>
+              </div>
+              <Button className="w-full" onClick={async () => {
+                const customer = (document.getElementById('inv-customer') as HTMLInputElement)?.value;
+                const amount = parseFloat((document.getElementById('inv-amount') as HTMLInputElement)?.value || '0');
+                const description = (document.getElementById('inv-description') as HTMLInputElement)?.value;
+                const dueDate = (document.getElementById('inv-dueDate') as HTMLInputElement)?.value;
+                const reference = (document.getElementById('inv-reference') as HTMLInputElement)?.value;
+                if (!customer || amount <= 0) { toast.error('Customer name and valid amount are required'); return; }
+                try {
+                  await financialService.createInvoice({
+                    customerName: customer, totalAmount: amount, description,
+                    dueDate: dueDate || undefined, reference: reference || undefined,
+                    type: 'guest', status: 'draft',
+                    items: [{ description: description || 'Invoice item', quantity: 1, unitPrice: amount, amount }]
+                  });
+                  toast.success('Invoice created');
+                  fetchInvoices();
+                } catch { toast.error('Failed to create invoice'); }
+              }}>
+                <Plus className="w-4 h-4 mr-2" /> Create Invoice
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -329,6 +383,17 @@ const InvoiceManagement: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {filteredInvoices.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12">
+                    <div className="text-gray-400 mb-2">
+                      <FileText className="h-10 w-10 mx-auto" />
+                    </div>
+                    <p className="text-gray-500 font-medium">No invoices found</p>
+                    <p className="text-gray-400 text-sm mt-1">Create your first invoice or adjust your filters</p>
+                  </TableCell>
+                </TableRow>
+              )}
               {filteredInvoices.map((invoice) => (
                 <TableRow key={invoice._id}>
                   <TableCell className="font-mono font-medium">

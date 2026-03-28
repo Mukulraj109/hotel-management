@@ -7,8 +7,7 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 // Get journal entries with filtering
 export const getJournalEntries = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const { hotelId } = req.user;
   const {
     status,
     entryType,
@@ -19,7 +18,7 @@ export const getJournalEntries = catchAsync(async (req, res) => {
     limit = 50
   } = req.query;
 
-  let filter = {}; // Remove hotelId filter temporarily
+  let filter = { hotelId };
   
   if (status) filter.status = status;
   if (entryType) filter.entryType = entryType;

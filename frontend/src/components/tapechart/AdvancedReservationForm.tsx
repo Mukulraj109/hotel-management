@@ -96,23 +96,24 @@ const AdvancedReservationForm: React.FC<AdvancedReservationFormProps> = ({
       }
       onSuccess(result);
     } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { errors?: unknown; message?: string } } };
 
       // Handle validation errors
-      if (error.response?.data?.errors) {
-        if (Array.isArray(error.response.data.errors)) {
+      if (axiosErr.response?.data?.errors) {
+        if (Array.isArray(axiosErr.response.data.errors)) {
           // Handle express-validator errors
           const validationErrors: Record<string, string> = {};
-          error.response.data.errors.forEach((err: unknown) => {
+          axiosErr.response.data.errors.forEach((err: Record<string, string>) => {
             validationErrors[err.path || err.param] = err.msg || err.message;
           });
           setErrors(validationErrors);
         } else {
-          setErrors(error.response.data.errors);
+          setErrors(axiosErr.response.data.errors as Record<string, string>);
         }
-      } else if (error.response?.data?.message) {
+      } else if (axiosErr.response?.data?.message) {
         // Handle general error messages
-        setErrors({ general: error.response.data.message });
-      } else if (error.message) {
+        setErrors({ general: axiosErr.response.data.message });
+      } else if (error instanceof Error) {
         // Handle network or other errors
         setErrors({ general: error.message });
       } else {

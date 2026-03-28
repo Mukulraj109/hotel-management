@@ -184,7 +184,7 @@ import paymentMethodRoutes from './routes/paymentMethods.js';
 import guestManagementRoutes from './routes/guestManagement.js';
 import operationalManagementRoutes from './routes/operationalManagement.js';
 import apiManagementRoutes from './routes/apiManagement.js';
-// import discountPricingRoutes from './routes/discountPricing.js';//error in this
+import discountPricingRoutes from './routes/discountPricing.js';
 
 // Security & Compliance Routes - TEMPORARILY COMMENTED
 import gdprRoutes from './routes/gdpr.js';
@@ -223,6 +223,7 @@ import approvalRoutes from './routes/approvals.js';
 import featureFlagRoutes from './routes/featureFlags.js';
 import nightAuditRoutes from './routes/nightAudit.js';
 import cancellationRoutes from './routes/cancellations.js';
+import dashboardConfigRoutes from './routes/dashboardConfig.js';
 
 // ── Production Readiness: New middleware ──
 import * as tenantIsolation from './middleware/tenantIsolation.js';
@@ -309,13 +310,16 @@ async function initializeApp() {
 }
 
 // Start initialization and fail closed in production.
+// Wrapped in IIFE for Jest CJS compatibility (top-level await is ESM-only syntax).
 if (!isTestRuntime) {
-    try {
-        await initializeApp();
-    } catch (error) {
-        logger.error('App initialization failed:', error);
-        process.exit(1);
-    }
+    (async () => {
+        try {
+            await initializeApp();
+        } catch (error) {
+            logger.error('App initialization failed:', error);
+            process.exit(1);
+        }
+    })();
 }
 
 // Swagger configuration
@@ -328,8 +332,7 @@ const swaggerOptions = {
             description: 'A comprehensive hotel management system API',
         },
         servers: [{
-            url: process.env.NODE_ENV === 'production' ?
-                (process.env.API_BASE_URL || 'https://hotel-management-xcsx.onrender.com/api/v1') : 'http://localhost:4000/api/v1',
+            url: process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4000}/api/v1`,
             description: 'API Server'
         }],
         components: {
@@ -782,7 +785,9 @@ registerApiRoutes(app, {
     personalizationRoutes,
     featureFlagRoutes,
     nightAuditRoutes,
-    cancellationRoutes
+    cancellationRoutes,
+    dashboardConfigRoutes,
+    discountPricingRoutes
 });
 
 // Serve widget.js for external websites
@@ -797,7 +802,7 @@ app.get('/widget.js', (req, res) => {
     const widgetPath = path.join(process.cwd(), 'frontend', 'public', 'widget.js');
     res.sendFile(widgetPath, (err) => {
         if (err) {
-            console.error('Error serving widget.js:', err);
+            logger.error('Error serving widget.js:', err);
             res.status(404).send('Widget script not found');
         }
     });

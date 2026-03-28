@@ -1,5 +1,6 @@
 import express from 'express';
 import Joi from 'joi';
+import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -372,6 +373,188 @@ router.get('/', catchAsync(async (req, res) => {
 
 /**
  * @swagger
+ * /api/v1/documents/admin/queue:
+ *   get:
+ *     summary: Get admin document verification queue with stats
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/admin/queue',
+  authorizePolicy('documentUpload', 'managerAccess'),
+  catchAsync(async (req, res) => {
+    const {
+      userType = 'guest',
+      status = 'pending',
+      propertyId,
+      limit = 50,
+      skip = 0
+    } = req.query;
+
+    const hotelId = propertyId || req.user.hotelId;
+    const baseFilter = {
+      hotelId,
+      isActive: true,
+      isDeleted: { $ne: true }
+    };
+
+    const docFilter = { ...baseFilter };
+    if (userType && userType !== 'all') {
+      docFilter.userType = userType;
+    }
+    if (status && status !== 'all') {
+      docFilter.status = status;
+    }
+
+    const documents = await Document.find(docFilter)
+      .populate('userId', 'name email role')
+      .populate('verificationDetails.verifiedBy', 'name')
+      .populate('departmentId', 'name')
+      .populate('bookingId', 'confirmationNumber')
+      .sort('-createdAt')
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .lean();
+
+    const [total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs] = await Promise.all([
+      Document.countDocuments(baseFilter),
+      Document.countDocuments({ ...baseFilter, status: 'pending' }),
+      Document.countDocuments({ ...baseFilter, status: 'verified' }),
+      Document.countDocuments({ ...baseFilter, status: 'rejected' }),
+      Document.countDocuments({ ...baseFilter, status: 'expired' }),
+      Document.countDocuments({ ...baseFilter, status: 'renewal_required' }),
+      Document.countDocuments({ ...baseFilter, userType: 'guest' }),
+      Document.countDocuments({ ...baseFilter, userType: 'staff' }),
+    ]);
+
+    res.json({
+      status: 'success',
+      documents,
+      totalStats: {
+        total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /api/v1/documents/pending-verifications:
+ *   get:
+ *     summary: Get pending document verifications (Admin only)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/pending-verifications',
+  authorizePolicy('documentUpload', 'managerAccess'),
+  catchAsync(async (req, res) => {
+    const {
+      userType,
+      departmentId,
+      priority,
+      limit = 100,
+      skip = 0
+    } = req.query;
+
+    const documents = await Document.getPendingVerifications(req.user.hotelId, {
+      userType,
+      departmentId,
+      priority,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+
+    res.json({
+      status: 'success',
+      results: documents.length,
+      data: { documents }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /api/v1/documents/analytics:
+ *   get:
+ *     summary: Get document analytics and statistics
+ *     tags: [Documents]
+ */
+router.get('/analytics', catchAsync(async (req, res) => {
+  const { period = '30d', userType = 'all', propertyId } = req.query;
+
+  // Calculate date range
+  const endDate = new Date();
+  const startDate = new Date();
+  const days = parseInt(period.replace(/[^0-9]/g, '')) || 30;
+  startDate.setDate(startDate.getDate() - days);
+
+  const hotelId = propertyId || req.user.hotelId;
+  const matchQuery = {
+    createdAt: { $gte: startDate, $lte: endDate },
+    isActive: true,
+    isDeleted: { $ne: true }
+  };
+  if (hotelId && mongoose.Types.ObjectId.isValid(String(hotelId))) {
+    matchQuery.hotelId = new mongoose.Types.ObjectId(String(hotelId));
+  }
+  if (userType && userType !== 'all') {
+    matchQuery.userType = userType;
+  }
+
+  const [totalDocs, statusBreakdown, typeCounts] = await Promise.all([
+    Document.countDocuments(matchQuery),
+    Document.aggregate([
+      { $match: matchQuery },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]),
+    Document.aggregate([
+      { $match: matchQuery },
+      { $group: { _id: '$documentType', count: { $sum: 1 } } }
+    ])
+  ]);
+
+  const statusMap = statusBreakdown.reduce((acc, item) => {
+    acc[item._id || 'unknown'] = item.count;
+    return acc;
+  }, {});
+
+  const verified = statusMap.verified || 0;
+  const pending = statusMap.pending || 0;
+  const rejected = statusMap.rejected || 0;
+  const expired = statusMap.expired || 0;
+
+  res.json({
+    status: 'success',
+    analytics: {
+      overview: {
+        totalDocuments: totalDocs,
+        pendingVerification: pending,
+        verifiedDocuments: verified,
+        rejectedDocuments: rejected,
+        expiredDocuments: expired,
+        renewalRequests: 0,
+        complianceRate: totalDocs > 0 ? (verified / totalDocs) * 100 : 0,
+        avgVerificationTime: 0
+      },
+      trends: {
+        uploadsThisMonth: totalDocs,
+        uploadsLastMonth: 0,
+        verificationsThisMonth: verified + rejected,
+        verificationsLastMonth: 0,
+        rejectionsThisMonth: rejected,
+        rejectionsLastMonth: 0
+      },
+      documentsByType: typeCounts.map(t => ({ _id: t._id, count: t.count })),
+      verificationTimeline: [],
+      departmentBreakdown: [],
+      expiryForecast: []
+    }
+  });
+}));
+
+/**
+ * @swagger
  * /api/v1/documents/{id}:
  *   get:
  *     summary: Get specific document details
@@ -380,12 +563,16 @@ router.get('/', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/:id', catchAsync(async (req, res) => {
+  // Guard: reject non-ObjectId strings (e.g. "analytics" matched by this catch-all)
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError(`Invalid document ID: ${req.params.id}`, 400);
+  }
   const document = await Document.findById(req.params.id)
     .populate('userId', 'name email role')
     .populate('uploadedBy', 'name email')
     .populate('verificationDetails.verifiedBy', 'name email')
     .populate('departmentId', 'name code')
-    .populate('bookingId', 'bookingNumber checkIn checkOut').lean();
+    .populate('bookingId', 'bookingNumber checkIn checkOut');
 
   if (!document) {
     throw new ApplicationError('Document not found', 404);
@@ -417,7 +604,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/:id/download', catchAsync(async (req, res) => {
-  const document = await Document.findById(req.params.id).select('+filePath').lean();
+  const document = await Document.findById(req.params.id).select('+filePath');
 
   if (!document) {
     throw new ApplicationError('Document not found', 404);
@@ -476,7 +663,7 @@ router.patch('/:id/verify',
   catchAsync(async (req, res) => {
     const { comments, confidenceLevel = 5 } = req.body;
 
-    const document = await Document.findById(req.params.id).lean();
+    const document = await Document.findById(req.params.id);
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -516,7 +703,7 @@ router.patch('/:id/reject',
       throw new ApplicationError('Rejection reason is required', 400);
     }
 
-    const document = await Document.findById(req.params.id).lean();
+    const document = await Document.findById(req.params.id);
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -532,6 +719,40 @@ router.patch('/:id/reject',
       data: {
         document,
         message: 'Document rejected'
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /api/v1/documents/{id}/request-renewal:
+ *   patch:
+ *     summary: Request document renewal (Admin only)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/:id/request-renewal',
+  authorizePolicy('documentUpload', 'managerAccess'),
+  validate(mutationBaselineSchema),
+  catchAsync(async (req, res) => {
+    const document = await Document.findById(req.params.id);
+    if (!document) {
+      throw new ApplicationError('Document not found', 404);
+    }
+
+    if (!['verified', 'expired'].includes(document.status)) {
+      throw new ApplicationError('Only verified or expired documents can be marked for renewal', 400);
+    }
+
+    await document.markForRenewal(req.user._id, req.body.notes || 'Renewal requested by admin');
+
+    res.json({
+      status: 'success',
+      data: {
+        document,
+        message: 'Document marked for renewal'
       }
     });
   })
@@ -738,42 +959,6 @@ router.get('/guest/:guestId',
           email: guestUser.email
         }
       }
-    });
-  })
-);
-
-/**
- * @swagger
- * /api/v1/documents/pending-verifications:
- *   get:
- *     summary: Get pending document verifications (Admin only)
- *     tags: [Documents]
- *     security:
- *       - bearerAuth: []
- */
-router.get('/pending-verifications',
-  authorizePolicy('documentUpload', 'managerAccess'),
-  catchAsync(async (req, res) => {
-    const {
-      userType,
-      departmentId,
-      priority,
-      limit = 100,
-      skip = 0
-    } = req.query;
-
-    const documents = await Document.getPendingVerifications(req.user.hotelId, {
-      userType,
-      departmentId,
-      priority,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
-    });
-
-    res.json({
-      status: 'success',
-      results: documents.length,
-      data: { documents }
     });
   })
 );

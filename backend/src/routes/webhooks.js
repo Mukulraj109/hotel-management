@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
+import StripeWebhookEvent from '../models/StripeWebhookEvent.js';
 import logger from '../utils/logger.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
@@ -48,6 +49,41 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
   logger.info('Stripe webhook received:', { type: event.type, id: event.id });
 
   try {
+    const existingEvent = await StripeWebhookEvent.findOne({
+      provider: 'stripe',
+      eventId: event.id
+    });
+
+    if (existingEvent?.status === 'processed') {
+      logger.info('Duplicate Stripe webhook ignored (already processed)', {
+        id: event.id,
+        type: event.type
+      });
+      return res.json({ received: true, duplicate: true });
+    }
+
+    if (existingEvent?.status === 'processing') {
+      logger.info('Stripe webhook currently processing, acknowledging duplicate delivery', {
+        id: event.id,
+        type: event.type
+      });
+      return res.json({ received: true, duplicate: true });
+    }
+
+    if (existingEvent?.status === 'failed') {
+      existingEvent.status = 'processing';
+      existingEvent.attempts += 1;
+      existingEvent.lastError = undefined;
+      await existingEvent.save();
+    } else if (!existingEvent) {
+      await StripeWebhookEvent.create({
+        provider: 'stripe',
+        eventId: event.id,
+        eventType: event.type,
+        status: 'processing'
+      });
+    }
+
     switch (event.type) {
       case 'payment_intent.succeeded':
         await handlePaymentSuccess(event.data.object);
@@ -69,8 +105,30 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
         logger.info(`Unhandled event type: ${event.type}`);
     }
 
+    await StripeWebhookEvent.updateOne(
+      { provider: 'stripe', eventId: event.id },
+      {
+        $set: {
+          status: 'processed',
+          processedAt: new Date(),
+          eventType: event.type
+        }
+      }
+    );
+
     res.json({ received: true });
   } catch (error) {
+    await StripeWebhookEvent.updateOne(
+      { provider: 'stripe', eventId: event.id },
+      {
+        $set: {
+          status: 'failed',
+          eventType: event.type,
+          lastError: error?.message || 'Unknown webhook processing error'
+        }
+      },
+      { upsert: true }
+    );
     logger.error('Error processing Stripe webhook:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }

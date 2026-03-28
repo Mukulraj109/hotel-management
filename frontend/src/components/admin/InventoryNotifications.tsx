@@ -69,9 +69,7 @@ export function InventoryNotifications({
     try {
       setLoading(true);
       const { data: data } = await api.get('/inventory-notifications');
-      {
-        setNotifications(data.data.notifications);
-      }
+      setNotifications(data.data.notifications);
     } catch {
       // Error handled silently
     } finally {
@@ -83,9 +81,7 @@ export function InventoryNotifications({
     try {
       setLoading(true);
       const { data: data } = await api.get('/inventory-notifications/summary');
-      {
-        setSummary(data.data);
-      }
+      setSummary(data.data);
     } catch {
       // Error handled silently
     } finally {
@@ -340,7 +336,7 @@ export function InventoryNotifications({
       {/* Actions */}
       <div className="mt-4 pt-4 border-t flex justify-between">
         <Button
-          onClick={() => window.location.href = '/admin/inventory-notifications'}
+          onClick={() => window.location.href = '/admin/inventory'}
           variant="secondary"
           size="sm"
         >

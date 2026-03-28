@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { api } from '@/services/api';
 
 interface GuestDetails {
   name: string;
@@ -96,38 +97,26 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
 
   const fetchRoomTypes = async () => {
     try {
-      // Mock data - in real app, this would fetch from API
-      const mockRoomTypes: RoomType[] = [
-        {
-          _id: '68cd01414419c17b5f6b4c18', // Standard Room ObjectId
-          name: 'Standard Room',
-          description: 'Comfortable room with city view',
-          basePrice: 3500,
-          maxOccupancy: 2,
-          amenities: ['WiFi', 'TV', 'AC'],
-          images: []
-        },
-        {
-          _id: '68cd01414419c17b5f6b4c1d', // Deluxe Room ObjectId
-          name: 'Deluxe Room',
-          description: 'Spacious room with premium amenities',
-          basePrice: 5000,
-          maxOccupancy: 3,
-          amenities: ['WiFi', 'TV', 'AC', 'Mini Bar'],
-          images: []
-        },
-        {
-          _id: '68cd01414419c17b5f6b4c2d', // Executive Deluxe ObjectId
-          name: 'Executive Deluxe',
-          description: 'Luxury suite with separate living area',
-          basePrice: 8000,
-          maxOccupancy: 4,
-          amenities: ['WiFi', 'TV', 'AC', 'Mini Bar', 'Kitchenette'],
-          images: []
-        }
-      ];
-      setRoomTypes(mockRoomTypes);
-    } catch (error) {
+      const response = await api.get('/room-types', { params: { limit: 100 } });
+      const rawRoomTypes = response.data?.data?.roomTypes || response.data?.data || response.data?.roomTypes || [];
+
+      if (!Array.isArray(rawRoomTypes) || rawRoomTypes.length === 0) {
+        setRoomTypes([]);
+        return;
+      }
+
+      const mapped: RoomType[] = rawRoomTypes.map((rt: Record<string, unknown>) => ({
+        _id: (rt._id as string) || '',
+        name: (rt.name as string) || (rt.displayName as string) || '',
+        description: (rt.description as string) || '',
+        basePrice: (rt.basePrice as number) || (rt.baseRate as number) || (rt.ratePerNight as number) || 0,
+        maxOccupancy: (rt.maxOccupancy as number) || (rt.capacity as number) || 2,
+        amenities: Array.isArray(rt.amenities) ? (rt.amenities as string[]) : [],
+        images: Array.isArray(rt.images) ? (rt.images as string[]) : [],
+      }));
+
+      setRoomTypes(mapped);
+    } catch {
       toast.error('Failed to load room types');
     }
   };

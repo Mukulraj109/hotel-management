@@ -1,25 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { 
-  Save, 
-  Eye, 
-  Undo, 
-  Redo, 
-  Settings, 
-  Palette, 
-  Type, 
-  Mail, 
-  Phone, 
-  Hash, 
-  Calendar, 
-  Clock, 
-  AlignLeft, 
-  List, 
-  Circle, 
-  CheckSquare, 
-  Upload, 
-  Minus, 
+import {
+  Save,
+  Eye,
+  Type,
+  Mail,
+  Phone,
+  Hash,
+  Calendar,
+  Clock,
+  AlignLeft,
+  List,
+  Circle,
+  CheckSquare,
+  Upload,
+  Minus,
   Code,
   Plus,
   Trash2,
@@ -36,7 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Switch } from '../ui/switch';
 import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Separator } from '../ui/separator';
 import FormPreview from './FormPreview';
 import { BookingFormTemplate, FormField, FormStyling, FormSettings } from '../../services/bookingFormService';
@@ -83,7 +79,7 @@ const getColorClass = (color: string) => {
   return colorMap[color] || colorMap.gray;
 };
 
-const DraggableField: React.FC<{ fieldType: Record<string, unknown>; onAddField: (type: string) => void }> = ({ fieldType, onAddField }) => {
+const DraggableField: React.FC<{ fieldType: { type: string; icon: React.ElementType; label: string; color: string }; onAddField: (type: string) => void }> = ({ fieldType, onAddField }) => {
   const [{ isDragging }, drag] = useDrag({
     type: 'field',
     item: { type: fieldType.type },
@@ -101,7 +97,7 @@ const DraggableField: React.FC<{ fieldType: Record<string, unknown>; onAddField:
         isDragging ? 'opacity-50' : ''
       } ${getColorClass(fieldType.color)}`}
       onClick={() => onAddField(fieldType.type)}
-     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onAddField(fieldType.type); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAddField(fieldType.type); } }}>
       <div className="flex items-center gap-2">
         <IconComponent className="w-4 h-4" />
         <span className="text-sm font-medium">{fieldType.label}</span>
@@ -241,7 +237,7 @@ const FormFieldEditor: React.FC<{
             
             <div className="space-y-2">
               {localField.options?.map((option, index) => (
-                <div key={`-${index}-${option}`} className="flex gap-2 items-center">
+                <div key={`option-${index}-${option.value}`} className="flex gap-2 items-center">
                   <Input
                     value={option.value}
                     onChange={(e) => updateOption(index, { value: e.target.value })}
@@ -363,7 +359,7 @@ const FieldPreview: React.FC<{
           isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
         } ${isDragging ? 'opacity-50' : ''}`}
         onClick={onSelect}
-       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(e as any); } }}>
+       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }}>
         <div className="flex items-center gap-3">
           <Move className="w-4 h-4 text-gray-400 cursor-grab" />
           <IconComponent className="w-4 h-4 text-gray-600" />
@@ -447,6 +443,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
   const [activeTab, setActiveTab] = useState('builder');
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
     if (template) {
@@ -454,21 +451,24 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
         ...template,
         fields: template.fields || []
       });
+      setIsDirty(false);
     }
   }, [template]);
+
 
   const generateFieldId = () => {
     return `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
   const addField = useCallback((type: string) => {
+    const fieldId = generateFieldId();
     const newField: FormField = {
-      id: generateFieldId(),
-      type: type as unknown,
+      id: fieldId,
+      type: type as FormField['type'],
       label: `New ${type} field`,
       placeholder: '',
       required: false,
-      order: (formData.fields?.length || 0) + 1,
+      order: 0, // Will be set from prev state
       width: '100'
     };
 
@@ -480,15 +480,20 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
       ];
     }
 
-    setFormData(prev => ({
-      ...prev,
-      fields: [...(prev.fields || []), newField]
-    }));
+    setIsDirty(true);
+    setFormData(prev => {
+      newField.order = (prev.fields?.length || 0) + 1;
+      return {
+        ...prev,
+        fields: [...(prev.fields || []), newField]
+      };
+    });
 
-    setSelectedField(newField.id);
-  }, [formData.fields]);
+    setSelectedField(fieldId);
+  }, []);
 
   const updateField = useCallback((fieldId: string, updates: Partial<FormField>) => {
+    setIsDirty(true);
     setFormData(prev => ({
       ...prev,
       fields: prev.fields?.map(field =>
@@ -498,6 +503,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
   }, []);
 
   const deleteField = useCallback((fieldId: string) => {
+    setIsDirty(true);
     setFormData(prev => ({
       ...prev,
       fields: prev.fields?.filter(field => field.id !== fieldId) || []
@@ -506,41 +512,46 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
   }, []);
 
   const duplicateField = useCallback((fieldId: string) => {
-    const field = formData.fields?.find(f => f.id === fieldId);
-    if (field) {
+    const newId = generateFieldId();
+    setIsDirty(true);
+    setFormData(prev => {
+      const field = prev.fields?.find(f => f.id === fieldId);
+      if (!field) return prev;
+
       const duplicatedField: FormField = {
         ...field,
-        id: generateFieldId(),
+        id: newId,
         label: `${field.label} (Copy)`,
-        order: (formData.fields?.length || 0) + 1
+        order: (prev.fields?.length || 0) + 1
       };
 
-      setFormData(prev => ({
+      return {
         ...prev,
         fields: [...(prev.fields || []), duplicatedField]
-      }));
-
-      setSelectedField(duplicatedField.id);
-    }
-  }, [formData.fields]);
-
-  const moveField = useCallback((dragIndex: number, hoverIndex: number) => {
-    const fields = [...(formData.fields || [])];
-    const draggedField = fields[dragIndex];
-    
-    fields.splice(dragIndex, 1);
-    fields.splice(hoverIndex, 0, draggedField);
-    
-    // Update order
-    fields.forEach((field, index) => {
-      field.order = index + 1;
+      };
     });
 
-    setFormData(prev => ({
-      ...prev,
-      fields
-    }));
-  }, [formData.fields]);
+    setSelectedField(newId);
+  }, []);
+
+  const moveField = useCallback((dragIndex: number, hoverIndex: number) => {
+    setIsDirty(true);
+    setFormData(prev => {
+      const fields = [...(prev.fields || [])];
+      const draggedField = fields[dragIndex];
+
+      fields.splice(dragIndex, 1);
+      fields.splice(hoverIndex, 0, draggedField);
+
+      // Update order immutably
+      const reorderedFields = fields.map((field, index) => ({
+        ...field,
+        order: index + 1
+      }));
+
+      return { ...prev, fields: reorderedFields };
+    });
+  }, []);
 
   const handleSave = async () => {
     if (!formData.name || !formData.name.trim()) {
@@ -550,6 +561,15 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
 
     if (!formData.fields || formData.fields.length === 0) {
       toast.error('Please add at least one field to the form');
+      return;
+    }
+
+    const emptyLabelField = formData.fields.find(f =>
+      !['divider', 'html'].includes(f.type) && (!f.label || !f.label.trim())
+    );
+    if (emptyLabelField) {
+      toast.error(`Field "${emptyLabelField.type}" is missing a label`);
+      setSelectedField(emptyLabelField.id);
       return;
     }
 
@@ -581,7 +601,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-screen bg-gray-50">
         {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+        <div className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold mb-4">Form Builder</h2>
             
@@ -597,7 +617,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                     <Label>Form Name</Label>
                     <Input
                       value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => { setIsDirty(true); setFormData(prev => ({ ...prev, name: e.target.value })); }}
                       placeholder="Enter form name"
                     />
                   </div>
@@ -606,7 +626,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                     <Label>Description</Label>
                     <Textarea
                       value={formData.description || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) => { setIsDirty(true); setFormData(prev => ({ ...prev, description: e.target.value })); }}
                       placeholder="Enter form description"
                       rows={3}
                     />
@@ -616,7 +636,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                     <Label>Category</Label>
                     <Select 
                       value={formData.category} 
-                      onValueChange={(category: Record<string, unknown>) => setFormData(prev => ({ ...prev, category }))}
+                      onValueChange={(category: string) => { setIsDirty(true); setFormData(prev => ({ ...prev, category })); }}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -651,13 +671,33 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
               <TabsContent value="settings" className="mt-4">
                 <div className="space-y-4">
                   <div>
+                    <Label>Form Status</Label>
+                    <Select
+                      value={formData.status || 'draft'}
+                      onValueChange={(status: string) => { setIsDirty(true); setFormData(prev => ({ ...prev, status })); }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="active">Active (Published)</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">Only active forms can receive public submissions.</p>
+                  </div>
+
+                  <Separator />
+
+                  <div>
                     <Label>Success Message</Label>
                     <Textarea
                       value={formData.settings?.successMessage || ''}
-                      onChange={(e) => setFormData(prev => ({
+                      onChange={(e) => { setIsDirty(true); setFormData(prev => ({
                         ...prev,
                         settings: { ...prev.settings, successMessage: e.target.value }
-                      }))}
+                      })); }}
                       rows={2}
                     />
                   </div>
@@ -666,10 +706,10 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                     <Label>Error Message</Label>
                     <Textarea
                       value={formData.settings?.errorMessage || ''}
-                      onChange={(e) => setFormData(prev => ({
+                      onChange={(e) => { setIsDirty(true); setFormData(prev => ({
                         ...prev,
                         settings: { ...prev.settings, errorMessage: e.target.value }
-                      }))}
+                      })); }}
                       rows={2}
                     />
                   </div>
@@ -677,10 +717,10 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                   <div className="flex items-center space-x-2">
                     <Switch
                       checked={formData.settings?.enableProgressBar || false}
-                      onCheckedChange={(checked) => setFormData(prev => ({
+                      onCheckedChange={(checked) => { setIsDirty(true); setFormData(prev => ({
                         ...prev,
                         settings: { ...prev.settings, enableProgressBar: checked }
-                      }))}
+                      })); }}
                     />
                     <Label>Enable Progress Bar</Label>
                   </div>
@@ -688,10 +728,10 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                   <div className="flex items-center space-x-2">
                     <Switch
                       checked={formData.settings?.allowFileUploads || false}
-                      onCheckedChange={(checked) => setFormData(prev => ({
+                      onCheckedChange={(checked) => { setIsDirty(true); setFormData(prev => ({
                         ...prev,
                         settings: { ...prev.settings, allowFileUploads: checked }
-                      }))}
+                      })); }}
                     />
                     <Label>Allow File Uploads</Label>
                   </div>
@@ -699,10 +739,10 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                   <div className="flex items-center space-x-2">
                     <Switch
                       checked={formData.settings?.enableCaptcha || false}
-                      onCheckedChange={(checked) => setFormData(prev => ({
+                      onCheckedChange={(checked) => { setIsDirty(true); setFormData(prev => ({
                         ...prev,
                         settings: { ...prev.settings, enableCaptcha: checked }
-                      }))}
+                      })); }}
                     />
                     <Label>Enable Captcha</Label>
                   </div>
@@ -722,7 +762,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                   {template ? 'Edit Form' : 'Create Form'}: {formData.name || 'Untitled Form'}
                 </h1>
                 <p className="text-sm text-gray-600">
-                  {formData.fields?.length || 0} fields
+                  {formData.fields?.length || 0} {(formData.fields?.length || 0) === 1 ? 'field' : 'fields'}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -734,7 +774,10 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
                   <Save className="w-4 h-4 mr-2" />
                   {saving ? 'Saving...' : 'Save'}
                 </Button>
-                <Button variant="outline" onClick={onCancel}>
+                <Button variant="outline" onClick={() => {
+                  if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) return;
+                  onCancel();
+                }}>
                   Cancel
                 </Button>
               </div>

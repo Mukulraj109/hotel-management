@@ -8,6 +8,7 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 // Get all guests with advanced filtering and search
 export const getAllGuests = catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
   const {
     page = 1,
     limit = 20,
@@ -18,16 +19,11 @@ export const getAllGuests = catchAsync(async (req, res) => {
     hasReviews,
     lastStayDate,
     sortBy = 'createdAt',
-    sortOrder = 'desc',
-    hotelId
+    sortOrder = 'desc'
   } = req.query;
 
   // Build query
-  const query = { role: 'guest' };
-  
-  if (hotelId) {
-    query.hotelId = hotelId;
-  }
+  const query = { role: 'guest', hotelId };
 
   // Search functionality
   if (search) {
@@ -289,10 +285,9 @@ export const bulkUpdateGuests = catchAsync(async (req, res) => {
 
 // Get guest analytics
 export const getGuestAnalytics = catchAsync(async (req, res) => {
-  const { hotelId } = req.query;
+  const { hotelId } = req.user;
 
-  const query = { role: 'guest' };
-  if (hotelId) query.hotelId = hotelId;
+  const query = { role: 'guest', hotelId };
 
   const analytics = await User.aggregate([
     { $match: query },
@@ -362,16 +357,15 @@ export const getGuestAnalytics = catchAsync(async (req, res) => {
 
 // Search guests with advanced criteria
 export const searchGuests = catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
   const {
     query: searchQuery,
     filters = {},
     page = 1,
-    limit = 20,
-    hotelId
+    limit = 20
   } = req.body;
 
-  const query = { role: 'guest' };
-  if (hotelId) query.hotelId = hotelId;
+  const query = { role: 'guest', hotelId };
 
   // Text search
   if (searchQuery) {
@@ -423,10 +417,10 @@ export const searchGuests = catchAsync(async (req, res) => {
 
 // Export guests to CSV
 export const exportGuests = catchAsync(async (req, res) => {
-  const { hotelId, format = 'csv' } = req.query;
+  const { hotelId } = req.user;
+  const { format = 'csv' } = req.query;
 
-  const query = { role: 'guest' };
-  if (hotelId) query.hotelId = hotelId;
+  const query = { role: 'guest', hotelId };
 
   const guests = await User.find(query)
     .populate('salutationId', 'title fullForm')

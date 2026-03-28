@@ -100,6 +100,11 @@ export const comprehensiveAPILogger = (options = {}) => {
       const endTime = Date.now();
       const duration = endTime - startTime;
 
+      // req.user is set by authenticate() which runs after this middleware; refresh for accurate logs
+      requestData.authenticated = !!req.user;
+      requestData.userId = req.user?._id?.toString?.() || req.user?.id;
+      requestData.userRole = req.user?.role;
+
       // Capture response body if under size limit
       if (logPayloads && body) {
         const bodyStr = typeof body === 'string' ? body : safeStringify(body);

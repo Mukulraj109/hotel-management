@@ -162,7 +162,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
         const isAvailable = !isOccupied && (room.status === 'vacant' || room.status === 'dirty');
 
         return {
-          ...room.toObject(),
+          ...room,
           isAvailable,
           currentStatus: room.status,
           isOccupiedByBooking: isOccupied
@@ -619,21 +619,11 @@ router.get('/:id/price-history',
 
     // Property access already validated by ensurePropertyAccess middleware
 
-    // For now, return empty history as we don't have a price history model yet
-    // In a full implementation, you'd query a PriceHistory collection
-    const mockHistory = [
-      {
-        date: new Date().toISOString(),
-        oldPrice: room.baseRate,
-        newPrice: room.currentRate,
-        changedBy: 'System',
-        reason: 'Initial rate'
-      }
-    ];
-
+    // Price history tracking is not yet implemented — a PriceHistory model does not exist
     res.json({
       status: 'success',
-      data: mockHistory
+      data: [],
+      message: 'Price history tracking not enabled. No PriceHistory model exists yet.'
     });
   })
 );

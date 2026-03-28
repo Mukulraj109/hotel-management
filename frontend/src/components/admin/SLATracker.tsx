@@ -10,10 +10,7 @@ import {
   Target,
   Zap,
   Activity,
-  TrendingDown,
   TrendingUp,
-  Users,
-  Calendar,
   Filter,
   Eye,
   Settings,
@@ -25,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { serviceTypeService, ServiceType } from '../../services/serviceTypeService';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '@/services/api';
 
 interface SLAAlert {
   id: string;
@@ -103,60 +101,82 @@ const SLATracker: React.FC = () => {
       });
       setServiceTypes(serviceTypesResponse.serviceTypes);
 
-      // Generate mock data for demonstration
-      const mockMetrics: SLAMetrics = {
+      // Fetch real active service requests from the guest-services API
+      const [activeResponse, statsResponse] = await Promise.all([
+        api.get('/guest-services', {
+          params: { status: 'pending', limit: 20 }
+        }).catch(() => null),
+        api.get('/guest-services/stats').catch(() => null)
+      ]);
+
+      // Also fetch in-progress requests
+      const inProgressResponse = await api.get('/guest-services', {
+        params: { status: 'in_progress', limit: 20 }
+      }).catch(() => null);
+
+      const pendingRequests = activeResponse?.data?.data?.serviceRequests || [];
+      const inProgressRequests = inProgressResponse?.data?.data?.serviceRequests || [];
+      const allActiveRequests = [...pendingRequests, ...inProgressRequests];
+
+      // Map real service requests to the ServiceRequest interface
+      const mappedRequests: ServiceRequest[] = allActiveRequests.map((req: Record<string, unknown>) => {
+        const booking = req.bookingId as Record<string, unknown> | null;
+        const rooms = (booking?.rooms as Array<Record<string, unknown>>) || [];
+        const roomNumber = rooms.length > 0
+          ? ((rooms[0].roomId as Record<string, unknown>)?.roomNumber as string || 'N/A')
+          : 'N/A';
+        const reqUser = req.userId as Record<string, unknown> | null;
+
+        return {
+          id: req._id as string,
+          serviceType: req.serviceType as string,
+          customerName: (reqUser?.name as string) || 'Guest',
+          roomNumber,
+          status: req.status as ServiceRequest['status'],
+          createdAt: new Date(req.createdAt as string),
+          responseTime: req.responseTime as number | undefined,
+          completionTime: req.completionTime as number | undefined,
+          slaSettings: {
+            responseTime: 15,
+            completionTime: 60,
+            escalationTime: 30
+          }
+        };
+      });
+
+      // Calculate SLA metrics from real stats
+      const overall = statsResponse?.data?.data?.overall || {};
+      const totalRequests = overall.totalRequests || 0;
+      const completedCount = overall.completedCount || 0;
+      const pendingCount = overall.pendingCount || 0;
+
+      const completionPercentage = totalRequests > 0
+        ? Math.round((completedCount / totalRequests) * 100 * 10) / 10
+        : 0;
+
+      const calculatedMetrics: SLAMetrics = {
         responseTimeSLA: {
-          met: 142,
-          breached: 8,
-          percentage: 94.7
+          met: completedCount,
+          breached: pendingCount,
+          percentage: completionPercentage
         },
         completionTimeSLA: {
-          met: 128,
-          breached: 12,
-          percentage: 91.4
+          met: completedCount,
+          breached: totalRequests - completedCount,
+          percentage: completionPercentage
         },
-        escalatedRequests: 3,
-        activeAlerts: 5,
-        averageResponseTime: 12.5,
-        averageCompletionTime: 48.2
+        escalatedRequests: mappedRequests.filter(r => r.status === 'escalated').length,
+        activeAlerts: 0,
+        averageResponseTime: overall.avgResponseTime || 0,
+        averageCompletionTime: overall.avgCompletionTime || 0
       };
 
-      const mockActiveRequests: ServiceRequest[] = [
-        {
-          id: '1',
-          serviceType: 'room_service',
-          customerName: 'John Smith',
-          roomNumber: '301',
-          status: 'in_progress',
-          createdAt: new Date(Date.now() - 25 * 60 * 1000), // 25 minutes ago
-          slaSettings: { responseTime: 15, completionTime: 60, escalationTime: 30 }
-        },
-        {
-          id: '2',
-          serviceType: 'housekeeping',
-          customerName: 'Jane Doe',
-          roomNumber: '205',
-          status: 'pending',
-          createdAt: new Date(Date.now() - 18 * 60 * 1000), // 18 minutes ago
-          slaSettings: { responseTime: 20, completionTime: 90, escalationTime: 45 }
-        },
-        {
-          id: '3',
-          serviceType: 'maintenance',
-          customerName: 'Bob Johnson',
-          roomNumber: '412',
-          status: 'escalated',
-          createdAt: new Date(Date.now() - 185 * 60 * 1000), // 3+ hours ago
-          responseTime: 35,
-          slaSettings: { responseTime: 30, completionTime: 240, escalationTime: 60 }
-        }
-      ];
-
       // Generate alerts based on active requests
-      const generatedAlerts = generateAlertsFromRequests(mockActiveRequests);
+      const generatedAlerts = generateAlertsFromRequests(mappedRequests);
+      calculatedMetrics.activeAlerts = generatedAlerts.length;
 
-      setMetrics(mockMetrics);
-      setActiveRequests(mockActiveRequests);
+      setMetrics(calculatedMetrics);
+      setActiveRequests(mappedRequests);
       setAlerts(generatedAlerts);
 
     } catch (error) {
@@ -296,7 +316,9 @@ const SLATracker: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+            toast.info('SLA configuration is managed via Service Types. Go to Service Management tab to set response and completion times per service type.');
+          }}>
             <Settings className="w-4 h-4 mr-2" />
             Configure SLAs
           </Button>
@@ -311,9 +333,9 @@ const SLATracker: React.FC = () => {
             <Timer className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{metrics?.responseTimeSLA.percentage.toFixed(1)}%</div>
+            <div className="text-2xl font-bold">{(metrics?.responseTimeSLA?.percentage ?? 0).toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              {metrics?.responseTimeSLA.met} met, {metrics?.responseTimeSLA.breached} breached
+              {metrics?.responseTimeSLA?.met ?? 0} met, {metrics?.responseTimeSLA?.breached ?? 0} breached
             </p>
             <div className="mt-2">
               <Progress
@@ -330,9 +352,9 @@ const SLATracker: React.FC = () => {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{metrics?.completionTimeSLA.percentage.toFixed(1)}%</div>
+            <div className="text-2xl font-bold">{(metrics?.completionTimeSLA?.percentage ?? 0).toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              {metrics?.completionTimeSLA.met} met, {metrics?.completionTimeSLA.breached} breached
+              {metrics?.completionTimeSLA?.met ?? 0} met, {metrics?.completionTimeSLA?.breached ?? 0} breached
             </p>
             <div className="mt-2">
               <Progress

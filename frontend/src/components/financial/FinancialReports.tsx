@@ -74,10 +74,13 @@ interface FinancialStatement {
   ratios: {
     currentRatio: number;
     debtToEquity: number;
+    debtToEquityRatio?: number;
     returnOnAssets: number;
     returnOnEquity: number;
     profitMargin: number;
     grossMargin: number;
+    assetTurnover?: number;
+    equityMultiplier?: number;
   };
 }
 
@@ -114,10 +117,8 @@ const FinancialReports: React.FC = () => {
       setFinancialData(response.data);
 
     } catch (error: unknown) {
-      toast.error('Failed to fetch financial data from backend, using fallback data');
-
-      // Fallback to sample data if API fails
-      setFinancialData(getSampleData());
+      toast.error('Failed to fetch financial data');
+      setFinancialData(null);
     } finally {
       setLoading(false);
     }
@@ -127,84 +128,105 @@ const FinancialReports: React.FC = () => {
   // have been removed as calculations are now performed on the backend via the
   // comprehensive financial statement endpoint for better consistency and performance.
 
-  const getSampleData = (): FinancialStatement => ({
-    incomeStatement: {
-      revenue: {
-        roomRevenue: 2850000,
-        fbRevenue: 950000,
-        otherRevenue: 150000,
-        totalRevenue: 3950000
-      },
-      expenses: {
-        operatingExpenses: 1200000,
-        staffExpenses: 800000,
-        marketingExpenses: 200000,
-        adminExpenses: 300000,
-        totalExpenses: 2500000
-      },
-      netIncome: 1450000,
-      grossProfit: 1750000,
-      operatingIncome: 1550000
-    },
-    balanceSheet: {
-      assets: {
-        currentAssets: 2500000,
-        fixedAssets: 15000000,
-        totalAssets: 17500000
-      },
-      liabilities: {
-        currentLiabilities: 1350000,
-        longTermLiabilities: 8000000,
-        totalLiabilities: 9350000
-      },
-      equity: {
-        retainedEarnings: 6150000,
-        totalEquity: 8150000
-      }
-    },
-    cashFlow: {
-      operatingActivities: 1200000,
-      investingActivities: -500000,
-      financingActivities: -200000,
-      netCashFlow: 500000,
-      beginningCash: 800000,
-      endingCash: 1300000
-    },
-    ratios: {
-      currentRatio: 1.85,
-      debtToEquity: 1.15,
-      returnOnAssets: 8.3,
-      returnOnEquity: 17.8,
-      profitMargin: 36.7,
-      grossMargin: 44.3
-    }
-  });
+  const generateCsvContent = (): string => {
+    if (!financialData) return '';
 
-  const handleExportReport = async (reportType: string) => {
+    const lines: string[] = [];
+    const dateRange = `${format(filter.startDate, 'yyyy-MM-dd')} to ${format(filter.endDate, 'yyyy-MM-dd')}`;
+
+    // Income Statement
+    lines.push('INCOME STATEMENT');
+    lines.push(`Period: ${dateRange}`);
+    lines.push('');
+    lines.push('Revenue');
+    lines.push(`Room Revenue,${financialData.incomeStatement.revenue.roomRevenue || 0}`);
+    lines.push(`F&B Revenue,${financialData.incomeStatement.revenue.fbRevenue || 0}`);
+    lines.push(`Other Revenue,${financialData.incomeStatement.revenue.otherRevenue || 0}`);
+    lines.push(`Total Revenue,${financialData.incomeStatement.revenue.totalRevenue || 0}`);
+    lines.push('');
+    lines.push('Expenses');
+    lines.push(`Operating Expenses,${financialData.incomeStatement.expenses.operatingExpenses || 0}`);
+    lines.push(`Staff Expenses,${financialData.incomeStatement.expenses.staffExpenses || 0}`);
+    lines.push(`Marketing Expenses,${financialData.incomeStatement.expenses.marketingExpenses || 0}`);
+    lines.push(`Administrative Expenses,${financialData.incomeStatement.expenses.adminExpenses || 0}`);
+    lines.push(`Total Expenses,${financialData.incomeStatement.expenses.totalExpenses || 0}`);
+    lines.push('');
+    lines.push('Profitability');
+    lines.push(`Gross Profit,${financialData.incomeStatement.grossProfit || 0}`);
+    lines.push(`Operating Income,${financialData.incomeStatement.operatingIncome || 0}`);
+    lines.push(`Net Income,${financialData.incomeStatement.netIncome || 0}`);
+    lines.push('');
+
+    // Balance Sheet
+    lines.push('BALANCE SHEET');
+    lines.push('');
+    lines.push('Assets');
+    lines.push(`Current Assets,${financialData.balanceSheet?.assets?.currentAssets || 0}`);
+    lines.push(`Fixed Assets,${financialData.balanceSheet?.assets?.fixedAssets || 0}`);
+    lines.push(`Total Assets,${financialData.balanceSheet?.assets?.totalAssets || 0}`);
+    lines.push('');
+    lines.push('Liabilities');
+    lines.push(`Current Liabilities,${financialData.balanceSheet?.liabilities?.currentLiabilities || 0}`);
+    lines.push(`Long-term Liabilities,${financialData.balanceSheet?.liabilities?.longTermLiabilities || 0}`);
+    lines.push(`Total Liabilities,${financialData.balanceSheet?.liabilities?.totalLiabilities || 0}`);
+    lines.push('');
+    lines.push('Equity');
+    lines.push(`Retained Earnings,${financialData.balanceSheet?.equity?.retainedEarnings || 0}`);
+    lines.push(`Total Equity,${financialData.balanceSheet?.equity?.totalEquity || 0}`);
+    lines.push('');
+
+    // Cash Flow
+    lines.push('CASH FLOW STATEMENT');
+    lines.push('');
+    lines.push(`Operating Activities,${financialData.cashFlow?.operatingActivities || 0}`);
+    lines.push(`Investing Activities,${financialData.cashFlow?.investingActivities || 0}`);
+    lines.push(`Financing Activities,${financialData.cashFlow?.financingActivities || 0}`);
+    lines.push(`Net Cash Flow,${financialData.cashFlow?.netCashFlow || 0}`);
+    lines.push(`Beginning Cash,${financialData.cashFlow?.beginningCash || 0}`);
+    lines.push(`Ending Cash,${financialData.cashFlow?.endingCash || 0}`);
+    lines.push('');
+
+    // Ratios
+    lines.push('FINANCIAL RATIOS');
+    lines.push('');
+    lines.push(`Current Ratio,${financialData.ratios?.currentRatio?.toFixed(2) || 'N/A'}`);
+    lines.push(`Debt to Equity Ratio,${(financialData.ratios?.debtToEquityRatio ?? financialData.ratios?.debtToEquity)?.toFixed(2) || 'N/A'}`);
+    lines.push(`Return on Assets,${financialData.ratios?.returnOnAssets?.toFixed(2) || 'N/A'}`);
+    lines.push(`Return on Equity,${financialData.ratios?.returnOnEquity?.toFixed(2) || 'N/A'}`);
+    lines.push(`Profit Margin,${financialData.ratios?.profitMargin?.toFixed(2) || 'N/A'}`);
+    lines.push(`Gross Margin,${financialData.ratios?.grossMargin?.toFixed(2) || 'N/A'}`);
+
+    return lines.join('\n');
+  };
+
+  const handleExportReport = (reportType: string) => {
+    if (!financialData) {
+      toast.error('No financial data available to export');
+      return;
+    }
+
+    if (reportType === 'PDF') {
+      toast.info('PDF export coming soon. Use Excel/CSV export for now.');
+      return;
+    }
+
     try {
-      const response = await financialService.exportFinancialReport({
-        type: selectedTab,
-        format: reportType.toLowerCase(),
-        startDate: format(filter.startDate, 'yyyy-MM-dd'),
-        endDate: format(filter.endDate, 'yyyy-MM-dd')
-      });
-      
-      // Create download link
-      const blob = new Blob([response.data], { 
-        type: reportType === 'PDF' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-      });
+      const csvContent = generateCsvContent();
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = `financial-report-${selectedTab}-${format(new Date(), 'yyyy-MM-dd')}.${reportType.toLowerCase()}`;
+      a.download = `financial-report-${selectedTab}-${format(new Date(), 'yyyy-MM-dd')}.csv`;
       document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
-      toast.success(`${reportType} report downloaded successfully`);
+
+      toast.success('CSV report downloaded successfully');
     } catch (error: unknown) {
-      toast.error('Failed to export report: ' + error.message);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Failed to export report: ' + message);
     }
   };
 
@@ -257,7 +279,9 @@ const FinancialReports: React.FC = () => {
                 <TableCell className="text-right font-bold font-mono">
                   {formatCurrency(financialData?.incomeStatement.revenue.totalRevenue || 0)}
                 </TableCell>
-                <TableCell className="text-right font-bold text-sm">100.0%</TableCell>
+                <TableCell className="text-right font-bold text-sm">
+                  {(financialData?.incomeStatement.revenue.totalRevenue || 0) > 0 ? '100.0%' : '0.0%'}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -316,7 +340,9 @@ const FinancialReports: React.FC = () => {
                 <TableCell className="text-right font-bold font-mono text-red-600">
                   {formatCurrency(financialData?.incomeStatement.expenses.totalExpenses || 0)}
                 </TableCell>
-                <TableCell className="text-right font-bold text-sm">100.0%</TableCell>
+                <TableCell className="text-right font-bold text-sm">
+                  {(financialData?.incomeStatement.expenses.totalExpenses || 0) > 0 ? '100.0%' : '0.0%'}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -411,7 +437,7 @@ const FinancialReports: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Period</Label>
-              <Select value={filter.period} onValueChange={(value: Record<string, unknown>) => setFilter({...filter, period: value})}>
+              <Select value={filter.period} onValueChange={(value: string) => setFilter({...filter, period: value as ReportFilter['period']})}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -475,27 +501,289 @@ const FinancialReports: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="balance-sheet">
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-gray-600">Balance Sheet view - Connected to real backend data</p>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* Assets Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Building className="w-5 h-5 mr-2 text-blue-600" />
+                  Assets
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Current Assets</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.assets?.currentAssets || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Fixed Assets</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.assets?.fixedAssets || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold">Total Assets</TableCell>
+                      <TableCell className="text-right font-bold font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.assets?.totalAssets || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Liabilities Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <CreditCard className="w-5 h-5 mr-2 text-red-600" />
+                  Liabilities
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Current Liabilities</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.liabilities?.currentLiabilities || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Long-term Liabilities</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.liabilities?.longTermLiabilities || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold">Total Liabilities</TableCell>
+                      <TableCell className="text-right font-bold font-mono text-red-600">
+                        {formatCurrency(financialData?.balanceSheet?.liabilities?.totalLiabilities || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Equity Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Users className="w-5 h-5 mr-2 text-green-600" />
+                  Equity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Retained Earnings</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.balanceSheet?.equity?.retainedEarnings || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold text-green-700">Total Equity</TableCell>
+                      <TableCell className="text-right font-bold font-mono text-green-700">
+                        {formatCurrency(financialData?.balanceSheet?.equity?.totalEquity || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="cash-flow">
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-gray-600">Cash Flow view - Connected to real backend data</p>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* Cash Flow Activities */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-blue-600" />
+                  Cash Flow Statement
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Operating Activities</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.cashFlow?.operatingActivities || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Investing Activities</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.cashFlow?.investingActivities || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Financing Activities</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.cashFlow?.financingActivities || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold">Net Cash Flow</TableCell>
+                      <TableCell className="text-right font-bold font-mono">
+                        {formatCurrency(financialData?.cashFlow?.netCashFlow || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Cash Position */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-2 text-green-600" />
+                  Cash Position
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Beginning Cash</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.cashFlow?.beginningCash || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Net Cash Flow</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(financialData?.cashFlow?.netCashFlow || 0)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold text-green-700">Ending Cash</TableCell>
+                      <TableCell className="text-right font-bold font-mono text-green-700">
+                        {formatCurrency(financialData?.cashFlow?.endingCash || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="ratios">
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-gray-600">Financial Ratios - Connected to real backend data</p>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Current Ratio */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Current Ratio</CardTitle>
+                <CardDescription>Ability to pay short-term obligations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {(financialData?.ratios?.currentRatio ?? 0).toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Debt to Equity Ratio */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Debt to Equity Ratio</CardTitle>
+                <CardDescription>Proportion of debt used to finance assets relative to equity</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {((financialData?.ratios?.debtToEquityRatio ?? financialData?.ratios?.debtToEquity) ?? 0).toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Return on Assets */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Return on Assets (ROA)</CardTitle>
+                <CardDescription>How efficiently assets generate profit</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {((financialData?.ratios?.returnOnAssets ?? 0) * 100).toFixed(2)}%
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Return on Equity */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Return on Equity (ROE)</CardTitle>
+                <CardDescription>How efficiently equity generates profit</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {((financialData?.ratios?.returnOnEquity ?? 0) * 100).toFixed(2)}%
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Profit Margin */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Profit Margin</CardTitle>
+                <CardDescription>Percentage of revenue retained as profit</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {((financialData?.ratios?.profitMargin ?? 0) * 100).toFixed(2)}%
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Gross Margin */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Gross Margin</CardTitle>
+                <CardDescription>Revenue remaining after cost of goods sold</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {((financialData?.ratios?.grossMargin ?? 0) * 100).toFixed(2)}%
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Asset Turnover */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Asset Turnover</CardTitle>
+                <CardDescription>Revenue generated per dollar of assets</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {(financialData?.ratios?.assetTurnover ?? 0).toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Equity Multiplier */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Equity Multiplier</CardTitle>
+                <CardDescription>Total assets per dollar of equity (leverage measure)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold font-mono">
+                  {(financialData?.ratios?.equityMultiplier ?? 0).toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

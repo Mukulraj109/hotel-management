@@ -219,9 +219,9 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
 
       {/* Rooms */}
       <div className="mb-4">
-        <h4 className="text-sm font-medium text-gray-900 mb-2">Rooms ({booking.rooms.length})</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-2">Rooms ({booking.rooms?.length || 0})</h4>
         <div className="space-y-2">
-          {booking.rooms.map((room, index) => (
+          {(booking.rooms || []).map((room, index) => (
             <div key={room.roomId || index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-3 gap-2 sm:gap-0">
               <div>
                 <p className="text-sm font-medium text-gray-900">
@@ -509,7 +509,7 @@ export default function GuestBookings() {
                 booking={booking}
                 hasDiscount={hasDiscount}
                 hasSurcharge={hasSurcharge}
-                onNavigate={(id) => navigate(`/guest/bookings/${id}`)}
+                onNavigate={(id) => navigate(`/app/bookings/${id}`)}
                 onCancel={handleCancelBooking}
                 onGenerateKey={handleGenerateKey}
                 onRequestModification={handleRequestModification}

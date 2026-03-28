@@ -88,91 +88,7 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
   const [recommendations, setRecommendations] = useState<SmartRecommendations | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data - replace with actual API calls
-  const mockMetrics: ProfitabilityMetrics = {
-    totalRevenue: 458750,
-    totalCosts: 275250,
-    grossProfit: 183500,
-    netProfit: 158200,
-    profitMargin: 34.5,
-    revenuePerRoom: 2850,
-    costPerRoom: 1712,
-    occupancyRate: 78.5,
-    averageDailyRate: 185.50,
-    revenuePAR: 145.62,
-    previousPeriodComparison: {
-      revenue: 12.5,
-      profit: 8.3,
-      occupancy: -2.1
-    }
-  };
-
-  const mockRoomTypeProfitability: RoomTypeProfitability[] = [
-    {
-      roomType: 'Standard Suite',
-      revenue: 180750,
-      costs: 95400,
-      profit: 85350,
-      profitMargin: 47.2,
-      occupancyRate: 82.3,
-      averageRate: 165.00,
-      roomCount: 80
-    },
-    {
-      roomType: 'Deluxe Suite',
-      revenue: 156800,
-      costs: 78400,
-      profit: 78400,
-      profitMargin: 50.0,
-      occupancyRate: 75.8,
-      averageRate: 220.00,
-      roomCount: 50
-    },
-    {
-      roomType: 'Executive Suite',
-      revenue: 98600,
-      costs: 49300,
-      profit: 49300,
-      profitMargin: 50.0,
-      occupancyRate: 68.2,
-      averageRate: 350.00,
-      roomCount: 20
-    },
-    {
-      roomType: 'Presidential Suite',
-      revenue: 22600,
-      costs: 11300,
-      profit: 11300,
-      profitMargin: 50.0,
-      occupancyRate: 45.0,
-      averageRate: 750.00,
-      roomCount: 4
-    }
-  ];
-
-  const mockForecast: ForecastData[] = [
-    {
-      date: '2024-01-15',
-      predictedRevenue: 15500,
-      predictedOccupancy: 85.2,
-      confidence: 92,
-      factors: ['Weekend surge', 'Local event', 'Historical trend']
-    },
-    {
-      date: '2024-01-16',
-      predictedRevenue: 18200,
-      predictedOccupancy: 92.1,
-      confidence: 88,
-      factors: ['Corporate bookings', 'Limited availability']
-    },
-    {
-      date: '2024-01-17',
-      predictedRevenue: 12800,
-      predictedOccupancy: 68.5,
-      confidence: 91,
-      factors: ['Mid-week dip', 'Weather forecast']
-    }
-  ];
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnalyticsData();
@@ -191,11 +107,12 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
       setRecommendations(data.recommendations || { revenueOpportunities: [], costOptimizations: [] });
 
     } catch (error) {
-      // Fallback to mock data
-      setMetrics(mockMetrics);
-      setRoomTypeProfitability(mockRoomTypeProfitability);
-      setForecast(mockForecast);
+      // Show empty state instead of fake data
+      setMetrics(null);
+      setRoomTypeProfitability([]);
+      setForecast([]);
       setRecommendations({ revenueOpportunities: [], costOptimizations: [] });
+      setFetchError('Unable to load profitability data. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -207,10 +124,10 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
       if (data.success && data.data && data.data.length > 0) {
         setRoomTypeProfitability(data.data);
       } else {
-        setRoomTypeProfitability(mockRoomTypeProfitability);
+        setRoomTypeProfitability([]);
       }
     } catch (error) {
-      setRoomTypeProfitability(mockRoomTypeProfitability);
+      setRoomTypeProfitability([]);
     }
   };
 
@@ -220,10 +137,10 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
       if (data.success && data.data && data.data.length > 0) {
         setForecast(data.data);
       } else {
-        setForecast(mockForecast);
+        setForecast([]);
       }
     } catch (error) {
-      setForecast(mockForecast);
+      setForecast([]);
     }
   };
 
@@ -288,6 +205,17 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
 
   return (
     <div className={`space-y-6 ${className}`}>
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => { setFetchError(null); fetchAnalyticsData(); }}>
+            <RefreshCw className="w-4 h-4 mr-1" />
+            Retry
+          </Button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -425,56 +353,64 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {roomTypeProfitability.map((room, index) => (
-                  <div key={`roomTypeProfitability-${index}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h4 className="font-medium">{room.roomType}</h4>
-                        <Badge variant="outline" className="text-xs">
-                          {room.roomCount} rooms
-                        </Badge>
-                        <Badge 
-                          className={`text-xs ${
-                            room.profitMargin > 45 ? 'bg-green-100 text-green-700' :
-                            room.profitMargin > 30 ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {room.profitMargin}% margin
-                        </Badge>
+              {roomTypeProfitability.length > 0 ? (
+                <div className="space-y-4">
+                  {roomTypeProfitability.map((room, index) => (
+                    <div key={`roomTypeProfitability-${index}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h4 className="font-medium">{room.roomType}</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {room.roomCount} rooms
+                          </Badge>
+                          <Badge
+                            className={`text-xs ${
+                              room.profitMargin > 45 ? 'bg-green-100 text-green-700' :
+                              room.profitMargin > 30 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {room.profitMargin}% margin
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-4 mt-3 text-sm text-gray-600">
+                          <div>
+                            <span className="block text-xs text-gray-500">Revenue</span>
+                            <span className="font-medium">{formatCurrency(room.revenue)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs text-gray-500">Profit</span>
+                            <span className="font-medium text-green-600">{formatCurrency(room.profit)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs text-gray-500">Occupancy</span>
+                            <span className="font-medium">{room.occupancyRate}%</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs text-gray-500">Avg Rate</span>
+                            <span className="font-medium">{formatCurrency(room.averageRate)}</span>
+                          </div>
+                        </div>
                       </div>
-                      
-                      <div className="grid grid-cols-4 gap-4 mt-3 text-sm text-gray-600">
-                        <div>
-                          <span className="block text-xs text-gray-500">Revenue</span>
-                          <span className="font-medium">{formatCurrency(room.revenue)}</span>
-                        </div>
-                        <div>
-                          <span className="block text-xs text-gray-500">Profit</span>
-                          <span className="font-medium text-green-600">{formatCurrency(room.profit)}</span>
-                        </div>
-                        <div>
-                          <span className="block text-xs text-gray-500">Occupancy</span>
-                          <span className="font-medium">{room.occupancyRate}%</span>
-                        </div>
-                        <div>
-                          <span className="block text-xs text-gray-500">Avg Rate</span>
-                          <span className="font-medium">{formatCurrency(room.averageRate)}</span>
-                        </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${
+                          room.profitMargin > 45 ? 'bg-green-500' :
+                          room.profitMargin > 30 ? 'bg-yellow-500' :
+                          'bg-red-500'
+                        }`} />
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${
-                        room.profitMargin > 45 ? 'bg-green-500' :
-                        room.profitMargin > 30 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No room type profitability data available</p>
+                  <p className="text-xs mt-1">Data will appear once bookings are recorded</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -488,6 +424,13 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {forecast.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No forecast data available</p>
+                  <p className="text-xs mt-1">Forecast data will appear once sufficient booking history is available</p>
+                </div>
+              ) : (
               <div className="space-y-4">
                 {forecast.map((day, index) => (
                   <div key={`forecast-${index}-${day.date}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -509,7 +452,7 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
                         
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary" className="text-xs">
-                            {day.confidence}% confidence
+                            {Math.round(day.confidence)}% confidence
                           </Badge>
                           {day.factors.map((factor, idx) => (
                             <span key={idx} className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
@@ -528,6 +471,7 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
                   </div>
                 ))}
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

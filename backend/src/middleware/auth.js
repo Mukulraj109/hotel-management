@@ -26,12 +26,14 @@ export const authenticate = catchAsync(async (req, res, next) => {
     .populate({
       path: 'properties',
       select: 'name address',
-      populate: { path: 'totalRooms' }
     })
     .populate({
       path: 'primaryProperty',
       select: 'name address',
-      populate: { path: 'totalRooms' }
+    })
+    .populate({
+      path: 'hotelId',
+      select: 'name address',
     }).lean();
 
   if (!currentUser) {
@@ -41,6 +43,13 @@ export const authenticate = catchAsync(async (req, res, next) => {
   if (!currentUser.isActive) {
     
     return next(new ApplicationError('Your account has been deactivated. Please contact support.', 401));
+  }
+
+  // Store populated hotel as separate field for frontend consumption via /auth/me
+  // Normalize hotelId back to string for all backend logic (services, queries, etc.)
+  if (currentUser.hotelId && typeof currentUser.hotelId === 'object' && currentUser.hotelId._id) {
+    currentUser.hotelIdPopulated = currentUser.hotelId;
+    currentUser.hotelId = currentUser.hotelId._id.toString();
   }
 
   // Grant access to protected route
@@ -76,15 +85,21 @@ export const optionalAuth = catchAsync(async (req, res, next) => {
         .populate({
           path: 'properties',
           select: 'name address',
-          populate: { path: 'totalRooms' }
         })
         .populate({
           path: 'primaryProperty',
           select: 'name address',
-          populate: { path: 'totalRooms' }
+        })
+        .populate({
+          path: 'hotelId',
+          select: 'name address',
         }).lean();
 
       if (currentUser && currentUser.isActive) {
+        if (currentUser.hotelId && typeof currentUser.hotelId === 'object' && currentUser.hotelId._id) {
+          currentUser.hotelIdPopulated = currentUser.hotelId;
+          currentUser.hotelId = currentUser.hotelId._id.toString();
+        }
         req.user = currentUser;
       }
     } catch (error) {

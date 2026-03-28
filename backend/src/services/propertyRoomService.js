@@ -256,8 +256,8 @@ class PropertyRoomService {
       }
 
       const rooms = await Room.find(query)
-        .populate('type', 'name basePrice amenities')
-        .sort({ number: 1 })
+        .populate({ path: 'roomTypeId', select: 'name basePrice amenities' })
+        .sort({ roomNumber: 1 })
         .limit(limit * 1)
         .skip((page - 1) * limit)
         .lean();

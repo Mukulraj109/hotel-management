@@ -143,32 +143,8 @@ export default function MultiPropertyAnalytics({
     }
   });
 
-  // Generate time series data (mock implementation - should come from API)
-  const generateTimeSeriesData = (): TimeSeriesData[] => {
-    const data: TimeSeriesData[] = [];
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-    for (let i = 0; i <= days; i++) {
-      const date = new Date(start);
-      date.setDate(date.getDate() + i);
-
-      const changes = Math.floor(Math.random() * 50) + 10;
-      const successful = Math.floor(changes * (0.8 + Math.random() * 0.15));
-
-      data.push({
-        date: format(date, 'MM/dd'),
-        changes,
-        successful,
-        failed: changes - successful
-      });
-    }
-
-    return data;
-  };
-
-  const timeSeriesData = generateTimeSeriesData();
+  // Time series data requires channel manager integration to provide real rate sync analytics
+  const timeSeriesData: TimeSeriesData[] = [];
 
   // Prepare scope distribution data for pie chart
   const scopeData = statsData ? [
@@ -362,36 +338,42 @@ export default function MultiPropertyAnalytics({
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={timeSeriesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="changes"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  name="Total Changes"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="successful"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  name="Successful"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="failed"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  name="Failed"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {timeSeriesData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={timeSeriesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="changes"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    name="Total Changes"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="successful"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    name="Successful"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="failed"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    name="Failed"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                Rate sync analytics require channel manager integration.
+              </div>
+            )}
           </CardContent>
         </Card>
 

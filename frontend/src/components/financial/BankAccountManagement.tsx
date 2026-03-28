@@ -6,20 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import {
   Plus,
   Edit,
   Trash2,
   Search,
   Filter,
-  Download,
   Upload,
   RefreshCw,
   Building,
@@ -28,9 +25,7 @@ import {
   TrendingUp,
   TrendingDown,
   CheckCircle,
-  XCircle,
   AlertCircle,
-  Calendar,
   FileText,
   ArrowUpRight,
   ArrowDownRight,
@@ -98,14 +93,17 @@ interface ReconciliationItem {
   cleared: boolean;
 }
 
+const ITEMS_PER_PAGE = 20;
+
 const BankAccountManagement: React.FC = () => {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
@@ -114,16 +112,21 @@ const BankAccountManagement: React.FC = () => {
   const [deleteAccount, setDeleteAccount] = useState<BankAccount | null>(null);
   const [selectedTab, setSelectedTab] = useState('accounts');
   const [reconciliationData, setReconciliationData] = useState<ReconciliationData | null>(null);
+  const [accountPage, setAccountPage] = useState(1);
+  const [txnPage, setTxnPage] = useState(1);
+
+  const safeFormatDate = (dateStr: string | Date | undefined, fmt: string) => {
+    try { return dateStr ? format(new Date(dateStr), fmt) : 'N/A'; } catch { return 'N/A'; }
+  };
   
      const [accountFormData, setAccountFormData] = useState({
      accountNumber: '',
      accountName: '',
      bankName: '',
-     accountType: 'Savings' as const,
+     accountType: 'savings' as string,
      currency: 'INR',
      openingBalance: 0,
      openingDate: new Date().toISOString().split('T')[0],
-     glAccountId: '',
      branchName: '',
      ifscCode: '',
      swiftCode: '',
@@ -134,17 +137,17 @@ const BankAccountManagement: React.FC = () => {
     transactionDate: new Date().toISOString().split('T')[0],
     description: '',
     referenceNumber: '',
-    transactionType: 'Deposit' as const,
+    transactionType: 'Deposit' as string,
     amount: 0
   });
 
   const accountTypes = [
-    { value: 'Checking', label: 'Checking Account' },
-    { value: 'Savings', label: 'Savings Account' },
-    { value: 'Credit Card', label: 'Credit Card' },
-    { value: 'Cash', label: 'Cash Account' },
-    { value: 'Loan', label: 'Loan Account' },
-    { value: 'Investment', label: 'Investment Account' }
+    { value: 'checking', label: 'Checking Account' },
+    { value: 'savings', label: 'Savings Account' },
+    { value: 'credit', label: 'Credit Card' },
+    { value: 'cash', label: 'Cash Account' },
+    { value: 'loan', label: 'Loan Account' },
+    { value: 'investment', label: 'Investment Account' }
   ];
 
   const transactionTypes = [
@@ -200,7 +203,7 @@ const BankAccountManagement: React.FC = () => {
         setTransactions([]);
       }
     } catch (error: unknown) {
-      toast.error('Failed to fetch bank accounts: ' + error.message);
+      toast.error('Failed to fetch bank accounts: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -209,7 +212,7 @@ const BankAccountManagement: React.FC = () => {
   const fetchTransactions = async (accountId: string) => {
     try {
       
-      const filters: Record<string, unknown> = { accountId };
+      const filters: Record<string, unknown> = {};
       if (dateRange.start) filters.startDate = dateRange.start;
       if (dateRange.end) filters.endDate = dateRange.end;
       
@@ -225,7 +228,7 @@ const BankAccountManagement: React.FC = () => {
         setTransactions([]);
       }
     } catch (error: unknown) {
-      toast.error('Failed to fetch transactions: ' + error.message);
+      toast.error('Failed to fetch transactions: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -235,11 +238,10 @@ const BankAccountManagement: React.FC = () => {
        accountNumber: '',
        accountName: '',
        bankName: '',
-       accountType: 'Savings',
+       accountType: 'savings',
        currency: 'INR',
        openingBalance: 0,
        openingDate: new Date().toISOString().split('T')[0],
-       glAccountId: '',
        branchName: '',
        ifscCode: '',
        swiftCode: '',
@@ -257,8 +259,7 @@ const BankAccountManagement: React.FC = () => {
       accountType: account.accountType,
       currency: account.currency,
       openingBalance: account.openingBalance,
-      openingDate: format(new Date(account.openingDate), 'yyyy-MM-dd'),
-      glAccountId: account.glAccountId,
+      openingDate: safeFormatDate(account.openingDate, 'yyyy-MM-dd'),
       branchName: account.branchName || '',
       ifscCode: account.ifscCode || '',
       swiftCode: account.swiftCode || '',
@@ -270,6 +271,7 @@ const BankAccountManagement: React.FC = () => {
   const handleSubmitAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       if (editMode && selectedAccount) {
         await financialService.updateBankAccount(selectedAccount._id, accountFormData);
         toast.success('Bank account updated successfully');
@@ -280,22 +282,28 @@ const BankAccountManagement: React.FC = () => {
       setShowAccountDialog(false);
       fetchBankAccounts();
     } catch (error: unknown) {
-      toast.error('Failed to save bank account: ' + error.message);
+      toast.error('Failed to save bank account: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDeleteAccount = async (account: BankAccount) => {
     try {
+      setSubmitting(true);
       await financialService.deleteBankAccount(account._id);
       toast.success('Bank account deactivated successfully');
       fetchBankAccounts();
       setDeleteAccount(null);
     } catch (error: unknown) {
-      toast.error('Failed to deactivate account: ' + error.message);
+      toast.error('Failed to deactivate account: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleAddTransaction = () => {
+    if (!selectedAccount) { toast.error('Please select a bank account first'); return; }
     setTransactionFormData({
       transactionDate: new Date().toISOString().split('T')[0],
       description: '',
@@ -309,6 +317,7 @@ const BankAccountManagement: React.FC = () => {
   const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       if (selectedAccount) {
         // Prepare transaction data in the format expected by the backend
         const transactionData = {
@@ -316,10 +325,18 @@ const BankAccountManagement: React.FC = () => {
           description: transactionFormData.description,
           referenceNumber: transactionFormData.referenceNumber,
           transactionType: transactionFormData.transactionType,
-          creditAmount: transactionFormData.transactionType === 'Deposit' || transactionFormData.transactionType === 'Interest' ? transactionFormData.amount : 0,
-          debitAmount: transactionFormData.transactionType === 'Withdrawal' || transactionFormData.transactionType === 'Fee' ? transactionFormData.amount : 0
+          creditAmount: transactionFormData.transactionType === 'Deposit' || transactionFormData.transactionType === 'Interest'
+            ? transactionFormData.amount
+            : transactionFormData.transactionType === 'Adjustment' && transactionFormData.amount > 0
+              ? transactionFormData.amount
+              : 0,
+          debitAmount: transactionFormData.transactionType === 'Withdrawal' || transactionFormData.transactionType === 'Fee' || transactionFormData.transactionType === 'Transfer'
+            ? transactionFormData.amount
+            : transactionFormData.transactionType === 'Adjustment' && transactionFormData.amount < 0
+              ? Math.abs(transactionFormData.amount)
+              : 0
         };
-        
+
         await financialService.createBankTransaction(selectedAccount._id, transactionData);
         toast.success('Transaction added successfully');
         setShowTransactionDialog(false);
@@ -327,7 +344,9 @@ const BankAccountManagement: React.FC = () => {
         fetchBankAccounts(); // Refresh balances
       }
     } catch (error: unknown) {
-      toast.error('Failed to add transaction: ' + error.message);
+      toast.error('Failed to add transaction: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -351,12 +370,13 @@ const BankAccountManagement: React.FC = () => {
       });
       setShowReconcileDialog(true);
     } catch (error: unknown) {
-      toast.error('Failed to load reconciliation data: ' + error.message);
+      toast.error('Failed to load reconciliation data: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
   const handleSubmitReconciliation = async () => {
     try {
+      setSubmitting(true);
       if (selectedAccount && reconciliationData) {
         await financialService.reconcileBankAccount(selectedAccount._id, reconciliationData);
         toast.success('Account reconciled successfully');
@@ -365,29 +385,41 @@ const BankAccountManagement: React.FC = () => {
         fetchTransactions(selectedAccount._id);
       }
     } catch (error: unknown) {
-      toast.error('Failed to reconcile account: ' + error.message);
+      toast.error('Failed to reconcile account: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  // Reset pagination when filters change
+  useEffect(() => { setAccountPage(1); }, [searchTerm, filterType, filterStatus]);
+  useEffect(() => { setTxnPage(1); }, [dateRange, selectedAccount]);
 
   const filteredAccounts = (Array.isArray(accounts) ? accounts : []).filter(account => {
     const matchesSearch = account.accountName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          account.bankName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          account.accountNumber?.includes(searchTerm);
-    const matchesType = !filterType || account.accountType === filterType;
-    const matchesStatus = !filterStatus || 
+    const matchesType = filterType === 'all' || account.accountType === filterType;
+    const matchesStatus = filterStatus === 'all' ||
                          (filterStatus === 'active' && account.isActive) ||
                          (filterStatus === 'inactive' && !account.isActive);
     return matchesSearch && matchesType && matchesStatus;
   });
 
+  const totalAccountPages = Math.ceil(filteredAccounts.length / ITEMS_PER_PAGE);
+  const paginatedAccounts = filteredAccounts.slice((accountPage - 1) * ITEMS_PER_PAGE, accountPage * ITEMS_PER_PAGE);
+
+  const totalTxnPages = Math.ceil((Array.isArray(transactions) ? transactions.length : 0) / ITEMS_PER_PAGE);
+  const paginatedTransactions = (Array.isArray(transactions) ? transactions : []).slice((txnPage - 1) * ITEMS_PER_PAGE, txnPage * ITEMS_PER_PAGE);
+
   const getAccountTypeIcon = (type: string) => {
     switch (type) {
-      case 'Checking': return <Building className="w-4 h-4" />;
-      case 'Savings': return <Wallet className="w-4 h-4" />;
-      case 'Credit Card': return <CreditCard className="w-4 h-4" />;
-      case 'Cash': return <Wallet className="w-4 h-4" />;
-      case 'Loan': return <TrendingDown className="w-4 h-4" />;
-      case 'Investment': return <TrendingUp className="w-4 h-4" />;
+      case 'checking': return <Building className="w-4 h-4" />;
+      case 'savings': return <Wallet className="w-4 h-4" />;
+      case 'credit': return <CreditCard className="w-4 h-4" />;
+      case 'cash': return <Wallet className="w-4 h-4" />;
+      case 'loan': return <TrendingDown className="w-4 h-4" />;
+      case 'investment': return <TrendingUp className="w-4 h-4" />;
       default: return <IndianRupee className="w-4 h-4" />;
     }
   };
@@ -429,7 +461,7 @@ const BankAccountManagement: React.FC = () => {
           <p className="text-gray-600">Manage bank accounts and reconciliation</p>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={() => {/* Handle import */}}>
+          <Button variant="outline" onClick={() => toast.info('Bank statement import coming soon')}>
             <Upload className="w-4 h-4 mr-2" />
             Import Statement
           </Button>
@@ -503,7 +535,11 @@ const BankAccountManagement: React.FC = () => {
            </CardHeader>
            <CardContent>
              <div className="flex items-center justify-between">
-               <p className="text-sm font-medium">Today</p>
+               <p className="text-sm font-medium">
+                 {selectedAccount && Array.isArray(selectedAccount.transactions) && selectedAccount.transactions.length > 0
+                   ? safeFormatDate(selectedAccount.transactions[selectedAccount.transactions.length - 1].transactionDate, 'MMM dd, yyyy')
+                   : 'No activity'}
+               </p>
                <Activity className="w-5 h-5 text-gray-400" />
              </div>
              <p className="text-sm text-gray-600 mt-1">
@@ -546,7 +582,7 @@ const BankAccountManagement: React.FC = () => {
                     <SelectValue placeholder="Account Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Types</SelectItem>
+                    <SelectItem value="all">All Types</SelectItem>
                     {accountTypes.map(type => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -559,7 +595,7 @@ const BankAccountManagement: React.FC = () => {
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
@@ -589,7 +625,13 @@ const BankAccountManagement: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAccounts.map((account) => (
+                  {paginatedAccounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        <p className="text-gray-600">No bank accounts found</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedAccounts.map((account) => (
                     <TableRow key={account._id}>
                       <TableCell>
                         <div className="flex items-center space-x-2">
@@ -605,11 +647,11 @@ const BankAccountManagement: React.FC = () => {
                       <TableCell>{account.bankName}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
-                          {account.accountType.toUpperCase()}
+                          {account.accountType?.toUpperCase()}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        •••• {account.accountNumber.slice(-4)}
+                        •••• {account.accountNumber?.slice(-4) || '****'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div>
@@ -617,7 +659,7 @@ const BankAccountManagement: React.FC = () => {
                             {formatCurrency(account.currentBalance)}
                           </p>
                                                      <p className="text-xs text-gray-500">
-                             Available: {formatCurrency(account.currentBalance)}
+                             Available: {formatCurrency(account.availableBalance)}
                            </p>
                         </div>
                       </TableCell>
@@ -668,6 +710,17 @@ const BankAccountManagement: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
+              {totalAccountPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-gray-600">
+                    Showing {(accountPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(accountPage * ITEMS_PER_PAGE, filteredAccounts.length)} of {filteredAccounts.length}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setAccountPage(p => Math.max(1, p - 1))} disabled={accountPage <= 1}>Previous</Button>
+                    <Button size="sm" variant="outline" onClick={() => setAccountPage(p => Math.min(totalAccountPages, p + 1))} disabled={accountPage >= totalAccountPages}>Next</Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -749,11 +802,11 @@ const BankAccountManagement: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {Array.isArray(transactions) && transactions.length > 0 ? (
-                        transactions.map((transaction) => (
+                      {paginatedTransactions.length > 0 ? (
+                        paginatedTransactions.map((transaction) => (
                         <TableRow key={transaction._id}>
                           <TableCell>
-                            {format(new Date(transaction.transactionDate), 'MMM dd, yyyy')}
+                            {safeFormatDate(transaction.transactionDate, 'MMM dd, yyyy')}
                           </TableCell>
                           <TableCell>{transaction.description}</TableCell>
                                                    <TableCell className="font-mono text-sm">
@@ -794,6 +847,17 @@ const BankAccountManagement: React.FC = () => {
                       )}
                     </TableBody>
                   </Table>
+                  {totalTxnPages > 1 && (
+                    <div className="flex items-center justify-between mt-4">
+                      <p className="text-sm text-gray-600">
+                        Showing {(txnPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(txnPage * ITEMS_PER_PAGE, transactions.length)} of {transactions.length}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setTxnPage(p => Math.max(1, p - 1))} disabled={txnPage <= 1}>Previous</Button>
+                        <Button size="sm" variant="outline" onClick={() => setTxnPage(p => Math.min(totalTxnPages, p + 1))} disabled={txnPage >= totalTxnPages}>Next</Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -813,7 +877,26 @@ const BankAccountManagement: React.FC = () => {
               <CardDescription>Reconcile your bank accounts with statements</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600">Select an account and click reconcile to start the process</p>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">Select an account to start reconciliation</p>
+                {accounts.filter(a => a.isActive).map(account => (
+                  <div key={account._id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{account.accountName}</p>
+                      <p className="text-sm text-gray-500">{account.bankName} - {account.accountNumber?.slice(-4)}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant={account.reconciliationStatus === 'reconciled' ? 'default' : 'secondary'}>
+                        {account.reconciliationStatus || 'pending'}
+                      </Badge>
+                      <Button size="sm" onClick={() => handleReconcile(account)}>Reconcile</Button>
+                    </div>
+                  </div>
+                ))}
+                {accounts.filter(a => a.isActive).length === 0 && (
+                  <p className="text-center text-gray-500 py-4">No active accounts to reconcile</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -826,19 +909,19 @@ const BankAccountManagement: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Report generation coming soon')}>
                   <FileText className="w-4 h-4 mr-2" />
                   Bank Statement Report
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Report generation coming soon')}>
                   <Receipt className="w-4 h-4 mr-2" />
                   Cash Position Report
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Report generation coming soon')}>
                   <Activity className="w-4 h-4 mr-2" />
                   Transaction Analysis
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => toast.info('Report generation coming soon')}>
                   <TrendingUp className="w-4 h-4 mr-2" />
                   Cash Flow Forecast
                 </Button>
@@ -898,7 +981,7 @@ const BankAccountManagement: React.FC = () => {
                 <Label htmlFor="accountType">Account Type</Label>
                 <Select
                   value={accountFormData.accountType}
-                  onValueChange={(value: Record<string, unknown>) => setAccountFormData({...accountFormData, accountType: value})}
+                  onValueChange={(value: string) => setAccountFormData({...accountFormData, accountType: value})}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -931,6 +1014,8 @@ const BankAccountManagement: React.FC = () => {
                   value={accountFormData.ifscCode}
                   onChange={(e) => setAccountFormData({...accountFormData, ifscCode: e.target.value})}
                   placeholder="e.g., SBIN0001234"
+                  pattern="^[A-Z]{4}0[A-Z0-9]{6}$"
+                  title="Enter valid IFSC code (e.g., SBIN0001234)"
                 />
               </div>
               <div className="space-y-2">
@@ -940,6 +1025,8 @@ const BankAccountManagement: React.FC = () => {
                   value={accountFormData.swiftCode}
                   onChange={(e) => setAccountFormData({...accountFormData, swiftCode: e.target.value})}
                   placeholder="e.g., SBININBB"
+                  pattern="^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+                  title="Enter valid SWIFT code (8 or 11 characters)"
                 />
               </div>
             </div>
@@ -952,7 +1039,7 @@ const BankAccountManagement: React.FC = () => {
                   type="number"
                   step="0.01"
                   value={accountFormData.openingBalance}
-                  onChange={(e) => setAccountFormData({...accountFormData, openingBalance: parseFloat(e.target.value)})}
+                  onChange={(e) => setAccountFormData({...accountFormData, openingBalance: parseFloat(e.target.value) || 0})}
                   placeholder="0.00"
                   required
                 />
@@ -998,11 +1085,11 @@ const BankAccountManagement: React.FC = () => {
             </div>
 
             <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={() => setShowAccountDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowAccountDialog(false)} disabled={submitting}>
                 Cancel
               </Button>
-              <Button type="submit">
-                {editMode ? 'Update' : 'Create'} Account
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Saving...' : `${editMode ? 'Update' : 'Create'} Account`}
               </Button>
             </div>
           </form>
@@ -1034,7 +1121,7 @@ const BankAccountManagement: React.FC = () => {
                  <Label htmlFor="transactionType">Type</Label>
                  <Select
                    value={transactionFormData.transactionType}
-                   onValueChange={(value: Record<string, unknown>) => setTransactionFormData({...transactionFormData, transactionType: value})}
+                   onValueChange={(value: string) => setTransactionFormData({...transactionFormData, transactionType: value})}
                  >
                    <SelectTrigger>
                      <SelectValue />
@@ -1078,7 +1165,7 @@ const BankAccountManagement: React.FC = () => {
                    type="number"
                    step="0.01"
                    value={transactionFormData.amount}
-                   onChange={(e) => setTransactionFormData({...transactionFormData, amount: parseFloat(e.target.value)})}
+                   onChange={(e) => setTransactionFormData({...transactionFormData, amount: parseFloat(e.target.value) || 0})}
                    placeholder="0.00"
                    required
                  />
@@ -1088,10 +1175,10 @@ const BankAccountManagement: React.FC = () => {
             
 
             <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={() => setShowTransactionDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowTransactionDialog(false)} disabled={submitting}>
                 Cancel
               </Button>
-              <Button type="submit">Add Transaction</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? 'Adding...' : 'Add Transaction'}</Button>
             </div>
           </form>
         </DialogContent>
@@ -1108,13 +1195,41 @@ const BankAccountManagement: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleteAccount && handleDeleteAccount(deleteAccount)}>
-              Deactivate
+            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteAccount && handleDeleteAccount(deleteAccount)} disabled={submitting}>
+              {submitting ? 'Deactivating...' : 'Deactivate'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reconciliation Dialog */}
+      <Dialog open={showReconcileDialog} onOpenChange={setShowReconcileDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bank Reconciliation</DialogTitle>
+            <DialogDescription>Reconcile bank account transactions</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {reconciliationData ? (
+              <div>
+                <p>Statement Balance: {formatCurrency(reconciliationData.statementBalance)}</p>
+                <p>Reconciled Balance: {formatCurrency(reconciliationData.reconciledBalance)}</p>
+                <p>Difference: {formatCurrency(reconciliationData.difference)}</p>
+                <p className="text-sm text-gray-500 mt-2">{reconciliationData.items?.length || 0} items to reconcile</p>
+              </div>
+            ) : (
+              <p className="text-gray-500">Loading reconciliation data...</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowReconcileDialog(false)} disabled={submitting}>Cancel</Button>
+              <Button onClick={handleSubmitReconciliation} disabled={!reconciliationData || submitting}>
+                {submitting ? 'Reconciling...' : 'Complete Reconciliation'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

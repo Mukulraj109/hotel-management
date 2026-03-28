@@ -295,7 +295,8 @@ const documentSchema = new mongoose.Schema({
       required: true,
       enum: [
         'upload', 'view', 'download', 'verify', 'reject',
-        'update', 'delete', 'access_granted', 'access_denied'
+        'update', 'delete', 'access_granted', 'access_denied',
+        'renewal_required'
       ]
     },
     performedBy: {

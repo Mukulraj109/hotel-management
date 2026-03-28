@@ -449,7 +449,7 @@ function DigitalKeysDashboard() {
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => window.location.href = '/guest/bookings'}
+                  onClick={() => window.location.href = '/app/bookings'}
                   className="text-blue-600 border-blue-600 hover:bg-blue-50"
                 >
                   <Calendar className="w-4 h-4 mr-2" />
@@ -744,7 +744,7 @@ function KeyCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.location.href = '/guest/bookings'}
+                onClick={() => window.location.href = '/app/bookings'}
                 className="flex items-center gap-2 text-blue-600 border-blue-600 hover:bg-blue-50"
               >
                 <Calendar className="w-4 h-4" />
@@ -1005,7 +1005,7 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
                 <p className="text-xs mt-1 mb-3">You need confirmed bookings to generate digital keys</p>
                 <Button 
                   variant="outline" 
-                  onClick={() => window.location.href = '/guest/bookings'}
+                  onClick={() => window.location.href = '/app/bookings'}
                   className="text-blue-600 border-blue-600 hover:bg-blue-50"
                 >
                   <Calendar className="w-4 h-4 mr-2" />

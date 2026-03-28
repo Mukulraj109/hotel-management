@@ -101,9 +101,10 @@ class AvailabilityService {
         capacity: { $gte: guestCount }
       };
 
-      if (hotelId) {
-        roomQuery.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for availability check');
       }
+      roomQuery.hotelId = hotelId;
 
       if (roomType) {
         roomQuery.type = roomType;
@@ -350,9 +351,10 @@ class AvailabilityService {
       const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
 
       const roomQuery = { isActive: true };
-      if (hotelId) {
-        roomQuery.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for occupancy calculation');
       }
+      roomQuery.hotelId = hotelId;
 
       const totalRooms = await Room.countDocuments(roomQuery);
       const totalRoomNights = totalRooms * days;
@@ -394,7 +396,7 @@ class AvailabilityService {
   /**
    * Find alternative available rooms when requested room is not available
    */
-  async findAlternativeRooms(checkIn, checkOut, originalRoomType, guestCount = 1) {
+  async findAlternativeRooms(checkIn, checkOut, originalRoomType, guestCount = 1, hotelId = null) {
     try {
       // Define room type upgrade path
       const upgradeMap = {
@@ -412,7 +414,8 @@ class AvailabilityService {
           checkIn,
           checkOut,
           roomType,
-          guestCount
+          guestCount,
+          hotelId
         );
 
         if (availability.available) {
@@ -434,12 +437,14 @@ class AvailabilityService {
   /**
    * Check and handle overbooking scenarios
    */
-  async handleOverbooking(date, roomType = null) {
+  async handleOverbooking(date, roomType = null, hotelId = null) {
     try {
       const availability = await this.checkAvailability(
         date,
         new Date(date.getTime() + 24 * 60 * 60 * 1000),
-        roomType
+        roomType,
+        1,
+        hotelId
       );
 
       if (availability.availableRooms < 0) {
@@ -452,7 +457,9 @@ class AvailabilityService {
           suggestions: await this.findAlternativeRooms(
             date,
             new Date(date.getTime() + 24 * 60 * 60 * 1000),
-            roomType
+            roomType,
+            1,
+            hotelId
           )
         };
       }
@@ -486,6 +493,10 @@ class AvailabilityService {
             date: { $gte: checkInDate, $lt: checkOutDate }
           }).sort({ date: 1 }).session(session).limit(1000);
 
+          if (!availabilityRecords.length) {
+            throw new Error('No availability calendar rows for this room type and date range');
+          }
+
           // Check if reservation is possible
           const canReserve = availabilityRecords.every(record =>
             record.availableRooms >= roomsCount
@@ -499,7 +510,7 @@ class AvailabilityService {
           const updatedRecords = [];
           for (const record of availabilityRecords) {
             // Book the rooms
-            await record.bookRooms(roomsCount, bookingId, source, { session });
+            await record.bookRooms(roomsCount, bookingId, source, userId, { session });
             updatedRecords.push(record);
 
             // Log the inventory change
@@ -539,6 +550,97 @@ class AvailabilityService {
   }
 
   /**
+   * Reserve inventory using the caller's MongoDB session (same transaction as `Booking.create`).
+   * When no `RoomAvailability` rows exist for the hotel/type/date range, skips and logs a warning
+   * (calendar not maintained).
+   */
+  async reserveRoomsWithParentSession(session, {
+    hotelId,
+    roomTypeId,
+    checkIn,
+    checkOut,
+    roomsCount,
+    bookingId,
+    source = 'direct',
+    userId
+  }) {
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+
+    const availabilityRecords = await RoomAvailability.find({
+      hotelId,
+      roomTypeId,
+      date: { $gte: checkInDate, $lt: checkOutDate }
+    }).sort({ date: 1 }).session(session).limit(1000);
+
+    if (!availabilityRecords.length) {
+      logger.warn('Skipping inventory reservation: no RoomAvailability rows for range', {
+        hotelId: hotelId?.toString?.(),
+        roomTypeId: roomTypeId?.toString?.(),
+        bookingId: bookingId?.toString?.()
+      });
+      return { skipped: true };
+    }
+
+    const canReserve = availabilityRecords.every(record =>
+      record.availableRooms >= roomsCount
+    );
+
+    if (!canReserve) {
+      throw new Error('Insufficient availability for requested dates');
+    }
+
+    for (const record of availabilityRecords) {
+      await record.bookRooms(roomsCount, bookingId, source, userId, { session });
+      await AuditLog.logInventoryChange(record, 'booking', userId, {
+        source: 'booking_service',
+        bookingDetails: {
+          bookingId,
+          roomsBooked: roomsCount,
+          source
+        },
+        session
+      });
+    }
+
+    return { success: true, nights: availabilityRecords.length };
+  }
+
+  /**
+   * Public / pre-booking check: same rules as reserveRoomsWithParentSession (skip if no calendar rows).
+   * @returns {{ ok: boolean, skipped?: boolean, reason?: string, minAvailable?: number, nights?: number, roomsRequested?: number }}
+   */
+  async canAccommodateRoomType({ hotelId, roomTypeId, checkIn, checkOut, roomsCount = 1 }) {
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    const rc = Math.max(1, Number(roomsCount) || 1);
+
+    const records = await RoomAvailability.find({
+      hotelId,
+      roomTypeId,
+      date: { $gte: checkInDate, $lt: checkOutDate }
+    })
+      .sort({ date: 1 })
+      .lean()
+      .limit(1000);
+
+    if (!records.length) {
+      return { ok: true, skipped: true, reason: 'no_calendar_rows', roomsRequested: rc };
+    }
+
+    const ok = records.every((r) => r.availableRooms >= rc);
+    const minAvailable = Math.min(...records.map((r) => r.availableRooms));
+
+    return {
+      ok,
+      skipped: false,
+      minAvailable,
+      nights: records.length,
+      roomsRequested: rc
+    };
+  }
+
+  /**
    * NEW: Release rooms and update availability (for cancellations)
    * @param {Object} params - { hotelId, roomTypeId, checkIn, checkOut, roomsCount, bookingId, userId }
    * @returns {Object} - release result
@@ -553,7 +655,7 @@ class AvailabilityService {
         roomTypeId,
         date: { $gte: checkInDate, $lt: checkOutDate },
         'reservations.bookingId': bookingId
-      }).sort({ date: 1 }).lean().limit(1000);
+      }).sort({ date: 1 }).limit(1000);
       
       // Release rooms from each day
       const releasedRecords = [];

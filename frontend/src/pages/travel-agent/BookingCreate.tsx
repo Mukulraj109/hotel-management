@@ -26,6 +26,7 @@ import { format, addDays, differenceInDays } from 'date-fns';
 import { toast } from 'sonner';
 import { travelAgentService, TravelAgentBooking } from '../../services/travelAgentService';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { api } from '../../services/api';
 
 interface GuestInfo {
   name: string;
@@ -91,39 +92,6 @@ const BookingCreate: React.FC = () => {
     }
   });
 
-  const mockRoomTypes = [
-    {
-      roomTypeId: 'deluxe-room',
-      roomTypeName: 'Deluxe Room',
-      standardRate: 150,
-      specialRate: 135,
-      maxOccupancy: 2,
-      description: 'Spacious room with city view and modern amenities',
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV', 'Mini Bar'],
-      available: 5
-    },
-    {
-      roomTypeId: 'suite',
-      roomTypeName: 'Executive Suite',
-      standardRate: 280,
-      specialRate: 250,
-      maxOccupancy: 4,
-      description: 'Luxurious suite with separate living area and premium facilities',
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV', 'Mini Bar', 'Room Service', 'Balcony'],
-      available: 3
-    },
-    {
-      roomTypeId: 'standard-room',
-      roomTypeName: 'Standard Room',
-      standardRate: 100,
-      specialRate: 90,
-      maxOccupancy: 2,
-      description: 'Comfortable room with essential amenities',
-      amenities: ['Free WiFi', 'Air Conditioning', 'Flat Screen TV'],
-      available: 8
-    }
-  ];
-
   useEffect(() => {
     fetchAvailableRooms();
   }, [formData.checkIn, formData.checkOut]);
@@ -131,14 +99,35 @@ const BookingCreate: React.FC = () => {
   const fetchAvailableRooms = async () => {
     try {
       setLoading(true);
-      // Mock data for available rooms
-      setAvailableRooms(mockRoomTypes.map(room => ({
-        ...room,
-        quantity: 0,
-        amenities: room.amenities
-      })));
+
+      // Fetch real room types from the backend
+      const response = await api.get('/room-types', { params: { limit: 100 } });
+      const rawRoomTypes = response.data?.data?.roomTypes || response.data?.data || response.data?.roomTypes || [];
+
+      if (!Array.isArray(rawRoomTypes) || rawRoomTypes.length === 0) {
+        setAvailableRooms([]);
+        return;
+      }
+
+      const mapped: RoomSelection[] = rawRoomTypes.map((rt: Record<string, unknown>) => {
+        const baseRate = (rt.basePrice as number) || (rt.baseRate as number) || (rt.ratePerNight as number) || 0;
+        const agentRate = Math.round(baseRate * 0.9); // 10% agent discount
+        return {
+          roomTypeId: (rt._id as string) || (rt.id as string) || '',
+          roomTypeName: (rt.name as string) || (rt.displayName as string) || 'Room',
+          quantity: 0,
+          standardRate: baseRate,
+          specialRate: agentRate,
+          maxOccupancy: (rt.maxOccupancy as number) || (rt.capacity as number) || 2,
+          amenities: (rt.amenities as string[]) || [],
+          description: (rt.description as string) || ''
+        };
+      });
+
+      setAvailableRooms(mapped);
     } catch (error) {
       toast.error('Failed to load available rooms');
+      setAvailableRooms([]);
     } finally {
       setLoading(false);
     }
@@ -463,6 +452,16 @@ const BookingCreate: React.FC = () => {
                 className="bg-white rounded-lg shadow-sm p-6"
               >
                 <h2 className="text-lg font-semibold text-gray-900 mb-6">Select Rooms</h2>
+
+                {availableRooms.length === 0 && !loading && (
+                  <div className="text-center py-8 mb-6">
+                    <Bed className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600 font-medium">No room types available</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Room types are not configured yet. Please contact the hotel administrator.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-4 mb-6">
                   {availableRooms.map((room) => {

@@ -29,6 +29,7 @@ import {
   Target,
   Eye
 } from 'lucide-react';
+import { api } from '../../services/api';
 
 interface TrendDataPoint {
   period: {
@@ -130,9 +131,7 @@ const InventoryTrendAnalysis: React.FC = () => {
       }
 
       const { data } = await api.get(`/inventory/analytics/historical-trends?${params}`);
-      {
-        setTrendData(data.data.trends);
-      }
+      setTrendData(data.data.trends);
     } catch {
       // Error handled silently
     } finally {
@@ -152,9 +151,7 @@ const InventoryTrendAnalysis: React.FC = () => {
       }
 
       const { data } = await api.get(`/inventory/analytics/anomalies?${params}`);
-      {
-        setAnomalies(data.data.anomalies);
-      }
+      setAnomalies(data.data.anomalies);
     } catch {
       // Error handled silently
     }
@@ -163,9 +160,7 @@ const InventoryTrendAnalysis: React.FC = () => {
   const fetchSeasonalPatterns = async () => {
     try {
       const { data: data } = await api.get('/inventory/analytics/seasonal-patterns');
-      {
-        setSeasonalPatterns(data.data.patterns);
-      }
+      setSeasonalPatterns(data.data.patterns);
     } catch {
       // Error handled silently
     }

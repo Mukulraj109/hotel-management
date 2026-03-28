@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   Smartphone,
   QrCode,
   Key,
@@ -31,12 +31,16 @@ import {
   Mail,
   AlertCircle,
   Download,
-  Share2
+  Share2,
+  Loader2
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { api } from '@/services/api';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface GuestProfile {
   id: string;
@@ -89,6 +93,16 @@ interface HotelService {
   price?: number;
 }
 
+const SERVICE_ICON_MAP: Record<string, React.ComponentType<unknown>> = {
+  'F&B': Utensils,
+  'Spa': Heart,
+  'Concierge': ConciergeBell,
+  'Parking': Car,
+  'Fitness': Dumbbell,
+  'Business': Settings,
+  'Room': Coffee,
+};
+
 const ContactlessGuestApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
@@ -97,134 +111,103 @@ const ContactlessGuestApp: React.FC = () => {
   const [hotelServices, setHotelServices] = useState<HotelService[]>([]);
   const [newRequest, setNewRequest] = useState({ service: '', description: '', category: '' });
   const [qrCodeScanned, setQrCodeScanned] = useState(false);
-
-  const mockGuestProfile: GuestProfile = {
-    id: 'G001',
-    name: 'John Smith',
-    email: 'john.smith@email.com',
-    phone: '+1-555-0123',
-    roomNumber: '1205',
-    checkIn: '2024-12-01',
-    checkOut: '2024-12-05',
-    loyaltyTier: 'Gold',
-    preferences: {
-      roomTemp: 22,
-      wakeUpCall: '07:00',
-      pillow: 'Soft',
-      newspaper: 'Wall Street Journal',
-      housekeeping: '14:00'
-    },
-    keylessEntry: true,
-    notifications: true
-  };
-
-  const mockServiceRequests: ServiceRequest[] = [
-    {
-      id: 'SR001',
-      service: 'Room Service',
-      category: 'F&B',
-      description: 'Continental breakfast for 2',
-      requestTime: '2024-12-01T08:30:00',
-      status: 'completed',
-      priority: 'medium'
-    },
-    {
-      id: 'SR002',
-      service: 'Housekeeping',
-      category: 'Room',
-      description: 'Extra towels and pillows',
-      requestTime: '2024-12-01T14:15:00',
-      status: 'in_progress',
-      estimatedTime: '15 mins',
-      priority: 'low'
-    },
-    {
-      id: 'SR003',
-      service: 'Concierge',
-      category: 'Concierge',
-      description: 'Restaurant reservation for tonight at 7 PM',
-      requestTime: '2024-12-01T16:45:00',
-      status: 'pending',
-      priority: 'high'
-    }
-  ];
-
-  const mockDigitalKey: DigitalKey = {
-    id: 'DK001',
-    roomNumber: '1205',
-    isActive: true,
-    expiresAt: '2024-12-05T12:00:00',
-    accessCount: 12,
-    lastUsed: '2024-12-01T20:30:00'
-  };
-
-  const mockHotelServices: HotelService[] = [
-    {
-      id: 'HS001',
-      name: 'Room Service',
-      category: 'F&B',
-      description: '24/7 dining delivered to your room',
-      icon: Utensils,
-      available: true,
-      hours: '24/7'
-    },
-    {
-      id: 'HS002',
-      name: 'Spa & Wellness',
-      category: 'Spa',
-      description: 'Rejuvenating treatments and therapies',
-      icon: Heart,
-      available: true,
-      hours: '9:00 AM - 10:00 PM',
-      price: 150
-    },
-    {
-      id: 'HS003',
-      name: 'Concierge',
-      category: 'Concierge',
-      description: 'Local recommendations and bookings',
-      icon: ConciergeBell,
-      available: true,
-      hours: '24/7'
-    },
-    {
-      id: 'HS004',
-      name: 'Valet Parking',
-      category: 'Parking',
-      description: 'Premium parking service',
-      icon: Car,
-      available: true,
-      hours: '24/7',
-      price: 35
-    },
-    {
-      id: 'HS005',
-      name: 'Fitness Center',
-      category: 'Fitness',
-      description: 'State-of-the-art gym equipment',
-      icon: Dumbbell,
-      available: true,
-      hours: '5:00 AM - 11:00 PM'
-    },
-    {
-      id: 'HS006',
-      name: 'Business Center',
-      category: 'Business',
-      description: 'Printing, copying, and meeting rooms',
-      icon: Settings,
-      available: true,
-      hours: '24/7'
-    }
-  ];
+  const [loadingState, setLoadingState] = useState({ profile: true, services: true, key: true, requests: true });
+  const isMountedRef = useRef(true);
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
-    setGuestProfile(mockGuestProfile);
-    setServiceRequests(mockServiceRequests);
-    setDigitalKey(mockDigitalKey);
-    setHotelServices(mockHotelServices);
+    return () => { isMountedRef.current = false; };
   }, []);
 
-  const requestService = () => {
+  // Build guest profile from auth context user data
+  useEffect(() => {
+    if (currentUser) {
+      setGuestProfile({
+        id: currentUser._id || currentUser.id || '',
+        name: currentUser.name || '',
+        email: currentUser.email || '',
+        phone: (currentUser as Record<string, unknown>).phone as string || '',
+        roomNumber: (currentUser as Record<string, unknown>).roomNumber as string || '',
+        checkIn: (currentUser as Record<string, unknown>).checkIn as string || '',
+        checkOut: (currentUser as Record<string, unknown>).checkOut as string || '',
+        loyaltyTier: (currentUser as Record<string, unknown>).loyaltyTier as string || '',
+        preferences: {
+          roomTemp: 22,
+          wakeUpCall: '',
+          pillow: 'Soft',
+          newspaper: 'None',
+          housekeeping: ''
+        },
+        keylessEntry: false,
+        notifications: true
+      });
+      setLoadingState(prev => ({ ...prev, profile: false }));
+    } else {
+      setLoadingState(prev => ({ ...prev, profile: false }));
+    }
+  }, [currentUser]);
+
+  // Fetch service requests from API
+  const fetchServiceRequests = useCallback(async () => {
+    try {
+      const response = await api.get('/guest-services', { params: { limit: 10 } });
+      if (!isMountedRef.current) return;
+      const data = response.data?.data || response.data?.serviceRequests || response.data || [];
+      setServiceRequests(Array.isArray(data) ? data : []);
+    } catch {
+      if (isMountedRef.current) setServiceRequests([]);
+    } finally {
+      if (isMountedRef.current) setLoadingState(prev => ({ ...prev, requests: false }));
+    }
+  }, []);
+
+  // Fetch digital key from API
+  const fetchDigitalKey = useCallback(async () => {
+    try {
+      const response = await api.get('/digital-keys/my-key');
+      if (!isMountedRef.current) return;
+      const data = response.data?.data || response.data?.key || response.data || null;
+      setDigitalKey(data);
+    } catch {
+      if (isMountedRef.current) setDigitalKey(null);
+    } finally {
+      if (isMountedRef.current) setLoadingState(prev => ({ ...prev, key: false }));
+    }
+  }, []);
+
+  // Fetch hotel services from API
+  const fetchHotelServices = useCallback(async () => {
+    try {
+      const response = await api.get('/hotel-services');
+      if (!isMountedRef.current) return;
+      const rawServices = response.data?.data || response.data?.services || response.data || [];
+      const services: HotelService[] = (Array.isArray(rawServices) ? rawServices : []).map(
+        (svc: Record<string, unknown>) => ({
+          id: (svc._id || svc.id || '') as string,
+          name: (svc.name || '') as string,
+          category: (svc.category || '') as string,
+          description: (svc.description || '') as string,
+          icon: SERVICE_ICON_MAP[(svc.category as string) || ''] || ConciergeBell,
+          available: svc.available !== false,
+          hours: (svc.hours || svc.operatingHours || '') as string,
+          price: svc.price as number | undefined,
+        })
+      );
+      setHotelServices(services);
+    } catch {
+      if (isMountedRef.current) setHotelServices([]);
+    } finally {
+      if (isMountedRef.current) setLoadingState(prev => ({ ...prev, services: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchServiceRequests();
+    fetchDigitalKey();
+    fetchHotelServices();
+  }, [fetchServiceRequests, fetchDigitalKey, fetchHotelServices]);
+
+  const requestService = async () => {
     if (!newRequest.service || !newRequest.description) {
       toast({
         title: "Error",
@@ -234,23 +217,31 @@ const ContactlessGuestApp: React.FC = () => {
       return;
     }
 
-    const request: ServiceRequest = {
-      id: `SR${String(serviceRequests.length + 1).padStart(3, '0')}`,
-      service: newRequest.service,
-      category: newRequest.category,
-      description: newRequest.description,
-      requestTime: new Date().toISOString(),
-      status: 'pending',
-      priority: 'medium'
-    };
+    try {
+      const response = await api.post('/guest-services', {
+        service: newRequest.service,
+        category: newRequest.category,
+        description: newRequest.description,
+        priority: 'medium'
+      });
 
-    setServiceRequests([...serviceRequests, request]);
-    setNewRequest({ service: '', description: '', category: '' });
-    
-    toast({
-      title: "Service Requested",
-      description: "Your request has been submitted to our staff"
-    });
+      const created = response.data?.data || response.data?.serviceRequest || response.data;
+      if (created) {
+        setServiceRequests(prev => [...prev, created]);
+      }
+      setNewRequest({ service: '', description: '', category: '' });
+
+      toast({
+        title: "Service Requested",
+        description: "Your request has been submitted to our staff"
+      });
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to submit service request. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const activateDigitalKey = () => {
@@ -373,22 +364,28 @@ const ContactlessGuestApp: React.FC = () => {
           <CardTitle>Recent Requests</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {serviceRequests.slice(0, 3).map(request => (
-              <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex-1">
-                  <div className="font-medium">{request.service}</div>
-                  <div className="text-sm text-muted-foreground">{request.description}</div>
+          {serviceRequests.length === 0 ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              No service requests yet. Use the Services tab to make a request.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {serviceRequests.slice(0, 3).map(request => (
+                <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-medium">{request.service}</div>
+                    <div className="text-sm text-muted-foreground">{request.description}</div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant={getStatusColor(request.status) as unknown}>
+                      {request.status}
+                    </Badge>
+                    <div className={`w-2 h-2 rounded-full ${getPriorityColor(request.priority)}`} />
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant={getStatusColor(request.status) as unknown}>
-                    {request.status}
-                  </Badge>
-                  <div className={`w-2 h-2 rounded-full ${getPriorityColor(request.priority)}`} />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -398,21 +395,27 @@ const ContactlessGuestApp: React.FC = () => {
           <CardTitle>Available Services</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {hotelServices.slice(0, 6).map(service => {
-              const Icon = service.icon;
-              return (
-                <div key={service.id} className="p-3 border rounded-lg text-center">
-                  <Icon className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-                  <div className="font-medium text-sm">{service.name}</div>
-                  <div className="text-xs text-muted-foreground">{service.hours}</div>
-                  {service.price && (
-                    <div className="text-xs font-medium text-green-600">${service.price}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {hotelServices.length === 0 ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              No hotel services available at this time.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {hotelServices.slice(0, 6).map(service => {
+                const Icon = service.icon;
+                return (
+                  <div key={service.id} className="p-3 border rounded-lg text-center">
+                    <Icon className="h-8 w-8 mx-auto mb-2 text-blue-500" />
+                    <div className="font-medium text-sm">{service.name}</div>
+                    <div className="text-xs text-muted-foreground">{service.hours}</div>
+                    {service.price && (
+                      <div className="text-xs font-medium text-green-600">${service.price}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -428,6 +431,13 @@ const ContactlessGuestApp: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {!digitalKey && !loadingState.key && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Key className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <p>No digital key available for your stay.</p>
+              <p className="text-sm mt-1">Please contact the front desk for assistance.</p>
+            </div>
+          )}
           {digitalKey && (
             <div className="space-y-6">
               {/* Key Status */}
@@ -853,8 +863,25 @@ const ContactlessGuestApp: React.FC = () => {
     { id: 'chat', name: 'Chat', icon: MessageSquare }
   ];
 
+  const isAnyLoading = loadingState.profile || loadingState.services || loadingState.key || loadingState.requests;
+
   return (
     <div className="max-w-md mx-auto bg-white min-h-screen">
+      {!currentUser && !loadingState.profile && (
+        <Alert className="m-4 border-amber-200 bg-amber-50 text-amber-900">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Not signed in</AlertTitle>
+          <AlertDescription>
+            Please sign in to access guest services.
+          </AlertDescription>
+        </Alert>
+      )}
+      {isAnyLoading && (
+        <div className="flex items-center justify-center p-6 text-gray-500">
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+          Loading guest services...
+        </div>
+      )}
       {/* App Content */}
       <div className="pb-20 px-4 pt-6">
         {activeTab === 'home' && renderHomeTab()}

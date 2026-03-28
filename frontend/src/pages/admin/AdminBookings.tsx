@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/ca
 import { adminService } from '../../services/adminService';
 import { bookingEditingService } from '../../services/bookingEditingService';
 import { api } from '../../services/api';
+import { paymentService } from '../../services/paymentService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import EmptyState from '../../components/ui/EmptyState';
@@ -601,7 +602,46 @@ function AdminBookings() {
       setSelectedBookingForCheckOut(null);
 
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to process payment');
+      toast.error(error instanceof Error ? error.message : 'Failed to process payment');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleProcessRefund = async () => {
+    if (!selectedBookingForSettlement || !settlementData?.refundAmount) {
+      return;
+    }
+
+    const paymentIntentId = selectedBookingForSettlement.stripePaymentId;
+    if (!paymentIntentId) {
+      toast.error('Cannot process refund: missing Stripe payment intent reference for this booking.');
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      await paymentService.createRefund({
+        paymentIntentId,
+        amount: settlementData.refundAmount,
+        reason: 'requested_by_customer'
+      });
+
+      toast.success(`Refund processed successfully: ₹${settlementData.refundAmount.toLocaleString()}`);
+
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+
+      await fetchBookings();
+      await fetchStats();
+      setShowSettlementModal(false);
+      setSelectedBookingForSettlement(null);
+      setSettlementData(null);
+    } catch (error: unknown) {
+      const message = error.response?.data?.message || 'Failed to process refund';
+      toast.error(message);
     } finally {
       setUpdating(false);
     }
@@ -1159,7 +1199,7 @@ function AdminBookings() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
                 Showing <span className="font-medium text-gray-900">
-                  {((pagination.current - 1) * (filters.limit || 50)) + 1}
+                  {pagination.total > 0 ? ((pagination.current - 1) * (filters.limit || 50)) + 1 : 0}
                 </span> to <span className="font-medium text-gray-900">
                   {Math.min(pagination.current * (filters.limit || 50), pagination.total)}
                 </span> of <span className="font-medium text-gray-900">{pagination.total}</span> bookings
@@ -2398,14 +2438,12 @@ Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}
 
               {settlementData.refundAmount > 0 && (
                 <button
-                  onClick={() => {
-                    toast.info('Refund processing feature coming soon');
-                    // TODO: Implement refund processing
-                  }}
+                  onClick={handleProcessRefund}
+                  disabled={updating}
                   className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
                 >
                   <DollarSign className="w-5 h-5" />
-                  Process Refund (₹{settlementData.refundAmount.toLocaleString()})
+                  {updating ? 'Processing Refund...' : `Process Refund (₹${settlementData.refundAmount.toLocaleString()})`}
                 </button>
               )}
 

@@ -1101,7 +1101,7 @@ router.delete('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'mana
  *         description: Admin overview data
  */
 router.get('/admin/overview', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), catchAsync(async (req, res) => {
-  const { hotelId } = req.user;
+  const hotelId = req.query.hotelId || req.user.hotelId;
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1122,9 +1122,10 @@ router.get('/admin/overview', authorizePolicy('dailyRoutineCheck', 'managerFront
   }).populate('checkedBy', 'name email')
     .populate('roomId', 'roomNumber type floor').lean().limit(1000);
 
-  // Get staff assignment summary
+  // Get staff assignment summary (skip checks with deleted staff/rooms)
   const assignmentSummary = {};
   todayChecks.forEach(check => {
+    if (!check.checkedBy?._id || !check.roomId) return;
     const staffId = check.checkedBy._id.toString();
     if (!assignmentSummary[staffId]) {
       assignmentSummary[staffId] = {
@@ -1142,8 +1143,8 @@ router.get('/admin/overview', authorizePolicy('dailyRoutineCheck', 'managerFront
       assignmentSummary[staffId].pending++;
     }
     assignmentSummary[staffId].rooms.push({
-      roomNumber: check.roomId.roomNumber,
-      type: check.roomId.type,
+      roomNumber: check.roomId.roomNumber || 'Unknown',
+      type: check.roomId.type || 'unknown',
       status: check.status,
       checkedAt: check.checkedAt
     });
@@ -1180,7 +1181,7 @@ router.get('/admin/overview', authorizePolicy('dailyRoutineCheck', 'managerFront
  *         description: List of unassigned rooms
  */
 router.get('/admin/unassigned-rooms', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), catchAsync(async (req, res) => {
-  const { hotelId } = req.user;
+  const hotelId = req.query.hotelId || req.user.hotelId;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1195,10 +1196,10 @@ router.get('/admin/unassigned-rooms', authorizePolicy('dailyRoutineCheck', 'mana
   }).lean().limit(1000);
 
   // Get rooms that have daily check assignments for today
-  const assignedRoomIds = await DailyRoutineCheck.find({
+  const assignedRoomIds = await DailyRoutineCheck.distinct('roomId', {
     hotelId: new mongoose.Types.ObjectId(hotelId),
     checkDate: { $gte: today, $lt: tomorrow }
-  }).distinct('roomId').lean().limit(1000);
+  });
 
   // Filter out assigned rooms to get unassigned ones
   const unassignedRooms = allRooms.filter(room =>

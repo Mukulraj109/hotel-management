@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   Plus,
-  Search, 
+  Search,
   Filter,
   Edit,
   Trash2,
   Eye,
   Star,
-  Clock,
-  MapPin,
-  Users,
   X,
   Save,
-  Upload,
   AlertCircle,
-  CheckCircle,
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
@@ -28,7 +23,14 @@ import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
 
 interface ServiceFormData {
   name: string;
@@ -55,7 +57,7 @@ interface ServiceFormData {
 }
 
 const AdminServiceManagement: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -90,9 +92,9 @@ const AdminServiceManagement: React.FC = () => {
 
   // Fetch services
   const { data: servicesData, isLoading } = useQuery({
-    queryKey: ['admin-hotel-services', { propertyId: selectedPropertyId, type: typeFilter, search: searchTerm, status: statusFilter }],
+    queryKey: ['admin-hotel-services', { hotelId: selectedPropertyId, type: typeFilter, search: searchTerm, status: statusFilter }],
     queryFn: () => hotelServicesService.getAdminServices({
-      propertyId: selectedPropertyId,
+      hotelId: selectedPropertyId,
       type: typeFilter || undefined,
       search: searchTerm || undefined,
       status: statusFilter || undefined
@@ -105,8 +107,8 @@ const AdminServiceManagement: React.FC = () => {
 
   // Fetch service types
   const { data: serviceTypes } = useQuery({
-    queryKey: ['service-types', selectedPropertyId],
-    queryFn: () => hotelServicesService.getServiceTypes(selectedPropertyId),
+    queryKey: ['service-types'],
+    queryFn: () => hotelServicesService.getServiceTypes(),
     enabled: !!selectedPropertyId,
     staleTime: 10 * 60 * 1000
   });
@@ -114,7 +116,7 @@ const AdminServiceManagement: React.FC = () => {
   // Create/Update service mutation
   const saveServiceMutation = useMutation({
     mutationFn: async (data: ServiceFormData & { images?: File[] }) => {
-      const serviceData = { ...data, propertyId: selectedPropertyId };
+      const serviceData = { ...data, hotelId: selectedPropertyId };
       const formData = hotelServicesService.convertToFormData(serviceData, data.images);
 
       if (editingService) {
@@ -129,7 +131,7 @@ const AdminServiceManagement: React.FC = () => {
       handleCloseModal();
     },
     onError: (error: unknown) => {
-      toast.error(error.message || 'Failed to save service');
+      toast.error(getErrorMessage(error));
     }
   });
 
@@ -143,7 +145,7 @@ const AdminServiceManagement: React.FC = () => {
       toast.success('Service deleted successfully');
     },
     onError: (error: unknown) => {
-      toast.error(error.message || 'Failed to delete service');
+      toast.error(getErrorMessage(error));
     }
   });
 
@@ -157,7 +159,7 @@ const AdminServiceManagement: React.FC = () => {
       toast.success('Service status updated successfully');
     },
     onError: (error: unknown) => {
-      toast.error(error.message || 'Failed to update service status');
+      toast.error(getErrorMessage(error));
     }
   });
 
@@ -220,13 +222,17 @@ const AdminServiceManagement: React.FC = () => {
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent as keyof ServiceFormData] as unknown,
-          [child]: type === 'number' ? parseFloat(value) || 0 : value
-        }
-      }));
+      setFormData(prev => {
+        const parentValue = prev[parent as keyof ServiceFormData];
+        const parentObj = (typeof parentValue === 'object' && parentValue !== null) ? parentValue : {};
+        return {
+          ...prev,
+          [parent]: {
+            ...parentObj,
+            [child]: type === 'number' ? parseFloat(value) || 0 : value
+          }
+        };
+      });
     } else {
       setFormData(prev => ({
         ...prev,
@@ -246,6 +252,24 @@ const AdminServiceManagement: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.name.trim()) {
+      toast.error('Service name is required');
+      return;
+    }
+    if (!formData.description.trim()) {
+      toast.error('Description is required');
+      return;
+    }
+    if (formData.price < 0) {
+      toast.error('Price cannot be negative');
+      return;
+    }
+    if (formData.contactInfo?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactInfo.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
     saveServiceMutation.mutate(formData);
   };
 
@@ -259,20 +283,15 @@ const AdminServiceManagement: React.FC = () => {
     toggleStatusMutation.mutate({ serviceId, isActive: !currentStatus });
   };
 
-  const filteredServices = services?.filter(service => {
-    const matchesStatus = !statusFilter || 
-      (statusFilter === 'active' && service.isActive) ||
-      (statusFilter === 'inactive' && !service.isActive);
-    
-    return matchesStatus;
-  }) || [];
+  // Server already filters by status — no client-side re-filtering needed
+  const filteredServices = services || [];
 
   const getStatusColor = (isActive: boolean) => {
     return isActive ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100';
   };
 
-  // Early return if no property selected in single property mode
-  if (!selectedPropertyId && viewMode === 'single') {
+  // Early return if no property selected
+  if (!selectedPropertyId) {
     return (
       <div className="p-6">
         <PropertyBreadcrumb items={['Services', 'Service Management']} />
@@ -450,7 +469,7 @@ const AdminServiceManagement: React.FC = () => {
                               {service.name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {service.description.substring(0, 60)}...
+                              {(service.description || '').substring(0, 60)}{service.description?.length > 60 ? '...' : ''}
                             </div>
                           </div>
                         </div>
@@ -472,8 +491,10 @@ const AdminServiceManagement: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {service.featured && (
+                        {service.featured ? (
                           <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                        ) : (
+                          <span className="text-gray-300">-</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium">
@@ -894,7 +915,7 @@ const AdminServiceManagement: React.FC = () => {
                   <div className="flex items-center gap-2 mt-1">
                     <Star className="h-5 w-5 text-yellow-400 fill-current" />
                     <span className="text-lg font-medium">
-                      {viewingService.rating.average.toFixed(1)} ({viewingService.rating.count} reviews)
+                      {(viewingService.rating.average ?? 0).toFixed(1)} ({viewingService.rating.count} {viewingService.rating.count === 1 ? 'review' : 'reviews'})
                     </span>
                   </div>
                 </div>

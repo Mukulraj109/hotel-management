@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Tabs, Tab, Paper, Grid, Card, CardContent, CardHeader, CardTitle } from '@mui/material';
+import { Box, Typography, Tabs, Tab, Paper, Grid, Card, CardContent, CardHeader } from '@mui/material';
 import {
   LocalOffer,
   TrendingUp,

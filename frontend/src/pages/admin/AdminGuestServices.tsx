@@ -122,12 +122,12 @@ export default function AdminGuestServices() {
       const mappedStats = {
         total: overall.totalRequests || 0,
         pending: overall.pendingCount || 0,
-        assigned: 0, // These might need to be calculated from byServiceType data
-        inProgress: 0,
+        assigned: overall.assignedCount || 0,
+        inProgress: overall.inProgressCount || 0,
         completed: overall.completedCount || 0,
-        cancelled: 0,
-        avgResponseTime: 0, // These might need separate calculation
-        avgCompletionTime: 0,
+        cancelled: overall.cancelledCount || 0,
+        avgResponseTime: overall.avgResponseTime || 0,
+        avgCompletionTime: overall.avgCompletionTime || 0,
         satisfactionScore: overall.avgRating || 0
       };
       
@@ -615,7 +615,7 @@ export default function AdminGuestServices() {
                 </div>
 
                 <Button
-                  onClick={fetchServices}
+                  onClick={() => { fetchServices(); fetchStats(); fetchAvailableStaff(); }}
                   variant="secondary"
                   size="sm"
                   disabled={loading}

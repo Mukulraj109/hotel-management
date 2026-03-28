@@ -19,11 +19,22 @@ import { User } from '../types/auth';
  * ```
  */
 export function useCurrentUser(): UseQueryResult<User, Error> {
+  const extractUser = (responseData: {
+    user?: User;
+    data?: { user?: User };
+  }): User => {
+    const user = responseData?.user || responseData?.data?.user;
+    if (!user) {
+      throw new Error('Invalid auth/me response: missing user');
+    }
+    return user;
+  };
+
   return useQuery({
     queryKey: ['currentUser'], // Unique cache key
     queryFn: async () => {
       const response = await api.get('/auth/me');
-      return response.data.user || response.data.data?.user;
+      return extractUser(response.data);
     },
     // Cache the result for 5 minutes
     staleTime: 5 * 60 * 1000,

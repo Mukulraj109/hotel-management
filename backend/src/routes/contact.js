@@ -95,14 +95,10 @@ router.post('/',
 
     const { name, email, phone, subject, message, hotelId } = req.body;
 
-    // Get default hotel if no hotelId provided
-    let targetHotelId = hotelId;
+    // Require hotelId — do not fall back to picking an arbitrary hotel
+    let targetHotelId = hotelId || req.user?.hotelId;
     if (!targetHotelId) {
-      const defaultHotel = await Hotel.findOne().sort({ createdAt: 1 }).lean();
-      if (!defaultHotel) {
-        throw new ApplicationError('No hotel found to send message to', 500);
-      }
-      targetHotelId = defaultHotel._id;
+      throw new ApplicationError('hotelId is required', 400);
     } else {
       // Verify hotel exists
       const hotel = await Hotel.findById(targetHotelId).lean();

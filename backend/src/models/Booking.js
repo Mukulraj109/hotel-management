@@ -368,6 +368,16 @@ const bookingSchema = new mongoose.Schema({
     enum: ['single', 'double', 'suite', 'deluxe'],
     required: false // Optional field for room-type bookings
   },
+  /** When booking has no physical `rooms` yet, inventory is held against this RoomType. */
+  primaryRoomTypeId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'RoomType',
+    index: true
+  },
+  primaryRoomQuantity: {
+    type: Number,
+    min: 1
+  },
   stripePaymentId: String,
   idempotencyKey: {
     type: String,

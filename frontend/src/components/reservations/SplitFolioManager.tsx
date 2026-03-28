@@ -57,38 +57,11 @@ export const SplitFolioManager: React.FC = () => {
   const [newSplitName, setNewSplitName] = useState('');
   const [newSplitType, setNewSplitType] = useState<'individual' | 'company' | 'master'>('individual');
   const [splitMethod, setSplitMethod] = useState<'percentage' | 'fixed' | 'manual'>('percentage');
-
-  const mockReservations: Reservation[] = [
-    {
-      id: 'RES001',
-      guestName: 'John Smith',
-      roomNumber: '101',
-      checkIn: '2024-12-01',
-      checkOut: '2024-12-05',
-      totalCharges: 2150.00
-    },
-    {
-      id: 'RES002',
-      guestName: 'Corporate Group',
-      roomNumber: '201-205',
-      checkIn: '2024-12-03',
-      checkOut: '2024-12-07',
-      totalCharges: 8500.00
-    }
-  ];
-
-  const mockCharges: Charge[] = [
-    { id: '1', description: 'Room Charge - Suite 101', amount: 350.00, date: '2024-12-01', category: 'Room' },
-    { id: '2', description: 'Spa Services', amount: 125.00, date: '2024-12-01', category: 'Spa' },
-    { id: '3', description: 'Restaurant - Dinner', amount: 85.50, date: '2024-12-01', category: 'F&B' },
-    { id: '4', description: 'Room Service', amount: 45.00, date: '2024-12-02', category: 'F&B' },
-    { id: '5', description: 'Laundry Service', amount: 28.00, date: '2024-12-02', category: 'Laundry' },
-    { id: '6', description: 'Minibar', amount: 32.50, date: '2024-12-02', category: 'Minibar' }
-  ];
+  const [reservations] = useState<Reservation[]>([]);
 
   useEffect(() => {
     if (selectedReservation) {
-      setUnassignedCharges(mockCharges);
+      setUnassignedCharges([]);
       setFolioSplits([
         {
           id: 'master',
@@ -234,8 +207,21 @@ export const SplitFolioManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Reservation Selection */}
+      {/* Configuration notice */}
       <Card>
+        <CardContent className="p-6">
+          <div className="text-center py-8">
+            <Split className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Split Folio Feature Requires Configuration</h3>
+            <p className="text-gray-500 max-w-md mx-auto">
+              The split folio API is not yet configured for this property. Contact your system administrator to enable folio splitting capabilities.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reservation Selection (hidden until backend is ready) */}
+      <Card className="hidden">
         <CardHeader>
           <CardTitle className="flex items-center">
             <Calendar className="mr-2 h-5 w-5" />
@@ -249,7 +235,7 @@ export const SplitFolioManager: React.FC = () => {
                 <SelectValue placeholder="Choose reservation..." />
               </SelectTrigger>
               <SelectContent>
-                {mockReservations.map(res => (
+                {reservations.map(res => (
                   <SelectItem key={res.id} value={res.id}>
                     {res.guestName} - Room {res.roomNumber}
                   </SelectItem>

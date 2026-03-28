@@ -215,9 +215,10 @@ class AdminSupplyRequestsService {
       const userData = response.data?.user;
 
       if (userData?.hotelId) {
-        this.hotelIdCache = userData.hotelId;
+        const id = typeof userData.hotelId === 'object' ? (userData.hotelId._id || userData.hotelId.id) : userData.hotelId;
+        this.hotelIdCache = String(id);
         this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-        return userData.hotelId;
+        return this.hotelIdCache;
       }
     } catch {
       // Error handled silently

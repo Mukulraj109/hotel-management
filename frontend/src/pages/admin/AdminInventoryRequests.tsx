@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Package,
@@ -36,13 +36,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
-import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
+import { api } from '../../services/api';
 // import { useRealTime } from '../../services/realTimeService'; // Disabled for now - will implement later
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/inventory-requests-animations.css';
@@ -212,8 +212,8 @@ export default function AdminInventoryRequests() {
       setLoading(true);
       const response = await adminGuestServicesService.getServices({
         ...filters,
-        propertyId: selectedPropertyId
-      });
+        hotelId: selectedPropertyId
+      } as GuestServiceFilters & { hotelId?: string });
 
       // Filter for only inventory requests with enhanced matching
       let inventoryRequests = (response.data.serviceRequests || []).filter(service => {
@@ -265,7 +265,7 @@ export default function AdminInventoryRequests() {
 
   const fetchStats = async () => {
     try {
-      const response = await adminGuestServicesService.getStats();
+      const response = await adminGuestServicesService.getStats(selectedPropertyId || undefined);
       const backendData = response.data;
       const overall = backendData.overall || {};
       
@@ -437,34 +437,35 @@ export default function AdminInventoryRequests() {
     }
   };
 
-  // Fetch audit trail
-  const fetchAuditTrail = async (requestId: string) => {
+  // Fetch audit trail from real API
+  const fetchAuditTrail = async (_requestId: string) => {
     try {
       setLoadingAudit(true);
-      // This would be an actual API call in a real implementation
-      // For now, we'll simulate audit data
-      const mockAuditData: AuditLogEntry[] = [
-        {
-          _id: '1',
-          action: 'Request Created',
-          userId: { name: 'System', email: 'system@hotel.com' },
-          changes: [{ field: 'status', oldValue: null, newValue: 'pending' }],
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-        },
-        {
-          _id: '2',
-          action: 'Request Assigned',
-          userId: { name: 'Admin User', email: 'admin@hotel.com' },
-          changes: [
-            { field: 'status', oldValue: 'pending', newValue: 'assigned' },
-            { field: 'assignedTo', oldValue: null, newValue: 'John Doe' }
-          ],
-          timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+      const { data } = await api.get('/audit-log', {
+        params: {
+          search: _requestId,
+          limit: 50,
+          sortBy: 'timestamp',
+          sortOrder: 'desc'
         }
-      ];
-      setAuditLogs(mockAuditData);
-    } catch (error) {
-      toast.error('Failed to load audit trail');
+      });
+      if (data.status === 'success' && data.data?.logs) {
+        const mappedLogs: AuditLogEntry[] = data.data.logs.map((log: Record<string, unknown>) => ({
+          _id: log._id as string,
+          action: log.action as string || 'Unknown',
+          userId: {
+            name: (log.userId as Record<string, unknown>)?.name as string || 'Unknown',
+            email: (log.userId as Record<string, unknown>)?.email as string || ''
+          },
+          changes: Array.isArray(log.changes) ? log.changes : [],
+          timestamp: log.timestamp as string || log.createdAt as string
+        }));
+        setAuditLogs(mappedLogs);
+      } else {
+        setAuditLogs([]);
+      }
+    } catch {
+      setAuditLogs([]);
     } finally {
       setLoadingAudit(false);
     }

@@ -107,9 +107,14 @@ class AdminGuestServicesService {
       const userData = (response.data as { user?: unknown })?.user;
 
       if (userData?.hotelId) {
-        this.hotelIdCache = userData.hotelId;
+        // hotelId may be a populated object or a string — extract the ID string
+        const rawId = userData.hotelId;
+        const hotelIdStr = typeof rawId === 'string' ? rawId
+          : (rawId && typeof rawId === 'object' && rawId._id) ? String(rawId._id)
+          : String(rawId);
+        this.hotelIdCache = hotelIdStr;
         this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-        return userData.hotelId;
+        return hotelIdStr;
       }
     } catch {
       // Error handled silently
@@ -123,12 +128,12 @@ class AdminGuestServicesService {
   async getServices(filters: GuestServiceFilters = {}): Promise<ApiResponse<{ serviceRequests: GuestService[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
     const queryParams = new URLSearchParams();
 
-    // Add hotelId to filters
-    const hotelId = await this.getUserHotelId();
+    // Use provided hotelId (from selected property) or fall back to user's primary
+    const hotelId = (filters as Record<string, unknown>).hotelId as string || await this.getUserHotelId();
     queryParams.append('hotelId', hotelId);
 
     Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
+      if (value !== undefined && value !== null && key !== 'hotelId' && key !== 'propertyId') {
         queryParams.append(key, value.toString());
       }
     });
@@ -170,7 +175,8 @@ class AdminGuestServicesService {
   }
 
   async getStats(hotelId?: string): Promise<ApiResponse<GuestServiceStats>> {
-    const targetHotelId = hotelId || await this.getUserHotelId();
+    const rawId = hotelId || await this.getUserHotelId();
+    const targetHotelId = typeof rawId === 'object' && rawId !== null ? String((rawId as { _id?: string })._id || rawId) : String(rawId);
 
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);
@@ -195,7 +201,8 @@ class AdminGuestServicesService {
 
   // Get available staff members for assignment
   async getAvailableStaff(hotelId?: string): Promise<ApiResponse<Array<{ _id: string; name: string; email: string; department: string }>>> {
-    const targetHotelId = hotelId || await this.getUserHotelId();
+    const rawId = hotelId || await this.getUserHotelId();
+    const targetHotelId = typeof rawId === 'object' && rawId !== null ? String((rawId as { _id?: string })._id || rawId) : String(rawId);
 
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);

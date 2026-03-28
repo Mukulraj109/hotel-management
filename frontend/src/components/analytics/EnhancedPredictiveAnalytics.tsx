@@ -141,9 +141,9 @@ export const EnhancedPredictiveAnalytics: React.FC<EnhancedPredictiveAnalyticsPr
       const seasonalFactor = 1 + (Math.sin((i / periods) * Math.PI * 2) * 0.15); // ±15% seasonal variation
       const trendFactor = 1 + (revenueGrowth * i * 0.1); // Trend continuation with dampening
 
-      const projectedRevenue = baseRevenue * seasonalFactor * trendFactor * (0.95 + Math.random() * 0.1);
+      const projectedRevenue = baseRevenue * seasonalFactor * trendFactor;
       const projectedOccupancy = Math.min(100, Math.max(30, baseOccupancy * seasonalFactor * (1 + occupancyGrowth * i * 0.05)));
-      const projectedADR = baseADR * (1 + adrGrowth * i * 0.02) * (0.98 + Math.random() * 0.04);
+      const projectedADR = baseADR * (1 + adrGrowth * i * 0.02);
 
       forecast.push({
         period: periodName,

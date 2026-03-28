@@ -72,8 +72,8 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('inventory',
 
 // Update inventory item
 router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const item = await Inventory.findByIdAndUpdate(
-    req.params.id,
+  const item = await Inventory.findOneAndUpdate(
+    { _id: req.params.id, hotelId: req.user.hotelId },
     req.body,
     { new: true, runValidators: true }
   );
@@ -85,6 +85,26 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('invento
   res.json({
     status: 'success',
     data: { item }
+  });
+}));
+
+// Delete inventory item (soft delete)
+router.delete('/:id', authenticate, ensureTenantContext, authorizePolicy('inventory', 'manageAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const item = await Inventory.findOne({
+    _id: req.params.id,
+    hotelId: req.user.hotelId
+  });
+
+  if (!item) {
+    throw new ApplicationError('Inventory item not found', 404);
+  }
+
+  item.isActive = false;
+  await item.save();
+
+  res.json({
+    status: 'success',
+    data: { message: 'Inventory item deleted successfully' }
   });
 }));
 

@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { Calendar, TrendingUp, TrendingDown, Users, Package, Clock, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
+import { formatCurrency } from '../../utils/currencyUtils';
 
 interface StaffEfficiency {
   staffId: string;
@@ -181,10 +181,13 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Average Efficiency</p>
                 <p className="text-2xl font-bold">
-                  {data.departmentSummary.averageEfficiency.toFixed(1)}%
+                  {(data.departmentSummary?.totalTasks > 0
+                    ? data.departmentSummary.averageEfficiency
+                    : 0
+                  ).toFixed(1)}%
                 </p>
               </div>
-              {getEfficiencyIcon(data.departmentSummary.averageEfficiency)}
+              {getEfficiencyIcon(data.departmentSummary?.averageEfficiency ?? 0)}
             </div>
           </CardContent>
         </Card>
@@ -194,7 +197,7 @@ const HousekeepingInventoryDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Staff</p>
-                <p className="text-2xl font-bold">{data.departmentSummary.totalStaff}</p>
+                <p className="text-2xl font-bold">{data.departmentSummary?.totalStaff ?? 0}</p>
               </div>
               <Users className="h-8 w-8 text-blue-500" />
             </div>
@@ -206,7 +209,7 @@ const HousekeepingInventoryDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Cost</p>
-                <p className="text-2xl font-bold">${data.departmentSummary.totalCost.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.departmentSummary?.totalCost ?? 0)}</p>
               </div>
               <Package className="h-8 w-8 text-green-500" />
             </div>
@@ -218,7 +221,7 @@ const HousekeepingInventoryDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Avg Cost/Task</p>
-                <p className="text-2xl font-bold">${data.departmentSummary.avgCostPerTask.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(data.departmentSummary?.avgCostPerTask ?? 0)}</p>
               </div>
               <Clock className="h-8 w-8 text-orange-500" />
             </div>
@@ -241,33 +244,40 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Staff Efficiency Analytics</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {data.staffAnalytics.map((staff) => (
-                  <div key={staff.staffId} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div>
-                        <h3 className="font-medium">{staff.staffName}</h3>
-                        <p className="text-sm text-gray-600">
-                          {staff.totalTasks} tasks • {staff.uniqueRoomsServiced} rooms serviced
-                        </p>
+              {data.staffAnalytics.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No staff efficiency data available. Assign housekeeping tasks to see performance metrics.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {data.staffAnalytics.map((staff) => (
+                    <div key={staff.staffId} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div>
+                          <h3 className="font-medium">{staff.staffName}</h3>
+                          <p className="text-sm text-gray-600">
+                            {staff.totalTasks} tasks • {staff.uniqueRoomsServiced} rooms serviced
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-4">
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{staff.avgEfficiency.toFixed(1)}% Efficiency</p>
+                          <p className="text-sm text-gray-600">{formatCurrency(staff.costPerTask)}/task</p>
+                        </div>
+
+                        <Badge className={`${getEfficiencyColor(staff.efficiencyRating)} text-white`}>
+                          {staff.efficiencyRating}
+                        </Badge>
+
+                        {getEfficiencyIcon(staff.avgEfficiency)}
                       </div>
                     </div>
-
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{staff.avgEfficiency.toFixed(1)}% Efficiency</p>
-                        <p className="text-sm text-gray-600">${staff.costPerTask.toFixed(2)}/task</p>
-                      </div>
-
-                      <Badge className={`${getEfficiencyColor(staff.efficiencyRating)} text-white`}>
-                        {staff.efficiencyRating}
-                      </Badge>
-
-                      {getEfficiencyIcon(staff.avgEfficiency)}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -277,15 +287,22 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Efficiency Comparison</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data.staffAnalytics}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="staffName" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="avgEfficiency" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
+              {data.staffAnalytics.length === 0 ? (
+                <div className="text-center py-8">
+                  <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No efficiency comparison data available. Staff performance data will appear here once tasks are completed.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.staffAnalytics}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="staffName" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="avgEfficiency" fill="#8884d8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -296,37 +313,44 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Consumption Trends (Last 30 Days)</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={data.trends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(value) => {
-                      if (value && value.day) {
-                        return `${value.month}/${value.day}`;
-                      }
-                      return '';
-                    }}
-                  />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="totalQuantity"
-                    stroke="#8884d8"
-                    name="Quantity"
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="avgEfficiency"
-                    stroke="#82ca9d"
-                    name="Efficiency %"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {(!data.trends || data.trends.length === 0) ? (
+                <div className="text-center py-8">
+                  <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No consumption trend data available for the selected period.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={data.trends}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(value) => {
+                        if (value && value.day) {
+                          return `${value.month}/${value.day}`;
+                        }
+                        return '';
+                      }}
+                    />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="totalQuantity"
+                      stroke="#8884d8"
+                      name="Quantity"
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="avgEfficiency"
+                      stroke="#82ca9d"
+                      name="Efficiency %"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -335,23 +359,30 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Cost Trends</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data.trends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(value) => {
-                      if (value && value.day) {
-                        return `${value.month}/${value.day}`;
-                      }
-                      return '';
-                    }}
-                  />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="totalCost" fill="#FF8042" />
-                </BarChart>
-              </ResponsiveContainer>
+              {(!data.trends || data.trends.length === 0) ? (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No cost trend data available for the selected period.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.trends}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(value) => {
+                        if (value && value.day) {
+                          return `${value.month}/${value.day}`;
+                        }
+                        return '';
+                      }}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="totalCost" fill="#FF8042" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -362,26 +393,33 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Top Consuming Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {data.topConsumingItems.map((item, index) => (
-                  <div key={`data-topConsumingItems-${index}-${item.name}`} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <h3 className="font-medium">{item.item.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        Category: {item.item.category} • Unit Price: ${item.item.unitPrice}
-                      </p>
-                    </div>
+              {(!data.topConsumingItems || data.topConsumingItems.length === 0) ? (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No inventory consumption data available. Items will appear here once housekeeping tasks consume inventory.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {data.topConsumingItems.map((item, index) => (
+                    <div key={`data-topConsumingItems-${index}-${item?.item?.name}`} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <h3 className="font-medium">{item?.item?.name}</h3>
+                        <p className="text-sm text-gray-600">
+                          Category: {item?.item?.category} • Unit Price: {formatCurrency(item?.item?.unitPrice ?? 0)}
+                        </p>
+                      </div>
 
-                    <div className="text-right">
-                      <p className="text-lg font-bold">{item.totalQuantity} units</p>
-                      <p className="text-sm text-gray-600">
-                        ${item.totalCost.toFixed(2)} total • {item.avgEfficiency.toFixed(1)}% efficiency
-                      </p>
-                      <p className="text-sm text-gray-500">{item.consumptionCount} uses</p>
+                      <div className="text-right">
+                        <p className="text-lg font-bold">{item.totalQuantity} units</p>
+                        <p className="text-sm text-gray-600">
+                          {formatCurrency(item.totalCost)} total • {item.avgEfficiency.toFixed(1)}% efficiency
+                        </p>
+                        <p className="text-sm text-gray-500">{item.consumptionCount} uses</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -391,25 +429,32 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Items Distribution by Quantity</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={data.topConsumingItems.slice(0, 5)}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ item, totalQuantity }) => `${item.name}: ${totalQuantity}`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="totalQuantity"
-                  >
-                    {data.topConsumingItems.slice(0, 5).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {(!data.topConsumingItems || data.topConsumingItems.length === 0) ? (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No item distribution data available yet.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={data.topConsumingItems.slice(0, 5)}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ item, totalQuantity }) => `${item?.name}: ${totalQuantity}`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="totalQuantity"
+                    >
+                      {data.topConsumingItems.slice(0, 5).map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -420,22 +465,29 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               <CardTitle>Peak Hours Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data.peakHours}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="hour"
-                    tickFormatter={(hour) => `${hour}:00`}
-                  />
-                  <YAxis />
-                  <Tooltip
-                    formatter={(value, name) => [value, name === 'totalQuantity' ? 'Total Quantity' : 'Task Count']}
-                    labelFormatter={(hour) => `Hour: ${hour}:00`}
-                  />
-                  <Bar dataKey="totalQuantity" fill="#8884d8" />
-                  <Bar dataKey="count" fill="#82ca9d" />
-                </BarChart>
-              </ResponsiveContainer>
+              {(!data.peakHours || data.peakHours.length === 0) ? (
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">No peak hours data available. Data will populate as housekeeping tasks are completed throughout the day.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.peakHours}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="hour"
+                      tickFormatter={(hour) => `${hour}:00`}
+                    />
+                    <YAxis />
+                    <Tooltip
+                      formatter={(value, name) => [value, name === 'totalQuantity' ? 'Total Quantity' : 'Task Count']}
+                      labelFormatter={(hour) => `Hour: ${hour}:00`}
+                    />
+                    <Bar dataKey="totalQuantity" fill="#8884d8" />
+                    <Bar dataKey="count" fill="#82ca9d" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -445,17 +497,24 @@ const HousekeepingInventoryDashboard: React.FC = () => {
                 <CardTitle>Peak Performance Hours</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {data.peakHours.slice(0, 5).map((hour) => (
-                    <div key={hour.hour} className="flex justify-between items-center">
-                      <span className="font-medium">{hour.hour}:00</span>
-                      <div className="text-right">
-                        <p className="text-sm">{hour.totalQuantity} items</p>
-                        <p className="text-xs text-gray-600">{hour.avgEfficiency.toFixed(1)}% efficiency</p>
+                {(!data.peakHours || data.peakHours.length === 0) ? (
+                  <div className="text-center py-8">
+                    <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">No performance data available yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {data.peakHours.slice(0, 5).map((hour) => (
+                      <div key={hour.hour} className="flex justify-between items-center">
+                        <span className="font-medium">{hour.hour}:00</span>
+                        <div className="text-right">
+                          <p className="text-sm">{hour.totalQuantity} items</p>
+                          <p className="text-xs text-gray-600">{hour.avgEfficiency.toFixed(1)}% efficiency</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -465,7 +524,7 @@ const HousekeepingInventoryDashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {data.departmentSummary.averageEfficiency < 80 && (
+                  {(data.departmentSummary?.averageEfficiency ?? 0) < 80 && (
                     <div className="flex items-start space-x-2 p-3 bg-red-50 rounded">
                       <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
                       <div>
@@ -475,7 +534,7 @@ const HousekeepingInventoryDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  {data.departmentSummary.avgCostPerTask > 50 && (
+                  {(data.departmentSummary?.avgCostPerTask ?? 0) > 50 && (
                     <div className="flex items-start space-x-2 p-3 bg-yellow-50 rounded">
                       <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
                       <div>
@@ -487,7 +546,11 @@ const HousekeepingInventoryDashboard: React.FC = () => {
 
                   <div className="p-3 bg-blue-50 rounded">
                     <p className="text-sm font-medium text-blue-800">Optimization Tip</p>
-                    <p className="text-xs text-blue-600">Peak hours are from {data.peakHours[0]?.hour}:00. Consider scheduling more staff during these times.</p>
+                    <p className="text-xs text-blue-600">
+                      {data.peakHours && data.peakHours.length > 0
+                        ? `Peak hours are from ${data.peakHours[0]?.hour}:00. Consider scheduling more staff during these times.`
+                        : 'Complete more housekeeping tasks to generate peak hour recommendations.'}
+                    </p>
                   </div>
                 </div>
               </CardContent>

@@ -25,7 +25,8 @@ import {
   FormControlLabel,
   Grid,
   Alert,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -37,6 +38,7 @@ import {
   Build
 } from '@mui/icons-material';
 import { CounterForm } from './CounterForm';
+import { api } from '../../services/api';
 
 interface Counter {
   _id: string;
@@ -107,48 +109,16 @@ const CounterManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const fetchCounters = async () => {
     try {
       setLoading(true);
-      // const response = await api.get(`/operational-management/counters?type=${typeFilter}&status=${statusFilter}`);
-      // setCounters(response.data.counters);
-      
-      // Mock data for demonstration
-      setCounters([
-        {
-          _id: '1',
-          name: 'Main Reception',
-          code: 'REC001',
-          type: 'front_desk',
-          description: 'Main reception counter for check-in/check-out',
-          status: 'available',
-          isActive: true,
-          location: { floor: 1, room: 'Lobby' },
-          capacity: { maxConcurrentUsers: 3, maxDailyTransactions: 500 },
-          operatingHours: { startTime: '06:00', endTime: '22:00', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] },
-          features: { supportsCheckIn: true, supportsCheckOut: true, supportsPayment: true, supportsKeyIssuance: true, supportsGuestServices: true },
-          analytics: { totalTransactions: 1250, averageTransactionTime: 5.5, lastUsed: '2024-01-15T14:30:00Z' },
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-15T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        },
-        {
-          _id: '2',
-          name: 'Concierge Desk',
-          code: 'CON001',
-          type: 'concierge',
-          description: 'Concierge services counter',
-          status: 'busy',
-          isActive: true,
-          location: { floor: 1, room: 'Lobby' },
-          capacity: { maxConcurrentUsers: 2, maxDailyTransactions: 200 },
-          operatingHours: { startTime: '07:00', endTime: '23:00', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] },
-          features: { supportsCheckIn: false, supportsCheckOut: false, supportsPayment: false, supportsKeyIssuance: false, supportsGuestServices: true },
-          analytics: { totalTransactions: 450, averageTransactionTime: 8.2, lastUsed: '2024-01-15T15:45:00Z' },
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-15T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        }
-      ]);
+      const params: Record<string, string> = {};
+      if (typeFilter) params.type = typeFilter;
+      if (statusFilter) params.status = statusFilter;
+      const response = await api.get('/operational-management/counters', { params });
+      const data = response.data?.data || response.data;
+      const list = Array.isArray(data) ? data : (data?.counters || []);
+      setCounters(list);
     } catch (error) {
       showSnackbar('Error fetching counters', 'error');
+      setCounters([]);
     } finally {
       setLoading(false);
     }
@@ -175,7 +145,7 @@ const CounterManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
 
   const handleStatusChange = async (counter: Counter, newStatus: string) => {
     try {
-      // await api.patch(`/operational-management/counters/${counter._id}/status`, { status: newStatus });
+      await api.patch(`/operational-management/counters/${counter._id}/status`, { status: newStatus });
       showSnackbar(`Counter status updated to ${newStatus}`, 'success');
       fetchCounters();
       onRefresh();
@@ -187,7 +157,7 @@ const CounterManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const handleDelete = async (counter: Counter) => {
     if (window.confirm(`Are you sure you want to delete "${counter.name}"?`)) {
       try {
-        // await api.delete(`/operational-management/counters/${counter._id}`);
+        await api.delete(`/operational-management/counters/${counter._id}`);
         showSnackbar('Counter deleted successfully', 'success');
         fetchCounters();
         onRefresh();
@@ -205,10 +175,10 @@ const CounterManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const handleFormSubmit = async (counterData: Record<string, unknown>) => {
     try {
       if (selectedCounter) {
-        // await api.patch(`/operational-management/counters/${selectedCounter._id}`, counterData);
+        await api.patch(`/operational-management/counters/${selectedCounter._id}`, counterData);
         showSnackbar('Counter updated successfully', 'success');
       } else {
-        // await api.post('/operational-management/counters', counterData);
+        await api.post('/operational-management/counters', counterData);
         showSnackbar('Counter created successfully', 'success');
       }
       handleFormClose();
@@ -300,6 +270,20 @@ const CounterManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
           </Button>
         </Box>
       </Box>
+
+      {loading && (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress size={32} />
+        </Box>
+      )}
+
+      {!loading && counters.length === 0 && (
+        <Box py={4} textAlign="center">
+          <Typography variant="body1" color="textSecondary">
+            No counters found. Click "Add Counter" to create one.
+          </Typography>
+        </Box>
+      )}
 
       <TableContainer component={Paper}>
         <Table>

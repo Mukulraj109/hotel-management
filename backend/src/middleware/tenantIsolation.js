@@ -4,6 +4,8 @@
  * Prevents cross-tenant data leakage in multi-property deployments.
  */
 
+import { refToHotelIdString } from './propertyAccess.js';
+
 /**
  * Middleware that attaches hotelId to req for downstream use.
  * Must be used AFTER authentication middleware.
@@ -13,17 +15,38 @@ const ensureTenantContext = (req, res, next) => {
     return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
   }
 
-  // Extract hotelId from authenticated user
+  // Extract hotelId from authenticated user (may be ObjectId or populated hotel doc)
   const hotelId = req.user.hotelId || req.user.hotel;
-  if (!hotelId) {
-    return res.status(403).json({ success: false, error: { code: 'NO_TENANT', message: 'User is not associated with any property' } });
+  const hotelIdStr = refToHotelIdString(hotelId);
+  if (!hotelIdStr) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'NO_TENANT', message: 'User is not associated with any property' },
+    });
   }
 
-  // Attach to request for easy access
-  req.tenantId = hotelId;
+  // Canonical tenant id string (avoids "[object Object]" from Object.prototype.toString on plain objects)
+  req.tenantId = hotelIdStr;
+
+  // For multi-property admins on read requests, respect the client-provided
+  // hotelId so they can view data for any property they have access to.
+  // ensurePropertyAccess (downstream) validates they actually own / are
+  // assigned to the requested property — no IDOR risk.
+  const isAdmin = req.user.role === 'admin';
+  const hasMultiPropertyAccess =
+    req.user.multiPropertyAccess?.enabled === true ||
+    (Array.isArray(req.user.properties) && req.user.properties.length > 1);
+  const isReadRequest = req.method === 'GET' || req.method === 'HEAD';
+
+  if (isReadRequest && isAdmin && hasMultiPropertyAccess) {
+    const clientQueryHotelId = refToHotelIdString(req.query?.hotelId);
+    if (clientQueryHotelId) {
+      // Keep the client-provided hotelId — don't override
+      return next();
+    }
+  }
 
   // CRITICAL: Override any client-provided hotelId to prevent IDOR
-  const hotelIdStr = typeof hotelId === 'object' && hotelId.toString ? hotelId.toString() : String(hotelId);
   if (req.body && typeof req.body === 'object') {
     req.body.hotelId = hotelIdStr;
   }
@@ -51,8 +74,8 @@ const verifyResourceOwnership = (Model, idParam = 'id') => {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });
       }
 
-      const resourceHotelId = (resource.hotelId || resource.hotel || '').toString();
-      const userHotelId = req.tenantId.toString();
+      const resourceHotelId = refToHotelIdString(resource.hotelId || resource.hotel) || '';
+      const userHotelId = String(req.tenantId || '');
 
       if (resourceHotelId && resourceHotelId !== userHotelId) {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });

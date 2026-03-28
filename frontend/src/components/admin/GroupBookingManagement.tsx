@@ -113,18 +113,7 @@ const toggleGroupBookingStatus = async (id: string): Promise<GroupBooking> => {
 // API function to update group booking
 const updateGroupBooking = async (id: string, data: Record<string, unknown>): Promise<GroupBooking> => {
   try {
-    const response = await api.patch(`/corporate/group-bookings/${id}`, data);
-    {
-
-      const errorData = await response.json().catch(() => null);
-      const errorObj = {
-        message: errorData?.error?.message || errorData?.message || 'Failed to update group booking',
-        response: { data: errorData }
-      };
-      throw errorObj;
-    }
-
-    const responseData = await response.json();
+    const { data: responseData } = await api.patch(`/corporate/group-bookings/${id}`, data);
     return responseData.data.groupBooking;
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -320,7 +309,7 @@ function GroupBookingManagement() {
       } else if (backendErrors.rooms) {
         toast.error(backendErrors.rooms);
       } else {
-        toast.error(error.message || 'Failed to update group booking status');
+        toast.error(error instanceof Error ? error.message : 'Failed to update group booking status');
       }
     },
   });
@@ -341,7 +330,7 @@ function GroupBookingManagement() {
       if (backendErrors.general) {
         toast.error(backendErrors.general);
       } else {
-        toast.error(error.message || 'Failed to update group booking');
+        toast.error(error instanceof Error ? error.message : 'Failed to update group booking');
       }
     },
   });
@@ -363,7 +352,7 @@ function GroupBookingManagement() {
       if (backendErrors.general) {
         toast.error(backendErrors.general);
       } else {
-        toast.error(error.message || 'Failed to create group booking');
+        toast.error(error instanceof Error ? error.message : 'Failed to create group booking');
       }
     },
   });

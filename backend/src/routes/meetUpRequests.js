@@ -38,16 +38,20 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
   } = req.query;
   const skip = (page - 1) * limit;
 
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedHotelId = (hotelId && hotelId !== 'all') ? hotelId : (req.body.hotelId || req.user?.hotelId);
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   let query = {};
+  query.hotelId = resolvedHotelId;
 
   // Filter by status
   if (status && status !== 'all') query.status = status;
 
   // Filter by type
   if (type && type !== 'all') query.type = type;
-
-  // Filter by hotel
-  if (hotelId && hotelId !== 'all') query.hotelId = hotelId;
 
   // Filter by date range
   if (dateFrom || dateTo) {
@@ -95,10 +99,13 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
 router.get('/admin/insights', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
-  let baseQuery = {};
-  if (hotelId && hotelId !== 'all') {
-    baseQuery.hotelId = hotelId;
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedInsightsHotelId = (hotelId && hotelId !== 'all') ? hotelId : (req.body.hotelId || req.user?.hotelId);
+  if (!resolvedInsightsHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  let baseQuery = {};
+  baseQuery.hotelId = resolvedInsightsHotelId;
 
   // Get various insights
   const [
@@ -216,10 +223,13 @@ router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAs
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  let baseQuery = { createdAt: { $gte: startDate } };
-  if (hotelId && hotelId !== 'all') {
-    baseQuery.hotelId = hotelId;
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedAnalyticsHotelId = (hotelId && hotelId !== 'all') ? hotelId : (req.body.hotelId || req.user?.hotelId);
+  if (!resolvedAnalyticsHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  let baseQuery = { createdAt: { $gte: startDate } };
+  baseQuery.hotelId = resolvedAnalyticsHotelId;
 
   // Parallel execution of analytics queries
   const [
@@ -921,10 +931,12 @@ router.get('/search/partners', catchAsync(async (req, res) => {
     role: 'guest'
   };
   
-  if (hotelId) {
-    // Find users who have bookings at this hotel
-    query.hotelId = hotelId;
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedPartnerHotelId = hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedPartnerHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  query.hotelId = resolvedPartnerHotelId;
   
   if (interests) {
     query.interests = { $in: interests.split(',') };

@@ -3,6 +3,7 @@ import { Star, Filter, ThumbsUp, MessageCircle, Calendar, User, Heart, TrendingU
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
 import { cn } from '../../utils/cn';
 
 interface ReviewCardProps {
@@ -195,8 +196,7 @@ export default function ReviewsPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'highest_rated' | 'lowest_rated' | 'most_helpful'>('newest');
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
-  // Default hotel ID - in real app, this would come from context or props
-      const hotelId = '68cd01414419c17b5f6b4c12'; // Correct hotel ID matching database
+  const hotelId = DEFAULT_PUBLIC_HOTEL_ID;
 
   const loadReviews = async (page = 1) => {
     try {

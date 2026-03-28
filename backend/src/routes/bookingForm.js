@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const adminRouter = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for form submissions
@@ -68,15 +69,26 @@ const createTemplateValidation = [
     .withMessage('Invalid field type'),
   
   body('fields.*.label')
-    .notEmpty()
-    .withMessage('Field label is required'),
+    .optional()
+    .custom((value, { req, path }) => {
+      // Extract the field index from the path (e.g., 'fields[0].label' → 0)
+      const match = path.match(/fields\[(\d+)\]/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        const fieldType = req.body.fields?.[idx]?.type;
+        // Divider, html, and hidden fields don't require labels
+        if (['divider', 'html', 'hidden'].includes(fieldType)) return true;
+      }
+      if (!value || !value.trim()) throw new Error('Field label is required');
+      return true;
+    }),
   
-  body('settings.theme.colors.primary')
+  body('styling.theme.colors.primary')
     .optional()
     .matches(/^#[0-9A-F]{6}$/i)
     .withMessage('Primary color must be a valid hex color'),
-  
-  body('settings.theme.colors.secondary')
+
+  body('styling.theme.colors.secondary')
     .optional()
     .matches(/^#[0-9A-F]{6}$/i)
     .withMessage('Secondary color must be a valid hex color'),
@@ -88,7 +100,7 @@ const createTemplateValidation = [
   
   body('status')
     .optional()
-    .isIn(['draft', 'active', 'archived'])
+    .isIn(['draft', 'active', 'published', 'archived'])
     .withMessage('Invalid status')
 ];
 
@@ -96,17 +108,52 @@ const updateTemplateValidation = [
   param('id')
     .isMongoId()
     .withMessage('Invalid template ID'),
-  
-  ...createTemplateValidation.filter(validation => 
-    !validation.builder.fields.includes('name') // Make name optional for updates
-  ),
-  
+
   body('name')
     .optional()
     .notEmpty()
     .withMessage('Template name cannot be empty')
     .isLength({ max: 100 })
-    .withMessage('Template name must be less than 100 characters')
+    .withMessage('Template name must be less than 100 characters'),
+
+  body('description')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Description must be less than 500 characters'),
+
+  body('category')
+    .optional()
+    .isIn(['booking', 'inquiry', 'registration', 'survey', 'custom'])
+    .withMessage('Invalid category'),
+
+  body('fields')
+    .optional()
+    .isArray()
+    .withMessage('Fields must be an array'),
+
+  body('fields.*.id')
+    .optional()
+    .notEmpty()
+    .withMessage('Field ID is required'),
+
+  body('fields.*.type')
+    .optional()
+    .isIn([
+      'text', 'email', 'tel', 'phone', 'number', 'date', 'time', 'datetime',
+      'textarea', 'select', 'multiselect', 'radio', 'checkbox', 'file', 'hidden',
+      'password', 'url', 'color', 'range', 'section', 'divider', 'heading', 'html'
+    ])
+    .withMessage('Invalid field type'),
+
+  body('fields.*.label')
+    .optional()
+    .notEmpty()
+    .withMessage('Field label is required'),
+
+  body('status')
+    .optional()
+    .isIn(['draft', 'active', 'published', 'archived'])
+    .withMessage('Invalid status')
 ];
 
 const templateIdValidation = [
@@ -128,12 +175,12 @@ const paginationValidation = [
   
   query('status')
     .optional()
-    .isIn(['all', 'draft', 'active', 'archived'])
+    .isIn(['all', 'draft', 'active', 'published', 'archived'])
     .withMessage('Invalid status filter'),
   
   query('category')
     .optional()
-    .isIn(['booking', 'inquiry', 'registration', 'survey', 'custom'])
+    .isIn(['all', 'booking', 'inquiry', 'registration', 'survey', 'custom'])
     .withMessage('Invalid category filter'),
   
   query('sortBy')
@@ -226,52 +273,14 @@ const abTestValidation = [
     .withMessage('Action must be view, submit, or abandon')
 ];
 
-// Admin routes - require authentication and admin role
-router.use(authenticate, ensurePropertyAccess, authorizePolicy('bookingForm', 'adminAccess'), (req, res, next) => {
-  logger.debug('BookingForm route auth check', { userId: req.user?.id, role: req.user?.role });
-
-  if (!req.user) {
-    logger.debug('No user found after authentication');
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required'
-    });
-  }
-
-  if (req.user.role !== 'admin') {
-    logger.debug('User role not admin', { role: req.user.role });
-    return res.status(403).json({
-      success: false,
-      error: 'Access denied. Admin role required.',
-      userRole: req.user.role
-    });
-  }
-
-  logger.debug('BookingForm authentication and authorization passed');
-  next();
-});
-
-// Template CRUD operations
-router.post('/templates', validate(mutationBaselineSchema), createTemplateValidation, bookingFormController.createTemplate);
-router.get('/templates', paginationValidation, bookingFormController.getTemplates);
-router.get('/templates/:id', templateIdValidation, bookingFormController.getTemplate);
-router.put('/templates/:id', validate(mutationBaselineSchema), updateTemplateValidation, bookingFormController.updateTemplate);
-router.delete('/templates/:id', validate(mutationBaselineSchema), templateIdValidation, bookingFormController.deleteTemplate);
-
-// Template operations
-router.post('/templates/:id/duplicate', validate(mutationBaselineSchema), duplicateValidation, bookingFormController.duplicateTemplate);
-router.get('/templates/:id/export', exportValidation, bookingFormController.exportTemplate);
-router.post('/templates/import', validate(mutationBaselineSchema), importValidation, bookingFormController.importTemplate);
-
-// Analytics and A/B testing
-router.get('/templates/:id/analytics', analyticsValidation, bookingFormController.getAnalytics);
-router.post('/templates/:id/ab-test', validate(mutationBaselineSchema), abTestValidation, bookingFormController.testABVariant);
-
-// Public routes - for form rendering and submission (no auth required)
+// =============================================
+// PUBLIC routes — no authentication required
+// MUST be mounted BEFORE the admin auth middleware
+// =============================================
 const publicRouter = express.Router();
 
 // Form rendering - with rate limiting
-publicRouter.get('/forms/:id/render', 
+publicRouter.get('/forms/:id/render',
   formRenderLimit,
   templateIdValidation,
   [
@@ -299,8 +308,30 @@ publicRouter.post('/forms/:id/validate',
   bookingFormController.validateForm
 );
 
-// Mount public routes without auth middleware
 router.use('/public', publicRouter);
+
+// =============================================
+// ADMIN routes — require authentication + admin role
+// =============================================
+adminRouter.use(authenticate, ensurePropertyAccess, authorizePolicy('bookingForm', 'adminAccess'));
+
+// Template CRUD operations
+adminRouter.post('/templates', validate(mutationBaselineSchema), createTemplateValidation, bookingFormController.createTemplate);
+adminRouter.get('/templates', paginationValidation, bookingFormController.getTemplates);
+adminRouter.get('/templates/:id', templateIdValidation, bookingFormController.getTemplate);
+adminRouter.put('/templates/:id', validate(mutationBaselineSchema), updateTemplateValidation, bookingFormController.updateTemplate);
+adminRouter.delete('/templates/:id', validate(mutationBaselineSchema), templateIdValidation, bookingFormController.deleteTemplate);
+
+// Template operations
+adminRouter.post('/templates/:id/duplicate', validate(mutationBaselineSchema), duplicateValidation, bookingFormController.duplicateTemplate);
+adminRouter.get('/templates/:id/export', exportValidation, bookingFormController.exportTemplate);
+adminRouter.post('/templates/import', validate(mutationBaselineSchema), importValidation, bookingFormController.importTemplate);
+
+// Analytics and A/B testing
+adminRouter.get('/templates/:id/analytics', analyticsValidation, bookingFormController.getAnalytics);
+adminRouter.post('/templates/:id/ab-test', validate(mutationBaselineSchema), abTestValidation, bookingFormController.testABVariant);
+
+router.use('/', adminRouter);
 
 // Error handling middleware
 router.use((error, req, res, next) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef} from 'react';
+import { api } from '../../services/api';
 import {
   IndianRupee,
   FileText,
@@ -19,7 +20,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
-import { roomInventoryService } from '../../services/roomInventoryService';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 
 interface Invoice {
@@ -106,115 +106,85 @@ export function InventoryBillingIntegration({
   const fetchBillingSummary = async () => {
     try {
       setLoading(true);
-      // This would call the backend billing service
-      // For now, we'll simulate the data structure
-      const mockSummary: BillingSummary = {
-        totalCharges: 125.50,
-        replacementCharges: 45.00,
-        damageCharges: 60.50,
-        equipmentCharges: 20.00,
-        cleaningCharges: 0,
-        transactions: 3,
-        inspections: 1,
-        invoices: 2,
-        pendingAmount: 125.50,
-        paidAmount: 0,
-        details: {
-          transactions: [
-            {
-              id: 'tx1',
-              type: 'replacement',
-              amount: 45.00,
-              date: new Date().toISOString(),
-              status: 'approved',
-              items: [
-                { name: 'Towel Set', quantity: 2, cost: 45.00, reason: 'Damaged' }
-              ]
-            }
-          ],
-          inspections: [
-            {
-              id: 'insp1',
-              date: new Date().toISOString(),
-              score: 75,
-              charges: 80.50,
-              status: 'pending_charges',
-              canCheckout: false
-            }
-          ],
-          invoices: [
-            {
-              _id: 'inv1',
-              invoiceNumber: 'INV-2024-001',
-              type: 'checkout_charges',
-              status: 'pending',
-              issueDate: new Date().toISOString(),
-              dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              subtotal: 73.18,
-              taxAmount: 7.32,
-              totalAmount: 80.50,
-              currency: 'INR',
-              lineItems: [
-                {
-                  description: 'TV Remote - damaged',
-                  quantity: 1,
-                  unitPrice: 20.00,
-                  totalPrice: 20.00,
-                  category: 'equipment_damage'
-                },
-                {
-                  description: 'Bath Towel - missing',
-                  quantity: 2,
-                  unitPrice: 26.59,
-                  totalPrice: 53.18,
-                  category: 'inventory_charge'
-                }
-              ],
-              breakdown: {
-                equipment: 20.00,
-                inventory: 53.18,
-                damages: 0,
-                cleaning: 0,
-                extras: 0
-              },
-              notes: 'Charges from checkout inspection'
-            },
-            {
-              _id: 'inv2',
-              invoiceNumber: 'INV-2024-002',
-              type: 'replacement_charges',
-              status: 'pending',
-              issueDate: new Date().toISOString(),
-              dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              subtotal: 40.91,
-              taxAmount: 4.09,
-              totalAmount: 45.00,
-              currency: 'INR',
-              lineItems: [
-                {
-                  description: 'Towel Set replacement - damaged',
-                  quantity: 2,
-                  unitPrice: 20.45,
-                  totalPrice: 40.91,
-                  category: 'item_replacement'
-                }
-              ],
-              breakdown: {
-                equipment: 0,
-                inventory: 40.91,
-                damages: 0,
-                cleaning: 0,
-                extras: 0
-              },
-              notes: 'Charges for item replacements during stay'
-            }
-          ] as Invoice[]
+      // Fetch real checkout inventory billing data
+      const { data } = await api.get(`/checkout-inventory/booking/${bookingId}`);
+      if (data.status === 'success' && data.data?.checkoutInventory) {
+        const checkout = data.data.checkoutInventory;
+        const items = checkout.items || [];
+
+        // Calculate charges from real data
+        let replacementCharges = 0;
+        let damageCharges = 0;
+        let equipmentCharges = 0;
+        const lineItems: Invoice['lineItems'] = [];
+
+        for (const item of items) {
+          const charge = item.chargeable ? (item.chargeAmount || 0) : 0;
+          if (item.status === 'damaged') {
+            damageCharges += charge;
+          } else if (item.status === 'missing') {
+            replacementCharges += charge;
+          } else {
+            equipmentCharges += charge;
+          }
+          if (charge > 0) {
+            lineItems.push({
+              description: `${item.itemName || 'Item'} - ${item.status || 'charged'}`,
+              quantity: item.quantity || 1,
+              unitPrice: charge / (item.quantity || 1),
+              totalPrice: charge,
+              category: item.status === 'damaged' ? 'equipment_damage' : 'inventory_charge'
+            });
+          }
         }
-      };
-      
-      setBillingSummary(mockSummary);
+
+        const totalCharges = replacementCharges + damageCharges + equipmentCharges;
+        const taxAmount = totalCharges * 0.1;
+
+        const realSummary: BillingSummary = {
+          totalCharges,
+          replacementCharges,
+          damageCharges,
+          equipmentCharges,
+          cleaningCharges: 0,
+          transactions: items.length,
+          inspections: checkout.inspectionDate ? 1 : 0,
+          invoices: totalCharges > 0 ? 1 : 0,
+          pendingAmount: checkout.paymentStatus === 'paid' ? 0 : totalCharges,
+          paidAmount: checkout.paymentStatus === 'paid' ? totalCharges : 0,
+          details: {
+            transactions: [],
+            inspections: [],
+            invoices: totalCharges > 0 ? [{
+              _id: checkout._id,
+              invoiceNumber: `INV-${checkout._id?.slice(-6)?.toUpperCase() || '000000'}`,
+              type: 'checkout_charges' as const,
+              status: (checkout.paymentStatus === 'paid' ? 'paid' : 'pending') as Invoice['status'],
+              issueDate: checkout.createdAt || new Date().toISOString(),
+              dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              subtotal: totalCharges,
+              taxAmount,
+              totalAmount: totalCharges + taxAmount,
+              currency: 'INR',
+              lineItems,
+              breakdown: {
+                equipment: equipmentCharges,
+                inventory: replacementCharges,
+                damages: damageCharges,
+                cleaning: 0,
+                extras: 0
+              }
+            }] as Invoice[] : []
+          }
+        };
+        setBillingSummary(realSummary);
+      } else {
+        // No checkout data found - show empty state
+        setBillingSummary(null);
+      }
     } catch {
-      // Error handled silently
+      // No billing data available for this booking
+      setBillingSummary(null);
     } finally {
       setLoading(false);
     }

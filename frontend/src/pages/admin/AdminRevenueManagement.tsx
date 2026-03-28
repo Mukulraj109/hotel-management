@@ -2,7 +2,6 @@ import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
-import RevenueDashboard from '../../components/revenue/RevenueDashboard';
 import PricingRulesManagement from '../../components/revenue/PricingRulesManagement';
 import RevenueManagementDashboard from '../../components/revenue/RevenueManagementDashboard';
 import PackageManagement from '../../components/revenue/PackageManagement';
@@ -10,7 +9,7 @@ import RateShoppingDashboard from '../../components/revenue/RateShoppingDashboar
 import CorporateRatesManagement from '../../components/revenue/CorporateRatesManagement';
 
 const AdminRevenueManagement: React.FC = () => {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const { selectedPropertyId } = useProperty();
 
   // Property validation
   if (!selectedPropertyId) {

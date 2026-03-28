@@ -715,8 +715,26 @@ export const getMarketingDashboard = async (req, res) => {
       }
     ]);
 
-    // Review summary - scoped to hotel
-    const reviewStats = await ReviewManagement.aggregate([
+    // Review summary - query BOTH review collections and merge
+    const Review = (await import('../models/Review.js')).default;
+
+    // Primary: Review model (has 'rating' field directly)
+    const mainReviewStats = await Review.aggregate([
+      hotelMatch,
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+          positiveReviews: {
+            $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    // Secondary: ReviewManagement model (has 'content.rating')
+    const mgmtReviewStats = await ReviewManagement.aggregate([
       hotelMatch,
       {
         $group: {
@@ -729,6 +747,32 @@ export const getMarketingDashboard = async (req, res) => {
         }
       }
     ]);
+
+    // Merge both sources
+    const main = mainReviewStats[0] || { totalReviews: 0, averageRating: 0, positiveReviews: 0 };
+    const mgmt = mgmtReviewStats[0] || { totalReviews: 0, averageRating: 0, positiveReviews: 0 };
+    const totalReviewCount = main.totalReviews + mgmt.totalReviews;
+    const reviewStats = [{
+      totalReviews: totalReviewCount,
+      averageRating: totalReviewCount > 0
+        ? ((main.averageRating || 0) * main.totalReviews + (mgmt.averageRating || 0) * mgmt.totalReviews) / totalReviewCount
+        : 0,
+      positiveReviews: main.positiveReviews + mgmt.positiveReviews
+    }];
+
+    // Rating distribution from BOTH collections
+    const mainDist = await Review.aggregate([
+      hotelMatch,
+      { $group: { _id: { $round: ['$rating', 0] }, count: { $sum: 1 } } }
+    ]);
+    const mgmtDist = await ReviewManagement.aggregate([
+      hotelMatch,
+      { $group: { _id: { $ifNull: [{ $round: ['$content.rating', 0] }, 0] }, count: { $sum: 1 } } }
+    ]);
+    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    [...mainDist, ...mgmtDist].forEach(r => {
+      if (r._id >= 1 && r._id <= 5) ratingDistribution[r._id] += r.count;
+    });
     
     res.json({
       success: true,
@@ -744,6 +788,7 @@ export const getMarketingDashboard = async (req, res) => {
         },
         guestSegmentation: guestSegments,
         reviewSummary: reviewStats[0] || { totalReviews: 0, averageRating: 0, positiveReviews: 0 },
+        ratingDistribution,
         totalWidgets: widgets.length,
         activeCampaigns: campaigns.filter(c => c.status === 'sending').length
       }

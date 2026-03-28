@@ -33,29 +33,23 @@ class RoomTypeController {
       const roomTypes = await RoomType.find(filter)
         .sort({ name: 1 }).lean().limit(1000);
 
-      // Include room count and inventory stats if requested
+      // Include room count stats if requested
       if (includeStats === 'true') {
         for (const roomType of roomTypes) {
-          // Use the totalRooms field from the room type schema itself
-          // If it doesn't exist, fall back to counting actual room documents
           if (!roomType.totalRooms) {
-            const totalRooms = await roomType.getTotalRooms();
-            roomType._doc.totalRooms = totalRooms;
+            // Count actual rooms linked to this room type
+            roomType.totalRooms = await Room.countDocuments({ roomTypeId: roomType._id, hotelId });
           }
         }
       }
 
       // Transform data for frontend compatibility
-      const transformedRoomTypes = roomTypes.map(rt => {
-        const roomTypeObj = rt.toObject();
-        return {
-          ...roomTypeObj,
-          basePrice: roomTypeObj.baseRate || 0, // Map baseRate to basePrice for frontend, ensure it's not undefined
-          maxOccupancy: roomTypeObj.specifications?.maxOccupancy || 2,
-          // Ensure totalRooms is preserved
-          totalRooms: roomTypeObj.totalRooms || 0
-        };
-      });
+      const transformedRoomTypes = roomTypes.map(rt => ({
+        ...rt,
+        basePrice: rt.baseRate || 0,
+        maxOccupancy: rt.specifications?.maxOccupancy || 2,
+        totalRooms: rt.totalRooms || 0
+      }));
 
       res.json({
         success: true,
@@ -498,39 +492,62 @@ class RoomTypeController {
     try {
       const { hotelId } = req.params;
       
-      // Get all rooms without roomTypeId
-      const roomsToMigrate = await Room.find({
+      // Get valid roomTypeIds that belong to THIS hotel
+      const validRoomTypeIds = await RoomType.find({ hotelId }).select('_id').lean();
+      const validIds = new Set(validRoomTypeIds.map(rt => rt._id.toString()));
+
+      // Get rooms that need migration:
+      // 1. No roomTypeId at all
+      // 2. roomTypeId is null
+      // 3. roomTypeId references a room type from a DIFFERENT hotel (data inconsistency)
+      const allRooms = await Room.find({
         hotelId,
-        roomTypeId: { $exists: false },
-        type: { $exists: true }
-      }).lean().limit(1000);
+        type: { $exists: true, $ne: null }
+      }).limit(1000);
+
+      const roomsToMigrate = allRooms.filter(room => {
+        if (!room.roomTypeId) return true; // No roomTypeId
+        return !validIds.has(room.roomTypeId.toString()); // roomTypeId belongs to different hotel
+      });
 
       let migratedCount = 0;
       const results = [];
 
       for (const room of roomsToMigrate) {
         try {
-          // Find or create room type
-          let roomType = await RoomType.findByLegacyType(hotelId, room.type);
-          
+          const typeCode = (room.type || 'standard').toUpperCase().substring(0, 5);
+
+          // Find existing room type for this hotel by matching code or name
+          let roomType = await RoomType.findOne({
+            hotelId,
+            $or: [
+              { code: typeCode },
+              { code: room.type?.toUpperCase() },
+              { name: new RegExp(`^${room.type}$`, 'i') }
+            ]
+          });
+
           if (!roomType) {
-            // Create new room type based on legacy type
+            // Create new room type based on legacy room type
+            const typeName = (room.type || 'standard').charAt(0).toUpperCase() + (room.type || 'standard').slice(1);
             roomType = new RoomType({
               hotelId,
-              name: this.getLegacyTypeName(room.type),
-              code: room.type.toUpperCase().substring(0, 3),
-              maxOccupancy: room.capacity || 2,
-              basePrice: room.baseRate || 1000,
-              legacyType: room.type,
-              description: `Auto-created from legacy room type: ${room.type}`
+              name: typeName,
+              code: typeCode,
+              baseRate: room.baseRate || room.currentRate || 1000,
+              totalRooms: 1,
+              specifications: {
+                maxOccupancy: room.capacity || 2,
+              },
+              description: `Auto-created from room type: ${room.type}`,
+              isActive: true,
             });
-            
+
             await roomType.save();
           }
 
           // Link room to room type
-          room.roomTypeId = roomType._id;
-          await room.save();
+          await Room.updateOne({ _id: room._id }, { $set: { roomTypeId: roomType._id } });
 
           migratedCount++;
           results.push({

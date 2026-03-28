@@ -4,6 +4,17 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { api } from '../../services/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
 
 interface EditGroupModalProps {
   isOpen: boolean;
@@ -53,6 +64,8 @@ export const EditGroupModal: React.FC<EditGroupModalProps> = ({
   onSuccess,
   group
 }) => {
+  const { toast } = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState<GroupFormData>({
     name: '',
     description: '',
@@ -113,38 +126,46 @@ export const EditGroupModal: React.FC<EditGroupModalProps> = ({
       await api.put(`/property-groups/${group._id}`, formData);
       onSuccess();
       onClose();
-    } catch (error) {
-      // Handle error (show toast notification)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update group."
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!group) return;
+    setShowDeleteConfirm(true);
+  };
 
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete the group "${group.name}"? This action cannot be undone.`
-    );
-
-    if (!confirmDelete) return;
-
+  const confirmDeleteGroup = async () => {
     setIsLoading(true);
-
     try {
-      await api.delete(`/property-groups/${group._id}`);
+      await api.delete(`/property-groups/${group?._id}`);
       onSuccess();
       onClose();
-    } catch (error) {
-      // Handle error (show toast notification)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete group."
+      });
     } finally {
       setIsLoading(false);
+      setShowDeleteConfirm(false);
     }
   };
 
   if (!group) return null;
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -302,5 +323,24 @@ export const EditGroupModal: React.FC<EditGroupModalProps> = ({
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* Delete Confirmation Dialog */}
+    <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Group</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete &quot;{group?.name}&quot;? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={confirmDeleteGroup} className="bg-red-600 hover:bg-red-700">
+            Delete Group
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };

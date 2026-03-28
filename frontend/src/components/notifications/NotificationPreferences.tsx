@@ -158,7 +158,7 @@ export default function NotificationPreferences({ isOpen, onClose }: Notificatio
       toast.success('Preferences updated successfully');
     },
     onError: (error: unknown) => {
-      toast.error(error.message || 'Failed to update preferences');
+      toast.error(error instanceof Error ? error.message : 'Failed to update preferences');
     }
   });
 
@@ -171,7 +171,7 @@ export default function NotificationPreferences({ isOpen, onClose }: Notificatio
       setTestingChannel(null);
     },
     onError: (error: unknown) => {
-      toast.error(error.message || 'Failed to send test notification');
+      toast.error(error instanceof Error ? error.message : 'Failed to send test notification');
       setTestingChannel(null);
     }
   });

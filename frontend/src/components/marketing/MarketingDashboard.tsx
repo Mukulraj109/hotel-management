@@ -394,19 +394,25 @@ const MarketingDashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {[5, 4, 3, 2, 1].map((rating) => (
-                    <div key={rating} className="flex items-center space-x-2">
-                      <span className="text-sm w-6">{rating}</span>
-                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-yellow-400 h-2 rounded-full" 
-                          style={{ width: `${Math.random() * 100}%` }}
-                        ></div>
+                  {[5, 4, 3, 2, 1].map((rating) => {
+                    const dist = stats.ratingDistribution || {};
+                    const count = dist[rating] || 0;
+                    const total = stats.reviewSummary.totalReviews || 1;
+                    const pct = (count / total) * 100;
+                    return (
+                      <div key={rating} className="flex items-center space-x-2">
+                        <span className="text-sm w-6">{rating}</span>
+                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-yellow-400 h-2 rounded-full"
+                            style={{ width: `${pct}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm text-gray-600 w-8">{count}</span>
                       </div>
-                      <span className="text-sm text-gray-600 w-8">{Math.floor(Math.random() * 20)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

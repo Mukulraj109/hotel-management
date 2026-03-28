@@ -48,7 +48,7 @@ const AdminTapeChart: React.FC = () => {
       description: 'Room assignments',
       color: 'bg-green-500',
       activeColor: 'bg-green-600 text-white border-green-600 shadow-lg',
-      notifications: 3
+      notifications: 0
     },
     {
       value: 'blocks',
@@ -57,7 +57,7 @@ const AdminTapeChart: React.FC = () => {
       description: 'Group bookings',
       color: 'bg-purple-500',
       activeColor: 'bg-purple-600 text-white border-purple-600 shadow-lg',
-      notifications: 2
+      notifications: 0
     },
     {
       value: 'reservations',
@@ -66,7 +66,7 @@ const AdminTapeChart: React.FC = () => {
       description: 'Advanced management',
       color: 'bg-orange-500',
       activeColor: 'bg-orange-600 text-white border-orange-600 shadow-lg',
-      notifications: 5
+      notifications: 0
     },
     {
       value: 'rules',
@@ -84,7 +84,7 @@ const AdminTapeChart: React.FC = () => {
       description: 'Guest queue',
       color: 'bg-red-500',
       activeColor: 'bg-red-600 text-white border-red-600 shadow-lg',
-      notifications: 1
+      notifications: 0
     }
   ];
 
@@ -310,7 +310,7 @@ const AdminTapeChart: React.FC = () => {
                     <h2 className="text-xl font-semibold text-gray-900">Advanced Reservations</h2>
                     <Badge variant="default" className="ml-auto bg-orange-500">
                       <Calendar className="w-3 h-3 mr-1" />
-                      5 Pending
+                      Pending
                     </Badge>
                   </div>
                   <AdvancedReservations />
@@ -346,7 +346,7 @@ const AdminTapeChart: React.FC = () => {
                     <h2 className="text-xl font-semibold text-gray-900">Guest Waitlist Management</h2>
                     <Badge variant="destructive" className="ml-auto">
                       <AlertCircle className="w-3 h-3 mr-1" />
-                      1 Urgent
+                      Waitlist
                     </Badge>
                   </div>
                   <WaitingListManager />

@@ -1,6 +1,6 @@
 import { api as apiClient } from './api';
 
-const API_BASE = '/api/financial';
+// All paths use /financial/* which combines with axios baseURL /api/v1 to form /api/v1/financial/*
 
 export interface ChartOfAccount {
   _id: string;
@@ -394,6 +394,11 @@ class FinancialService {
     return response.data;
   }
 
+  async deleteBankAccount(id: string) {
+    const response = await apiClient.delete(`/financial/bank-accounts/${id}`);
+    return response.data;
+  }
+
   // Budgets
   async getBudgets(filters?: { fiscalYear?: number; status?: string; department?: string }) {
     const params = new URLSearchParams();
@@ -443,8 +448,12 @@ class FinancialService {
   }
 
   // Dashboard
-  async getFinancialDashboard(period: string = 'month') {
-    const response = await apiClient.get(`/financial/dashboard?period=${period}`);
+  async getFinancialDashboard(period: string = 'all', startDate?: string, endDate?: string) {
+    const params = new URLSearchParams();
+    params.append('period', period);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const response = await apiClient.get(`/financial/dashboard?${params}`);
     return response.data;
   }
 
@@ -507,6 +516,27 @@ class FinancialService {
     if (filters?.endDate) params.append('endDate', filters.endDate);
 
     const response = await apiClient.get(`/financial/reports/comprehensive?${params}`);
+    return response.data;
+  }
+
+  async exportFinancialReport(params: { type: string; format: string; startDate: string; endDate: string }) {
+    const response = await apiClient.get(`/financial/reports/comprehensive`, {
+      params: { startDate: params.startDate, endDate: params.endDate },
+      responseType: params.format === 'pdf' ? 'blob' : 'json'
+    });
+    // For PDF/Excel, trigger download; for JSON return data
+    if (params.format === 'pdf' || params.format === 'excel') {
+      const blob = new Blob([response.data], {
+        type: params.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `financial-report-${params.type}-${params.startDate}.${params.format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      return { success: true };
+    }
     return response.data;
   }
 

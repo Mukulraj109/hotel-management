@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '../../services/api';
 
 interface UserSession {
   id: string;
@@ -99,135 +100,18 @@ interface UserActivityTrackingProps {
   onExportReport?: (data: Record<string, unknown>, format: string) => void;
 }
 
-// Mock data for demonstration
-const mockUserSessions: UserSession[] = [
-  {
-    id: 'session-1',
-    userId: 'user-1',
-    userName: 'John Smith',
-    userEmail: 'john@hotel.com',
-    userRole: 'admin',
-    startTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    endTime: new Date(Date.now() - 30 * 60 * 1000),
-    duration: 90,
-    ipAddress: '192.168.1.100',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    device: {
-      type: 'desktop',
-      os: 'Windows 10',
-      browser: 'Chrome 91.0'
-    },
-    location: {
-      country: 'India',
-      city: 'Mumbai',
-      timezone: 'Asia/Kolkata'
-    },
-    activities: [
-      {
-        id: 'activity-1',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        type: 'page_view',
-        target: '/admin/dashboard',
-        details: { referrer: 'direct' }
-      },
-      {
-        id: 'activity-2',
-        timestamp: new Date(Date.now() - 1.5 * 60 * 60 * 1000),
-        type: 'click',
-        target: 'property-list-button',
-        details: { elementType: 'button', page: '/admin/properties' }
-      }
-    ],
-    pages: [
-      {
-        id: 'page-1',
-        path: '/admin/dashboard',
-        title: 'Admin Dashboard',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        duration: 300,
-        exitType: 'navigation'
-      },
-      {
-        id: 'page-2',
-        path: '/admin/properties',
-        title: 'Property Management',
-        timestamp: new Date(Date.now() - 1.5 * 60 * 60 * 1000),
-        duration: 450,
-        exitType: 'navigation'
-      }
-    ],
-    status: 'ended'
-  },
-  {
-    id: 'session-2',
-    userId: 'user-2',
-    userName: 'Sarah Johnson',
-    userEmail: 'sarah@hotel.com',
-    userRole: 'staff',
-    startTime: new Date(Date.now() - 45 * 60 * 1000),
-    duration: 45,
-    ipAddress: '192.168.1.101',
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
-    device: {
-      type: 'mobile',
-      os: 'iOS 14.0',
-      browser: 'Safari Mobile'
-    },
-    location: {
-      country: 'India',
-      city: 'Delhi',
-      timezone: 'Asia/Kolkata'
-    },
-    activities: [
-      {
-        id: 'activity-3',
-        timestamp: new Date(Date.now() - 45 * 60 * 1000),
-        type: 'page_view',
-        target: '/staff/dashboard',
-        details: { referrer: 'bookmark' }
-      }
-    ],
-    pages: [
-      {
-        id: 'page-3',
-        path: '/staff/dashboard',
-        title: 'Staff Dashboard',
-        timestamp: new Date(Date.now() - 45 * 60 * 1000),
-        duration: 180,
-        exitType: 'close'
-      }
-    ],
-    status: 'active'
-  }
-];
-
-const mockUserMetrics: UserMetrics = {
-  totalUsers: 156,
-  activeUsers: 23,
-  newUsers: 12,
-  returningUsers: 144,
-  averageSessionDuration: 25.4,
-  bounceRate: 34.2,
-  pageViews: 1248,
-  uniquePageViews: 892,
-  topPages: [
-    { path: '/admin/dashboard', title: 'Admin Dashboard', views: 234 },
-    { path: '/staff/rooms', title: 'Room Management', views: 189 },
-    { path: '/admin/bookings', title: 'Booking Management', views: 156 },
-    { path: '/staff/housekeeping', title: 'Housekeeping', views: 134 },
-    { path: '/admin/reports', title: 'Reports', views: 98 }
-  ],
-  topDevices: [
-    { type: 'Desktop', count: 89, percentage: 57.1 },
-    { type: 'Mobile', count: 45, percentage: 28.8 },
-    { type: 'Tablet', count: 22, percentage: 14.1 }
-  ],
-  topCountries: [
-    { country: 'India', count: 134, percentage: 85.9 },
-    { country: 'United States', count: 12, percentage: 7.7 },
-    { country: 'United Kingdom', count: 6, percentage: 3.8 },
-    { country: 'Canada', count: 4, percentage: 2.6 }
-  ]
+const emptyMetrics: UserMetrics = {
+  totalUsers: 0,
+  activeUsers: 0,
+  newUsers: 0,
+  returningUsers: 0,
+  averageSessionDuration: 0,
+  bounceRate: 0,
+  pageViews: 0,
+  uniquePageViews: 0,
+  topPages: [],
+  topDevices: [],
+  topCountries: []
 };
 
 const getDeviceIcon = (deviceType: string) => {
@@ -275,9 +159,85 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  const [sessions, setSessions] = useState<UserSession[]>([]);
+  const [userMetrics, setUserMetrics] = useState<UserMetrics>(emptyMetrics);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [analyticsRes, sessionsRes] = await Promise.allSettled([
+        api.get('/login-activity/analytics'),
+        api.get('/login-activity/sessions/active')
+      ]);
+
+      // Process analytics data
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value.data?.data) {
+        const data = analyticsRes.value.data.data;
+        setUserMetrics({
+          totalUsers: data.totalUsers || 0,
+          activeUsers: data.activeUsers || 0,
+          newUsers: data.newUsers || 0,
+          returningUsers: data.returningUsers || 0,
+          averageSessionDuration: data.averageSessionDuration || 0,
+          bounceRate: data.bounceRate || 0,
+          pageViews: data.pageViews || 0,
+          uniquePageViews: data.uniquePageViews || 0,
+          topPages: data.topPages || [],
+          topDevices: data.topDevices || [],
+          topCountries: data.topCountries || []
+        });
+      } else {
+        setUserMetrics(emptyMetrics);
+      }
+
+      // Process sessions data
+      if (sessionsRes.status === 'fulfilled' && sessionsRes.value.data?.data) {
+        const rawSessions = Array.isArray(sessionsRes.value.data.data)
+          ? sessionsRes.value.data.data
+          : sessionsRes.value.data.data.sessions || [];
+
+        const mappedSessions: UserSession[] = rawSessions.map((s: Record<string, unknown>, idx: number) => ({
+          id: (s._id as string) || (s.id as string) || `session-${idx}`,
+          userId: (s.userId as string) || '',
+          userName: (s.userName as string) || (s.user as Record<string, unknown>)?.name as string || 'Unknown',
+          userEmail: (s.userEmail as string) || (s.user as Record<string, unknown>)?.email as string || '',
+          userRole: (s.userRole as string) || (s.role as string) || 'unknown',
+          startTime: s.startTime ? new Date(s.startTime as string) : new Date(s.createdAt as string || Date.now()),
+          endTime: s.endTime ? new Date(s.endTime as string) : undefined,
+          duration: (s.duration as number) || 0,
+          ipAddress: (s.ipAddress as string) || (s.ip as string) || '',
+          userAgent: (s.userAgent as string) || '',
+          device: (s.device as UserSession['device']) || { type: 'desktop', os: 'Unknown', browser: 'Unknown' },
+          location: (s.location as UserSession['location']) || { country: 'Unknown', city: 'Unknown', timezone: '' },
+          activities: (s.activities as UserActivity[]) || [],
+          pages: (s.pages as PageVisit[]) || [],
+          status: (s.status as UserSession['status']) || 'active'
+        }));
+
+        setSessions(mappedSessions);
+      } else {
+        setSessions([]);
+      }
+    } catch (err) {
+      setError('Failed to load activity data');
+      setSessions([]);
+      setUserMetrics(emptyMetrics);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   // Filter sessions based on criteria
   const filteredSessions = useMemo(() => {
-    return mockUserSessions.filter(session => {
+    return sessions.filter(session => {
       const matchesSearch = !searchTerm ||
         session.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         session.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -293,7 +253,7 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
       return matchesSearch && matchesRole && matchesDevice && matchesStatus &&
              matchesDateFrom && matchesDateTo;
     });
-  }, [searchTerm, roleFilter, deviceFilter, statusFilter, dateFrom, dateTo]);
+  }, [sessions, searchTerm, roleFilter, deviceFilter, statusFilter, dateFrom, dateTo]);
 
   // Paginate results
   const paginatedSessions = useMemo(() => {
@@ -303,10 +263,10 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
 
   const totalPages = Math.ceil(filteredSessions.length / itemsPerPage);
 
-  const handleExportReport = (format: string) => {
+  const handleExportReport = (exportFormat: string) => {
     const reportData = {
       sessions: filteredSessions,
-      metrics: mockUserMetrics,
+      metrics: userMetrics,
       filters: {
         searchTerm,
         roleFilter,
@@ -320,10 +280,44 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
     };
 
     if (onExportReport) {
-      onExportReport(reportData, format);
-    } else {
+      onExportReport(reportData, exportFormat);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4 text-center">
+                <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mx-auto mb-2" />
+                <div className="h-4 w-20 bg-gray-100 rounded animate-pulse mx-auto" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error && sessions.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <Activity className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No activity data available</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Unable to load user activity data. This may be due to permissions or the service being unavailable.
+          </p>
+          <Button variant="outline" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -331,28 +325,28 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{mockUserMetrics.totalUsers}</div>
+            <div className="text-2xl font-bold text-blue-600">{userMetrics.totalUsers}</div>
             <div className="text-sm text-muted-foreground">Total Users</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{mockUserMetrics.activeUsers}</div>
+            <div className="text-2xl font-bold text-green-600">{userMetrics.activeUsers}</div>
             <div className="text-sm text-muted-foreground">Active Now</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-orange-600">{mockUserMetrics.averageSessionDuration}m</div>
+            <div className="text-2xl font-bold text-orange-600">{userMetrics.averageSessionDuration}m</div>
             <div className="text-sm text-muted-foreground">Avg Session</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">{mockUserMetrics.pageViews}</div>
+            <div className="text-2xl font-bold text-purple-600">{userMetrics.pageViews}</div>
             <div className="text-sm text-muted-foreground">Page Views</div>
           </CardContent>
         </Card>
@@ -396,7 +390,7 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
                     <Download className="h-4 w-4 mr-2" />
                     Export PDF
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={fetchData}>
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
                   </Button>
@@ -461,62 +455,74 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
 
               {/* User Sessions List */}
               <div className="space-y-2">
-                {paginatedSessions.map((session) => (
-                  <Card key={session.id} className="hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => setSelectedSession(session)}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 flex-1">
-                          <div className="flex flex-col items-center gap-1">
-                            {getDeviceIcon(session.device.type)}
-                            <Badge className={`${getStatusColor(session.status)} border text-xs px-2 py-0.5`}>
-                              {session.status}
-                            </Badge>
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium">{session.userName}</span>
-                              <Badge variant="outline">{session.userRole}</Badge>
-                            </div>
-
-                            <p className="text-sm text-muted-foreground mb-2">
-                              {session.userEmail} • {session.location.city}, {session.location.country}
-                            </p>
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {format(session.startTime, 'MMM dd, HH:mm')}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Timer className="h-3 w-3" />
-                                {session.duration}m
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Eye className="h-3 w-3" />
-                                {session.pages.length} pages
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Activity className="h-3 w-3" />
-                                {session.activities.length} actions
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                              <span>IP: {session.ipAddress}</span>
-                              <span>{session.device.os} • {session.device.browser}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
+                {paginatedSessions.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <Users className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                      <h3 className="text-base font-medium text-gray-700">No active sessions</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        There are no user sessions matching your filters.
+                      </p>
                     </CardContent>
                   </Card>
-                ))}
+                ) : (
+                  paginatedSessions.map((session) => (
+                    <Card key={session.id} className="hover:shadow-md transition-shadow cursor-pointer"
+                          onClick={() => setSelectedSession(session)}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3 flex-1">
+                            <div className="flex flex-col items-center gap-1">
+                              {getDeviceIcon(session.device.type)}
+                              <Badge className={`${getStatusColor(session.status)} border text-xs px-2 py-0.5`}>
+                                {session.status}
+                              </Badge>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium">{session.userName}</span>
+                                <Badge variant="outline">{session.userRole}</Badge>
+                              </div>
+
+                              <p className="text-sm text-muted-foreground mb-2">
+                                {session.userEmail} {session.location.city !== 'Unknown' && `\u2022 ${session.location.city}, ${session.location.country}`}
+                              </p>
+
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {format(session.startTime, 'MMM dd, HH:mm')}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Timer className="h-3 w-3" />
+                                  {session.duration}m
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Eye className="h-3 w-3" />
+                                  {session.pages.length} pages
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Activity className="h-3 w-3" />
+                                  {session.activities.length} actions
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                                {session.ipAddress && <span>IP: {session.ipAddress}</span>}
+                                <span>{session.device.os} {session.device.browser && `\u2022 ${session.device.browser}`}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
               </div>
 
               {/* Pagination */}
@@ -533,118 +539,132 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
             </TabsContent>
 
             <TabsContent value="analytics" className="space-y-6">
-              {/* Top Pages */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Top Pages
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {mockUserMetrics.topPages.map((page, index) => (
-                      <div key={page.path} className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{page.title}</div>
-                          <div className="text-xs text-muted-foreground">{page.path}</div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-sm font-medium">{page.views} views</div>
-                          <div className="w-20">
-                            <Progress value={(page.views / mockUserMetrics.topPages[0].views) * 100} />
+              {userMetrics.topPages.length === 0 && userMetrics.topDevices.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <BarChart3 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                    <h3 className="text-base font-medium text-gray-700">No analytics data available</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Analytics data will appear once there is sufficient user activity.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {/* Top Pages */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5" />
+                        Top Pages
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {userMetrics.topPages.map((page) => (
+                          <div key={page.path} className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium text-sm">{page.title}</div>
+                              <div className="text-xs text-muted-foreground">{page.path}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-medium">{page.views} views</div>
+                              <div className="w-20">
+                                <Progress value={userMetrics.topPages[0] ? (page.views / userMetrics.topPages[0].views) * 100 : 0} />
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
+                    </CardContent>
+                  </Card>
+
+                  {/* Device Distribution */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <PieChart className="h-5 w-5" />
+                          Device Types
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {userMetrics.topDevices.map((device) => (
+                            <div key={device.type} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {getDeviceIcon(device.type)}
+                                <span className="text-sm">{device.type}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium">{device.percentage}%</span>
+                                <div className="w-16">
+                                  <Progress value={device.percentage} />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <MapPin className="h-5 w-5" />
+                          Top Countries
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {userMetrics.topCountries.map((country) => (
+                            <div key={country.country} className="flex items-center justify-between">
+                              <span className="text-sm">{country.country}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium">{country.percentage}%</span>
+                                <div className="w-16">
+                                  <Progress value={country.percentage} />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
-                </CardContent>
-              </Card>
 
-              {/* Device Distribution */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <PieChart className="h-5 w-5" />
-                      Device Types
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {mockUserMetrics.topDevices.map((device) => (
-                        <div key={device.type} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {getDeviceIcon(device.type)}
-                            <span className="text-sm">{device.type}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-medium">{device.percentage}%</span>
-                            <div className="w-16">
-                              <Progress value={device.percentage} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                  {/* Additional Metrics */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-bold text-green-600">{userMetrics.newUsers}</div>
+                        <div className="text-sm text-muted-foreground">New Users</div>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="h-5 w-5" />
-                      Top Countries
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {mockUserMetrics.topCountries.map((country) => (
-                        <div key={country.country} className="flex items-center justify-between">
-                          <span className="text-sm">{country.country}</span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-medium">{country.percentage}%</span>
-                            <div className="w-16">
-                              <Progress value={country.percentage} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-bold text-blue-600">{userMetrics.returningUsers}</div>
+                        <div className="text-sm text-muted-foreground">Returning Users</div>
+                      </CardContent>
+                    </Card>
 
-              {/* Additional Metrics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-bold text-green-600">{mockUserMetrics.newUsers}</div>
-                    <div className="text-sm text-muted-foreground">New Users</div>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-bold text-orange-600">{userMetrics.bounceRate}%</div>
+                        <div className="text-sm text-muted-foreground">Bounce Rate</div>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-bold text-blue-600">{mockUserMetrics.returningUsers}</div>
-                    <div className="text-sm text-muted-foreground">Returning Users</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-bold text-orange-600">{mockUserMetrics.bounceRate}%</div>
-                    <div className="text-sm text-muted-foreground">Bounce Rate</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-lg font-bold text-purple-600">{mockUserMetrics.uniquePageViews}</div>
-                    <div className="text-sm text-muted-foreground">Unique Page Views</div>
-                  </CardContent>
-                </Card>
-              </div>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-lg font-bold text-purple-600">{userMetrics.uniquePageViews}</div>
+                        <div className="text-sm text-muted-foreground">Unique Page Views</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="real-time" className="space-y-4">
@@ -653,37 +673,53 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5" />
                     Real-time Activity Feed
-                    <Badge variant="secondary">{mockUserMetrics.activeUsers} active</Badge>
+                    <Badge variant="secondary">{userMetrics.activeUsers} active</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-96">
-                    <div className="space-y-2">
-                      {mockUserSessions
-                        .filter(session => session.status === 'active')
-                        .flatMap(session =>
-                          session.activities.map(activity => ({
-                            ...activity,
-                            session
-                          }))
-                        )
-                        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-                        .slice(0, 20)
-                        .map((activity, index) => (
-                          <div key={`${activity.id}-${index}`} className="flex items-center gap-3 p-2 rounded border">
-                            {getActivityIcon(activity.type)}
-                            <div className="flex-1">
-                              <div className="text-sm">
-                                <strong>{activity.session.userName}</strong> performed <strong>{activity.type.replace('_', ' ')}</strong>
-                                {activity.target && ` on ${activity.target}`}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {format(activity.timestamp, 'HH:mm:ss')} • {activity.session.device.type}
+                    {sessions.filter(session => session.status === 'active').length === 0 ? (
+                      <div className="text-center py-12">
+                        <Activity className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500">No active sessions at the moment.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {sessions
+                          .filter(session => session.status === 'active')
+                          .flatMap(session =>
+                            session.activities.length > 0
+                              ? session.activities.map(activity => ({
+                                  ...activity,
+                                  session
+                                }))
+                              : [{
+                                  id: `session-active-${session.id}`,
+                                  timestamp: session.startTime,
+                                  type: 'page_view' as const,
+                                  target: 'Session active',
+                                  details: {},
+                                  session
+                                }]
+                          )
+                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                          .slice(0, 20)
+                          .map((activity, index) => (
+                            <div key={`${activity.id}-${index}`} className="flex items-center gap-3 p-2 rounded border">
+                              {getActivityIcon(activity.type)}
+                              <div className="flex-1">
+                                <div className="text-sm">
+                                  <strong>{activity.session.userName}</strong> performed <strong>{activity.type.replace('_', ' ')}</strong>
+                                  {activity.target && ` on ${activity.target}`}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {format(new Date(activity.timestamp), 'HH:mm:ss')} {activity.session.device?.type && `\u2022 ${activity.session.device.type}`}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                    </div>
+                          ))}
+                      </div>
+                    )}
                   </ScrollArea>
                 </CardContent>
               </Card>
@@ -700,7 +736,7 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
               <CardTitle className="flex items-center justify-between">
                 <span>Session Details - {selectedSession.userName}</span>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedSession(null)}>
-                  ×
+                  x
                 </Button>
               </CardTitle>
             </CardHeader>
@@ -730,45 +766,55 @@ const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
               </div>
 
               {/* Page Visits */}
-              <div>
-                <Label>Page Visits ({selectedSession.pages.length})</Label>
-                <div className="space-y-2 mt-2">
-                  {selectedSession.pages.map((page) => (
-                    <Card key={page.id}>
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{page.title}</div>
-                            <div className="text-sm text-muted-foreground">{page.path}</div>
+              {selectedSession.pages.length > 0 && (
+                <div>
+                  <Label>Page Visits ({selectedSession.pages.length})</Label>
+                  <div className="space-y-2 mt-2">
+                    {selectedSession.pages.map((page) => (
+                      <Card key={page.id}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{page.title}</div>
+                              <div className="text-sm text-muted-foreground">{page.path}</div>
+                            </div>
+                            <div className="text-right text-sm">
+                              <div>{format(new Date(page.timestamp), 'HH:mm:ss')}</div>
+                              <div className="text-muted-foreground">{page.duration}s</div>
+                            </div>
                           </div>
-                          <div className="text-right text-sm">
-                            <div>{format(page.timestamp, 'HH:mm:ss')}</div>
-                            <div className="text-muted-foreground">{page.duration}s</div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Activities */}
-              <div>
-                <Label>Activities ({selectedSession.activities.length})</Label>
-                <div className="space-y-2 mt-2">
-                  {selectedSession.activities.map((activity) => (
-                    <div key={activity.id} className="flex items-center gap-3 p-2 rounded border">
-                      {getActivityIcon(activity.type)}
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{activity.type.replace('_', ' ').toUpperCase()}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Target: {activity.target} • {format(activity.timestamp, 'HH:mm:ss')}
+              {selectedSession.activities.length > 0 && (
+                <div>
+                  <Label>Activities ({selectedSession.activities.length})</Label>
+                  <div className="space-y-2 mt-2">
+                    {selectedSession.activities.map((activity) => (
+                      <div key={activity.id} className="flex items-center gap-3 p-2 rounded border">
+                        {getActivityIcon(activity.type)}
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{activity.type.replace('_', ' ').toUpperCase()}</div>
+                          <div className="text-sm text-muted-foreground">
+                            Target: {activity.target} {activity.timestamp && `\u2022 ${format(new Date(activity.timestamp), 'HH:mm:ss')}`}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {selectedSession.pages.length === 0 && selectedSession.activities.length === 0 && (
+                <div className="text-center py-6 text-sm text-gray-500">
+                  No detailed activity data available for this session.
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

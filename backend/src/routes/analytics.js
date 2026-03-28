@@ -38,6 +38,12 @@ import {
   getProfitabilityMetrics,
   getHotelMetrics
 } from '../controllers/analyticsController.js';
+import {
+  predictNoShows,
+  predictGuestValue,
+  predictOverbooking,
+  predictLengthOfStay,
+} from '../controllers/predictiveController.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -160,6 +166,12 @@ router.get('/etl/status', authorize(['admin']), async (req, res) => {
 router.get('/forecast/occupancy/:hotelId', authorize(['admin', 'manager']), forecastOccupancy);
 router.get('/predict/demand/:hotelId', authorize(['admin', 'manager']), predictDemand);
 router.get('/market/trends/:hotelId', authorize(['admin', 'manager']), analyzeMarketTrends);
+
+// New predictive analytics endpoints (statistical, no ML)
+router.get('/predict/no-shows/:hotelId', authorize(['admin', 'manager']), predictNoShows);
+router.get('/predict/guest-value/:hotelId', authorize(['admin', 'manager']), predictGuestValue);
+router.get('/predict/overbooking/:hotelId', authorize(['admin', 'manager']), predictOverbooking);
+router.get('/predict/length-of-stay/:hotelId', authorize(['admin', 'manager']), predictLengthOfStay);
 
 // Staff Productivity Analytics Routes
 router.post('/staff-productivity', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getStaffProductivity);

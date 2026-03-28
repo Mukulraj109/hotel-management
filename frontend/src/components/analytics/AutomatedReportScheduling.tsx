@@ -16,7 +16,6 @@ import {
   Mail,
   Settings,
   Play,
-  Pause,
   Trash2,
   Edit,
   Plus,
@@ -71,93 +70,8 @@ interface AutomatedReportSchedulingProps {
   onRunSchedule?: (id: string) => void;
 }
 
-// Mock data for demonstration
-const mockReportTemplates: ReportTemplate[] = [
-  {
-    id: 'template-1',
-    name: 'Daily Operations Summary',
-    description: 'Daily summary of occupancy, revenue, and key metrics',
-    metrics: ['revenue', 'occupancy_rate', 'adr', 'rooms_sold'],
-    filters: [],
-    exportFormat: 'excel'
-  },
-  {
-    id: 'template-2',
-    name: 'Weekly Financial Report',
-    description: 'Weekly financial performance and revenue analysis',
-    metrics: ['revenue', 'gross_profit', 'adr', 'revpar'],
-    filters: [],
-    exportFormat: 'pdf'
-  },
-  {
-    id: 'template-3',
-    name: 'Monthly Staff Performance',
-    description: 'Monthly staff efficiency and task completion metrics',
-    metrics: ['staff_efficiency', 'task_completion_rate'],
-    filters: [],
-    exportFormat: 'excel'
-  }
-];
-
-const mockScheduledReports: ScheduledReport[] = [
-  {
-    id: 'schedule-1',
-    name: 'Daily Operations Report',
-    description: 'Automated daily operations summary for management team',
-    reportTemplate: 'template-1',
-    frequency: 'daily',
-    time: '08:00',
-    timezone: 'UTC',
-    recipients: ['manager@hotel.com', 'operations@hotel.com'],
-    isActive: true,
-    lastRun: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    nextRun: new Date(Date.now() + 60 * 60 * 1000),
-    status: 'scheduled',
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    createdBy: 'admin@hotel.com',
-    executionHistory: [
-      {
-        id: 'exec-1',
-        executedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-        status: 'success',
-        duration: 2340,
-        recipients: 2
-      },
-      {
-        id: 'exec-2',
-        executedAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
-        status: 'success',
-        duration: 1890,
-        recipients: 2
-      }
-    ]
-  },
-  {
-    id: 'schedule-2',
-    name: 'Weekly Revenue Analysis',
-    description: 'Weekly revenue and financial performance report',
-    reportTemplate: 'template-2',
-    frequency: 'weekly',
-    time: '09:00',
-    timezone: 'UTC',
-    recipients: ['finance@hotel.com', 'ceo@hotel.com'],
-    isActive: true,
-    lastRun: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    nextRun: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000),
-    status: 'scheduled',
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-    createdBy: 'admin@hotel.com',
-    executionHistory: [
-      {
-        id: 'exec-3',
-        executedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-        status: 'success',
-        duration: 4520,
-        recipients: 2
-      }
-    ]
-  }
-];
+// Default empty report templates - will be populated from props or remain empty
+const defaultReportTemplates: ReportTemplate[] = [];
 
 const timezones = [
   'UTC',
@@ -180,16 +94,25 @@ const frequencies = [
 ];
 
 export const AutomatedReportScheduling: React.FC<AutomatedReportSchedulingProps> = ({
-  reportTemplates = mockReportTemplates,
+  reportTemplates = defaultReportTemplates,
   onCreateSchedule,
   onUpdateSchedule,
   onDeleteSchedule,
   onRunSchedule
 }) => {
-  const [scheduledReports, setScheduledReports] = useState<ScheduledReport[]>(mockScheduledReports);
+  const [scheduledReports, setScheduledReports] = useState<ScheduledReport[]>([]);
   const [activeTab, setActiveTab] = useState<string>('schedules');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ScheduledReport | null>(null);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -234,11 +157,44 @@ export const AutomatedReportScheduling: React.FC<AutomatedReportSchedulingProps>
     return nextRun;
   };
 
+  // Populate form when editing an existing schedule
+  useEffect(() => {
+    if (editingSchedule) {
+      setFormData({
+        name: editingSchedule.name,
+        description: editingSchedule.description || '',
+        reportTemplate: editingSchedule.reportTemplate,
+        frequency: editingSchedule.frequency as 'daily',
+        time: editingSchedule.time,
+        timezone: editingSchedule.timezone || 'UTC',
+        recipients: editingSchedule.recipients.length > 0 ? editingSchedule.recipients : [''],
+        isActive: editingSchedule.isActive,
+      });
+    }
+  }, [editingSchedule]);
+
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
   const handleCreateSchedule = () => {
+    const validRecipients = formData.recipients.filter(email => email.trim() !== '' && isValidEmail(email.trim()));
+    if (validRecipients.length === 0) return;
+
+    // If editing, update instead of create
+    if (editingSchedule) {
+      const updates = {
+        ...formData,
+        recipients: validRecipients,
+        nextRun: calculateNextRun(formData.frequency, formData.time),
+      };
+      handleUpdateSchedule(editingSchedule.id, updates);
+      resetForm();
+      return;
+    }
+
     const newSchedule: ScheduledReport = {
       id: `schedule-${Date.now()}`,
       ...formData,
-      recipients: formData.recipients.filter(email => email.trim() !== ''),
+      recipients: validRecipients,
       nextRun: calculateNextRun(formData.frequency, formData.time),
       status: 'scheduled',
       createdAt: new Date(),
@@ -287,7 +243,7 @@ export const AutomatedReportScheduling: React.FC<AutomatedReportSchedulingProps>
           id: `exec-${Date.now()}`,
           executedAt: new Date(),
           status: 'success' as const,
-          duration: Math.floor(Math.random() * 5000) + 1000,
+          duration: 2000,
           recipients: schedule.recipients.length
         };
 
@@ -699,7 +655,11 @@ export const AutomatedReportScheduling: React.FC<AutomatedReportSchedulingProps>
                   </Button>
                   <Button
                     onClick={handleCreateSchedule}
-                    disabled={!formData.name || !formData.reportTemplate || formData.recipients.filter(e => e.trim()).length === 0}
+                    disabled={
+                      !formData.name ||
+                      !formData.reportTemplate ||
+                      formData.recipients.filter(e => e.trim() !== '' && isValidEmail(e.trim())).length === 0
+                    }
                   >
                     {editingSchedule ? 'Update Schedule' : 'Create Schedule'}
                   </Button>

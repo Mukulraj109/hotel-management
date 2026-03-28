@@ -354,7 +354,7 @@ offerFavoriteSchema.statics.getUserRecommendations = async function(userId, opti
 
     // Exclude already favorited offers if requested
     if (excludeFavorites) {
-      const userFavoriteOfferIds = await this.find({ userId }).distinct('offerId').lean().limit(1000);
+      const userFavoriteOfferIds = await this.distinct('offerId', { userId });
       if (userFavoriteOfferIds.length > 0) {
         pipeline.push({ $match: { _id: { $nin: userFavoriteOfferIds } } });
       }

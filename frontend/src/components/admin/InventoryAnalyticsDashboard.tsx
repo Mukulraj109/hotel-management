@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
-  PieChart,
   TrendingUp,
   TrendingDown,
   Package,
@@ -13,14 +12,11 @@ import {
   Zap,
   RefreshCw,
   Download,
-  Filter,
-  Eye,
-  ChevronUp,
-  ChevronDown,
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '@/services/api';
 import {
   BarChart,
   Bar,
@@ -33,6 +29,7 @@ import {
   LineChart,
   Line,
   PieChart as RechartsPieChart,
+  Pie,
   Cell,
   AreaChart,
   Area
@@ -123,12 +120,14 @@ interface AnalyticsData {
 const InventoryAnalyticsDashboard: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasNoData, setHasNoData] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'vendors' | 'forecasting'>('overview');
   const [refreshing, setRefreshing] = useState(false);
 
-  // Mock data - Replace with actual API calls
+  const periodToDays: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+
   useEffect(() => {
     fetchAnalyticsData();
   }, [selectedPeriod, selectedCategory]);
@@ -136,237 +135,26 @@ const InventoryAnalyticsDashboard: React.FC = () => {
   const fetchAnalyticsData = async () => {
     try {
       setLoading(true);
-      // Mock data - Replace with actual API call
-      const mockData: AnalyticsData = {
-        overview: {
-          totalItems: 450,
-          totalValue: 125000,
-          lowStockCount: 23,
-          reorderAlertsCount: 15,
-          averageItemValue: 278,
-          monthlyConsumptionValue: 18500,
-          inventoryTurnoverRatio: 6.2,
-          wastePercentage: 2.8
-        },
-        categoryBreakdown: [
-          {
-            category: 'Linens',
-            itemCount: 120,
-            totalValue: 45000,
-            percentage: 36,
-            averageValue: 375,
-            lowStockItems: 8,
-            trend: 'up',
-            changePercentage: 12.5
-          },
-          {
-            category: 'Cleaning',
-            itemCount: 95,
-            totalValue: 28000,
-            percentage: 22.4,
-            averageValue: 295,
-            lowStockItems: 6,
-            trend: 'stable',
-            changePercentage: 2.1
-          },
-          {
-            category: 'Toiletries',
-            itemCount: 85,
-            totalValue: 24000,
-            percentage: 19.2,
-            averageValue: 282,
-            lowStockItems: 4,
-            trend: 'up',
-            changePercentage: 8.3
-          },
-          {
-            category: 'Electronics',
-            itemCount: 35,
-            totalValue: 18000,
-            percentage: 14.4,
-            averageValue: 514,
-            lowStockItems: 3,
-            trend: 'down',
-            changePercentage: -5.2
-          },
-          {
-            category: 'Furniture',
-            itemCount: 25,
-            totalValue: 8000,
-            percentage: 6.4,
-            averageValue: 320,
-            lowStockItems: 2,
-            trend: 'stable',
-            changePercentage: 1.8
-          },
-          {
-            category: 'Others',
-            itemCount: 90,
-            totalValue: 2000,
-            percentage: 1.6,
-            averageValue: 22,
-            lowStockItems: 0,
-            trend: 'up',
-            changePercentage: 15.2
-          }
-        ],
-        stockStatus: {
-          inStock: 380,
-          lowStock: 45,
-          outOfStock: 15,
-          overstocked: 10
-        },
-        costAnalysis: {
-          monthlyTrend: [
-            {
-              month: 'Jul',
-              totalCost: 16200,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 5800 },
-                { category: 'Cleaning', cost: 4200 },
-                { category: 'Toiletries', cost: 3400 },
-                { category: 'Electronics', cost: 2000 },
-                { category: 'Others', cost: 800 }
-              ]
-            },
-            {
-              month: 'Aug',
-              totalCost: 17800,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 6400 },
-                { category: 'Cleaning', cost: 4600 },
-                { category: 'Toiletries', cost: 3800 },
-                { category: 'Electronics', cost: 2200 },
-                { category: 'Others', cost: 800 }
-              ]
-            },
-            {
-              month: 'Sep',
-              totalCost: 15600,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 5200 },
-                { category: 'Cleaning', cost: 4000 },
-                { category: 'Toiletries', cost: 3200 },
-                { category: 'Electronics', cost: 2400 },
-                { category: 'Others', cost: 800 }
-              ]
-            },
-            {
-              month: 'Oct',
-              totalCost: 19200,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 7200 },
-                { category: 'Cleaning', cost: 5000 },
-                { category: 'Toiletries', cost: 4000 },
-                { category: 'Electronics', cost: 2200 },
-                { category: 'Others', cost: 800 }
-              ]
-            },
-            {
-              month: 'Nov',
-              totalCost: 18400,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 6800 },
-                { category: 'Cleaning', cost: 4800 },
-                { category: 'Toiletries', cost: 3800 },
-                { category: 'Electronics', cost: 2200 },
-                { category: 'Others', cost: 800 }
-              ]
-            },
-            {
-              month: 'Dec',
-              totalCost: 20800,
-              categoryBreakdown: [
-                { category: 'Linens', cost: 8000 },
-                { category: 'Cleaning', cost: 5200 },
-                { category: 'Toiletries', cost: 4200 },
-                { category: 'Electronics', cost: 2600 },
-                { category: 'Others', cost: 800 }
-              ]
-            }
-          ],
-          topExpensiveItems: [
-            {
-              itemName: 'Premium Egyptian Cotton Towels',
-              unitPrice: 1250,
-              totalValue: 25000,
-              quantity: 20,
-              category: 'Linens'
-            },
-            {
-              itemName: 'Smart Room Thermostats',
-              unitPrice: 8500,
-              totalValue: 17000,
-              quantity: 2,
-              category: 'Electronics'
-            },
-            {
-              itemName: 'Professional Vacuum Cleaners',
-              unitPrice: 15000,
-              totalValue: 15000,
-              quantity: 1,
-              category: 'Cleaning'
-            }
-          ]
-        },
-        vendorPerformance: {
-          totalVendors: 12,
-          averageRating: 4.3,
-          topPerformers: [
-            {
-              vendorName: 'ABC Hotel Supplies',
-              rating: 4.8,
-              orderCount: 25,
-              totalValue: 45000,
-              onTimeDeliveryRate: 96,
-              categories: ['linens', 'cleaning']
-            },
-            {
-              vendorName: 'Premium Linens Co.',
-              rating: 4.6,
-              orderCount: 18,
-              totalValue: 32000,
-              onTimeDeliveryRate: 89,
-              categories: ['linens']
-            }
-          ]
-        },
-        reorderInsights: {
-          itemsNeedingReorder: 23,
-          estimatedReorderCost: 15600,
-          urgentItems: 8,
-          autoReorderEnabled: 156,
-          seasonalTrends: [
-            { month: 'Jan', reorderFrequency: 15, averageCost: 12000 },
-            { month: 'Feb', reorderFrequency: 12, averageCost: 11000 },
-            { month: 'Mar', reorderFrequency: 18, averageCost: 14000 },
-            { month: 'Apr', reorderFrequency: 22, averageCost: 16000 },
-            { month: 'May', reorderFrequency: 28, averageCost: 18000 },
-            { month: 'Jun', reorderFrequency: 32, averageCost: 20000 }
-          ]
-        },
-        consumptionPatterns: {
-          dailyAverage: 1240,
-          weeklyTrend: [
-            { day: 'Mon', consumption: 1450 },
-            { day: 'Tue', consumption: 1320 },
-            { day: 'Wed', consumption: 1280 },
-            { day: 'Thu', consumption: 1380 },
-            { day: 'Fri', consumption: 1520 },
-            { day: 'Sat', consumption: 1680 },
-            { day: 'Sun', consumption: 1150 }
-          ],
-          topConsumedItems: [
-            { itemName: 'Bath Towels', consumptionRate: 45, category: 'Linens', trend: 8 },
-            { itemName: 'Toilet Paper', consumptionRate: 38, category: 'Toiletries', trend: 5 },
-            { itemName: 'Room Cleaning Spray', consumptionRate: 32, category: 'Cleaning', trend: -2 }
-          ]
-        }
-      };
+      setHasNoData(false);
 
-      setData(mockData);
+      const response = await api.get('/inventory/analytics/dashboard', {
+        params: {
+          period: periodToDays[selectedPeriod] || 30,
+          includeForecasting: true,
+          includeAnomalies: true,
+        },
+      });
+
+      const dashboard = response.data?.data;
+      if (!dashboard) {
+        setHasNoData(true);
+        setData(null);
+      } else {
+        setData(dashboard);
+      }
     } catch {
-      // Error handled silently
+      setHasNoData(true);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -423,7 +211,23 @@ const InventoryAnalyticsDashboard: React.FC = () => {
     );
   }
 
-  if (!data) return null;
+  if (!data || hasNoData) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Inventory Analytics Dashboard</h1>
+          <p className="text-gray-600 mb-8">Advanced insights and performance metrics for your inventory</p>
+          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">No Inventory Analytics Data Available</h3>
+            <p className="text-gray-500 max-w-md mx-auto">
+              Inventory analytics data will appear here once inventory items are tracked and historical snapshots are generated. Start by adding inventory items to your property.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">

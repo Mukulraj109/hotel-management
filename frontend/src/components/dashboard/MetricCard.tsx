@@ -139,9 +139,9 @@ export function MetricCard({
       <CardContent className={cn(sizeClasses[size].padding, 'space-y-2')}>
         <div className="flex items-center justify-between">
           <p className={cn(
-            'font-medium text-gray-600 uppercase tracking-wide truncate pr-2',
+            'font-medium text-gray-600 uppercase tracking-wide leading-tight pr-2',
             sizeClasses[size].title
-          )}>
+          )} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {title}
           </p>
           {icon && (
@@ -169,7 +169,7 @@ export function MetricCard({
                 <span className="text-xs sm:text-sm text-gray-500 flex-shrink-0">{prefix}</span>
               )}
               <p className={cn(
-                'font-bold text-gray-900 truncate',
+                'font-bold text-gray-900',
                 sizeClasses[size].value
               )}>
                 {formatValue()}

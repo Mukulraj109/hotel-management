@@ -168,10 +168,11 @@ const CorporateRatesManagement: React.FC = () => {
     try {
       if (editingRate?._id) {
         // Update existing rate
+        await revenueManagementService.updateCorporateRate(editingRate._id, formData as Record<string, unknown>);
         toast.success('Corporate rate updated successfully');
       } else {
         // Create new rate
-        await revenueManagementService.createCorporateRate(formData);
+        await revenueManagementService.createCorporateRate(formData as Record<string, unknown>);
         toast.success('Corporate rate created successfully');
       }
 
@@ -196,8 +197,9 @@ const CorporateRatesManagement: React.FC = () => {
     if (!confirm('Are you sure you want to delete this corporate rate contract?')) return;
 
     try {
-      setCorporateRates(corporateRates.filter(r => r._id !== id));
+      await revenueManagementService.deleteCorporateRate(id);
       toast.success('Corporate rate deleted successfully');
+      fetchCorporateRates();
     } catch (error) {
       toast.error('Failed to delete corporate rate');
     }
@@ -263,6 +265,10 @@ const CorporateRatesManagement: React.FC = () => {
   };
 
   const exportContracts = () => {
+    if (corporateRates.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
     const data = corporateRates.map(rate => ({
       'Contract ID': rate.contractId,
       'Company': rate.company.name,
@@ -639,9 +645,11 @@ const CorporateRatesManagement: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600 truncate">Avg Discount</p>
                 <p className="text-lg sm:text-2xl font-bold truncate">
-                  {Math.round(corporateRates.reduce((sum, r) =>
-                    sum + (r.rateDetails.discountType === 'percentage' ? r.rateDetails.discount : 0), 0
-                  ) / corporateRates.filter(r => r.rateDetails.discountType === 'percentage').length || 0)}%
+                  {(() => {
+                    const pctRates = corporateRates.filter(r => r.rateDetails.discountType === 'percentage');
+                    const total = pctRates.reduce((sum, r) => sum + r.rateDetails.discount, 0);
+                    return pctRates.length > 0 ? Math.round(total / pctRates.length) : 0;
+                  })()}%
                 </p>
               </div>
               <Percent className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600 flex-shrink-0 ml-2" />

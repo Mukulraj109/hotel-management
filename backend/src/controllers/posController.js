@@ -1,14 +1,16 @@
 import POSOutlet from '../models/POSOutlet.js';
 import POSMenu from '../models/POSMenu.js';
 import POSOrder from '../models/POSOrder.js';
+import Booking from '../models/Booking.js';
 import posTaxCalculationService from '../services/posTaxCalculationService.js';
+import logger from '../utils/logger.js';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 // Outlet Management
 export const createOutlet = async (req, res) => {
   try {
-    console.log('Creating outlet with data:', req.body);
+    logger.debug('Creating outlet', { name: req.body.name });
     
     // Validate required fields
     const { name, type, location } = req.body;
@@ -24,12 +26,12 @@ export const createOutlet = async (req, res) => {
       outletId: uuidv4()
     };
     
-    console.log('Outlet data to save:', outletData);
+    logger.debug('Outlet data prepared');
     
     const outlet = new POSOutlet(outletData);
     await outlet.save();
     
-    console.log('Outlet created successfully:', outlet._id);
+    logger.debug('Outlet created', { id: outlet._id });
     
     res.status(201).json({
       success: true,
@@ -46,14 +48,14 @@ export const createOutlet = async (req, res) => {
 
 export const getOutlets = async (req, res) => {
   try {
-    console.log('Fetching all outlets...');
+    logger.debug('Fetching outlets');
     
     const { hotelId } = req.user;
     const outlets = await POSOutlet.find({ isActive: true, hotelId })
       .populate('manager', 'name email')
       .populate('staff', 'name email role').lean().limit(1000);
     
-    console.log(`Found ${outlets.length} outlets`);
+    logger.debug('Outlets fetched', { count: outlets.length });
     
     res.json({
       success: true,
@@ -424,6 +426,58 @@ export const processPayment = async (req, res) => {
         success: false,
         message: 'Order was modified by another request. Please retry.'
       });
+    }
+
+    // If room_charge, update the guest's booking folio
+    if (paymentMethod === 'room_charge' && order.customer?.roomNumber) {
+      try {
+        const booking = await Booking.findOne({
+          hotelId: req.user.hotelId,
+          status: 'checked_in',
+          'roomId': { $exists: true },
+        }).populate('roomId', 'roomNumber').lean().then(async () => {
+          // Find booking by room number
+          return Booking.findOne({
+            hotelId: req.user.hotelId,
+            status: 'checked_in',
+          }).populate('roomId', 'roomNumber');
+        });
+
+        if (booking) {
+          // Add POS charge as settlement adjustment
+          if (typeof booking.addSettlementAdjustment === 'function') {
+            await booking.addSettlementAdjustment({
+              type: 'pos_charge',
+              amount: order.totalAmount,
+              description: `POS Order #${order.orderNumber || order._id} - Room Charge`,
+              reference: order._id.toString(),
+            });
+          } else {
+            // Fallback: update totalAmount on booking
+            await Booking.findByIdAndUpdate(booking._id, {
+              $inc: { totalAmount: order.totalAmount },
+              $push: {
+                statusHistory: {
+                  status: booking.status,
+                  changedAt: new Date(),
+                  note: `POS charge added: ₹${order.totalAmount} (Order #${order.orderNumber || order._id})`,
+                }
+              }
+            });
+          }
+          logger.info('POS room charge added to booking', {
+            bookingId: booking._id,
+            orderId: order._id,
+            amount: order.totalAmount,
+          });
+        }
+      } catch (folioError) {
+        // Don't fail the POS payment — log the folio error for manual reconciliation
+        logger.error('Failed to add POS charge to booking folio', {
+          orderId: order._id,
+          error: folioError.message,
+        });
+      }
     }
 
     res.json({

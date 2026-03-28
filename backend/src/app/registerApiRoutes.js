@@ -161,13 +161,15 @@ export function registerApiRoutes(app, deps) {
     personalizationRoutes,
     featureFlagRoutes,
     nightAuditRoutes,
-    cancellationRoutes
+    cancellationRoutes,
+    dashboardConfigRoutes,
+    discountPricingRoutes
   } = deps;
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/rooms', roomCacheMiddleware, roomRoutes);
   app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
-  app.use('/api/v1/bookings', noShowRoutes);
+  app.use('/api/v1/bookings/no-show', noShowRoutes);
   app.use('/api/v1/bookings', bookingRoutes);
   app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
   app.use('/api/v1/settlements', settlementsRoutes);
@@ -184,7 +186,7 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
   app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
   app.use('/api/v1/admin-bypass-management', adminBypassManagementRoutes);
-  app.use('/api/v1/admin-bypass-management', bypassFinancialAnalyticsRoutes);
+  app.use('/api/v1/admin-bypass-management/analytics', bypassFinancialAnalyticsRoutes);
   app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/system-integration', systemIntegrationRoutes);
@@ -322,8 +324,15 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/personalization', personalizationRoutes);
   app.use('/api/v1/feature-flags', featureFlagRoutes);
   app.use('/api/v1/night-audit', nightAuditRoutes);
+  if (dashboardConfigRoutes) {
+    app.use('/api/v1/dashboard-configs', dashboardConfigRoutes);
+  }
 
   if (cancellationRoutes) {
     app.use('/api/v1/cancellations', cancellationRoutes);
+  }
+
+  if (discountPricingRoutes) {
+    app.use('/api/v1/discount-pricing', discountPricingRoutes);
   }
 }

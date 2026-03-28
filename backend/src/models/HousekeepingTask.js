@@ -207,7 +207,7 @@ housekeepingTaskSchema.methods.calculateInventoryEfficiency = function() {
     );
 
     if (consumed) {
-      const efficiencyScore = predicted.predictedQuantity > 0
+      const efficiencyScore = (predicted.predictedQuantity > 0 && consumed.quantity > 0)
         ? Math.round((predicted.predictedQuantity / consumed.quantity) * 100)
         : 0;
 

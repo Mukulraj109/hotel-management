@@ -5,7 +5,7 @@ export interface StaffMember {
   name: string;
   email: string;
   phone?: string;
-  role: 'staff' | 'admin';
+  role: 'admin' | 'manager' | 'staff' | 'frontdesk' | 'housekeeping';
   isActive: boolean;
   hotelId: {
     _id: string;
@@ -20,13 +20,13 @@ export interface CreateStaffData {
   email: string;
   phone?: string;
   password: string;
-  role: 'staff' | 'admin';
+  role: 'admin' | 'manager' | 'staff' | 'frontdesk' | 'housekeeping';
 }
 
 export interface UpdateStaffData {
   name?: string;
   phone?: string;
-  role?: 'staff' | 'admin';
+  role?: 'admin' | 'manager' | 'staff' | 'frontdesk' | 'housekeeping';
   isActive?: boolean;
 }
 
@@ -34,7 +34,8 @@ export interface StaffQueryParams {
   page?: number;
   limit?: number;
   search?: string;
-  role?: 'staff' | 'admin';
+  hotelId?: string;
+  role?: 'admin' | 'manager' | 'staff' | 'frontdesk' | 'housekeeping';
   isActive?: boolean;
 }
 
@@ -57,6 +58,7 @@ class StaffService {
       if (params.page) queryParams.append('page', params.page.toString());
       if (params.limit) queryParams.append('limit', params.limit.toString());
       if (params.search) queryParams.append('search', params.search);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
       // For staff management, always filter by role unless explicitly specified
       // This ensures we only get staff and admin users, never guests
@@ -72,8 +74,9 @@ class StaffService {
       const response = await api.get(`/admin/users?${queryParams.toString()}`);
 
       // Filter out any guest users that might have slipped through (extra safety)
+      const staffRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
       const staffUsers = response.data.data.users.filter((user: StaffMember) =>
-        user.role === 'staff' || user.role === 'admin'
+        staffRoles.includes(user.role)
       );
 
       return {
@@ -135,9 +138,10 @@ class StaffService {
     try {
       const response = await api.get('/admin/users');
 
-      // Filter to only include staff and admin users, exclude guests
+      // Filter to only include staff roles, exclude guests
+      const staffRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
       const staff = response.data.data.users.filter((user: StaffMember) =>
-        user.role === 'staff' || user.role === 'admin'
+        staffRoles.includes(user.role)
       );
 
       return {

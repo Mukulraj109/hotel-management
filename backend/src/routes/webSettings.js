@@ -35,28 +35,8 @@ router.use(ensurePropertyAccess);
 router.use(authorizePolicy('webSettings', 'adminAccess'));
 router.use(requireRole(['admin']));
 
-// IDOR protection: verify hotelId param matches user's hotel
-router.use('/:hotelId', (req, res, next) => {
-  const { hotelId } = req.params;
-  if (!hotelId) return next();
-
-  const userHotelId = req.user?.hotelId?.toString();
-  const userProperties = req.user?.properties?.map(p => p.toString()) || [];
-  const allowedProperties = req.user?.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-
-  const hasAccess = userHotelId === hotelId ||
-    userProperties.includes(hotelId) ||
-    allowedProperties.includes(hotelId);
-
-  if (!hasAccess) {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. You do not have permission to access this property.'
-    });
-  }
-
-  next();
-});
+// IDOR protection is already handled by ensurePropertyAccess middleware above,
+// which checks ownerId, createdBy, properties, allowedProperties, and primaryProperty.
 
 // GET /api/v1/web-settings/:hotelId - Get web settings for hotel
 router.get('/:hotelId',

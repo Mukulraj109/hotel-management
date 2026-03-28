@@ -184,6 +184,7 @@ const hotelSchema = new mongoose.Schema({
 // Indexes
 hotelSchema.index({ ownerId: 1 });
 hotelSchema.index({ 'address.city': 1, 'address.country': 1 });
+hotelSchema.index({ propertyGroupId: 1 });
 
 // Virtual for rooms
 hotelSchema.virtual('rooms', {

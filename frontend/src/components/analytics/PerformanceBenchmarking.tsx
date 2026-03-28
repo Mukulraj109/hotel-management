@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -8,21 +8,14 @@ import {
   Target,
   Award,
   BarChart3,
-  Users,
-  IndianRupee,
-  Clock,
-  Star,
   AlertCircle,
   CheckCircle,
   XCircle,
   Building2,
-  ChevronDown
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface PerformanceBenchmarkingProps {
-  hotelId?: string;
-  selectedFloor?: number;
   properties?: Property[];
   selectedProperty?: Property | null;
 }
@@ -93,8 +86,6 @@ interface BenchmarkData {
 }
 
 export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = ({
-  hotelId,
-  selectedFloor,
   properties = [],
   selectedProperty
 }) => {
@@ -103,6 +94,15 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(
     selectedProperty?.id || (properties.length > 0 ? properties[0].id : '')
   );
+
+  // Sync selectedPropertyId when selectedProperty prop changes
+  useEffect(() => {
+    if (selectedProperty?.id) {
+      setSelectedPropertyId(selectedProperty.id);
+    } else if (properties.length > 0 && !properties.some(p => p.id === selectedPropertyId)) {
+      setSelectedPropertyId(properties[0].id);
+    }
+  }, [selectedProperty?.id, properties]);
 
   // Calculate industry benchmarks from all properties
   const calculateIndustryBenchmarks = () => {
@@ -120,13 +120,13 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
     }
 
     const activeProperties = properties.filter(p => p.status === 'active');
-    const total = activeProperties.length;
+    const total = activeProperties.length || 1; // Avoid division by zero
 
     return {
-      avgOccupancy: activeProperties.reduce((sum, p) => sum + p.performance.occupancyRate, 0) / total,
-      avgADR: activeProperties.reduce((sum, p) => sum + p.performance.adr, 0) / total,
-      avgRevPAR: activeProperties.reduce((sum, p) => sum + p.performance.revpar, 0) / total,
-      avgRating: activeProperties.reduce((sum, p) => sum + p.rating, 0) / total,
+      avgOccupancy: activeProperties.reduce((sum, p) => sum + (p.performance?.occupancyRate || 0), 0) / total,
+      avgADR: activeProperties.reduce((sum, p) => sum + (p.performance?.adr || 0), 0) / total,
+      avgRevPAR: activeProperties.reduce((sum, p) => sum + (p.performance?.revpar || 0), 0) / total,
+      avgRating: activeProperties.reduce((sum, p) => sum + (p.rating || 0), 0) / total,
       avgCheckInTime: 12.0, // Mock - would come from operational data
       avgHousekeepingEff: 78.5, // Mock - would come from housekeeping metrics
       avgMaintenanceTime: 60, // Mock - would come from maintenance data
@@ -134,7 +134,7 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
     };
   };
 
-  const industryBenchmarks = calculateIndustryBenchmarks();
+  const industryBenchmarks = useMemo(() => calculateIndustryBenchmarks(), [properties]);
 
   // Get current property data
   const currentProperty = selectedProperty ||
@@ -168,7 +168,9 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
         industry: industryBenchmarks.avgADR,
         trend: currentProperty.performance.adr > currentProperty.performance.lastMonth.adr ? 'up' :
                currentProperty.performance.adr < currentProperty.performance.lastMonth.adr ? 'down' : 'stable',
-        status: currentProperty.performance.adr >= industryBenchmarks.avgADR * 1.2 ? 'excellent' :
+        status: currentProperty.performance.adr <= 0 ? 'poor' :
+                industryBenchmarks.avgADR <= 0 ? 'average' :
+                currentProperty.performance.adr >= industryBenchmarks.avgADR * 1.2 ? 'excellent' :
                 currentProperty.performance.adr >= industryBenchmarks.avgADR ? 'good' :
                 currentProperty.performance.adr >= industryBenchmarks.avgADR * 0.8 ? 'average' : 'poor',
         unit: '₹',
@@ -181,7 +183,9 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
         industry: industryBenchmarks.avgRevPAR,
         trend: currentProperty.performance.revpar > currentProperty.performance.lastMonth.revpar ? 'up' :
                currentProperty.performance.revpar < currentProperty.performance.lastMonth.revpar ? 'down' : 'stable',
-        status: currentProperty.performance.revpar >= industryBenchmarks.avgRevPAR * 1.2 ? 'excellent' :
+        status: currentProperty.performance.revpar <= 0 ? 'poor' :
+                industryBenchmarks.avgRevPAR <= 0 ? 'average' :
+                currentProperty.performance.revpar >= industryBenchmarks.avgRevPAR * 1.2 ? 'excellent' :
                 currentProperty.performance.revpar >= industryBenchmarks.avgRevPAR ? 'good' :
                 currentProperty.performance.revpar >= industryBenchmarks.avgRevPAR * 0.8 ? 'average' : 'poor',
         unit: '₹',
@@ -201,11 +205,14 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
       },
       {
         metric: 'Room Utilization',
-        current: ((currentProperty.rooms.total - currentProperty.rooms.outOfOrder) / currentProperty.rooms.total) * 100,
+        current: currentProperty.rooms.total > 0
+          ? ((currentProperty.rooms.total - currentProperty.rooms.outOfOrder) / currentProperty.rooms.total) * 100
+          : 0,
         target: 98.0, // Target 98% rooms operational
         industry: 95.0, // Industry average
         trend: 'stable',
-        status: currentProperty.rooms.outOfOrder <= currentProperty.rooms.total * 0.02 ? 'excellent' :
+        status: currentProperty.rooms.total === 0 ? 'poor' :
+                currentProperty.rooms.outOfOrder <= currentProperty.rooms.total * 0.02 ? 'excellent' :
                 currentProperty.rooms.outOfOrder <= currentProperty.rooms.total * 0.05 ? 'good' :
                 currentProperty.rooms.outOfOrder <= currentProperty.rooms.total * 0.1 ? 'average' : 'poor',
         unit: '%',
@@ -215,23 +222,32 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
         metric: 'Property Performance Score',
         current: Math.round(
           (currentProperty.performance.occupancyRate * 0.3 +
-           (currentProperty.performance.adr / industryBenchmarks.avgADR) * 100 * 0.25 +
-           (currentProperty.performance.revpar / industryBenchmarks.avgRevPAR) * 100 * 0.25 +
+           (industryBenchmarks.avgADR > 0 ? (currentProperty.performance.adr / industryBenchmarks.avgADR) * 100 : 0) * 0.25 +
+           (industryBenchmarks.avgRevPAR > 0 ? (currentProperty.performance.revpar / industryBenchmarks.avgRevPAR) * 100 : 0) * 0.25 +
            currentProperty.rating * 20 * 0.2) / 100 * 100
-        ),
+        ) || 0,
         target: 90.0,
         industry: 75.0,
         trend: 'up',
-        status: 'good',
+        status: (() => {
+          const score = Math.round(
+            (currentProperty.performance.occupancyRate * 0.3 +
+             (industryBenchmarks.avgADR > 0 ? (currentProperty.performance.adr / industryBenchmarks.avgADR) * 100 : 0) * 0.25 +
+             (industryBenchmarks.avgRevPAR > 0 ? (currentProperty.performance.revpar / industryBenchmarks.avgRevPAR) * 100 : 0) * 0.25 +
+             currentProperty.rating * 20 * 0.2) / 100 * 100
+          ) || 0;
+          return score >= 90 ? 'excellent' as const : score >= 75 ? 'good' as const : score >= 60 ? 'average' as const : 'poor' as const;
+        })(),
         unit: '%',
         description: 'Overall property performance composite score'
       }
     ];
   };
 
-  const benchmarkData = generateBenchmarkData();
+  const benchmarkData = useMemo(() => generateBenchmarkData(), [currentProperty, industryBenchmarks]);
 
   const formatValue = (value: number, unit: string) => {
+    if (Number.isNaN(value) || !Number.isFinite(value)) return `0${unit}`;
     if (unit === '₹') {
       return new Intl.NumberFormat('en-IN', {
         style: 'currency',
@@ -239,6 +255,9 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(value);
+    }
+    if (unit === '%' || unit === '/5') {
+      return `${parseFloat(value.toFixed(1))}${unit}`;
     }
     return `${value}${unit}`;
   };
@@ -272,11 +291,13 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
   };
 
   const getPerformanceScore = () => {
+    if (benchmarkData.length === 0) return 0;
     const excellent = benchmarkData.filter(item => item.status === 'excellent').length;
     const good = benchmarkData.filter(item => item.status === 'good').length;
+    const average = benchmarkData.filter(item => item.status === 'average').length;
     const total = benchmarkData.length;
-    
-    return Math.round(((excellent * 100 + good * 75) / (total * 100)) * 100);
+
+    return Math.round(((excellent * 100 + good * 75 + average * 50) / (total * 100)) * 100);
   };
 
   const performanceScore = getPerformanceScore();
@@ -286,9 +307,23 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
     if (category === 'occupancy') return item.metric.includes('Occupancy') || item.metric.includes('ADR') || item.metric.includes('RevPAR');
     if (category === 'revenue') return item.metric.includes('Revenue') || item.metric.includes('ADR');
     if (category === 'guest') return item.metric.includes('Guest') || item.metric.includes('Check-in');
-    if (category === 'operational') return item.metric.includes('Housekeeping') || item.metric.includes('Maintenance') || item.metric.includes('Staff');
+    if (category === 'operational') return item.metric.includes('Room Utilization') || item.metric.includes('Property Performance');
     return true;
   });
+
+  if (!currentProperty) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center text-gray-500">
+            <BarChart3 className="mx-auto h-12 w-12 mb-4 text-gray-300" />
+            <h3 className="text-lg font-semibold mb-1">No Property Selected</h3>
+            <p className="text-sm">Select a property from the Properties tab to view benchmarks.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -305,22 +340,16 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
           {/* Property Selector */}
           {properties.length > 1 && (
             <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-              <SelectTrigger className="w-48">
-                <div className="flex items-center space-x-2">
-                  <Building2 className="h-4 w-4" />
-                  <SelectValue placeholder="Select property" />
+              <SelectTrigger className="w-56">
+                <div className="flex items-center space-x-2 truncate">
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{currentProperty?.name || 'Select property'}</span>
                 </div>
               </SelectTrigger>
               <SelectContent>
                 {properties.map((property) => (
                   <SelectItem key={property.id} value={property.id}>
-                    <div className="flex items-center space-x-2">
-                      <Building2 className="h-4 w-4" />
-                      <span>{property.name}</span>
-                      <Badge variant="secondary" className="ml-2">
-                        {property.type}
-                      </Badge>
-                    </div>
+                    {property.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -380,7 +409,9 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
             </div>
             <div className="text-right">
               <div className="text-sm text-gray-600">vs Industry Average</div>
-              <div className="text-lg font-semibold text-green-600">+12.5%</div>
+              <div className={`text-lg font-semibold ${performanceScore >= 75 ? 'text-green-600' : performanceScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                {performanceScore >= 75 ? '+' : ''}{(performanceScore - 75).toFixed(1)}%
+              </div>
             </div>
           </div>
         </CardContent>
@@ -459,8 +490,8 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
                       item.status === 'good' ? 'bg-blue-500' :
                       item.status === 'average' ? 'bg-yellow-500' : 'bg-red-500'
                     }`}
-                    style={{ 
-                      width: `${Math.min(100, (item.current / item.target) * 100)}%` 
+                    style={{
+                      width: `${item.target > 0 ? Math.min(100, (item.current / item.target) * 100) : 0}%`
                     }}
                   ></div>
                 </div>
@@ -500,28 +531,34 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-lg font-bold text-blue-600">
-                  {((currentProperty.performance.occupancyRate / industryBenchmarks.avgOccupancy) * 100 - 100).toFixed(1)}%
+                  {industryBenchmarks.avgOccupancy > 0
+                    ? `${((currentProperty.performance.occupancyRate / industryBenchmarks.avgOccupancy) * 100 - 100).toFixed(1)}%`
+                    : '—'}
                 </div>
                 <div className="text-sm text-blue-700">vs Portfolio Avg</div>
                 <div className="text-xs text-blue-600">Occupancy Rate</div>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-lg font-bold text-green-600">
-                  {((currentProperty.performance.adr / industryBenchmarks.avgADR) * 100 - 100).toFixed(1)}%
+                  {industryBenchmarks.avgADR > 0
+                    ? `${((currentProperty.performance.adr / industryBenchmarks.avgADR) * 100 - 100).toFixed(1)}%`
+                    : '—'}
                 </div>
                 <div className="text-sm text-green-700">vs Portfolio Avg</div>
                 <div className="text-xs text-green-600">ADR</div>
               </div>
               <div className="text-center p-4 bg-purple-50 rounded-lg">
                 <div className="text-lg font-bold text-purple-600">
-                  {((currentProperty.performance.revpar / industryBenchmarks.avgRevPAR) * 100 - 100).toFixed(1)}%
+                  {industryBenchmarks.avgRevPAR > 0
+                    ? `${((currentProperty.performance.revpar / industryBenchmarks.avgRevPAR) * 100 - 100).toFixed(1)}%`
+                    : '—'}
                 </div>
                 <div className="text-sm text-purple-700">vs Portfolio Avg</div>
                 <div className="text-xs text-purple-600">RevPAR</div>
               </div>
               <div className="text-center p-4 bg-orange-50 rounded-lg">
                 <div className="text-lg font-bold text-orange-600">
-                  {properties.findIndex(p => p.id === currentProperty.id) + 1}
+                  {[...properties].sort((a, b) => (b.performance?.revpar || 0) - (a.performance?.revpar || 0)).findIndex(p => p.id === currentProperty.id) + 1}
                 </div>
                 <div className="text-sm text-orange-700">Portfolio Rank</div>
                 <div className="text-xs text-orange-600">by RevPAR</div>
@@ -541,24 +578,31 @@ export const PerformanceBenchmarking: React.FC<PerformanceBenchmarkingProps> = (
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {benchmarkData
-              .filter(item => item.status === 'average' || item.status === 'poor')
-              .map((item, index) => (
-                <div key={`-${index}-${item.metric}`} className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-                  <div>
-                    <div className="font-medium text-yellow-800">{item.metric}</div>
-                    <div className="text-sm text-yellow-700">
-                      Current: {formatValue(item.current, item.unit)} | 
-                      Target: {formatValue(item.target, item.unit)} | 
-                      Gap: {formatValue(item.target - item.current, item.unit)}
-                    </div>
-                    <div className="text-xs text-yellow-600 mt-1">
-                      Focus on improving {item.metric.toLowerCase()} to meet target performance.
+            {benchmarkData.filter(item => item.status === 'average' || item.status === 'poor').length === 0 ? (
+              <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <div className="text-sm text-green-800">All metrics are meeting or exceeding targets. Keep up the great work!</div>
+              </div>
+            ) : (
+              benchmarkData
+                .filter(item => item.status === 'average' || item.status === 'poor')
+                .map((item, index) => (
+                  <div key={`rec-${index}-${item.metric}`} className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                    <div>
+                      <div className="font-medium text-yellow-800">{item.metric}</div>
+                      <div className="text-sm text-yellow-700">
+                        Current: {formatValue(item.current, item.unit)} |
+                        Target: {formatValue(item.target, item.unit)} |
+                        Gap: {formatValue(item.target - item.current, item.unit)}
+                      </div>
+                      <div className="text-xs text-yellow-600 mt-1">
+                        Focus on improving {item.metric.toLowerCase()} to meet target performance.
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+            )}
           </div>
         </CardContent>
       </Card>

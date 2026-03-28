@@ -110,7 +110,7 @@ const LaundryStatusTracker: React.FC<LaundryStatusTrackerProps> = ({ className =
 
       toast.success(`Status updated to ${laundryService.getStatusText(newStatus)}`);
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to update status');
+      toast.error(error instanceof Error ? error.message : 'Failed to update status');
     }
   };
 

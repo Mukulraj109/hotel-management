@@ -416,15 +416,47 @@ router.post('/integrations/test', validate(mutationBaselineSchema), catchAsync(a
     return next(new ApplicationError(`${service} integration is not enabled`, 400));
   }
 
-  // TODO: Implement actual integration testing logic
-  let testResult = { success: false, message: 'Test not implemented' };
+  // Connectivity check: verify the API key format is valid before reporting status.
+  // This does not make a live call to the external service but validates that
+  // required credentials are present and well-formed.
+  let testResult = { success: false, message: 'Unknown integration type' };
 
   if (type === 'payment' && service === 'stripe') {
-    // Mock Stripe test
-    testResult = { success: true, message: 'Stripe connection successful' };
+    const key = integration.publicKey || '';
+    if (/^pk_(test|live)_[A-Za-z0-9]{20,}$/.test(key)) {
+      testResult = { success: true, message: 'Stripe API key format is valid' };
+    } else {
+      testResult = { success: false, message: 'Stripe public key format is invalid. Expected pk_test_* or pk_live_*' };
+    }
+  } else if (type === 'payment' && service === 'razorpay') {
+    const key = integration.keyId || '';
+    if (/^rzp_(test|live)_[A-Za-z0-9]{10,}$/.test(key)) {
+      testResult = { success: true, message: 'Razorpay key ID format is valid' };
+    } else {
+      testResult = { success: false, message: 'Razorpay key ID format is invalid. Expected rzp_test_* or rzp_live_*' };
+    }
   } else if (type === 'analytics' && service === 'googleAnalytics') {
-    // Mock GA test
-    testResult = { success: true, message: 'Google Analytics connection successful' };
+    const trackingId = integration.trackingId || '';
+    if (/^(UA-\d{4,}-\d+|G-[A-Za-z0-9]{8,})$/.test(trackingId)) {
+      testResult = { success: true, message: 'Google Analytics tracking ID format is valid' };
+    } else {
+      testResult = { success: false, message: 'Google Analytics tracking ID format is invalid. Expected UA-XXXXX-X or G-XXXXXXXX' };
+    }
+  } else if (type === 'analytics' && service === 'mixpanel') {
+    const token = integration.token || '';
+    if (token.length >= 20) {
+      testResult = { success: true, message: 'Mixpanel token format is valid' };
+    } else {
+      testResult = { success: false, message: 'Mixpanel token appears too short or missing' };
+    }
+  } else if (type === 'ota') {
+    const apiKey = integration.apiKey || '';
+    const hotelIdField = integration.hotelId || '';
+    if (apiKey.length >= 10 && hotelIdField.length >= 1) {
+      testResult = { success: true, message: `${service} OTA credentials format check passed` };
+    } else {
+      testResult = { success: false, message: `${service} OTA credentials are incomplete or too short` };
+    }
   }
 
   res.status(200).json({

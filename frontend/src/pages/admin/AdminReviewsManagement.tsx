@@ -160,7 +160,8 @@ function ModerationModal({ review, isOpen, onClose, onSubmit }: ModerationModalP
             </label>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as 'approved' | 'rejected')}\n              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={(e) => setStatus(e.target.value as 'approved' | 'rejected')}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="approved">Approve</option>
               <option value="rejected">Reject</option>
@@ -208,7 +209,7 @@ export default function AdminReviewsManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
-  const hotelId = selectedPropertyId || user?.hotelId || '68afe8080c02fcbe30092b8e';
+  const hotelId = selectedPropertyId || user?.hotelId || '';
 
   const loadReviews = async () => {
     if (!hotelId) return;
@@ -218,7 +219,7 @@ export default function AdminReviewsManagement() {
       const [allReviews, pendingReviewsData, summaryData] = await Promise.all([
         reviewsService.getHotelReviews(hotelId, { limit: 50 }),
         user?.role === 'admin' ? reviewsService.getPendingReviews({ limit: 50 }) : Promise.resolve({ reviews: [] }),
-        reviewsService.getHotelSummary(hotelId)
+        reviewsService.getHotelRatingSummary(hotelId)
       ]);
 
       setReviews(allReviews.reviews);

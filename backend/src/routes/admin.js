@@ -3,16 +3,20 @@ import User from '../models/User.js';
 import Hotel from '../models/Hotel.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
+import RoomType from '../models/RoomType.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import {
+  ensurePropertyAccess,
+  getUserPropertyIds,
+  checkPropertyAccess,
+} from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import Joi from 'joi';
-import { getUserPropertyIds } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -433,12 +437,13 @@ router.delete('/users/:id', authorizePolicy('admin', 'deleteUser'), validate(mut
     }
   }
 
-  await User.findByIdAndDelete(id);
+  // Soft delete — deactivate instead of permanently removing
+  await User.findByIdAndUpdate(id, { isActive: false });
 
   res.json({
     status: 'success',
     data: {
-      message: 'User deleted successfully'
+      message: 'User deactivated successfully'
     }
   });
 }));
@@ -712,6 +717,14 @@ router.delete('/hotels/:id', authorizePolicy('admin', 'deleteHotel'), validate(m
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
   }
+
+  // Cascade cleanup: remove associated rooms, room types, and user references
+  await Room.deleteMany({ hotelId: id });
+  await RoomType.deleteMany({ hotelId: id });
+  await User.updateMany(
+    { properties: id },
+    { $pull: { properties: id } }
+  );
 
   res.json({
     status: 'success',

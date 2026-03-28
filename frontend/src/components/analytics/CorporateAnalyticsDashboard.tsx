@@ -157,7 +157,7 @@ const CorporateAnalyticsDashboard: React.FC = () => {
           paymentTerms: 'net_30',
           aging: { '0-30': r.outstandingAmount * 0.4, '31-60': r.outstandingAmount * 0.3, '61-90': r.outstandingAmount * 0.2, '90+': r.outstandingAmount * 0.1 },
           invoiceCount: Math.ceil(r.outstandingAmount / 5000),
-          recentBookings: Math.ceil(Math.random() * 20),
+          recentBookings: 0,
           riskLevel: r.riskLevel,
           overdueDays: r.daysPastDue
         }));

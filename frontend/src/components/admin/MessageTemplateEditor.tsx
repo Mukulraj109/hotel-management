@@ -287,16 +287,14 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
   const validateTemplate = async () => {
     try {
       const response = await api.post('/bill-messages/validate-template', {
-          template: formData.messageTemplate,
-          variables: formData.templateVariables
-        });
+        template: formData.messageTemplate,
+        variables: formData.templateVariables
+      });
 
-      {
-        const validation = response.data;
-        setValidationErrors(validation.data.errors || []);
-        setValidationWarnings(validation.data.warnings || []);
-        return validation.data.isValid;
-      }
+      const validation = response.data;
+      setValidationErrors(validation.data.errors || []);
+      setValidationWarnings(validation.data.warnings || []);
+      return validation.data.isValid;
     } catch {
       // Error handled silently
     }

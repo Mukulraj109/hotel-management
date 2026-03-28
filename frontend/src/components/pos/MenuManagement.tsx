@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -319,7 +320,7 @@ const MenuManagement: React.FC = () => {
                             {menu.items.slice(0, 3).map((item) => (
                               <div key={item.itemId} className="flex justify-between text-xs">
                                 <span>{item.name}</span>
-                                <span className="font-medium">₹{item.price}</span>
+                                <span className="font-medium">{formatCurrency(item.price)}</span>
                               </div>
                             ))}
                           </div>

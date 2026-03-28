@@ -27,7 +27,8 @@ import {
   Card,
   CardContent,
   Alert,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -39,6 +40,7 @@ import {
   Cancel
 } from '@mui/icons-material';
 import { AccountAttributeForm } from './AccountAttributeForm';
+import { api } from '../../services/api';
 
 interface AccountAttribute {
   _id: string;
@@ -87,44 +89,15 @@ const AccountAttributeManager: React.FC<{ onRefresh: () => void }> = ({ onRefres
   const fetchAttributes = async () => {
     try {
       setLoading(true);
-      // const response = await api.get(`/guest-management/account-attributes?category=${categoryFilter}`);
-      // setAttributes(response.data.attributes);
-      
-      // Mock data for demonstration
-      setAttributes([
-        {
-          _id: '1',
-          name: 'company_name',
-          label: 'Company Name',
-          type: 'text',
-          category: 'business',
-          description: 'Name of the company',
-          isRequired: true,
-          isActive: true,
-          displayOrder: 1,
-          validationSummary: 'Min length: 2, Max length: 100',
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-15T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        },
-        {
-          _id: '2',
-          name: 'preferred_room_floor',
-          label: 'Preferred Room Floor',
-          type: 'select',
-          category: 'preferences',
-          description: 'Guest preferred floor for room assignment',
-          isRequired: false,
-          isActive: true,
-          displayOrder: 2,
-          validationSummary: '3 options',
-          createdBy: { name: 'Admin User', email: 'admin@hotel.com' },
-          createdAt: '2024-01-15T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        }
-      ]);
+      const params: Record<string, string> = {};
+      if (categoryFilter) params.category = categoryFilter;
+      const response = await api.get('/guest-management/account-attributes', { params });
+      const data = response.data?.data || response.data;
+      const list = Array.isArray(data) ? data : (data?.attributes || []);
+      setAttributes(list);
     } catch (error) {
       showSnackbar('Error fetching attributes', 'error');
+      setAttributes([]);
     } finally {
       setLoading(false);
     }
@@ -152,7 +125,7 @@ const AccountAttributeManager: React.FC<{ onRefresh: () => void }> = ({ onRefres
   const handleDelete = async (attribute: AccountAttribute) => {
     if (window.confirm(`Are you sure you want to delete "${attribute.label}"?`)) {
       try {
-        // await api.delete(`/guest-management/account-attributes/${attribute._id}`);
+        await api.delete(`/guest-management/account-attributes/${attribute._id}`);
         showSnackbar('Attribute deleted successfully', 'success');
         fetchAttributes();
         onRefresh();
@@ -170,10 +143,10 @@ const AccountAttributeManager: React.FC<{ onRefresh: () => void }> = ({ onRefres
   const handleFormSubmit = async (attributeData: Record<string, unknown>) => {
     try {
       if (selectedAttribute) {
-        // await api.patch(`/guest-management/account-attributes/${selectedAttribute._id}`, attributeData);
+        await api.patch(`/guest-management/account-attributes/${selectedAttribute._id}`, attributeData);
         showSnackbar('Attribute updated successfully', 'success');
       } else {
-        // await api.post('/guest-management/account-attributes', attributeData);
+        await api.post('/guest-management/account-attributes', attributeData);
         showSnackbar('Attribute created successfully', 'success');
       }
       handleFormClose();
@@ -246,6 +219,20 @@ const AccountAttributeManager: React.FC<{ onRefresh: () => void }> = ({ onRefres
           </Button>
         </Box>
       </Box>
+
+      {loading && (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress size={32} />
+        </Box>
+      )}
+
+      {!loading && attributes.length === 0 && (
+        <Box py={4} textAlign="center">
+          <Typography variant="body1" color="textSecondary">
+            No account attributes found. Click "Add Attribute" to create one.
+          </Typography>
+        </Box>
+      )}
 
       <TableContainer component={Paper}>
         <Table>

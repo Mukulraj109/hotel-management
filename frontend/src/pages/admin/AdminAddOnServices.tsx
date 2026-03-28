@@ -25,6 +25,12 @@ import { useToast } from '../../hooks/useToast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 interface AddOnService {
   _id: string;
   serviceId: string;
@@ -130,7 +136,7 @@ const AdminAddOnServices: React.FC = () => {
       setShowCreateModal(false);
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error creating service', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -142,7 +148,7 @@ const AdminAddOnServices: React.FC = () => {
       setSelectedService(null);
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error updating service', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -154,7 +160,7 @@ const AdminAddOnServices: React.FC = () => {
       showToast('Service deleted successfully', 'success');
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error deleting service', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 

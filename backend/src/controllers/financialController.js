@@ -6,6 +6,8 @@ import JournalEntry from '../models/JournalEntry.js';
 import BankAccount from '../models/BankAccount.js';
 import Budget from '../models/Budget.js';
 import Invoice from '../models/Invoice.js';
+import FinancialInvoice from '../models/FinancialInvoice.js';
+import FinancialPayment from '../models/FinancialPayment.js';
 import { withTransaction } from '../utils/transactionHelper.js';
 
 const financialService = new FinancialService();
@@ -131,14 +133,17 @@ class FinancialController {
   // Invoice Management
   async createInvoice(req, res) {
     try {
-      // const invoice = new FinancialInvoice(req.body);
-      // await invoice.save();
+      const invoiceData = { ...req.body };
+      if (req.user?.hotelId) {
+        invoiceData.hotelId = req.user.hotelId;
+      }
+      const invoice = new FinancialInvoice(invoiceData);
+      await invoice.save();
 
-      // // Create journal entry for the invoice
-      // await financialService.createInvoiceJournalEntry(invoice);
+      // Create journal entry for the invoice
+      await financialService.createInvoiceJournalEntry(invoice);
 
-      // res.status(201).json({ success: true, data: invoice });
-      res.status(501).json({ success: false, message: 'FinancialInvoice model not available yet' });
+      res.status(201).json({ success: true, data: invoice });
     } catch (error) {
       res.status(400).json({ success: false, message: error.message });
     }
@@ -146,22 +151,41 @@ class FinancialController {
 
   async getInvoices(req, res) {
     try {
-      // const { status, type, customer, startDate, endDate } = req.query;
-      // const filter = {};
-      
-      // if (status) filter.status = status;
-      // if (type) filter.type = type;
-      // if (customer) filter['customer.name'] = new RegExp(customer, 'i');
-      // if (startDate && endDate) {
-      //   filter.issueDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
-      // }
+      const { status, type, customer, startDate, endDate, page = 1, limit = 20 } = req.query;
+      const filter = {};
 
-      // const invoices = await FinancialInvoice.find(filter).limit(1000).lean()
-      //   .populate('bookingReference', 'bookingNumber guestName')
-      //   .sort({ issueDate: -1 });
+      if (req.user?.hotelId) {
+        filter.hotelId = req.user.hotelId;
+      }
+      if (status) filter.status = status;
+      if (type) filter.type = type;
+      if (customer) filter['customer.details.name'] = new RegExp(customer, 'i');
+      if (startDate && endDate) {
+        filter.issueDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+      }
 
-      // res.json({ success: true, data: invoices });
-      res.json({ success: true, data: [] });
+      const parsedPage = Math.max(1, parseInt(page));
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(limit)));
+      const skip = (parsedPage - 1) * parsedLimit;
+
+      const [invoices, totalCount] = await Promise.all([
+        FinancialInvoice.find(filter)
+          .populate('bookingReference', 'bookingNumber guestName')
+          .sort({ issueDate: -1 })
+          .skip(skip)
+          .limit(parsedLimit)
+          .lean(),
+        FinancialInvoice.countDocuments(filter)
+      ]);
+
+      res.json({
+        success: true,
+        data: invoices,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / parsedLimit)
+      });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -169,16 +193,19 @@ class FinancialController {
 
   async updateInvoice(req, res) {
     try {
-      // const invoice = await FinancialInvoice.findByIdAndUpdate(
-      //   req.params.id,
-      //   req.body,
-      //   { new: true, runValidators: true }
-      // );
-      // if (!invoice) {
-      //   return res.status(404).json({ success: false, message: 'Invoice not found' });
-      // }
-      // res.json({ success: true, data: invoice });
-      res.status(501).json({ success: false, message: 'FinancialInvoice model not available yet' });
+      const filter = { _id: req.params.id };
+      if (req.user?.hotelId) {
+        filter.hotelId = req.user.hotelId;
+      }
+      const invoice = await FinancialInvoice.findOneAndUpdate(
+        filter,
+        req.body,
+        { new: true, runValidators: true }
+      );
+      if (!invoice) {
+        return res.status(404).json({ success: false, message: 'Invoice not found' });
+      }
+      res.json({ success: true, data: invoice });
     } catch (error) {
       res.status(400).json({ success: false, message: error.message });
     }
@@ -187,16 +214,19 @@ class FinancialController {
   // Payment Management
   async createPayment(req, res) {
     try {
-      // const payment = new FinancialPayment(req.body);
-      // await payment.save();
+      const paymentData = { ...req.body };
+      if (req.user?.hotelId) {
+        paymentData.hotelId = req.user.hotelId;
+      }
+      const payment = new FinancialPayment(paymentData);
+      await payment.save();
 
-      // // Create journal entry and update invoice
-      // if (payment.invoice) {
-      //   await financialService.processInvoicePayment(payment);
-      // }
+      // Create journal entry and update invoice
+      if (payment.invoice) {
+        await financialService.processInvoicePayment(payment);
+      }
 
-      // res.status(201).json({ success: true, data: payment });
-      res.status(501).json({ success: false, message: 'FinancialPayment model not available yet' });
+      res.status(201).json({ success: true, data: payment });
     } catch (error) {
       res.status(400).json({ success: false, message: error.message });
     }
@@ -204,22 +234,41 @@ class FinancialController {
 
   async getPayments(req, res) {
     try {
-      // const { method, status, startDate, endDate } = req.query;
-      // const filter = {};
-      
-      // if (method) filter.method = method;
-      // if (status) filter.status = status;
-      // if (startDate && endDate) {
-      //   filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
-      // }
+      const { method, status, startDate, endDate, page = 1, limit = 20 } = req.query;
+      const filter = {};
 
-      // const payments = await FinancialPayment.find(filter).limit(1000).lean()
-      //   .populate('invoice', 'invoice', 'invoiceNumber totalAmount')
-      //   .populate('bankAccount', 'accountName bankName')
-      //   .sort({ date: -1 });
+      if (req.user?.hotelId) {
+        filter.hotelId = req.user.hotelId;
+      }
+      if (method) filter.method = method;
+      if (status) filter.status = status;
+      if (startDate && endDate) {
+        filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+      }
 
-      // res.json({ success: true, data: payments });
-      res.json({ success: true, data: [] });
+      const parsedPage = Math.max(1, parseInt(page));
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(limit)));
+      const skip = (parsedPage - 1) * parsedLimit;
+
+      const [payments, totalCount] = await Promise.all([
+        FinancialPayment.find(filter)
+          .populate('invoice', 'invoiceNumber totalAmount')
+          .populate('bankAccount', 'accountName bankName')
+          .sort({ date: -1 })
+          .skip(skip)
+          .limit(parsedLimit)
+          .lean(),
+        FinancialPayment.countDocuments(filter)
+      ]);
+
+      res.json({
+        success: true,
+        data: payments,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / parsedLimit)
+      });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }

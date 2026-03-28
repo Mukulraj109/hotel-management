@@ -159,12 +159,16 @@ const marketingSyncMiddleware = (eventType = 'booking_created') => {
 /**
  * Manual sync function for existing bookings
  */
-const syncExistingBookings = async () => {
+const syncExistingBookings = async (hotelId) => {
   try {
-    console.log('🔄 Syncing existing bookings with marketing system...');
+    if (!hotelId) {
+      console.error('❌ syncExistingBookings requires a hotelId parameter');
+      return;
+    }
+    console.log(`🔄 Syncing existing bookings for hotel ${hotelId} with marketing system...`);
 
     const Booking = (await import('../models/Booking.js')).default;
-    const bookings = await Booking.find({}).populate('userId').lean().limit(1000);
+    const bookings = await Booking.find({ hotelId }).populate('userId').lean().limit(1000);
 
     for (const booking of bookings) {
       if (booking.userId) {

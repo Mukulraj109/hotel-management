@@ -34,6 +34,12 @@ import RoomBlockModal from './RoomBlockModal';
 import tapeChartService from '@/services/tapeChartService';
 import { cn } from '@/utils/cn';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 interface RoomBlock {
   _id: string;
   blockName: string;
@@ -150,7 +156,7 @@ const BlockManagementPanel: React.FC<BlockManagementPanelProps> = ({
       setShowBlockModal(false);
       onBlockCreate?.(response.data);
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to create room block');
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -165,7 +171,7 @@ const BlockManagementPanel: React.FC<BlockManagementPanelProps> = ({
       setSelectedBlock(null);
       onBlockUpdate?.(response.data);
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to update room block');
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -179,7 +185,7 @@ const BlockManagementPanel: React.FC<BlockManagementPanelProps> = ({
       fetchBlocks();
       onBlockDelete?.(blockId);
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to delete room block');
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -192,7 +198,7 @@ const BlockManagementPanel: React.FC<BlockManagementPanelProps> = ({
       toast.success('Room block released successfully');
       fetchBlocks();
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to release room block');
+      toast.error(getErrorMessage(error));
     }
   };
 

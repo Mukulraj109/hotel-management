@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef} from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -9,10 +9,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/utils/toast';
 import {
   Bed, CheckCircle, Clock, Camera, AlertTriangle, Wrench,
-  User, MapPin, Star, Timer, Package, ClipboardCheck,
-  Settings, Eye, RefreshCw, Award, Zap, Phone
+  User, Star, Timer, Package, ClipboardCheck,
+  Settings, Eye, RefreshCw, Award, Zap, Phone, Loader2
 } from 'lucide-react';
-import { format, addHours } from 'date-fns';
+import { format } from 'date-fns';
+import { housekeepingService, HousekeepingTask } from '@/services/housekeepingService';
 
 // Advanced Housekeeping Interfaces
 interface InspectionTask {
@@ -77,6 +78,135 @@ interface StaffPerformance {
   issuesReported: number;
 }
 
+/**
+ * Maps a backend HousekeepingTask to the component's RoomInspection interface.
+ * Tasks of type 'inspection', 'cleaning', 'deep_clean', or 'checkout_clean' are
+ * displayed as room inspections. Each task becomes one inspection card with its
+ * description broken into sub-tasks.
+ */
+function mapTaskToInspection(task: HousekeepingTask): RoomInspection {
+  const roomNumber = task.roomId?.roomNumber || 'N/A';
+  const assignedStaff =
+    (task as Record<string, unknown>).assignedToUserName as string
+    || ((task as Record<string, unknown>).assignedToUserId as { name?: string } | undefined)?.name
+    || 'Unassigned';
+
+  // Map backend status to the component's inspection status
+  let status: RoomInspection['status'] = 'pending';
+  if (task.status === 'in_progress') status = 'in_progress';
+  else if (task.status === 'completed' || task.status === 'cancelled') status = 'completed';
+  else if (task.status === 'assigned') status = 'pending';
+  // 'pending' stays 'pending'
+
+  // Build sub-tasks from the task description/title and standard checklist
+  const inspectionTasks: InspectionTask[] = [
+    { id: `${task._id}-main`, name: task.title, category: mapTaskTypeToCategory(task.taskType), required: true, completed: status === 'completed', timeEstimate: task.estimatedDuration || 30, photoRequired: false },
+  ];
+
+  if (task.description) {
+    inspectionTasks.push({
+      id: `${task._id}-desc`,
+      name: task.description,
+      category: mapTaskTypeToCategory(task.taskType),
+      required: false,
+      completed: status === 'completed',
+      timeEstimate: 5,
+      photoRequired: false,
+    });
+  }
+
+  // Add supply-based tasks
+  if (task.supplies && task.supplies.length > 0) {
+    task.supplies.forEach((supply, idx) => {
+      inspectionTasks.push({
+        id: `${task._id}-supply-${idx}`,
+        name: `Restock ${supply.name} (${supply.quantity} ${supply.unit})`,
+        category: 'inventory',
+        required: true,
+        completed: status === 'completed',
+        timeEstimate: 2,
+        photoRequired: false,
+      });
+    });
+  }
+
+  // Derive an overall score from inspection data if available
+  let overallScore = 0;
+  const inspection = (task as Record<string, unknown>).inspection as
+    { rating?: number; passed?: boolean } | undefined;
+  if (inspection?.rating) {
+    overallScore = Math.round((inspection.rating / 5) * 100);
+  } else if (status === 'completed') {
+    overallScore = 90; // default for completed tasks without a rating
+  }
+
+  // Build inventory from supplies
+  const inventory: InventoryItem[] = (task.supplies || []).map((supply, idx) => ({
+    id: `${task._id}-inv-${idx}`,
+    name: supply.name,
+    category: 'supplies' as const,
+    currentStock: supply.quantity,
+    requiredStock: supply.quantity,
+    restockNeeded: false,
+  }));
+
+  return {
+    id: task._id,
+    roomNumber,
+    assignedStaff,
+    status,
+    startTime: task.startedAt,
+    completedTime: task.completedAt,
+    estimatedDuration: task.estimatedDuration || 30,
+    actualDuration: task.actualDuration,
+    tasks: inspectionTasks,
+    overallScore,
+    issues: [],
+    inventory,
+  };
+}
+
+function mapTaskTypeToCategory(taskType: string): InspectionTask['category'] {
+  switch (taskType) {
+    case 'cleaning':
+    case 'deep_clean':
+    case 'checkout_clean':
+      return 'cleaning';
+    case 'maintenance':
+      return 'maintenance';
+    case 'inspection':
+      return 'amenity';
+    default:
+      return 'cleaning';
+  }
+}
+
+/**
+ * Maps maintenance-type HousekeepingTasks to the MaintenanceIssue interface.
+ */
+function mapTaskToMaintenanceIssue(task: HousekeepingTask): MaintenanceIssue {
+  const roomNumber = task.roomId?.roomNumber || 'N/A';
+
+  let issueStatus: MaintenanceIssue['status'] = 'reported';
+  if (task.status === 'assigned') issueStatus = 'assigned';
+  else if (task.status === 'in_progress') issueStatus = 'in_progress';
+  else if (task.status === 'completed' || task.status === 'cancelled') issueStatus = 'completed';
+
+  return {
+    id: task._id,
+    roomNumber,
+    type: 'other',
+    priority: task.priority || 'medium',
+    description: task.description || task.title,
+    reportedBy: 'Staff',
+    reportedAt: task.createdAt,
+    assignedTo: ((task as Record<string, unknown>).assignedToUserId as { name?: string } | undefined)?.name,
+    status: issueStatus,
+    estimatedRepairTime: task.estimatedDuration,
+    photos: (task as Record<string, unknown> & { beforeImages?: string[]; afterImages?: string[] }).beforeImages || [],
+  };
+}
+
 interface AdvancedHousekeepingProps {}
 
 export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
@@ -86,6 +216,12 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
   const [maintenanceIssues, setMaintenanceIssues] = useState<MaintenanceIssue[]>([]);
   const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
   const [loading, setLoading] = useState(false);
+  const [inspectionsLoading, setInspectionsLoading] = useState(false);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [inspectionsError, setInspectionsError] = useState<string | null>(null);
+  const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
 
@@ -93,145 +229,146 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  useEffect(() => {
-    generateMockInspections();
-    generateMockMaintenanceIssues();
-    generateMockStaffPerformance();
+  const fetchInspections = useCallback(async () => {
+    setInspectionsLoading(true);
+    setInspectionsError(null);
+    try {
+      const response = await housekeepingService.getTasks();
+      if (!isMountedRef.current) return;
+
+      const tasks: HousekeepingTask[] = response?.data?.tasks || [];
+      // Filter to non-maintenance tasks for the inspections tab
+      const inspectionTasks = tasks.filter(
+        (t) => t.taskType !== 'maintenance'
+      );
+      setRoomInspections(inspectionTasks.map(mapTaskToInspection));
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      const message = error instanceof Error ? error.message : 'Failed to load inspections';
+      setInspectionsError(message);
+      toast.error('Failed to load housekeeping inspections');
+    } finally {
+      if (isMountedRef.current) setInspectionsLoading(false);
+    }
   }, []);
 
-  const generateMockInspections = () => {
-    const staffNames = ['Sarah Wilson', 'Mike Chen', 'Lisa Rodriguez', 'David Kim'];
-    const roomNumbers = ['101', '102', '201', '202', '301', '302'];
+  const fetchMaintenanceIssues = useCallback(async () => {
+    setMaintenanceLoading(true);
+    setMaintenanceError(null);
+    try {
+      const response = await housekeepingService.getTasks();
+      if (!isMountedRef.current) return;
 
-    const inspectionTemplates: InspectionTask[] = [
-      { id: 'task-1', name: 'Make beds with fresh linens', category: 'cleaning', required: true, completed: false, timeEstimate: 5, photoRequired: false },
-      { id: 'task-2', name: 'Clean bathroom thoroughly', category: 'cleaning', required: true, completed: false, timeEstimate: 15, photoRequired: true },
-      { id: 'task-3', name: 'Vacuum carpets and floors', category: 'cleaning', required: true, completed: false, timeEstimate: 10, photoRequired: false },
-      { id: 'task-4', name: 'Dust all surfaces', category: 'cleaning', required: true, completed: false, timeEstimate: 8, photoRequired: false },
-      { id: 'task-5', name: 'Restock minibar', category: 'inventory', required: true, completed: false, timeEstimate: 5, photoRequired: false },
-      { id: 'task-6', name: 'Check AC/heating functionality', category: 'maintenance', required: true, completed: false, timeEstimate: 3, photoRequired: false },
-      { id: 'task-7', name: 'Replace towels and amenities', category: 'amenity', required: true, completed: false, timeEstimate: 5, photoRequired: false },
-      { id: 'task-8', name: 'Test all electrical fixtures', category: 'maintenance', required: false, completed: false, timeEstimate: 5, photoRequired: false }
-    ];
+      const tasks: HousekeepingTask[] = response?.data?.tasks || [];
+      // Filter to maintenance-type tasks only
+      const maintenanceTasks = tasks.filter(
+        (t) => t.taskType === 'maintenance'
+      );
+      setMaintenanceIssues(maintenanceTasks.map(mapTaskToMaintenanceIssue));
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      const message = error instanceof Error ? error.message : 'Failed to load maintenance issues';
+      setMaintenanceError(message);
+      toast.error('Failed to load maintenance issues');
+    } finally {
+      if (isMountedRef.current) setMaintenanceLoading(false);
+    }
+  }, []);
 
-    const inspections: RoomInspection[] = roomNumbers.map((room, index) => {
-      const staff = staffNames[index % staffNames.length];
-      const status = ['pending', 'in_progress', 'completed', 'failed'][Math.floor(Math.random() * 4)] as unknown;
-      const startTime = status !== 'pending' ? new Date(Date.now() - Math.random() * 3600000).toISOString() : undefined;
-      const estimatedDuration = 45 + Math.floor(Math.random() * 30);
-      const actualDuration = status === 'completed' ? estimatedDuration + Math.floor(Math.random() * 20) - 10 : undefined;
+  const fetchStaffPerformance = useCallback(async () => {
+    setPerformanceLoading(true);
+    setPerformanceError(null);
+    try {
+      const response = await housekeepingService.getTasks();
+      if (!isMountedRef.current) return;
 
-      const tasks = inspectionTemplates.map(task => ({
-        ...task,
-        id: `${task.id}-${room}`,
-        completed: status === 'completed' ? Math.random() > 0.1 : Math.random() > 0.7,
-        photoTaken: task.photoRequired && Math.random() > 0.5 ? `photo-${task.id}-${room}.jpg` : undefined
-      }));
+      const tasks: HousekeepingTask[] = response?.data?.tasks || [];
 
-      return {
-        id: `inspection-${room}`,
-        roomNumber: room,
-        assignedStaff: staff,
-        status,
-        startTime,
-        completedTime: status === 'completed' ? addHours(new Date(startTime!), 1).toISOString() : undefined,
-        estimatedDuration,
-        actualDuration,
-        tasks,
-        overallScore: Math.round(85 + Math.random() * 15),
-        issues: [],
-        inventory: [
-          { id: `inv-1-${room}`, name: 'Towels', category: 'linens', currentStock: 4, requiredStock: 4, restockNeeded: false },
-          { id: `inv-2-${room}`, name: 'Shampoo', category: 'amenities', currentStock: 2, requiredStock: 3, restockNeeded: true },
-          { id: `inv-3-${room}`, name: 'Coffee pods', category: 'minibar', currentStock: 6, requiredStock: 8, restockNeeded: true }
-        ]
-      };
-    });
+      // Group tasks by assignedToUserId and compute performance metrics
+      const staffMap = new Map<string, {
+        staffId: string;
+        name: string;
+        totalRooms: number;
+        completedRooms: number;
+        totalDuration: number;
+        completedDuration: number;
+        maintenanceReported: number;
+      }>();
 
-    setRoomInspections(inspections);
-  };
+      for (const task of tasks) {
+        const assignedId =
+          (typeof task.assignedToUserId === 'string'
+            ? task.assignedToUserId
+            : (task.assignedToUserId as { _id?: string } | undefined)?._id) || 'unassigned';
+        const assignedName =
+          (task.assignedToUserId as { name?: string } | undefined)?.name || 'Unassigned';
 
-  const generateMockMaintenanceIssues = () => {
-    const issues: MaintenanceIssue[] = [
-      {
-        id: 'maint-001',
-        roomNumber: '205',
-        type: 'plumbing',
-        priority: 'high',
-        description: 'Bathroom faucet leaking',
-        reportedBy: 'Sarah Wilson',
-        reportedAt: new Date(Date.now() - 7200000).toISOString(),
-        assignedTo: 'Mike Maintenance',
-        status: 'in_progress',
-        estimatedRepairTime: 60,
-        photos: ['leak-photo-1.jpg', 'leak-photo-2.jpg']
-      },
-      {
-        id: 'maint-002',
-        roomNumber: '301',
-        type: 'electrical',
-        priority: 'medium',
-        description: 'Bedside lamp not working',
-        reportedBy: 'Lisa Rodriguez',
-        reportedAt: new Date(Date.now() - 3600000).toISOString(),
-        status: 'assigned',
-        assignedTo: 'John Electrician',
-        estimatedRepairTime: 30,
-        photos: ['lamp-issue.jpg']
-      },
-      {
-        id: 'maint-003',
-        roomNumber: '102',
-        type: 'hvac',
-        priority: 'urgent',
-        description: 'AC not cooling properly',
-        reportedBy: 'David Kim',
-        reportedAt: new Date(Date.now() - 1800000).toISOString(),
-        status: 'reported',
-        estimatedRepairTime: 120,
-        photos: []
+        if (assignedId === 'unassigned') continue;
+
+        if (!staffMap.has(assignedId)) {
+          staffMap.set(assignedId, {
+            staffId: assignedId,
+            name: assignedName,
+            totalRooms: 0,
+            completedRooms: 0,
+            totalDuration: 0,
+            completedDuration: 0,
+            maintenanceReported: 0,
+          });
+        }
+
+        const entry = staffMap.get(assignedId)!;
+        entry.totalRooms += 1;
+        if (task.status === 'completed') {
+          entry.completedRooms += 1;
+          entry.completedDuration += task.actualDuration || task.estimatedDuration || 30;
+        }
+        entry.totalDuration += task.estimatedDuration || 30;
+        if (task.taskType === 'maintenance') {
+          entry.maintenanceReported += 1;
+        }
       }
-    ];
 
-    setMaintenanceIssues(issues);
-  };
+      const performanceData: StaffPerformance[] = Array.from(staffMap.values()).map((entry) => {
+        const avgCleaningTime = entry.completedRooms > 0
+          ? Math.round(entry.completedDuration / entry.completedRooms)
+          : 0;
+        const efficiency = entry.totalRooms > 0
+          ? Math.round((entry.completedRooms / entry.totalRooms) * 100)
+          : 0;
+        // Quality score derived from completion rate and timing
+        const qualityScore = entry.completedRooms > 0
+          ? Math.min(100, Math.round(efficiency * 0.6 + 40))
+          : 0;
 
-  const generateMockStaffPerformance = () => {
-    const staff: StaffPerformance[] = [
-      {
-        staffId: 'staff-001',
-        name: 'Sarah Wilson',
-        role: 'housekeeper',
-        roomsCompleted: 12,
-        avgCleaningTime: 42,
-        qualityScore: 94,
-        efficiency: 87,
-        issuesReported: 3
-      },
-      {
-        staffId: 'staff-002',
-        name: 'Mike Chen',
-        role: 'housekeeper',
-        roomsCompleted: 15,
-        avgCleaningTime: 38,
-        qualityScore: 91,
-        efficiency: 92,
-        issuesReported: 2
-      },
-      {
-        staffId: 'staff-003',
-        name: 'Lisa Rodriguez',
-        role: 'supervisor',
-        roomsCompleted: 8,
-        avgCleaningTime: 35,
-        qualityScore: 96,
-        efficiency: 89,
-        issuesReported: 5
-      }
-    ];
+        return {
+          staffId: entry.staffId,
+          name: entry.name,
+          role: entry.maintenanceReported > entry.completedRooms ? 'maintenance' as const : 'housekeeper' as const,
+          roomsCompleted: entry.completedRooms,
+          avgCleaningTime,
+          qualityScore,
+          efficiency,
+          issuesReported: entry.maintenanceReported,
+        };
+      });
 
-    setStaffPerformance(staff);
-  };
+      setStaffPerformance(performanceData);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      const message = error instanceof Error ? error.message : 'Failed to load staff performance';
+      setPerformanceError(message);
+      toast.error('Failed to load staff performance data');
+    } finally {
+      if (isMountedRef.current) setPerformanceLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInspections();
+    fetchMaintenanceIssues();
+    fetchStaffPerformance();
+  }, [fetchInspections, fetchMaintenanceIssues, fetchStaffPerformance]);
 
   const handleCompleteTask = (inspectionId: string, taskId: string) => {
     setRoomInspections(prev => prev.map(inspection =>
@@ -247,8 +384,8 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
   const handleStartInspection = async (inspectionId: string) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!isMountedRef.current) return;
+      await housekeepingService.updateTaskStatus(inspectionId, 'in_progress');
+      if (!isMountedRef.current) return;
 
       setRoomInspections(prev => prev.map(inspection =>
         inspection.id === inspectionId ? {
@@ -260,32 +397,41 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
 
       toast.success('Room inspection started');
     } catch (error) {
+      if (!isMountedRef.current) return;
       toast.error('Failed to start inspection');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
   const handleCompleteInspection = async (inspectionId: string) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    if (!isMountedRef.current) return;
+      const now = new Date().toISOString();
+      await housekeepingService.completeTask(inspectionId, {
+        status: 'completed',
+        completedSteps: [],
+        completedAt: now,
+      });
+      if (!isMountedRef.current) return;
 
       setRoomInspections(prev => prev.map(inspection =>
         inspection.id === inspectionId ? {
           ...inspection,
           status: 'completed',
-          completedTime: new Date().toISOString(),
-          actualDuration: Math.floor(Math.random() * 20) + inspection.estimatedDuration
+          completedTime: now,
+          actualDuration: inspection.startTime
+            ? Math.round((Date.now() - new Date(inspection.startTime).getTime()) / 60000)
+            : inspection.estimatedDuration
         } : inspection
       ));
 
       toast.success('Room inspection completed successfully');
     } catch (error) {
+      if (!isMountedRef.current) return;
       toast.error('Failed to complete inspection');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
@@ -378,6 +524,24 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
           </TabsList>
 
           <TabsContent value="inspections" className="space-y-6">
+            {inspectionsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-3 text-gray-600">Loading inspections...</span>
+              </div>
+            ) : inspectionsError ? (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-6 text-center">
+                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-red-700 font-medium">Failed to load inspections</p>
+                  <p className="text-sm text-red-600 mt-1">{inspectionsError}</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={fetchInspections}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
                 <CardContent className="p-4 text-center">
@@ -403,7 +567,9 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 <CardContent className="p-4 text-center">
                   <Timer className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-yellow-700">
-                    {Math.round(roomInspections.reduce((acc, r) => acc + (r.actualDuration || r.estimatedDuration), 0) / roomInspections.length)}
+                    {roomInspections.length > 0
+                      ? Math.round(roomInspections.reduce((acc, r) => acc + (r.actualDuration || r.estimatedDuration), 0) / roomInspections.length)
+                      : 0}
                   </p>
                   <p className="text-sm text-yellow-600">Avg Time (min)</p>
                 </CardContent>
@@ -413,7 +579,9 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 <CardContent className="p-4 text-center">
                   <Star className="h-8 w-8 text-purple-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-purple-700">
-                    {Math.round(roomInspections.reduce((acc, r) => acc + r.overallScore, 0) / roomInspections.length)}%
+                    {roomInspections.length > 0
+                      ? Math.round(roomInspections.reduce((acc, r) => acc + r.overallScore, 0) / roomInspections.length)
+                      : 0}%
                   </p>
                   <p className="text-sm text-purple-600">Quality Score</p>
                 </CardContent>
@@ -421,7 +589,15 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
             </div>
 
             <div className="space-y-4">
-              {roomInspections.map((inspection) => (
+              {roomInspections.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <ClipboardCheck className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">No inspections found</p>
+                    <p className="text-sm text-gray-400 mt-1">Housekeeping tasks will appear here once created</p>
+                  </CardContent>
+                </Card>
+              ) : roomInspections.map((inspection) => (
                 <Card key={inspection.id} className="transition-all hover:shadow-md">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-4">
@@ -551,9 +727,29 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 </Card>
               ))}
             </div>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="maintenance" className="space-y-6">
+            {maintenanceLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-3 text-gray-600">Loading maintenance issues...</span>
+              </div>
+            ) : maintenanceError ? (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-6 text-center">
+                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-red-700 font-medium">Failed to load maintenance issues</p>
+                  <p className="text-sm text-red-600 mt-1">{maintenanceError}</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={fetchMaintenanceIssues}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Maintenance Issues</h3>
               <div className="flex items-center gap-2">
@@ -567,7 +763,15 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
             </div>
 
             <div className="space-y-4">
-              {maintenanceIssues.map((issue) => (
+              {maintenanceIssues.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <Wrench className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">No maintenance issues reported</p>
+                    <p className="text-sm text-gray-400 mt-1">Maintenance tasks will appear here when reported</p>
+                  </CardContent>
+                </Card>
+              ) : maintenanceIssues.map((issue) => (
                 <Card key={issue.id} className={`transition-all hover:shadow-md border-l-4 ${
                   issue.priority === 'urgent' ? 'border-l-red-500' :
                   issue.priority === 'high' ? 'border-l-orange-500' :
@@ -641,9 +845,29 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 </Card>
               ))}
             </div>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="inventory" className="space-y-6">
+            {inspectionsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-3 text-gray-600">Loading inventory data...</span>
+              </div>
+            ) : inspectionsError ? (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-6 text-center">
+                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-red-700 font-medium">Failed to load inventory data</p>
+                  <p className="text-sm text-red-600 mt-1">{inspectionsError}</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={fetchInspections}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Inventory Management</h3>
               <Button className="bg-gradient-to-r from-green-500 to-emerald-500">
@@ -653,7 +877,15 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
             </div>
 
             <div className="grid gap-4">
-              {roomInspections.map((inspection) => (
+              {roomInspections.filter(i => i.inventory.length > 0).length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <Package className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">No inventory data available</p>
+                    <p className="text-sm text-gray-400 mt-1">Room supply data will appear here when tasks include inventory details</p>
+                  </CardContent>
+                </Card>
+              ) : roomInspections.filter(i => i.inventory.length > 0).map((inspection) => (
                 <Card key={`inv-${inspection.id}`} className="transition-all hover:shadow-sm">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -691,19 +923,47 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 </Card>
               ))}
             </div>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
+            {performanceLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-3 text-gray-600">Loading performance data...</span>
+              </div>
+            ) : performanceError ? (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-6 text-center">
+                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-red-700 font-medium">Failed to load performance data</p>
+                  <p className="text-sm text-red-600 mt-1">{performanceError}</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={fetchStaffPerformance}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Staff Performance Analytics</h3>
-              <Button variant="outline">
+              <Button variant="outline" onClick={fetchStaffPerformance}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Update Metrics
               </Button>
             </div>
 
             <div className="grid gap-4">
-              {staffPerformance.map((staff) => (
+              {staffPerformance.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <Award className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">No staff performance data available</p>
+                    <p className="text-sm text-gray-400 mt-1">Performance metrics will appear once tasks are assigned to staff</p>
+                  </CardContent>
+                </Card>
+              ) : staffPerformance.map((staff) => (
                 <Card key={staff.staffId} className="transition-all hover:shadow-md">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -762,6 +1022,8 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
                 </Card>
               ))}
             </div>
+            </>
+            )}
           </TabsContent>
         </Tabs>
       </DialogContent>

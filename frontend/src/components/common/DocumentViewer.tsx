@@ -188,12 +188,13 @@ export default function DocumentViewer({
       setDocumentUrl(url);
 
     } catch (error: unknown) {
-      if (error.response?.status === 403) {
+      const axiosErr = error as { response?: { status?: number; data?: { message?: string } } };
+      if (axiosErr.response?.status === 403) {
         setError('You do not have permission to view this document');
         setHasViewAccess(false);
         return;
       }
-      setError(error.response?.data?.message || error.message || 'Failed to load document');
+      setError(axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to load document'));
     } finally {
       setLoading(false);
     }

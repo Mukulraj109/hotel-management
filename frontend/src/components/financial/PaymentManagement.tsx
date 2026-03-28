@@ -6,12 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
-  Plus, Search, Filter, Eye, Download, RefreshCw, Calendar,
+  Plus, Search, Eye, Download, RefreshCw,
   CreditCard, Smartphone, Banknote, Building2, CheckCircle2,
-  XCircle, Clock, AlertTriangle, TrendingUp, TrendingDown
+  XCircle, Clock, AlertTriangle, TrendingUp
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -97,6 +97,10 @@ const PaymentManagement: React.FC = () => {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [showAddPaymentDialog, setShowAddPaymentDialog] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [updateStatusValue, setUpdateStatusValue] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [paymentForm, setPaymentForm] = useState({
     type: 'payment',
     method: 'cash',
@@ -117,7 +121,12 @@ const PaymentManagement: React.FC = () => {
 
   useEffect(() => {
     fetchPayments();
-  }, [filterStatus, filterMethod, filterType, dateRange]);
+  }, [filterStatus, filterMethod, filterType, dateRange.start, dateRange.end]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterMethod, filterType, dateRange.start, dateRange.end, searchTerm]);
 
   const fetchPayments = async () => {
     try {
@@ -155,7 +164,7 @@ const PaymentManagement: React.FC = () => {
       }
 
     } catch (error: unknown) {
-      toast.error('Failed to fetch payments: ' + error.message);
+      toast.error('Failed to fetch payments: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setPayments([]);
       // Reset stats on error
       setStats({
@@ -173,7 +182,7 @@ const PaymentManagement: React.FC = () => {
   };
 
   const calculatePaymentStats = (paymentsData: Payment[]): PaymentStats => {
-    const stats = {
+    const calculatedStats = {
       totalPayments: paymentsData.length,
       completedPayments: 0,
       pendingPayments: 0,
@@ -184,26 +193,26 @@ const PaymentManagement: React.FC = () => {
     };
 
     paymentsData.forEach((payment) => {
-      stats.totalAmount += payment.amount || 0;
+      calculatedStats.totalAmount += payment.amount || 0;
 
       switch (payment.status) {
         case 'completed':
-          stats.completedPayments++;
-          stats.completedAmount += payment.amount || 0;
+          calculatedStats.completedPayments++;
+          calculatedStats.completedAmount += payment.amount || 0;
           break;
         case 'pending':
         case 'processing':
-          stats.pendingPayments++;
-          stats.pendingAmount += payment.amount || 0;
+          calculatedStats.pendingPayments++;
+          calculatedStats.pendingAmount += payment.amount || 0;
           break;
         case 'failed':
         case 'cancelled':
-          stats.failedPayments++;
+          calculatedStats.failedPayments++;
           break;
       }
     });
 
-    return stats;
+    return calculatedStats;
   };
 
   const filteredPayments = payments.filter(payment => {
@@ -267,31 +276,37 @@ const PaymentManagement: React.FC = () => {
 
   const handleUpdatePaymentStatus = async (paymentId: string, newStatus: string) => {
     try {
-      // This would call an API to update payment status
-      toast.success(`Payment ${paymentId} status updated to ${newStatus}`);
-      fetchPayments(); // Refresh data
+      // TODO: Not implemented - needs API endpoint to update payment status
+      // e.g. await financialService.updatePaymentStatus(paymentId, newStatus);
+      toast.info(`Payment status update not yet implemented (${paymentId} -> ${newStatus})`);
       setShowUpdateDialog(false);
     } catch (error: unknown) {
-      toast.error('Failed to update payment status: ' + error.message);
+      toast.error('Failed to update payment status: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
   const handleCreatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
+      const parsedAmount = parseFloat(paymentForm.amount);
+
+      if (parsedAmount > 100000) {
+        toast.info('Large payment amount detected. Please double-check before proceeding.');
+      }
+
       const paymentData = {
         ...paymentForm,
-        amount: parseFloat(paymentForm.amount),
-        paymentId: `PAY-${Date.now()}`,
+        amount: parsedAmount,
         date: new Date().toISOString(),
         status: 'pending',
         reconciled: false,
         customer: {
           type: paymentForm.customerType,
           name: paymentForm.customerName,
-          email: paymentForm.customerEmail
         },
-        netAmount: parseFloat(paymentForm.amount),
+        customerEmail: paymentForm.customerEmail || undefined,
+        netAmount: parsedAmount,
         fees: {},
         notes: paymentForm.notes
       };
@@ -302,7 +317,9 @@ const PaymentManagement: React.FC = () => {
       resetPaymentForm();
       fetchPayments();
     } catch (error: unknown) {
-      toast.error('Failed to create payment: ' + error.message);
+      toast.error('Failed to create payment: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -323,17 +340,17 @@ const PaymentManagement: React.FC = () => {
   };
 
   const handleExportPayments = () => {
-    // Export functionality
-    toast.success('Payment data exported successfully');
+    // TODO: Not implemented - needs API endpoint or client-side CSV/Excel export
+    toast.info('Payment export not yet implemented');
   };
 
   const handleReconcilePayment = async (paymentId: string) => {
     try {
-      // This would call an API to reconcile payment
-      toast.success(`Payment ${paymentId} marked as reconciled`);
-      fetchPayments(); // Refresh data
+      // TODO: Not implemented - needs API endpoint to reconcile payment
+      // e.g. await financialService.reconcilePayment(paymentId);
+      toast.info(`Payment reconciliation not yet implemented (${paymentId})`);
     } catch (error: unknown) {
-      toast.error('Failed to reconcile payment: ' + error.message);
+      toast.error('Failed to reconcile payment: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -469,7 +486,7 @@ const PaymentManagement: React.FC = () => {
             >
               <option value="">All Status</option>
               {paymentStatuses.map(status => (
-                <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
               ))}
             </select>
 
@@ -480,7 +497,7 @@ const PaymentManagement: React.FC = () => {
             >
               <option value="">All Methods</option>
               {paymentMethods.map(method => (
-                <option key={method} value={method}>{method.replace('_', ' ')}</option>
+                <option key={method} value={method}>{method.replace(/_/g, ' ')}</option>
               ))}
             </select>
 
@@ -553,13 +570,13 @@ const PaymentManagement: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredPayments.map((payment) => (
+                  filteredPayments.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((payment) => (
                     <TableRow key={payment._id} className="hover:bg-gray-50">
                       <TableCell>
                         <div className="text-sm">
-                          {new Date(payment.date).toLocaleDateString()}
+                          {new Date(payment.date).toLocaleDateString('en-IN')}
                           <div className="text-xs text-gray-500">
-                            {new Date(payment.date).toLocaleTimeString()}
+                            {new Date(payment.date).toLocaleTimeString('en-IN')}
                           </div>
                         </div>
                       </TableCell>
@@ -587,16 +604,16 @@ const PaymentManagement: React.FC = () => {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getPaymentMethodIcon(payment.method)}
-                          <span className="text-sm capitalize">{payment.method.replace('_', ' ')}</span>
+                          <span className="text-sm capitalize">{payment.method.replace(/_/g, ' ')}</span>
                         </div>
                       </TableCell>
 
                       <TableCell>
                         <div className="text-right">
-                          <div className="font-medium">{formatCurrency(payment.amount)}</div>
+                          <div className="font-medium">{formatCurrency(payment.amount, { currency: payment.currency })}</div>
                           {payment.netAmount !== payment.amount && (
                             <div className="text-xs text-gray-500">
-                              Net: {formatCurrency(payment.netAmount)}
+                              Net: {formatCurrency(payment.netAmount, { currency: payment.currency })}
                             </div>
                           )}
                         </div>
@@ -661,6 +678,36 @@ const PaymentManagement: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredPayments.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between mt-4 px-2">
+              <p className="text-sm text-gray-600">
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredPayments.length)} of {filteredPayments.length} payments
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {currentPage} of {Math.ceil(filteredPayments.length / ITEMS_PER_PAGE)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage >= Math.ceil(filteredPayments.length / ITEMS_PER_PAGE)}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -698,7 +745,7 @@ const PaymentManagement: React.FC = () => {
                     <span className="text-sm text-gray-500">Method:</span>
                     <div className="flex items-center gap-1">
                       {getPaymentMethodIcon(selectedPayment.method)}
-                      <span className="text-sm capitalize">{selectedPayment.method.replace('_', ' ')}</span>
+                      <span className="text-sm capitalize">{selectedPayment.method.replace(/_/g, ' ')}</span>
                     </div>
                   </div>
 
@@ -714,7 +761,7 @@ const PaymentManagement: React.FC = () => {
 
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Date:</span>
-                    <span className="text-sm">{new Date(selectedPayment.date).toLocaleString()}</span>
+                    <span className="text-sm">{new Date(selectedPayment.date).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>
@@ -726,33 +773,33 @@ const PaymentManagement: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Amount:</span>
-                    <span className="text-sm font-semibold">{formatCurrency(selectedPayment.amount)}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(selectedPayment.amount, { currency: selectedPayment.currency })}</span>
                   </div>
 
-                  {selectedPayment.fees.processingFee && selectedPayment.fees.processingFee > 0 && (
+                  {selectedPayment.fees?.processingFee && selectedPayment.fees.processingFee > 0 && (
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-500">Processing Fee:</span>
-                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees.processingFee)}</span>
+                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees?.processingFee ?? 0, { currency: selectedPayment.currency })}</span>
                     </div>
                   )}
 
-                  {selectedPayment.fees.gatewayFee && selectedPayment.fees.gatewayFee > 0 && (
+                  {selectedPayment.fees?.gatewayFee && selectedPayment.fees.gatewayFee > 0 && (
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-500">Gateway Fee:</span>
-                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees.gatewayFee)}</span>
+                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees?.gatewayFee ?? 0, { currency: selectedPayment.currency })}</span>
                     </div>
                   )}
 
-                  {selectedPayment.fees.bankFee && selectedPayment.fees.bankFee > 0 && (
+                  {selectedPayment.fees?.bankFee && selectedPayment.fees.bankFee > 0 && (
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-500">Bank Fee:</span>
-                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees.bankFee)}</span>
+                      <span className="text-sm text-red-600">-{formatCurrency(selectedPayment.fees?.bankFee ?? 0, { currency: selectedPayment.currency })}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between border-t pt-2">
                     <span className="text-sm font-semibold">Net Amount:</span>
-                    <span className="text-sm font-semibold text-green-600">{formatCurrency(selectedPayment.netAmount)}</span>
+                    <span className="text-sm font-semibold text-green-600">{formatCurrency(selectedPayment.netAmount, { currency: selectedPayment.currency })}</span>
                   </div>
                 </div>
               </div>
@@ -775,7 +822,7 @@ const PaymentManagement: React.FC = () => {
                   {selectedPayment.customer?.guestId?.email && (
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-500">Email:</span>
-                      <span className="text-sm">{selectedPayment.customer.guestId.email}</span>
+                      <span className="text-sm">{selectedPayment.customer?.guestId?.email}</span>
                     </div>
                   )}
                 </div>
@@ -833,11 +880,11 @@ const PaymentManagement: React.FC = () => {
                   <h4 className="font-semibold mb-2">Invoice Information</h4>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Invoice:</span>
-                    <span className="text-sm">{selectedPayment.invoice.invoiceNumber}</span>
+                    <span className="text-sm">{selectedPayment.invoice?.invoiceNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Invoice Total:</span>
-                    <span className="text-sm">{formatCurrency(selectedPayment.invoice.totalAmount)}</span>
+                    <span className="text-sm">{formatCurrency(selectedPayment.invoice?.totalAmount ?? 0, { currency: selectedPayment.currency })}</span>
                   </div>
                 </div>
               )}
@@ -862,7 +909,7 @@ const PaymentManagement: React.FC = () => {
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>Bank Account: {selectedPayment.bankAccount?.accountName}</span>
                 {selectedPayment.reconciledDate && (
-                  <span className="text-green-600">Reconciled: {new Date(selectedPayment.reconciledDate).toLocaleDateString()}</span>
+                  <span className="text-green-600">Reconciled: {new Date(selectedPayment.reconciledDate).toLocaleDateString('en-IN')}</span>
                 )}
               </div>
             </div>
@@ -886,7 +933,8 @@ const PaymentManagement: React.FC = () => {
               <select
                 id="newStatus"
                 className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                defaultValue={selectedPayment.status}
+                value={updateStatusValue || selectedPayment.status}
+                onChange={(e) => setUpdateStatusValue(e.target.value)}
               >
                 {paymentStatuses.map(status => (
                   <option key={status} value={status}>{status}</option>
@@ -895,12 +943,13 @@ const PaymentManagement: React.FC = () => {
             </div>
 
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => setUpdateStatusValue('')}>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
-                  const newStatus = (document.getElementById('newStatus') as HTMLSelectElement)?.value;
+                  const newStatus = updateStatusValue || selectedPayment.status;
                   if (newStatus && selectedPayment) {
                     handleUpdatePaymentStatus(selectedPayment.paymentId, newStatus);
+                    setUpdateStatusValue('');
                   }
                 }}
               >
@@ -955,7 +1004,7 @@ const PaymentManagement: React.FC = () => {
                   <SelectContent>
                     {paymentMethods.map(method => (
                       <SelectItem key={method} value={method}>
-                        {method.replace('_', ' ').charAt(0).toUpperCase() + method.replace('_', ' ').slice(1)}
+                        {method.replace(/_/g, ' ').charAt(0).toUpperCase() + method.replace(/_/g, ' ').slice(1)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1001,6 +1050,7 @@ const PaymentManagement: React.FC = () => {
                   value={paymentForm.reference}
                   onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
                   placeholder="Transaction reference"
+                  required
                 />
               </div>
 
@@ -1087,8 +1137,8 @@ const PaymentManagement: React.FC = () => {
               >
                 Cancel
               </Button>
-              <Button type="submit">
-                Create Payment
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Creating...' : 'Create Payment'}
               </Button>
             </div>
           </form>

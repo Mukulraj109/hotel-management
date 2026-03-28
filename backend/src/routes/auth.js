@@ -9,7 +9,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensurePropertyAccess, assertUserCanAccessHotel, refToHotelIdString } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import emailService from '../services/emailService.js';
 import logger from '../utils/logger.js';
@@ -224,27 +224,35 @@ router.post('/login', authLimiter, strictAuthLimiter, validate(schemas.login), c
   await User.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } },
     { new: true });
 
+  // Re-fetch with populated multi-property fields (same as authenticate middleware)
+  const populatedUser = await User.findById(user._id)
+    .select('+role')
+    .populate({ path: 'properties', select: 'name address' })
+    .populate({ path: 'primaryProperty', select: 'name address' })
+    .populate({ path: 'hotelId', select: 'name address' })
+    .lean();
+
+  // Extract raw hotelId string for JWT (avoid putting full object in token)
+  const hotelIdForJwt = refToHotelIdString(populatedUser.hotelId);
+
   // Generate access token
   const accessToken = jwt.sign(
-    { id: user._id, role: user.role, hotelId: user.hotelId },
+    { id: populatedUser._id, role: populatedUser.role, hotelId: hotelIdForJwt },
     process.env.JWT_SECRET,
     { expiresIn: '15m' }
   );
 
   // Generate refresh token
-  const { rawToken: refreshToken } = await createRefreshToken(user._id);
+  const { rawToken: refreshToken } = await createRefreshToken(populatedUser._id);
   const csrfToken = crypto.randomBytes(32).toString('hex');
 
   // Set httpOnly cookies
   setAuthCookies(res, accessToken, refreshToken, csrfToken);
 
-  // Remove password from output
-  user.password = undefined;
-
   res.json({
     status: 'success',
     token: accessToken,
-    user
+    user: populatedUser
   });
 }));
 
@@ -271,11 +279,60 @@ router.post('/login', authLimiter, strictAuthLimiter, validate(schemas.login), c
  *                   $ref: '#/components/schemas/User'
  */
 router.get('/me', authenticate, authorizePolicy('auth', 'baseAccess'), catchAsync(async (req, res) => {
+  // Return populated hotelId to frontend for property name display
+  const userResponse = { ...req.user };
+  if (req.user.hotelIdPopulated) {
+    userResponse.hotelId = req.user.hotelIdPopulated;
+  }
   res.json({
     status: 'success',
-    user: req.user
+    user: userResponse
   });
 }));
+
+const HOTEL_SWITCH_ROLES = new Set(['admin', 'manager', 'staff', 'frontdesk', 'housekeeping']);
+
+router.post(
+  '/switch-hotel',
+  authenticate,
+  authorizePolicy('auth', 'baseAccess'),
+  validate(schemas.switchHotel),
+  catchAsync(async (req, res) => {
+    const { hotelId } = req.body;
+    if (!HOTEL_SWITCH_ROLES.has(req.user.role)) {
+      throw new ApplicationError('Property switching is not enabled for this account type', 403);
+    }
+    await assertUserCanAccessHotel(req.user, hotelId);
+
+    await User.findByIdAndUpdate(req.user._id, { $set: { hotelId } });
+
+    const user = await User.findById(req.user._id)
+      .select('+role')
+      .populate({ path: 'properties', select: 'name address' })
+      .populate({ path: 'primaryProperty', select: 'name address' })
+      .populate({ path: 'hotelId', select: 'name address' })
+      .lean();
+
+    // Extract raw hotelId string for JWT (avoid putting full object in token)
+    const hotelIdForJwt = refToHotelIdString(user.hotelId);
+
+    const accessToken = jwt.sign(
+      { id: user._id, role: user.role, hotelId: hotelIdForJwt },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    const { rawToken: refreshToken } = await createRefreshToken(user._id);
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    setAuthCookies(res, accessToken, refreshToken, csrfToken);
+
+    res.json({
+      status: 'success',
+      token: accessToken,
+      user
+    });
+  })
+);
 
 /**
  * @swagger

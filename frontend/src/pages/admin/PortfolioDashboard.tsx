@@ -29,9 +29,9 @@ export default function PortfolioDashboard() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Fetch portfolio trends (using dashboard endpoint with 30d period)
-  const { data: trendsData, isLoading: trendsLoading, refetch: refetchTrends } = useQuery({
-    queryKey: ['portfolio-trends', '30d'],
+  // Fetch portfolio dashboard (trends + comparison in one call)
+  const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useQuery({
+    queryKey: ['portfolio-dashboard', '30d'],
     queryFn: async () => {
       const response = await api.get('/portfolio/dashboard', {
         params: { period: '30d' }
@@ -41,23 +41,26 @@ export default function PortfolioDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch property comparison (using dashboard endpoint for property breakdown)
-  const { data: comparisonData, isLoading: comparisonLoading, refetch: refetchComparison } = useQuery({
-    queryKey: ['portfolio-comparison'],
-    queryFn: async () => {
-      const response = await api.get('/portfolio/dashboard', {
-        params: { period: '30d' }
-      });
-      // Return propertyBreakdown from dashboard data
-      return response.data.data.propertyBreakdown;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  // Fill missing dates in trends so chart shows complete 30-day timeline
+  const filledTrends = React.useMemo(() => {
+    const raw = dashboardData?.trends || [];
+    const dateMap = new Map(raw.map((t: { date: string; revenue: number; bookings: number }) => [t.date, t]));
+    const result = [];
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      result.push(dateMap.get(key) || { date: key, revenue: 0, bookings: 0 });
+    }
+    return result;
+  }, [dashboardData?.trends]);
+
+  const comparisonData = dashboardData?.propertyBreakdown;
 
   const handleRefresh = () => {
     refetchMetrics();
-    refetchTrends();
-    refetchComparison();
+    refetchDashboard();
   };
 
   const handlePropertyClick = (propertyId: string) => {
@@ -139,7 +142,7 @@ export default function PortfolioDashboard() {
           loading={metricsLoading}
         />
         <MetricCard
-          title="Avg Occupancy"
+          title="Current Occupancy"
           value={metricsData?.avgOccupancy || 0}
           type="percentage"
           icon={<TrendingUp className="h-6 w-6" />}
@@ -152,12 +155,12 @@ export default function PortfolioDashboard() {
       <ChartCard
         title="Revenue Trends (Last 30 Days)"
         subtitle="Aggregated revenue across all properties"
-        loading={trendsLoading}
-        onRefresh={refetchTrends}
+        loading={dashboardLoading}
+        onRefresh={refetchDashboard}
         height="400px"
       >
         <LineChart
-          data={trendsData?.trends || []}
+          data={filledTrends}
           xDataKey="date"
           lines={[
             {
@@ -182,7 +185,7 @@ export default function PortfolioDashboard() {
           <CardDescription>Revenue and bookings by property</CardDescription>
         </CardHeader>
         <CardContent>
-          {comparisonLoading ? (
+          {dashboardLoading ? (
             <div className="text-center py-8">Loading comparison...</div>
           ) : comparisonData && comparisonData.length > 0 ? (
             <div className="overflow-x-auto">
@@ -229,38 +232,61 @@ export default function PortfolioDashboard() {
       <div>
         <h2 className="text-xl font-semibold mb-4">Your Properties</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((property) => (
-            <Card
-              key={property._id}
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => handlePropertyClick(property._id)}
-            >
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-lg">{property.name}</CardTitle>
-                    <CardDescription>
-                      {property.address?.city}, {property.address?.state}
-                    </CardDescription>
-                  </div>
-                  <Building2 className="h-5 w-5 text-blue-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Total Rooms:</span>
-                    <span className="font-medium">{property.totalRooms || 0}</span>
-                  </div>
-                  {property.propertyGroupId && (
-                    <div className="mt-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                      Part of a group
+          {properties.map((property) => {
+            // Enrich card with metrics from comparison data or portfolio metrics
+            const comparison = comparisonData?.find(
+              (c: Record<string, unknown>) => String(c.property?.id) === String(property._id)
+            );
+            const metricsProperty = metricsData?.properties?.find(
+              (p: Record<string, unknown>) => String(p.id) === String(property._id)
+            );
+            const roomCount = metricsProperty?.totalRooms || property.totalRooms || 0;
+
+            return (
+              <Card
+                key={property._id}
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => handlePropertyClick(property._id)}
+              >
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-lg">{property.name}</CardTitle>
+                      <CardDescription>
+                        {property.address?.city}{property.address?.state ? `, ${property.address.state}` : ''}
+                      </CardDescription>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Rooms:</span>
+                      <span className="font-medium">{roomCount}</span>
+                    </div>
+                    {comparison && (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Revenue (30d):</span>
+                          <span className="font-medium">{formatCurrency(comparison.metrics?.revenue || 0)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Bookings (30d):</span>
+                          <span className="font-medium">{comparison.metrics?.bookings || 0}</span>
+                        </div>
+                      </>
+                    )}
+                    {property.propertyGroupId && (
+                      <div className="mt-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                        Part of a group
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>

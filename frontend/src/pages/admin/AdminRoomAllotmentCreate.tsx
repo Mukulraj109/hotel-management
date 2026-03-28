@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button } from '../../components/ui/button';
@@ -23,6 +23,7 @@ interface RoomType {
 interface Channel {
   channelId: string;
   channelName: string;
+  isActive: boolean;
   priority: number;
   commission: number;
   markup: number;
@@ -43,8 +44,11 @@ interface CreateAllotmentFormData {
 
 const AdminRoomAllotmentCreate: React.FC = () => {
   const navigate = useNavigate();
+  const { id: editId } = useParams<{ id?: string }>();
+  const isEditMode = Boolean(editId);
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [existingAllotments, setExistingAllotments] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState<CreateAllotmentFormData>({
@@ -58,7 +62,7 @@ const AdminRoomAllotmentCreate: React.FC = () => {
       overbookingLimit: 0,
     },
     channels: [
-      { channelId: 'direct', channelName: 'Direct Booking', priority: 1, commission: 0, markup: 0 }
+      { channelId: 'direct', channelName: 'Direct Booking', isActive: true, priority: 1, commission: 0, markup: 0 }
     ]
   });
 
@@ -76,7 +80,42 @@ const AdminRoomAllotmentCreate: React.FC = () => {
     loadRoomTypes();
     // Only load existing allotments if we can - it's not critical for form functionality
     loadExistingAllotments();
-  }, []);
+    if (isEditMode && editId) {
+      loadAllotmentForEdit(editId);
+    }
+  }, [editId]);
+
+  const loadAllotmentForEdit = async (id: string) => {
+    try {
+      setInitialLoading(true);
+      const response = await api.get(`/allotments/${id}`);
+      const allotment = response.data.data || response.data;
+      setFormData({
+        name: allotment.name || '',
+        description: allotment.description || '',
+        roomTypeId: allotment.roomTypeId?._id || allotment.roomTypeId || '',
+        defaultSettings: {
+          totalInventory: allotment.defaultSettings?.totalInventory || 10,
+          defaultAllocationMethod: allotment.defaultSettings?.defaultAllocationMethod || 'percentage',
+          overbookingAllowed: allotment.defaultSettings?.overbookingAllowed || false,
+          overbookingLimit: allotment.defaultSettings?.overbookingLimit || 0,
+        },
+        channels: allotment.channels?.map((ch: Channel) => ({
+          channelId: ch.channelId,
+          channelName: ch.channelName,
+          isActive: ch.isActive !== false,
+          priority: ch.priority || 1,
+          commission: ch.commission || 0,
+          markup: ch.markup || 0,
+        })) || [{ channelId: 'direct', channelName: 'Direct Booking', isActive: true, priority: 1, commission: 0, markup: 0 }]
+      });
+    } catch {
+      toast.error('Failed to load allotment data');
+      navigate('/admin/room-allotments');
+    } finally {
+      setInitialLoading(false);
+    }
+  };
 
   // Early return if no property selected in single mode
   if (!selectedPropertyId && viewMode === 'single') {
@@ -90,16 +129,8 @@ const AdminRoomAllotmentCreate: React.FC = () => {
       setRoomTypes(response.data.data || []);
     } catch (error) {
       
-      // Provide fallback room types for development
-      const fallbackRoomTypes = [
-        { _id: '68b9e0125eaf06d56ef64a79', name: 'Deluxe Room', code: 'DLX', baseRate: 5000 },
-        { _id: '68b9e0125eaf06d56ef64a7b', name: 'Executive Suite', code: 'STE', baseRate: 12000 },
-        { _id: '68b9e0125eaf06d56ef64a7c', name: 'Standard Room', code: 'STD', baseRate: 3500 },
-        { _id: '68b9e0125eaf06d56ef64a7d', name: 'Family Room', code: 'FAM', baseRate: 8000 }
-      ];
-      
-      setRoomTypes(fallbackRoomTypes);
-      toast.error('Failed to load room types from server. Using sample data.');
+      setRoomTypes([]);
+      toast.error('Failed to load room types. Please check your connection and try again.');
     }
   };
 
@@ -118,10 +149,13 @@ const AdminRoomAllotmentCreate: React.FC = () => {
         allotments = responseData;
       }
       
-      const roomTypeIds = new Set(
+      const roomTypeIds = new Set<string>(
         allotments
           .filter((allotment: Record<string, unknown>) => allotment && allotment.roomTypeId)
-          .map((allotment: Record<string, unknown>) => allotment.roomTypeId)
+          .map((allotment: Record<string, unknown>) => {
+            const rtId = allotment.roomTypeId;
+            return typeof rtId === 'object' && rtId !== null ? (rtId as Record<string, string>)._id : String(rtId);
+          })
       );
       setExistingAllotments(roomTypeIds);
     } catch (error) {
@@ -161,6 +195,7 @@ const AdminRoomAllotmentCreate: React.FC = () => {
     const newChannel: Channel = {
       channelId: availableChannels[0].id,
       channelName: availableChannels[0].name,
+      isActive: true,
       priority: formData.channels.length + 1,
       commission: 0,
       markup: 0
@@ -211,19 +246,31 @@ const AdminRoomAllotmentCreate: React.FC = () => {
       return;
     }
 
+    if (formData.channels.length === 0) {
+      toast.error('At least one distribution channel is required');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await api.post('/allotments', formData);
-      
+      const submitData = {
+        ...formData,
+        hotelId: selectedPropertyId,
+        channels: formData.channels.map(ch => ({ ...ch, isActive: ch.isActive !== false }))
+      };
+      const response = isEditMode && editId
+        ? await api.put(`/allotments/${editId}`, submitData)
+        : await api.post('/allotments', submitData);
+
       if (response.data.success) {
-        toast.success('Room allotment created successfully');
+        toast.success(isEditMode ? 'Room allotment updated successfully' : 'Room allotment created successfully');
         navigate('/admin/room-allotments');
       } else {
-        toast.error(response.data.message || 'Failed to create allotment');
+        toast.error(response.data.message || `Failed to ${isEditMode ? 'update' : 'create'} allotment`);
       }
     } catch (error: unknown) {
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to create allotment';
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || `Failed to ${isEditMode ? 'update' : 'create'} allotment`;
       
       // Handle specific error cases
       if (errorMessage.includes('already exists for this room type')) {
@@ -241,7 +288,7 @@ const AdminRoomAllotmentCreate: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Property Breadcrumb */}
-      <PropertyBreadcrumb items={['Configuration', 'Room Allotments', 'Create']} />
+      <PropertyBreadcrumb items={['Configuration', 'Room Allotments', isEditMode ? 'Edit' : 'Create']} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -487,7 +534,7 @@ const AdminRoomAllotmentCreate: React.FC = () => {
           </Button>
           <Button type="submit" disabled={loading}>
             <Save className="w-4 h-4 mr-2" />
-            {loading ? 'Creating...' : 'Create Allotment'}
+            {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Allotment' : 'Create Allotment')}
           </Button>
         </div>
       </form>

@@ -183,19 +183,21 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ summary, isLoading }) => {
         </div>
         <div className="text-center p-3 bg-green-50 rounded-lg border border-green-100">
           <div className="text-lg sm:text-2xl font-bold text-green-600 truncate">
-            {billingHistoryService.formatCurrency(summary.totalPaymentAmount)}
+            {billingHistoryService.formatCurrency(
+              (summary.totalPaymentAmount || 0) + (summary.totalBookingAmount || 0)
+            )}
           </div>
-          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Payments</div>
+          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Revenue</div>
         </div>
         <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-100">
           <div className="text-lg sm:text-2xl font-bold text-orange-600 truncate">
-            {billingHistoryService.formatCurrency(summary.totalInvoiceAmount)}
+            {billingHistoryService.formatCurrency(summary.totalInvoiceAmount || 0)}
           </div>
           <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Invoiced</div>
         </div>
         <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-100">
           <div className="text-lg sm:text-2xl font-bold text-purple-600 truncate">
-            {billingHistoryService.formatCurrency(summary.totalRefundAmount)}
+            {billingHistoryService.formatCurrency(summary.totalRefundAmount || 0)}
           </div>
           <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Refunds</div>
         </div>

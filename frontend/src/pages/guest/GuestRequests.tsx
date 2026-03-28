@@ -69,6 +69,19 @@ const getPriorityColor = (priority: string) => {
 };
 
 
+function isSameUserId(
+  sessionUserId: string | undefined,
+  requestUserField: { _id?: string } | string | undefined
+): boolean {
+  if (!sessionUserId) return false;
+  const mine = String(sessionUserId);
+  if (requestUserField == null) return false;
+  if (typeof requestUserField === 'object' && '_id' in requestUserField) {
+    return String(requestUserField._id) === mine;
+  }
+  return String(requestUserField) === mine;
+}
+
 function GuestRequests() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
@@ -110,7 +123,7 @@ function GuestRequests() {
       const updatedRequest = data.serviceRequest;
       
       // Only update if this request belongs to the current user
-      if (updatedRequest.userId?._id === user.id || updatedRequest.userId === user.id) {
+      if (isSameUserId(user?._id, updatedRequest.userId)) {
         setRequests(prev => prev.map(request => 
           request._id === updatedRequest._id ? updatedRequest : request
         ));
@@ -161,7 +174,7 @@ function GuestRequests() {
       const cancelledRequest = data.serviceRequest;
       
       // Only update if this request belongs to the current user
-      if (cancelledRequest.userId?._id === user.id || cancelledRequest.userId === user.id) {
+      if (isSameUserId(user?._id, cancelledRequest.userId)) {
         setRequests(prev => prev.map(request => 
           request._id === cancelledRequest._id ? cancelledRequest : request
         ));

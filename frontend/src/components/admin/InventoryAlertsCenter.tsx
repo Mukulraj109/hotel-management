@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '@/services/api';
 import {
   AlertTriangle,
   AlertCircle,
@@ -128,138 +129,102 @@ const InventoryAlertsCenter: React.FC = () => {
   const fetchAlerts = useCallback(async () => {
     try {
       setLoading(true);
-      // Mock data - Replace with actual API call
-      const mockAlerts: InventoryAlert[] = [
-        {
-          _id: '1',
-          hotelId: 'hotel1',
-          type: 'LOW_STOCK',
-          title: 'Critical Low Stock Alert',
-          message: 'Premium Bath Towels are critically low. Current stock: 3, Threshold: 20',
-          severity: 'critical',
-          status: 'active',
-          itemId: 'item1',
-          itemName: 'Premium Bath Towels',
-          currentValue: 3,
-          thresholdValue: 20,
-          actionRequired: true,
-          dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: '2024-01-15T08:00:00Z',
-          createdByName: 'System'
-        },
-        {
-          _id: '2',
-          hotelId: 'hotel1',
-          type: 'OVERDUE_DELIVERY',
-          title: 'Overdue Purchase Order',
-          message: 'PO-2024-001 from ABC Hotel Supplies is 3 days overdue',
-          severity: 'high',
-          status: 'active',
-          vendorId: 'vendor1',
-          vendorName: 'ABC Hotel Supplies',
-          purchaseOrderId: 'po1',
-          poNumber: 'PO-2024-001',
-          actionRequired: true,
-          assignedTo: 'admin1',
-          assignedToName: 'John Manager',
-          dueDate: '2024-01-12T00:00:00Z',
-          createdAt: '2024-01-13T06:00:00Z',
-          createdByName: 'System'
-        },
-        {
-          _id: '3',
-          hotelId: 'hotel1',
-          type: 'BUDGET_THRESHOLD',
-          title: 'Budget Threshold Exceeded',
-          message: 'Monthly inventory budget has exceeded 85% threshold',
-          severity: 'medium',
-          status: 'acknowledged',
-          currentValue: 85000,
-          thresholdValue: 100000,
-          actionRequired: false,
-          acknowledgedAt: '2024-01-14T12:00:00Z',
-          createdAt: '2024-01-14T10:00:00Z',
-          createdByName: 'System'
-        },
-        {
-          _id: '4',
-          hotelId: 'hotel1',
-          type: 'QUALITY_ISSUE',
-          title: 'Quality Complaint Report',
-          message: 'Multiple quality complaints received for Soap Dispensers from XYZ Supplier',
-          severity: 'high',
-          status: 'active',
-          vendorId: 'vendor2',
-          vendorName: 'XYZ Supplier',
-          itemId: 'item2',
-          itemName: 'Soap Dispensers',
-          actionRequired: true,
-          assignedTo: 'manager1',
-          assignedToName: 'Sarah Admin',
-          createdAt: '2024-01-14T14:30:00Z',
-          createdByName: 'Quality Team'
-        }
-      ];
+      const response = await api.get('/inventory-notifications', {
+        params: { limit: 50 }
+      });
+      const notifications = response.data?.data?.notifications || [];
 
-      setAlerts(mockAlerts);
+      // Map notifications to the InventoryAlert shape
+      const mapped: InventoryAlert[] = notifications.map((n: Record<string, unknown>) => ({
+        _id: (n._id as string) || (n.id as string) || '',
+        hotelId: (n.hotelId as string) || '',
+        type: mapNotificationType((n.type as string) || ''),
+        title: (n.title as string) || '',
+        message: (n.message as string) || '',
+        severity: mapSeverity((n.priority as string) || (n.severity as string) || 'low'),
+        status: (n.isRead as boolean) ? 'acknowledged' : 'active',
+        itemId: (n.metadata as Record<string, unknown>)?.roomId as string || undefined,
+        itemName: (n.metadata as Record<string, unknown>)?.roomNumber as string || (n.itemName as string) || undefined,
+        currentValue: (n.currentValue as number) || undefined,
+        thresholdValue: (n.thresholdValue as number) || undefined,
+        actionRequired: (n.priority as string) === 'urgent' || (n.priority as string) === 'high',
+        createdAt: (n.createdAt as string) || new Date().toISOString(),
+        createdByName: 'System'
+      }));
+
+      setAlerts(mapped);
     } catch {
-      // Error handled silently
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
   }, [filters, sortBy, sortOrder]);
 
+  const mapNotificationType = (type: string): InventoryAlert['type'] => {
+    const typeMap: Record<string, InventoryAlert['type']> = {
+      'low_stock': 'LOW_STOCK',
+      'LOW_STOCK': 'LOW_STOCK',
+      'reorder': 'REORDER',
+      'REORDER': 'REORDER',
+      'overdue': 'OVERDUE_DELIVERY',
+      'OVERDUE_DELIVERY': 'OVERDUE_DELIVERY',
+      'quality': 'QUALITY_ISSUE',
+      'QUALITY_ISSUE': 'QUALITY_ISSUE',
+      'budget': 'BUDGET_THRESHOLD',
+      'BUDGET_THRESHOLD': 'BUDGET_THRESHOLD',
+      'expiry': 'EXPIRY_WARNING',
+      'EXPIRY_WARNING': 'EXPIRY_WARNING',
+    };
+    return typeMap[type] || 'LOW_STOCK';
+  };
+
+  const mapSeverity = (priority: string): InventoryAlert['severity'] => {
+    const map: Record<string, InventoryAlert['severity']> = {
+      'urgent': 'critical',
+      'critical': 'critical',
+      'high': 'high',
+      'medium': 'medium',
+      'low': 'low',
+    };
+    return map[priority] || 'low';
+  };
+
   const fetchReorderAlerts = useCallback(async () => {
     try {
-      // Mock data - Replace with actual API call
-      const mockReorderAlerts: ReorderAlert[] = [
-        {
-          _id: '1',
-          hotelId: 'hotel1',
-          inventoryItemId: 'item3',
-          itemName: 'Shampoo Bottles',
-          currentStock: 15,
-          reorderPoint: 20,
-          suggestedQuantity: 50,
-          urgencyLevel: 'medium',
-          estimatedCost: 2500,
-          suggestedVendor: {
-            id: 'vendor1',
-            name: 'ABC Hotel Supplies',
-            rating: 4.8,
-            leadTime: 5,
-            unitPrice: 50
-          },
-          autoCreatePO: true,
-          status: 'pending',
-          createdAt: '2024-01-15T07:30:00Z'
-        },
-        {
-          _id: '2',
-          hotelId: 'hotel1',
-          inventoryItemId: 'item4',
-          itemName: 'Toilet Paper Rolls',
-          currentStock: 8,
-          reorderPoint: 25,
-          suggestedQuantity: 100,
-          urgencyLevel: 'high',
-          estimatedCost: 1200,
-          suggestedVendor: {
-            id: 'vendor3',
-            name: 'Paper Products Ltd',
-            rating: 4.2,
-            leadTime: 3,
-            unitPrice: 12
-          },
-          autoCreatePO: false,
-          status: 'pending',
-          createdAt: '2024-01-15T06:00:00Z'
-        }
-      ];
+      // Reorder alerts come from the same inventory notification endpoint
+      // filtered for low-stock type items that need reordering
+      const response = await api.get('/inventory', {
+        params: { limit: 20, lowStock: true }
+      });
+      const items = response.data?.data?.items || response.data?.data || [];
 
-      setReorderAlerts(mockReorderAlerts);
+      if (!Array.isArray(items)) {
+        setReorderAlerts([]);
+        return;
+      }
+
+      const mapped: ReorderAlert[] = items
+        .filter((item: Record<string, unknown>) =>
+          (item.currentStock as number || 0) <= (item.stockThreshold as number || item.reorderPoint as number || 0))
+        .map((item: Record<string, unknown>) => ({
+          _id: (item._id as string) || '',
+          hotelId: (item.hotelId as string) || '',
+          inventoryItemId: (item._id as string) || '',
+          itemName: (item.name as string) || '',
+          currentStock: (item.currentStock as number) || 0,
+          reorderPoint: (item.stockThreshold as number) || (item.reorderPoint as number) || 0,
+          suggestedQuantity: Math.max(0, ((item.stockThreshold as number || 0) * 2) - (item.currentStock as number || 0)),
+          urgencyLevel: (item.currentStock as number || 0) === 0 ? 'critical' as const :
+            (item.currentStock as number || 0) < ((item.stockThreshold as number || 0) / 2) ? 'high' as const : 'medium' as const,
+          estimatedCost: ((item.unitPrice as number) || 0) * Math.max(0, ((item.stockThreshold as number || 0) * 2) - (item.currentStock as number || 0)),
+          autoCreatePO: false,
+          status: 'pending' as const,
+          createdAt: (item.updatedAt as string) || new Date().toISOString(),
+        }));
+
+      setReorderAlerts(mapped);
     } catch {
-      // Error handled silently
+      setReorderAlerts([]);
     }
   }, []);
 

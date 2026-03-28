@@ -31,6 +31,10 @@ export const schemas = {
     hotelId: Joi.string().optional()
   }),
 
+  switchHotel: Joi.object({
+    hotelId: Joi.string().hex().length(24).required()
+  }),
+
   createRoom: Joi.object({
     hotelId: Joi.string().required(),
     roomNumber: Joi.string().required(),
@@ -70,6 +74,7 @@ export const schemas = {
     paymentStatus: Joi.string().valid('pending', 'paid', 'partially_paid').optional(),
     status: Joi.string().valid('pending', 'confirmed', 'checked_in').optional(),
     idempotencyKey: Joi.string().required(),
+    roomTypeId: Joi.string().hex().length(24).optional(),
     // Additional fields for room type bookings (optional metadata)
     roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').optional(),
     nights: Joi.number().min(1).optional(),
@@ -92,7 +97,16 @@ export const schemas = {
     })).optional(),
     paidAmount: Joi.number().min(0).optional(),
     remainingAmount: Joi.number().min(0).optional(),
-    checkInTime: Joi.date().optional() // For walk-in bookings that are auto-checked-in
+    checkInTime: Joi.date().optional(), // For walk-in bookings that are auto-checked-in
+    primaryRoomQuantity: Joi.number().min(1).optional()
+  }).custom((value, helpers) => {
+    const roomIds = value.roomIds || [];
+    const hasRooms = Array.isArray(roomIds) && roomIds.length > 0;
+    if (hasRooms) return value;
+    if (value.roomType || value.roomTypeId) return value;
+    return helpers.error('any.custom', {
+      message: 'When no rooms are assigned, roomType or roomTypeId is required'
+    });
   }),
 
   createPaymentIntent: Joi.object({

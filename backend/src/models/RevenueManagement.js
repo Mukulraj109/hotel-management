@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const pricingRuleSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   ruleId: {
     type: String,
     required: true,
@@ -71,6 +77,12 @@ const pricingRuleSchema = new mongoose.Schema({
 });
 
 const rateShoppingSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   competitorId: {
     type: String,
     required: true
@@ -99,6 +111,12 @@ const rateShoppingSchema = new mongoose.Schema({
 });
 
 const demandForecastSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   date: {
     type: Date,
     required: true
@@ -136,6 +154,12 @@ const demandForecastSchema = new mongoose.Schema({
 });
 
 const packageSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   packageId: {
     type: String,
     required: true,
@@ -185,6 +209,12 @@ const packageSchema = new mongoose.Schema({
 });
 
 const corporateRateSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   contractId: {
     type: String,
     required: true,
@@ -236,6 +266,12 @@ const corporateRateSchema = new mongoose.Schema({
 });
 
 const revenueAnalyticsSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   date: {
     type: Date,
     required: true
@@ -269,30 +305,30 @@ const revenueAnalyticsSchema = new mongoose.Schema({
 });
 
 // Indexes for PricingRule
-pricingRuleSchema.index({ type: 1, isActive: 1 });
-pricingRuleSchema.index({ 'dateRange.startDate': 1, 'dateRange.endDate': 1 });
-pricingRuleSchema.index({ priority: -1, isActive: 1 });
+pricingRuleSchema.index({ hotelId: 1, type: 1, isActive: 1 });
+pricingRuleSchema.index({ hotelId: 1, 'dateRange.startDate': 1, 'dateRange.endDate': 1 });
+pricingRuleSchema.index({ hotelId: 1, priority: -1, isActive: 1 });
 
 // Indexes for RateShopping
-rateShoppingSchema.index({ competitorId: 1, checkInDate: 1 });
-rateShoppingSchema.index({ isActive: 1, 'rates.lastUpdated': -1 });
+rateShoppingSchema.index({ hotelId: 1, competitorId: 1, checkInDate: 1 });
+rateShoppingSchema.index({ hotelId: 1, isActive: 1, 'rates.lastUpdated': -1 });
 
 // Indexes for DemandForecast
-demandForecastSchema.index({ date: 1, roomType: 1 });
-demandForecastSchema.index({ date: 1, confidence: -1 });
+demandForecastSchema.index({ hotelId: 1, date: 1, roomType: 1 });
+demandForecastSchema.index({ hotelId: 1, date: 1, confidence: -1 });
 
 // Indexes for Package
-packageSchema.index({ type: 1, isActive: 1 });
-packageSchema.index({ 'validDates.startDate': 1, 'validDates.endDate': 1 });
+packageSchema.index({ hotelId: 1, type: 1, isActive: 1 });
+packageSchema.index({ hotelId: 1, 'validDates.startDate': 1, 'validDates.endDate': 1 });
 
 // Indexes for CorporateRate
-corporateRateSchema.index({ company: 1, isActive: 1 });
-corporateRateSchema.index({ rateType: 1, isActive: 1 });
-corporateRateSchema.index({ 'validPeriod.startDate': 1, 'validPeriod.endDate': 1 });
+corporateRateSchema.index({ hotelId: 1, company: 1, isActive: 1 });
+corporateRateSchema.index({ hotelId: 1, rateType: 1, isActive: 1 });
+corporateRateSchema.index({ hotelId: 1, 'validPeriod.startDate': 1, 'validPeriod.endDate': 1 });
 
 // Indexes for RevenueAnalytics
-revenueAnalyticsSchema.index({ date: 1, roomType: 1 });
-revenueAnalyticsSchema.index({ date: -1 });
+revenueAnalyticsSchema.index({ hotelId: 1, date: 1, roomType: 1 });
+revenueAnalyticsSchema.index({ hotelId: 1, date: -1 });
 
 const PricingRule = mongoose.models.PricingRule || mongoose.model('PricingRule', pricingRuleSchema);
 const RateShopping = mongoose.models.RateShopping || mongoose.model('RateShopping', rateShoppingSchema);

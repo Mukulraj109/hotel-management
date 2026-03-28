@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search, X, User, Calendar, Receipt, Building, Filter } from 'lucide-react';
+import { api } from '@/services/api';
 
 interface SearchResult {
   id: string;
@@ -43,55 +44,35 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     { id: 'room', label: 'Rooms', icon: Building }
   ];
 
-  // Mock search data - replace with actual API call
-  const mockResults: SearchResult[] = [
-    {
-      id: '1',
-      type: 'reservation',
-      title: 'John Doe',
-      subtitle: 'Room 101 • Booking #12345',
-      details: 'Check-in: Today • 2 nights',
-      status: 'confirmed',
-      priority: 'high'
-    },
-    {
-      id: '2',
-      type: 'guest',
-      title: 'Sarah Wilson',
-      subtitle: 'VIP Guest • Corporate',
-      details: '15 previous stays',
-      status: 'active'
-    },
-    {
-      id: '3',
-      type: 'invoice',
-      title: 'Invoice #INV-2024-001',
-      subtitle: 'John Doe • Room 101',
-      details: '$450.00 • Paid',
-      status: 'paid'
-    },
-    {
-      id: '4',
-      type: 'room',
-      title: 'Room 205',
-      subtitle: 'Superior Suite • Floor 2',
-      details: 'Available • Clean',
-      status: 'available'
-    }
-  ];
-
   useEffect(() => {
     if (query.length > 2) {
       setIsLoading(true);
-      // Simulate API call
-      const timer = setTimeout(() => {
-        const filtered = mockResults.filter(item => {
-          const matchesQuery = item.title.toLowerCase().includes(query.toLowerCase()) ||
-                              item.subtitle.toLowerCase().includes(query.toLowerCase());
-          const matchesFilter = activeFilters.length === 0 || activeFilters.includes(item.type);
-          return matchesQuery && matchesFilter;
-        });
-        setResults(filtered);
+      const timer = setTimeout(async () => {
+        try {
+          const response = await api.get('/guest-lookup/search', {
+            params: {
+              query,
+              limit: 20,
+              ...(activeFilters.length > 0 ? { types: activeFilters.join(',') } : {})
+            }
+          });
+          const data = response.data?.data;
+          if (Array.isArray(data)) {
+            const mapped: SearchResult[] = data.map((item: Record<string, unknown>) => ({
+              id: String(item._id || item.id || ''),
+              type: (item.type as SearchResult['type']) || 'guest',
+              title: String(item.name || item.title || ''),
+              subtitle: String(item.email || item.subtitle || ''),
+              details: item.phone ? String(item.phone) : undefined,
+              status: item.status ? String(item.status) : undefined,
+            }));
+            setResults(mapped);
+          } else {
+            setResults([]);
+          }
+        } catch {
+          setResults([]);
+        }
         setIsLoading(false);
         setShowResults(true);
       }, 300);

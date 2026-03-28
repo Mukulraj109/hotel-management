@@ -64,43 +64,6 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Mock data
-  const mockAgent: ChatAgent = {
-    id: '1',
-    name: 'Sarah Johnson',
-    role: 'Front Desk Support',
-    avatar: 'https://images.unsplash.com/photo-1494790108755-2616b332c8e7?w=32&h=32&fit=crop&crop=face',
-    isOnline: true,
-    responseTime: 'Usually responds in ~2 min'
-  };
-
-  const mockMessages: Message[] = [
-    {
-      id: '1',
-      content: 'Welcome to Hotel Support! How can I help you today?',
-      sender: 'bot',
-      timestamp: new Date(Date.now() - 300000),
-      type: 'text',
-      senderName: 'Support Bot'
-    },
-    {
-      id: '2',
-      content: 'I need help with room 205 - the guest is reporting an issue with the AC',
-      sender: 'user',
-      timestamp: new Date(Date.now() - 240000),
-      type: 'text',
-      status: 'read'
-    },
-    {
-      id: '3',
-      content: 'I\'ve connected you with Sarah from our front desk team. She\'ll assist you right away.',
-      sender: 'bot',
-      timestamp: new Date(Date.now() - 180000),
-      type: 'system',
-      senderName: 'Support Bot'
-    }
-  ];
-
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -109,10 +72,20 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
     };
   }, []);
 
+  // Start with an honest system message - no fake agent
   useEffect(() => {
     if (messages.length === 0) {
-      setMessages(mockMessages);
-      setCurrentAgent(mockAgent);
+      setMessages([
+        {
+          id: '1',
+          content: 'Live chat is not available at this time. Please contact reception directly for assistance, or leave a message and we will get back to you.',
+          sender: 'bot',
+          timestamp: new Date(),
+          type: 'text',
+          senderName: 'System'
+        }
+      ]);
+      // No fake agent - leave currentAgent as null
     }
   }, []);
 
@@ -145,58 +118,27 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
 
     setMessages(prev => [...prev, newMessage]);
     setMessage('');
-    
-    // Simulate message being sent
+
+    // Mark as sent after a brief delay (message is queued locally)
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === newMessage.id 
-          ? { ...msg, status: 'sent' } 
+      setMessages(prev => prev.map(msg =>
+        msg.id === newMessage.id
+          ? { ...msg, status: 'sent' }
           : msg
       ));
-    }, 500);
 
-    // Simulate agent typing
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setIsTyping(true);
-    }, 1000);
-
-    // Simulate agent response
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setIsTyping(false);
-      const response: Message = {
+      // Show a system note that live agents are not connected
+      const notice: Message = {
         id: (Date.now() + 1).toString(),
-        content: getAutoResponse(message),
-        sender: 'support',
+        content: 'Your message has been recorded. Live chat agents are not currently connected. Please call the front desk for immediate assistance.',
+        sender: 'bot',
         timestamp: new Date(),
         type: 'text',
-        senderName: currentAgent?.name || 'Support Agent',
-        avatar: currentAgent?.avatar
+        senderName: 'System'
       };
-      setMessages(prev => [...prev, response]);
-      
-      if (!isOpen) {
-        setUnreadCount(prev => prev + 1);
-      }
-    }, 3000);
-  };
-
-  const getAutoResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('room') && lowerMessage.includes('ac')) {
-      return "I've dispatched our maintenance team to room 205 to check the AC. They should be there within 10 minutes. Is there anything else I can help with?";
-    }
-    if (lowerMessage.includes('housekeeping')) {
-      return "I'll contact housekeeping right away. What specific assistance do you need?";
-    }
-    if (lowerMessage.includes('guest') && lowerMessage.includes('complaint')) {
-      return "I understand this is urgent. I'm escalating this to our guest relations manager. They'll contact you within 5 minutes.";
-    }
-    
-    return "Thank you for reaching out. I'm looking into this right away and will get back to you shortly.";
+      setMessages(prev => [...prev, notice]);
+    }, 500);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -312,10 +254,15 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
               <MessageCircle className="w-5 h-5 text-blue-500" />
               <div>
                 <CardTitle className="text-sm">Support Chat</CardTitle>
-                {currentAgent && (
+                {currentAgent ? (
                   <div className="flex items-center gap-1 text-xs text-gray-500">
                     <div className={`w-2 h-2 rounded-full ${currentAgent.isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
                     {currentAgent.name} • {currentAgent.responseTime}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <div className="w-2 h-2 rounded-full bg-gray-400" />
+                    No agents online
                   </div>
                 )}
               </div>

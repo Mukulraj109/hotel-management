@@ -56,6 +56,28 @@ Reports go to `agents/reports/` as JSON + Markdown.
 - Roles: admin, manager, frontdesk, staff, housekeeping, guest, travel_agent
 - Error handling: `catchAsync` wrapper or `try/catch` in controllers
 
+## Data Fetching — Server-Side Pagination & Protection (MANDATORY)
+All list/collection endpoints and queries MUST use server-side pagination, sorting, and filtering so the system stays stable even with 10,000,000+ records. If you find code that fetches unbounded data, **auto-fix it** before moving on.
+
+### Backend Rules
+- **Never** use `.find({})` without `.limit()` — always default to `limit=20, maxLimit=100`
+- Every list endpoint MUST accept `page`, `limit`, `sort`, `order` query params
+- Use `.skip()` and `.limit()` (or cursor-based pagination for large offsets) on all Mongoose queries
+- Add `.lean()` for read-only list queries to reduce memory
+- Return pagination metadata: `{ data, page, limit, totalCount, totalPages }`
+- Use `.countDocuments()` with the same filter for `totalCount`
+- For search/filter endpoints, ensure indexes exist on filtered fields
+
+### Frontend Rules
+- **Never** fetch all records at once — always pass `page` & `limit` params
+- Use TanStack Query with `keepPreviousData: true` for smooth pagination UX
+- Implement paginated tables/lists with page controls (next/prev/page number)
+- For infinite scroll, use `useInfiniteQuery` with cursor or page-based fetching
+- Show loading/skeleton states during page transitions
+
+### Auto-Fix Mandate
+When working on any file, if you encounter an unbounded `.find()`, `Model.find({})` without limit, or a frontend fetch that loads all records without pagination — **fix it immediately** by adding proper server-side pagination. Do not leave unbounded queries in the codebase.
+
 ## Production Readiness Plan
 See `PRODUCTION_READINESS_PLAN.md` for the full 12-week plan with 975 findings across 12 categories.
 

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 // import RoomBlock from '../models/RoomBlock.js'; // Temporarily disabled
@@ -453,9 +454,10 @@ const bulkRoomBlock = catchAsync(async (req, res, next) => {
       createdBy: req.user._id
     });*/
 
-    // Mock room block for now
+    // RoomBlock model is temporarily disabled; generate a proper ObjectId
+    // so the blockId stored on Room documents is a valid Mongo reference
     const roomBlock = {
-      _id: 'mock-block-id',
+      _id: new mongoose.Types.ObjectId(),
       blockName: blockData.blockName
     };
 

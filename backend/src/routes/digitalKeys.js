@@ -1,5 +1,6 @@
 import express from 'express';
 import Joi from 'joi';
+import mongoose from 'mongoose';
 import QRCode from 'qrcode';
 import DigitalKey from '../models/DigitalKey.js';
 import Booking from '../models/Booking.js';
@@ -181,11 +182,15 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
 router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, type, hotel, search } = req.query;
   const skip = (page - 1) * limit;
-  
-  const filter = {};
+  const adminHotelId = hotel || req.user.hotelId;
+
+  if (!adminHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const filter = { hotelId: new mongoose.Types.ObjectId(adminHotelId) };
   if (status) filter.status = status;
   if (type) filter.type = type;
-  if (hotel) filter.hotelId = hotel;
   
   // Add search functionality
   if (search) {
@@ -225,7 +230,14 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
 // Get admin analytics for digital keys
 router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { timeRange = '30d' } = req.query;
-  
+  const targetHotelId = req.query.hotelId || req.user.hotelId;
+
+  if (!targetHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const hotelFilter = { hotelId: new mongoose.Types.ObjectId(targetHotelId) };
+
   // Calculate date range
   let startDate = new Date();
   switch (timeRange) {
@@ -244,7 +256,7 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
     default:
       startDate.setDate(startDate.getDate() - 30);
   }
-  
+
   const [
     totalKeys,
     activeKeys,
@@ -259,40 +271,45 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
     topUsers
   ] = await Promise.all([
     // Total keys count
-    DigitalKey.countDocuments(),
-    
+    DigitalKey.countDocuments(hotelFilter),
+
     // Active keys count
-    DigitalKey.countDocuments({ 
+    DigitalKey.countDocuments({
+      ...hotelFilter,
       status: 'active',
       validUntil: { $gt: new Date() }
     }),
-    
+
     // Expired keys count
-    DigitalKey.countDocuments({ 
+    DigitalKey.countDocuments({
+      ...hotelFilter,
       $or: [
         { status: 'expired' },
         { validUntil: { $lt: new Date() } }
       ]
     }),
-    
+
     // Revoked keys count
-    DigitalKey.countDocuments({ status: 'revoked' }),
-    
+    DigitalKey.countDocuments({ ...hotelFilter, status: 'revoked' }),
+
     // Total usage count
     DigitalKey.aggregate([
+      { $match: hotelFilter },
       { $group: { _id: null, total: { $sum: '$currentUses' } } }
     ]),
-    
+
     // Unique users count
-    DigitalKey.distinct('userId').then(users => users.length),
-    
+    DigitalKey.distinct('userId', hotelFilter).then(users => users.length),
+
     // Keys by type
     DigitalKey.aggregate([
+      { $match: hotelFilter },
       { $group: { _id: '$type', count: { $sum: 1 } } }
     ]),
-    
-    // Keys by hotel
+
+    // Keys by hotel (scoped to current hotel)
     DigitalKey.aggregate([
+      { $match: hotelFilter },
       {
         $lookup: {
           from: 'hotels',
@@ -302,21 +319,22 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
         }
       },
       { $unwind: '$hotel' },
-      { 
-        $group: { 
+      {
+        $group: {
           _id: '$hotelId',
           hotelName: { $first: '$hotel.name' },
-          count: { $sum: 1 } 
-        } 
+          count: { $sum: 1 }
+        }
       }
     ]),
-    
+
     // Usage trends over time
     DigitalKey.aggregate([
-      { 
-        $match: { 
-          createdAt: { $gte: startDate } 
-        } 
+      {
+        $match: {
+          ...hotelFilter,
+          createdAt: { $gte: startDate }
+        }
       },
       {
         $group: {
@@ -330,9 +348,10 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
       },
       { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
     ]),
-    
+
     // Recent activity
     DigitalKey.aggregate([
+      { $match: hotelFilter },
       { $unwind: '$accessLogs' },
       { $sort: { 'accessLogs.timestamp': -1 } },
       { $limit: 20 },
@@ -366,9 +385,10 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
         deviceInfo: '$accessLogs.deviceInfo'
       }}
     ]),
-    
+
     // Top users by key count
     DigitalKey.aggregate([
+      { $match: hotelFilter },
       {
         $group: {
           _id: '$userId',
@@ -706,8 +726,14 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
       startDate.setDate(startDate.getDate() - 30);
   }
 
-  // Build match conditions for aggregation
+  const activityHotelId = req.query.hotelId || req.user.hotelId;
+  if (!activityHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  // Build match conditions for aggregation - always filter by hotel
   const matchConditions = {
+    hotelId: new mongoose.Types.ObjectId(activityHotelId),
     'accessLogs.timestamp': { $gte: startDate }
   };
 
@@ -829,11 +855,15 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
     format = 'csv'
   } = req.query;
 
-  // Build query filters
-  const filters = {};
+  const exportHotelId = hotel || req.user.hotelId;
+  if (!exportHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  // Build query filters - always filter by hotel
+  const filters = { hotelId: new mongoose.Types.ObjectId(exportHotelId) };
   if (status && status !== 'all') filters.status = status;
   if (type && type !== 'all') filters.type = type;
-  if (hotel && hotel !== 'all') filters.hotelId = hotel;
 
   // Get all matching keys with populated data
   const keys = await DigitalKey.find(filters)

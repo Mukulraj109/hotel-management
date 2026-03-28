@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Calendar, BarChart3, Settings, TrendingUp, Users, AlertTriangle, RefreshCw, Download } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, BarChart3, Settings, TrendingUp, Users, AlertTriangle, RefreshCw, Download, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -154,14 +154,25 @@ const AdminRoomTypeAllotments: React.FC = () => {
   const handleOptimizeAllotment = async (allotment: RoomTypeAllotment) => {
     try {
       const response = await allotmentService.optimizeAllocations(allotment._id);
-      if (response.success) {
+      if (response?.success !== false) {
         toast.success('Allocations optimized successfully');
-        loadAllotments(); // Refresh data
+        loadAllotments();
       } else {
         toast.error('Failed to optimize allocations');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to optimize allocations');
+    }
+  };
+
+  const handleDeleteAllotment = async (allotment: RoomTypeAllotment) => {
+    if (!window.confirm(`Are you sure you want to delete the allotment "${allotment.name}"?`)) return;
+    try {
+      await allotmentService.deleteAllotment(allotment._id);
+      toast.success('Allotment deleted successfully');
+      loadAllotments();
+    } catch {
+      toast.error('Failed to delete allotment');
     }
   };
 
@@ -352,9 +363,9 @@ const AdminRoomTypeAllotments: React.FC = () => {
                   <Settings className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{dashboardData.totalAllotments}</div>
+                  <div className="text-2xl font-bold">{dashboardData.totalAllotments || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {dashboardData.totalRoomTypes} room types configured
+                    {dashboardData.totalRoomTypes || 0} room type{(dashboardData.totalRoomTypes || 0) === 1 ? '' : 's'} configured
                   </p>
                 </CardContent>
               </Card>
@@ -365,8 +376,8 @@ const AdminRoomTypeAllotments: React.FC = () => {
                   <BarChart3 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${getOccupancyColor(dashboardData.averageOccupancyRate)}`}>
-                    {dashboardData.averageOccupancyRate.toFixed(1)}%
+                  <div className={`text-2xl font-bold ${getOccupancyColor(dashboardData.averageOccupancyRate || 0)}`}>
+                    {(dashboardData.averageOccupancyRate || 0).toFixed(1)}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Last 30 days average
@@ -380,7 +391,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{dashboardData.totalChannels}</div>
+                  <div className="text-2xl font-bold">{dashboardData.totalChannels || 0}</div>
                   <p className="text-xs text-muted-foreground">
                     {dashboardData.topPerformingChannel?.channelName || 'N/A'} performing best
                   </p>
@@ -394,7 +405,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    ₹{dashboardData.totalRevenue.toLocaleString()}
+                    ₹{(dashboardData.totalRevenue || 0).toLocaleString('en-IN')}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Last 30 days
@@ -465,7 +476,9 @@ const AdminRoomTypeAllotments: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Room Types</SelectItem>
-                    {/* Room types would be loaded from API */}
+                    {[...new Map(allotments.filter(a => a.roomTypeId?._id).map(a => [a.roomTypeId._id, a.roomTypeId.name])).entries()].map(([id, name]) => (
+                      <SelectItem key={id} value={id}>{name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -541,7 +554,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                               variant="outline" 
                               className="text-xs px-2 py-1 bg-blue-50 border-blue-200 text-blue-700"
                             >
-                              +{allotment.channels.filter(c => c.isActive).length - 3} more
+                              +{(allotment.channels?.filter(c => c.isActive).length || 0) - 3} more
                             </Badge>
                           )}
                         </div>
@@ -573,6 +586,22 @@ const AdminRoomTypeAllotments: React.FC = () => {
                           className="bg-white border-gray-200 text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-all"
                         >
                           <TrendingUp className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditAllotment(allotment)}
+                          className="bg-white border-gray-200 text-gray-700 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-700 transition-all"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteAllotment(allotment)}
+                          className="bg-white border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
@@ -761,9 +790,9 @@ const AdminRoomTypeAllotments: React.FC = () => {
                     <Settings className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{dashboardData.totalAllotments}</div>
+                    <div className="text-2xl font-bold">{dashboardData.totalAllotments || 0}</div>
                     <p className="text-xs text-muted-foreground">
-                      {dashboardData.totalRoomTypes} room types configured
+                      {dashboardData.totalRoomTypes || 0} room type{(dashboardData.totalRoomTypes || 0) === 1 ? '' : 's'} configured
                     </p>
                   </CardContent>
                 </Card>
@@ -774,8 +803,8 @@ const AdminRoomTypeAllotments: React.FC = () => {
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className={`text-2xl font-bold ${getOccupancyColor(dashboardData.averageOccupancyRate)}`}>
-                      {dashboardData.averageOccupancyRate.toFixed(1)}%
+                    <div className={`text-2xl font-bold ${getOccupancyColor(dashboardData.averageOccupancyRate || 0)}`}>
+                      {(dashboardData.averageOccupancyRate || 0).toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Last 30 days average
@@ -789,7 +818,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                     <Users className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{dashboardData.totalChannels}</div>
+                    <div className="text-2xl font-bold">{dashboardData.totalChannels || 0}</div>
                     <p className="text-xs text-muted-foreground">
                       {dashboardData.topPerformingChannel?.channelName || 'N/A'} performing best
                     </p>
@@ -803,7 +832,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      ₹{dashboardData.totalRevenue.toLocaleString()}
+                      ₹{(dashboardData.totalRevenue || 0).toLocaleString('en-IN')}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Last 30 days

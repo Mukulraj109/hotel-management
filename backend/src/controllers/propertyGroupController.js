@@ -695,16 +695,7 @@ export const getPropertyGroupAuditLog = async (req, res) => {
 // Helper function to calculate real group metrics
 const calculateGroupMetrics = async (group) => {
   try {
-    console.log(`🏢 CALCULATING METRICS - Group: ${group.name}, Properties: ${group.properties?.length || 0}`);
-
-    let totalRevenue = 0;
-    let totalRooms = 0;
-    let totalOccupied = 0;
-    let totalBookings = 0;
-    let activeProperties = 0;
-
     if (!group.properties || group.properties.length === 0) {
-      console.log(`🏢 CALCULATING METRICS - No properties found for group ${group.name}`);
       return {
         totalProperties: 0,
         totalRooms: 0,
@@ -714,84 +705,84 @@ const calculateGroupMetrics = async (group) => {
       };
     }
 
-    // Batch: get room counts for all active properties in a single aggregation
     const activeProps = group.properties.filter(p => p.isActive);
-    const activePropertyIds = activeProps.map(p => p._id);
+    const activePropertyIds = activeProps.map(p => new mongoose.Types.ObjectId(p._id));
 
-    const roomCounts = await Room.aggregate([
-      { $match: { hotelId: { $in: activePropertyIds.map(id => new mongoose.Types.ObjectId(id)) }, isActive: true } },
-      { $group: { _id: '$hotelId', count: { $sum: 1 } } }
-    ]);
-    const roomCountMap = new Map(roomCounts.map(r => [r._id.toString(), r.count]));
-
-    for (const property of group.properties) {
-      if (!property.isActive) continue;
-
-      activeProperties++;
-
-      const hotelId = property._id;
-      console.log(`🏢 CALCULATING METRICS - Processing hotel: ${property.name} (${hotelId})`);
-
-      const roomCount = roomCountMap.get(hotelId.toString()) || 0;
-
-      totalRooms += roomCount;
-      console.log(`🏢 CALCULATING METRICS - Hotel ${property.name} has ${roomCount} rooms`);
-
-      // Get current bookings for occupancy
-      const today = new Date();
-      const currentBookings = await Booking.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        checkIn: { $lte: today },
-        checkOut: { $gt: today },
-        status: { $in: ['confirmed', 'checked_in'] }
-      }).lean().limit(1000);
-
-      totalOccupied += currentBookings.length;
-      console.log(`🏢 CALCULATING METRICS - Hotel ${property.name} has ${currentBookings.length} occupied rooms`);
-
-      // Get this month's revenue
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-      const monthlyBookings = await Booking.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        $or: [
-          { checkIn: { $gte: monthStart, $lte: monthEnd } },
-          { checkOut: { $gte: monthStart, $lte: monthEnd } },
-          {
-            checkIn: { $lt: monthStart },
-            checkOut: { $gt: monthEnd }
-          }
-        ],
-        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      }).lean().limit(1000);
-
-      const propertyRevenue = monthlyBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
-      totalRevenue += propertyRevenue;
-      totalBookings += monthlyBookings.length;
-
-      console.log(`🏢 CALCULATING METRICS - Hotel ${property.name} revenue: ₹${propertyRevenue}`);
+    if (activePropertyIds.length === 0) {
+      return {
+        totalProperties: 0,
+        totalRooms: 0,
+        averageOccupancyRate: 0,
+        totalRevenue: 0,
+        activeUsers: 0
+      };
     }
 
-    // Calculate averages
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    // Single batch: rooms, current occupancy, and monthly revenue in 3 aggregations (not N)
+    const [roomCounts, occupancyCounts, revenueStats] = await Promise.all([
+      // 1. Room counts per property
+      Room.aggregate([
+        { $match: { hotelId: { $in: activePropertyIds }, isActive: true } },
+        { $group: { _id: '$hotelId', count: { $sum: 1 } } }
+      ]),
+      // 2. Current occupancy (bookings overlapping today)
+      Booking.aggregate([
+        {
+          $match: {
+            hotelId: { $in: activePropertyIds },
+            checkIn: { $lte: today },
+            checkOut: { $gt: today },
+            status: { $in: ['confirmed', 'checked_in'] }
+          }
+        },
+        { $group: { _id: '$hotelId', occupiedCount: { $sum: 1 } } }
+      ]),
+      // 3. Monthly revenue
+      Booking.aggregate([
+        {
+          $match: {
+            hotelId: { $in: activePropertyIds },
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+            $or: [
+              { checkIn: { $gte: monthStart, $lte: monthEnd } },
+              { checkOut: { $gte: monthStart, $lte: monthEnd } },
+              { checkIn: { $lt: monthStart }, checkOut: { $gt: monthEnd } }
+            ]
+          }
+        },
+        {
+          $group: {
+            _id: '$hotelId',
+            totalRevenue: { $sum: '$totalAmount' },
+            bookingCount: { $sum: 1 }
+          }
+        }
+      ])
+    ]);
+
+    // Aggregate totals from batch results
+    const totalRooms = roomCounts.reduce((sum, r) => sum + r.count, 0);
+    const totalOccupied = occupancyCounts.reduce((sum, r) => sum + r.occupiedCount, 0);
+    const totalRevenue = revenueStats.reduce((sum, r) => sum + (r.totalRevenue || 0), 0);
+    const totalBookings = revenueStats.reduce((sum, r) => sum + r.bookingCount, 0);
+
     const averageOccupancyRate = totalRooms > 0 ? (totalOccupied / totalRooms) * 100 : 0;
 
-    const metrics = {
-      totalProperties: activeProperties,
+    return {
+      totalProperties: activeProps.length,
       totalRooms,
       averageOccupancyRate: Math.round(averageOccupancyRate * 100) / 100,
       totalRevenue: Math.round(totalRevenue),
-      activeUsers: totalBookings, // Using bookings as a proxy for active users
-      // Additional computed metrics
+      activeUsers: totalBookings,
       totalOccupied,
       totalAvailable: totalRooms - totalOccupied
     };
 
-    console.log(`🏢 CALCULATING METRICS - Final metrics for ${group.name}:`, metrics);
-    return metrics;
-
-  } catch (error) {
-    console.error(`🏢 CALCULATING METRICS - Error calculating metrics for group ${group.name}:`, error);
+  } catch {
     return {
       totalProperties: 0,
       totalRooms: 0,

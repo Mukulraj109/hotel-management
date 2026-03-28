@@ -28,6 +28,18 @@ export interface FormField {
     operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'greater_than' | 'less_than';
     value: unknown;
   };
+  conditionalLogic?: Array<{
+    condition: {
+      field: string;
+      operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'greater_than' | 'less_than' | 'in' | 'not_in';
+      value: unknown;
+    };
+    action: {
+      type: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'set_required';
+      target?: string;
+      value?: unknown;
+    };
+  }>;
   styling?: {
     className?: string;
     style?: Record<string, unknown>;
@@ -94,6 +106,7 @@ export interface FormSettings {
   gtmId?: string;
   customCSS?: string;
   customJS?: string;
+  submitButtonText?: string;
 }
 
 export interface ABTestVariant {
@@ -118,7 +131,7 @@ export interface BookingFormTemplate {
   fields: FormField[];
   styling: FormStyling;
   settings: FormSettings;
-  status: 'draft' | 'active' | 'archived';
+  status: 'draft' | 'active' | 'published' | 'archived';
   isPublished?: boolean;
   publishedAt?: Date;
   usage?: {
@@ -273,7 +286,7 @@ class BookingFormService {
       
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       
       return {
         success: false,
@@ -287,7 +300,7 @@ class BookingFormService {
       const response = await axios.get(`${API_BASE}/booking-forms/templates/${id}`, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to fetch template'
@@ -301,13 +314,12 @@ class BookingFormService {
       
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
-      
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
+
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to create template',
-        message: axiosErr.response?.data?.message || (error instanceof Error ? error.message : "Unknown error"),
-        debug: axiosErr.response?.data?.debug
+        message: axiosErr.response?.data?.message || (error instanceof Error ? error.message : "Unknown error")
       };
     }
   }
@@ -317,7 +329,7 @@ class BookingFormService {
       const response = await axios.put(`${API_BASE}/booking-forms/templates/${id}`, templateData, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to update template'
@@ -330,7 +342,7 @@ class BookingFormService {
       const response = await axios.delete(`${API_BASE}/booking-forms/templates/${id}`, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to delete template'
@@ -343,7 +355,7 @@ class BookingFormService {
       const response = await axios.post(`${API_BASE}/booking-forms/templates/${id}/duplicate`, data, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to duplicate template'
@@ -359,7 +371,7 @@ class BookingFormService {
       });
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to render form'
@@ -376,7 +388,7 @@ class BookingFormService {
       });
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to submit form'
@@ -393,7 +405,7 @@ class BookingFormService {
       });
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to validate form'
@@ -411,7 +423,7 @@ class BookingFormService {
       const response = await axios.get(`${API_BASE}/booking-forms/templates/${id}/analytics`, this.getRequestConfig({ params }));
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to fetch analytics'
@@ -425,7 +437,7 @@ class BookingFormService {
       const response = await axios.get(`${API_BASE}/booking-forms/templates/${id}/export`, this.getRequestConfig({ params: { format }, responseType: 'blob' }));
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       throw new Error(axiosErr.response?.data?.error || 'Failed to export template');
     }
   }
@@ -438,7 +450,7 @@ class BookingFormService {
       }, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to import template'
@@ -455,7 +467,7 @@ class BookingFormService {
       }, this.getRequestConfig());
       return response.data;
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      const axiosErr = error as { response?: { data?: { error?: string; message?: string }; status?: number }; config?: unknown };
       return {
         success: false,
         error: axiosErr.response?.data?.error || 'Failed to record A/B test event'

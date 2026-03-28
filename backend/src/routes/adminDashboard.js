@@ -34,6 +34,39 @@ router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 // Most routes require admin authentication - specific routes can override this
 
+// Dashboard summary - key metrics at a glance
+router.get('/summary', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const hotelId = req.query.hotelId || req.user.hotelId;
+  if (!hotelId) return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const [totalRooms, todayCheckIns, todayCheckOuts, pendingBookings, activeGuests] = await Promise.all([
+    Room.countDocuments({ hotelId, isActive: true }),
+    Booking.countDocuments({ hotelId, checkIn: { $gte: today, $lt: tomorrow }, status: { $in: ['confirmed', 'checked_in'] } }),
+    Booking.countDocuments({ hotelId, checkOut: { $gte: today, $lt: tomorrow }, status: 'checked_in' }),
+    Booking.countDocuments({ hotelId, status: 'pending' }),
+    Booking.countDocuments({ hotelId, status: 'checked_in' })
+  ]);
+
+  const occupancyRate = totalRooms > 0 ? Math.round((activeGuests / totalRooms) * 100) : 0;
+
+  res.json({
+    status: 'success',
+    data: {
+      totalRooms,
+      todayCheckIns,
+      todayCheckOuts,
+      pendingBookings,
+      activeGuests,
+      occupancyRate
+    }
+  });
+}));
+
 /**
  * @swagger
  * /api/v1/admin-dashboard/hotel:
@@ -83,7 +116,10 @@ router.get('/hotel', authorize('admin', 'staff', 'manager'), catchAsync(async (r
  *         description: Real-time dashboard data
  */
 router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
-  const { hotelId } = req.query;
+  const targetHotelId = req.query.hotelId || req.user.hotelId;
+  if (!targetHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
   const now = new Date();
   // Use UTC dates to match booking dates (which are stored in UTC)
   const today = new Date();
@@ -92,10 +128,10 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfYear = new Date(now.getFullYear(), 0, 1);
 
-  // Build match query for hotel filtering
+  // Build match query for hotel filtering - hotelId is always mandatory
   const buildMatchQuery = (additionalFilters = {}) => {
     const query = { ...additionalFilters };
-    if (hotelId) query.hotelId = new mongoose.Types.ObjectId(hotelId);
+    query.hotelId = new mongoose.Types.ObjectId(targetHotelId);
     return query;
   };
 
@@ -145,27 +181,28 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
       Booking.countDocuments(buildMatchQuery({ createdAt: { $gte: startOfDay } })),
       Booking.countDocuments(buildMatchQuery({ checkIn: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }, status: { $in: ['confirmed', 'checked_in'] } })),
       // TODO: Add index for { createdAt: -1 } on CheckoutInventory for pipeline optimization
-      // Count actual checkout inventory records created today (with hotel filtering)
-      hotelId
-        ? CheckoutInventory.aggregate([
+      // Count actual checkout inventory records created today (always filtered by hotel)
+      CheckoutInventory.aggregate([
             { $match: { createdAt: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } } },
             { $lookup: { from: 'bookings', localField: 'bookingId', foreignField: '_id', as: 'booking' } },
-            { $match: { 'booking.hotelId': new mongoose.Types.ObjectId(hotelId) } },
+            { $match: { 'booking.hotelId': new mongoose.Types.ObjectId(targetHotelId) } },
             { $count: 'total' }
-          ]).then(result => result[0]?.total || 0)
-        : CheckoutInventory.countDocuments({ createdAt: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } }),
+          ]).then(result => result[0]?.total || 0),
       GuestService.countDocuments(buildMatchQuery({ status: { $in: ['pending', 'assigned'] } })),
       Housekeeping.countDocuments(buildMatchQuery({ status: 'pending' })),
       MaintenanceTask.countDocuments(buildMatchQuery({ status: 'pending' })),
       SupplyRequest.countDocuments(buildMatchQuery({ status: 'ordered' }))
     ]),
     
-    // Monthly statistics
-    // NOTE: Invoice pipeline uses compound index { hotelId: 1, status: 1, issueDate: -1 }
+    // Monthly statistics — query both Invoice and Booking for revenue (use whichever has data)
     Promise.all([
       Booking.countDocuments(buildMatchQuery({ createdAt: { $gte: startOfMonth } })),
       Invoice.aggregate([
         { $match: buildMatchQuery({ issueDate: { $gte: startOfMonth }, status: { $in: ['paid', 'partially_paid'] } }) },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+      ]),
+      Booking.aggregate([
+        { $match: buildMatchQuery({ createdAt: { $gte: startOfMonth }, paymentStatus: { $in: ['paid', 'partially_paid'] } }) },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ])
     ]),
@@ -395,7 +432,7 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
     
     monthly: {
       bookings: monthlyStats[0],
-      revenue: monthlyStats[1][0]?.total || 0
+      revenue: monthlyStats[1][0]?.total || monthlyStats[2]?.[0]?.total || 0
     },
     
     occupancy: {
@@ -415,7 +452,7 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
     revenue: {
       trend: revenueData,
       today: revenueToday,
-      monthly: monthlyStats[1][0]?.total || 0,
+      monthly: monthlyStats[1][0]?.total || monthlyStats[2]?.[0]?.total || 0,
       averageDailyRate: revenueData.length > 0 
         ? revenueData.reduce((sum, item) => sum + item.revenue, 0) / revenueData.length 
         : 0
@@ -503,13 +540,18 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
  *         description: Key performance indicators
  */
 router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => {
-  const { hotelId, period = 'month' } = req.query;
-  
+  const targetHotelId = req.query.hotelId || req.user.hotelId;
+  const { period = 'month' } = req.query;
+
+  if (!targetHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
   // Calculate date range based on period
   const now = new Date();
   const currentDate = new Date(); // For current occupancy calculation
   let startDate, endDate = now;
-  
+
   switch (period) {
     case 'today':
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -527,9 +569,10 @@ router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => 
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
   }
 
+  // Build match query for hotel filtering - hotelId is always mandatory
   const buildMatchQuery = (additionalFilters = {}) => {
     const query = { ...additionalFilters };
-    if (hotelId) query.hotelId = new mongoose.Types.ObjectId(hotelId);
+    query.hotelId = new mongoose.Types.ObjectId(targetHotelId);
     return query;
   };
 
@@ -1198,10 +1241,14 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
   // Calculate overall metrics
   const totalRooms = roomsWithStatus.length;
   const occupiedCount = roomsWithStatus.filter(room => room.status === 'occupied').length;
-  const availableCount = roomsWithStatus.filter(room => room.status === 'vacant').length;
   const cleaningCount = roomsWithStatus.filter(room => room.status === 'dirty').length;
   const maintenanceCount = roomsWithStatus.filter(room => room.status === 'maintenance').length;
   const outOfOrderCount = roomsWithStatus.filter(room => room.status === 'out_of_order').length;
+  // Sellable / ops view: everything not occupied, OOO, or in maintenance (includes vacant + dirty/cleaning)
+  const availableCount = Math.max(
+    0,
+    totalRooms - occupiedCount - outOfOrderCount - maintenanceCount
+  );
 
   // Debug occupancy calculation
   logger.debug('Occupancy calculation', { totalRooms, occupiedCount, availableCount, cleaningCount, maintenanceCount, outOfOrderCount });

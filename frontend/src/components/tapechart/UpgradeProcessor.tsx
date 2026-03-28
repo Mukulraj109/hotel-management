@@ -10,6 +10,7 @@ import { ArrowUpIcon, StarIcon, CreditCardIcon, TrendingUpIcon, CheckIcon, XIcon
 import { ReservationWorkflowEngine } from '@/utils/ReservationWorkflowEngine';
 import upgradeService, { UpgradeSuggestion, UpgradeAnalytics } from '@/services/upgradeService';
 import { toast } from '@/utils/toast';
+import { formatCurrency } from '@/utils/currencyUtils';
 
 // Use the UpgradeSuggestion interface from the service
 type RoomUpgrade = UpgradeSuggestion;
@@ -126,27 +127,8 @@ export const UpgradeProcessor: React.FC = () => {
       setUpgrades(result.suggestions);
       toast.success(`Found ${result.total} upgrade opportunities`);
     } catch (error) {
-      toast.error('Failed to generate upgrade suggestions');
-      // Fallback to mock data if backend fails
-      const mockUpgrades: RoomUpgrade[] = [
-        {
-          id: 'up-001',
-          fromRoomType: 'Standard',
-          toRoomType: 'Deluxe',
-          fromRoomNumber: '205',
-          toRoomNumber: '305',
-          priceIncrease: 75,
-          confidence: 92,
-          reason: 'VIP guest with preference for higher floors',
-          benefits: ['City view', 'Larger room', 'Premium amenities'],
-          guestProfile: {
-            tier: 'vip',
-            preferences: ['high floor', 'city view'],
-            history: ['Previous upgrades accepted']
-          }
-        }
-      ];
-      setUpgrades(mockUpgrades);
+      toast.error('Failed to load upgrade suggestions');
+      setUpgrades([]);
     } finally {
       setProcessing(false);
     }
@@ -322,7 +304,7 @@ export const UpgradeProcessor: React.FC = () => {
                         </div>
                         <Badge className={`${getConfidenceColor(upgrade.confidence)} shadow-sm px-3 py-1 font-semibold`}>
                           <TrophyIcon className="h-3 w-3 mr-1" />
-                          {upgrade.confidence}% confidence
+                          {Math.round(upgrade.confidence)}% confidence
                         </Badge>
                       </div>
 
@@ -335,7 +317,7 @@ export const UpgradeProcessor: React.FC = () => {
                           <div className="text-sm font-medium mb-1">Price Increase</div>
                           <div className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent flex items-center gap-1">
                             <DollarSignIcon className="h-5 w-5 text-green-600" />
-                            +${upgrade.priceIncrease}
+                            +{formatCurrency(upgrade.priceIncrease)}
                           </div>
                         </div>
                       </div>
@@ -434,7 +416,7 @@ export const UpgradeProcessor: React.FC = () => {
                             <div>Advance Booking: ≥{rule.conditions.daysUntilCheckIn} days</div>
                           )}
                           {rule.conditions.priceThreshold && (
-                            <div>Min Rate: ${rule.conditions.priceThreshold}</div>
+                            <div>Min Rate: {formatCurrency(rule.conditions.priceThreshold)}</div>
                           )}
                         </div>
                       </div>
@@ -443,7 +425,7 @@ export const UpgradeProcessor: React.FC = () => {
                         <div className="space-y-1 text-sm">
                           <div>Type: {rule.action.type.replace('_', ' ').toUpperCase()}</div>
                           <div>Target Rooms: {rule.action.targetRoomTypes.join(', ')}</div>
-                          <div>Max Increase: ${rule.action.maxPriceIncrease}</div>
+                          <div>Max Increase: {formatCurrency(rule.action.maxPriceIncrease)}</div>
                         </div>
                       </div>
                     </div>
@@ -489,7 +471,7 @@ export const UpgradeProcessor: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-purple-600">${stats?.totalRevenue?.toLocaleString() || '0'}</div>
+                  <div className="text-3xl font-bold text-purple-600">{formatCurrency(stats?.totalRevenue || 0)}</div>
                   <div className="text-xs text-purple-500 mt-1">Additional income</div>
                 </CardContent>
               </Card>

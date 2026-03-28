@@ -41,6 +41,8 @@ class BackupService {
       successCount: 0,
       errorCount: 0
     };
+    this.mongoDumpAvailable = null;
+    this.mongoDumpWarningLogged = false;
 
     this.initializeBackupDirectory();
     this.scheduleBackups();
@@ -82,7 +84,7 @@ class BackupService {
     // Hourly incremental backup (business hours)
     cron.schedule('0 9-17 * * 1-5', () => {
       this.performIncrementalBackup().catch(error => {
-        logger.error('Scheduled incremental backup failed:', error);
+        logger.error('Scheduled incremental backup failed', this.sanitizeProcessError(error));
       });
     }, {
       timezone: process.env.BACKUP_TIMEZONE || 'UTC'
@@ -118,6 +120,11 @@ class BackupService {
     const startTime = new Date();
     
     try {
+      if (!await this.ensureMongoDumpAvailable()) {
+        logger.warn('Skipping full backup: mongodump is not installed or not in PATH');
+        return { success: false, skipped: true, reason: 'mongodump_unavailable' };
+      }
+
       logger.info('Starting full backup');
 
       // Create timestamped backup directory
@@ -175,7 +182,7 @@ class BackupService {
     } catch (error) {
       this.backupStatus.lastError = error.message;
       this.backupStatus.errorCount++;
-      logger.error('Full backup failed:', error);
+      logger.error('Full backup failed', this.sanitizeProcessError(error));
       throw error;
     } finally {
       this.backupStatus.isRunning = false;
@@ -195,6 +202,11 @@ class BackupService {
     const startTime = new Date();
 
     try {
+      if (!await this.ensureMongoDumpAvailable()) {
+        logger.warn('Skipping incremental backup: mongodump is not installed or not in PATH');
+        return { success: false, skipped: true, reason: 'mongodump_unavailable' };
+      }
+
       logger.info('Starting incremental backup');
 
       // Get last backup time
@@ -248,7 +260,7 @@ class BackupService {
     } catch (error) {
       this.backupStatus.lastError = error.message;
       this.backupStatus.errorCount++;
-      logger.error('Incremental backup failed:', error);
+      logger.error('Incremental backup failed', this.sanitizeProcessError(error));
       throw error;
     } finally {
       this.backupStatus.isRunning = false;
@@ -293,7 +305,7 @@ class BackupService {
         });
 
         mongodump.on('error', (error) => {
-          logger.error('Failed to start mongodump:', error);
+          logger.error('Failed to start mongodump', this.sanitizeProcessError(error));
           reject(error);
         });
       });
@@ -331,7 +343,7 @@ class BackupService {
       return dbBackupPath;
 
     } catch (error) {
-      logger.error('Incremental database backup failed:', error);
+      logger.error('Incremental database backup failed', this.sanitizeProcessError(error));
       throw error;
     }
   }
@@ -679,6 +691,39 @@ class BackupService {
     }
 
     return modifiedCollections;
+  }
+
+  async ensureMongoDumpAvailable() {
+    if (this.mongoDumpAvailable !== null) {
+      return this.mongoDumpAvailable;
+    }
+
+    this.mongoDumpAvailable = await new Promise((resolve) => {
+      const probe = spawn('mongodump', ['--version']);
+      probe.on('close', (code) => resolve(code === 0));
+      probe.on('error', () => resolve(false));
+    });
+
+    if (!this.mongoDumpAvailable && !this.mongoDumpWarningLogged) {
+      this.mongoDumpWarningLogged = true;
+      logger.warn('MongoDB Database Tools not found. Install mongodump to enable automated backups.');
+    }
+
+    return this.mongoDumpAvailable;
+  }
+
+  sanitizeProcessError(error) {
+    if (!error || typeof error !== 'object') {
+      return { error: String(error || 'Unknown error') };
+    }
+
+    return {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      path: error.path
+    };
   }
 
   async backupCollection(collectionName, backupPath, since) {

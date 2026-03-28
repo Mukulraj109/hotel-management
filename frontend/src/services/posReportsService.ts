@@ -473,11 +473,12 @@ class POSReportsService {
   }
 
   // Format currency utility
-  formatCurrency(amount: number): string {
+  formatCurrency(amount: number | undefined | null): string {
+    const num = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR'
-    }).format(amount);
+    }).format(num);
   }
 
   // Format percentage utility

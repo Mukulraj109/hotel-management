@@ -28,8 +28,10 @@ Reason:
 
 ## What Still Blocks Strict 100% Signoff
 
-- **human approvals** from Product, Engineering, Operations leads (templates in PRODUCTION_SIGNOFF.md)
-- integration tests (auth, booking): skipped in unit runner due to server import graph; integration runner exists (`npm run test:integration`) but currently fails in ESM runtime (`jest` global + port collision)
+- **human approvals** from Product, Engineering, and Operations (**required** — fill signatures in `docs/PRODUCTION_SIGNOFF.md`). Your own process treats this as the last mandatory gate for an unqualified production decision.
+- **optional / environmental:** the full historical `npm run test:integration` matrix may still be sensitive to Jest ESM + port collision; **`npm run test:integration:switch-hotel`** is the maintained HTTP integration suite for **`POST /auth/switch-hotel`** (multi-property active tenant).
+
+**Truth about “100%”:** automated evidence + risk closure can reach “materially ready”; **formal 100% production approval** in this repository is **not** complete until the three human signoffs above are recorded (see also `docs/OPEN_RISKS_AND_DEFERRALS.md` exit rule).
 
 ## What Was Completed Since Last Update
 

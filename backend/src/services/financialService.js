@@ -27,43 +27,42 @@ class FinancialService {
     try {
       const defaultAccounts = [
         // Assets
-        { code: '1001', name: 'Cash - Operating Account', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-        { code: '1002', name: 'Petty Cash', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-        { code: '1100', name: 'Accounts Receivable', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-        { code: '1200', name: 'Inventory', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-        { code: '1500', name: 'Property & Equipment', type: 'asset', category: 'fixed_assets', normalBalance: 'debit' },
-      
+        { accountCode: '1001', accountName: 'Cash - Operating Account', accountType: 'Asset', accountSubType: 'Current Asset', normalBalance: 'Debit' },
+        { accountCode: '1002', accountName: 'Petty Cash', accountType: 'Asset', accountSubType: 'Current Asset', normalBalance: 'Debit' },
+        { accountCode: '1100', accountName: 'Accounts Receivable', accountType: 'Asset', accountSubType: 'Current Asset', normalBalance: 'Debit' },
+        { accountCode: '1200', accountName: 'Inventory', accountType: 'Asset', accountSubType: 'Current Asset', normalBalance: 'Debit' },
+        { accountCode: '1500', accountName: 'Property & Equipment', accountType: 'Asset', accountSubType: 'Fixed Asset', normalBalance: 'Debit' },
+
         // Liabilities
-        { code: '2000', name: 'Accounts Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-        { code: '2100', name: 'Sales Tax Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-        { code: '2200', name: 'Accrued Expenses', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-        { code: '2500', name: 'Long-term Debt', type: 'liability', category: 'long_term_liabilities', normalBalance: 'credit' },
-      
+        { accountCode: '2000', accountName: 'Accounts Payable', accountType: 'Liability', accountSubType: 'Current Liability', normalBalance: 'Credit' },
+        { accountCode: '2100', accountName: 'Sales Tax Payable', accountType: 'Liability', accountSubType: 'Current Liability', normalBalance: 'Credit' },
+        { accountCode: '2200', accountName: 'Accrued Expenses', accountType: 'Liability', accountSubType: 'Current Liability', normalBalance: 'Credit' },
+        { accountCode: '2500', accountName: 'Long-term Debt', accountType: 'Liability', accountSubType: 'Long-term Liability', normalBalance: 'Credit' },
+
         // Equity
-        { code: '3000', name: 'Owner\'s Capital', type: 'equity', category: 'owner_equity', normalBalance: 'credit' },
-        { code: '3100', name: 'Retained Earnings', type: 'equity', category: 'retained_earnings', normalBalance: 'credit' },
-      
+        { accountCode: '3000', accountName: 'Owner\'s Capital', accountType: 'Equity', accountSubType: 'Owner Equity', normalBalance: 'Credit' },
+        { accountCode: '3100', accountName: 'Retained Earnings', accountType: 'Equity', accountSubType: 'Retained Earnings', normalBalance: 'Credit' },
+
         // Revenue
-        { code: '4000', name: 'Room Revenue', type: 'revenue', category: 'room_revenue', normalBalance: 'credit' },
-        { code: '4100', name: 'Food & Beverage Revenue', type: 'revenue', category: 'food_beverage_revenue', normalBalance: 'credit' },
-        { code: '4200', name: 'Other Revenue', type: 'revenue', category: 'other_revenue', normalBalance: 'credit' },
-      
+        { accountCode: '4000', accountName: 'Room Revenue', accountType: 'Revenue', accountSubType: 'Operating Revenue', normalBalance: 'Credit' },
+        { accountCode: '4100', accountName: 'Food & Beverage Revenue', accountType: 'Revenue', accountSubType: 'Operating Revenue', normalBalance: 'Credit' },
+        { accountCode: '4200', accountName: 'Other Revenue', accountType: 'Revenue', accountSubType: 'Other Revenue', normalBalance: 'Credit' },
+
         // Expenses
-        { code: '5000', name: 'Cost of Goods Sold', type: 'cost_of_goods_sold', category: 'cost_of_sales', normalBalance: 'debit' },
-        { code: '6000', name: 'Salaries & Wages', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
-        { code: '6100', name: 'Utilities', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
-        { code: '6200', name: 'Marketing & Advertising', type: 'expense', category: 'marketing_expenses', normalBalance: 'debit' },
-        { code: '6300', name: 'Administrative Expenses', type: 'expense', category: 'administrative_expenses', normalBalance: 'debit' }
+        { accountCode: '5000', accountName: 'Cost of Goods Sold', accountType: 'Expense', accountSubType: 'Cost of Goods Sold', normalBalance: 'Debit' },
+        { accountCode: '6000', accountName: 'Salaries & Wages', accountType: 'Expense', accountSubType: 'Operating Expense', normalBalance: 'Debit' },
+        { accountCode: '6100', accountName: 'Utilities', accountType: 'Expense', accountSubType: 'Operating Expense', normalBalance: 'Debit' },
+        { accountCode: '6200', accountName: 'Marketing & Advertising', accountType: 'Expense', accountSubType: 'Operating Expense', normalBalance: 'Debit' },
+        { accountCode: '6300', accountName: 'Administrative Expenses', accountType: 'Expense', accountSubType: 'Operating Expense', normalBalance: 'Debit' }
       ];
 
       // Batch: check which accounts already exist in a single query
-      const codes = defaultAccounts.map(a => a.code);
+      const codes = defaultAccounts.map(a => a.accountCode);
       const existingAccounts = await ChartOfAccounts.find({ accountCode: { $in: codes } }).select('accountCode').limit(1000).lean();
       const existingCodes = new Set(existingAccounts.map(a => a.accountCode));
 
       const newAccounts = defaultAccounts
-        .filter(a => !existingCodes.has(a.code))
-        .map(a => ({ accountId: uuidv4(), ...a }));
+        .filter(a => !existingCodes.has(a.accountCode));
 
       if (newAccounts.length > 0) {
         await ChartOfAccounts.insertMany(newAccounts);
@@ -371,10 +370,11 @@ class FinancialService {
         isActive: true
       };
 
-      if (hotelId) {
-        revenueFilter.hotelId = hotelId;
-        expenseFilter.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for profit/loss report');
       }
+      revenueFilter.hotelId = hotelId;
+      expenseFilter.hotelId = hotelId;
 
       const revenueAccounts = await ChartOfAccounts.find(revenueFilter).lean().limit(1000);
       const expenseAccounts = await ChartOfAccounts.find(expenseFilter).lean().limit(1000);
@@ -510,9 +510,10 @@ class FinancialService {
         isActive: true
       };
 
-      if (hotelId) {
-        filter.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for account balances');
       }
+      filter.hotelId = hotelId;
 
       const accounts = await ChartOfAccounts.find(filter).lean().limit(1000);
 
@@ -545,9 +546,10 @@ class FinancialService {
         balanceAmount: { $gt: 0 }
       };
 
-      if (hotelId) {
-        filter.hotelId = hotelId;
+      if (!hotelId) {
+        throw new Error('Hotel context required for aged receivables');
       }
+      filter.hotelId = hotelId;
 
       const invoices = await FinancialInvoice.find(filter).populate('customer.guestId', 'firstName lastName email').lean().limit(1000);
 
@@ -1096,53 +1098,158 @@ class FinancialService {
   }
 
   /**
+   * Get live financial metrics from actual bookings and payments
+   */
+  async getLiveBookingMetrics(startDate, endDate, hotelId = null) {
+    try {
+      if (!hotelId) {
+        throw new Error('Hotel context required for live booking metrics');
+      }
+
+      // First try period-specific bookings
+      const periodFilter = {
+        status: { $in: ['confirmed', 'checked_in', 'checked_out', 'completed'] },
+        $or: [
+          { checkIn: { $gte: startDate, $lte: endDate } },
+          { checkOut: { $gte: startDate, $lte: endDate } },
+          { createdAt: { $gte: startDate, $lte: endDate } }
+        ]
+      };
+      periodFilter.hotelId = hotelId;
+
+      let bookings = await Booking.find(periodFilter)
+        .select('totalAmount paymentDetails status checkIn checkOut createdAt')
+        .lean().limit(5000);
+
+      // If no bookings in period, get ALL bookings for this hotel (cumulative view)
+      if (bookings.length === 0) {
+        const allTimeFilter = {
+          status: { $in: ['confirmed', 'checked_in', 'checked_out', 'completed'] }
+        };
+        allTimeFilter.hotelId = hotelId;
+        bookings = await Booking.find(allTimeFilter)
+          .select('totalAmount paymentDetails status checkIn checkOut createdAt')
+          .lean().limit(5000);
+      }
+
+      const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+      const totalPaid = bookings.reduce((sum, b) => sum + (b.paymentDetails?.totalPaid || 0), 0);
+      const totalOutstanding = totalRevenue - totalPaid;
+      const bookingCount = bookings.length;
+
+      // Get supply request costs as expenses proxy
+      const expenseFilter = {
+        status: { $in: ['approved', 'fulfilled', 'ordered'] },
+        createdAt: { $gte: startDate, $lte: endDate }
+      };
+      expenseFilter.hotelId = hotelId;
+
+      let totalExpenses = 0;
+      try {
+        const supplyRequests = await SupplyRequest.find(expenseFilter)
+          .select('totalCost estimatedCost')
+          .lean().limit(5000);
+        totalExpenses = supplyRequests.reduce((sum, s) => sum + (s.totalCost || s.estimatedCost || 0), 0);
+      } catch {
+        // SupplyRequest model may not have these fields
+      }
+
+      // Get maintenance costs
+      try {
+        const maintenanceFilter = { createdAt: { $gte: startDate, $lte: endDate } };
+        maintenanceFilter.hotelId = hotelId;
+        const tasks = await MaintenanceTask.find(maintenanceFilter)
+          .select('cost estimatedCost')
+          .lean().limit(5000);
+        totalExpenses += tasks.reduce((sum, t) => sum + (t.cost || t.estimatedCost || 0), 0);
+      } catch {
+        // MaintenanceTask may not have cost field
+      }
+
+      return {
+        totalRevenue,
+        totalPaid,
+        totalOutstanding,
+        totalExpenses,
+        netIncome: totalRevenue - totalExpenses,
+        bookingCount,
+        hasRealData: bookingCount > 0
+      };
+    } catch (error) {
+      logger.error('Error getting live booking metrics:', error);
+      return { totalRevenue: 0, totalPaid: 0, totalOutstanding: 0, totalExpenses: 0, netIncome: 0, bookingCount: 0, hasRealData: false };
+    }
+  }
+
+  /**
    * Generate Financial Dashboard Data
    */
-  async generateFinancialDashboard(period = 'month', hotelId = null) {
+  async generateFinancialDashboard(period = 'all', hotelId = null, customStartDate = null, customEndDate = null) {
     try {
       const now = new Date();
       let startDate, endDate = now;
 
-      switch (period) {
-        case 'week':
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case 'month':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'quarter':
-          const quarter = Math.floor(now.getMonth() / 3);
-          startDate = new Date(now.getFullYear(), quarter * 3, 1);
-          break;
-        case 'year':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      // If custom dates provided, use them directly
+      if (customStartDate && customEndDate) {
+        startDate = new Date(customStartDate);
+        endDate = new Date(customEndDate);
+        // Set endDate to end of day
+        endDate.setHours(23, 59, 59, 999);
+      } else {
+        switch (period) {
+          case 'week':
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case 'month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+          case 'quarter':
+            const quarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), quarter * 3, 1);
+            break;
+          case 'year':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            break;
+          case 'current':
+          case 'all':
+          default:
+            // Show all-time data
+            startDate = new Date(2020, 0, 1);
+            break;
+        }
       }
 
-      // Generate key reports
+      // Generate key reports from Chart of Accounts
       const profitLoss = await this.generateProfitLossReport(startDate, endDate, 'INR', hotelId);
       const balanceSheet = await this.generateBalanceSheet(endDate, 'INR', hotelId);
       const cashFlow = await this.generateCashFlowStatement(startDate, endDate, 'INR', hotelId);
       const agedReceivables = await this.getAgedReceivables(endDate, hotelId);
 
-      // Calculate summary metrics
+      // Also pull LIVE data from actual bookings and payments
+      const liveMetrics = await this.getLiveBookingMetrics(startDate, endDate, hotelId);
+
+      // Use live booking data when ChartOfAccounts has no posted entries
+      const hasAccountingData = profitLoss.summary.totalRevenue > 0 || profitLoss.summary.totalExpenses > 0;
+
       const summary = {
-        totalRevenue: profitLoss.summary.totalRevenue,
-        totalExpenses: profitLoss.summary.totalExpenses,
-        netProfit: profitLoss.summary.netIncome,
-        profitMargin: profitLoss.summary.netMargin,
+        totalRevenue: hasAccountingData ? profitLoss.summary.totalRevenue : liveMetrics.totalRevenue,
+        totalExpenses: hasAccountingData ? profitLoss.summary.totalExpenses : liveMetrics.totalExpenses,
+        netProfit: hasAccountingData ? profitLoss.summary.netIncome : liveMetrics.netIncome,
+        profitMargin: hasAccountingData
+          ? profitLoss.summary.netMargin
+          : (liveMetrics.totalRevenue > 0 ? (liveMetrics.netIncome / liveMetrics.totalRevenue) * 100 : 0),
         totalAssets: balanceSheet.summary.totalAssets,
         totalLiabilities: balanceSheet.summary.totalLiabilities,
-        cashFlow: cashFlow.netCashFlow,
-        accountsReceivable: agedReceivables.grandTotal,
-        accountsPayable: balanceSheet.liabilities['Accounts Payable']?.amount || 0
+        cashFlow: cashFlow.netCashFlow || liveMetrics.totalPaid,
+        accountsReceivable: agedReceivables.grandTotal || liveMetrics.totalOutstanding,
+        accountsPayable: balanceSheet.liabilities['Accounts Payable']?.amount || 0,
+        bookingCount: liveMetrics.bookingCount,
+        dataSource: hasAccountingData ? 'accounting' : 'bookings'
       };
 
-      // Revenue breakdown
+      // Revenue breakdown — use live booking data as fallback
       const revenueBreakdown = {
-        roomRevenue: profitLoss.revenue['Room Revenue']?.amount || 0,
+        roomRevenue: profitLoss.revenue['Room Revenue']?.amount || (hasAccountingData ? 0 : liveMetrics.totalRevenue),
         foodBeverage: profitLoss.revenue['Food & Beverage Revenue']?.amount || 0,
         otherRevenue: profitLoss.revenue['Other Revenue']?.amount || 0
       };
@@ -1174,13 +1281,36 @@ class FinancialService {
         netCashFlow: cashFlow.netCashFlow
       };
 
+      // Get recent booking transactions for the dashboard
+      const recentBookingFilter = {
+        status: { $in: ['confirmed', 'checked_in', 'checked_out', 'completed'] }
+      };
+      recentBookingFilter.hotelId = hotelId;
+      const recentBookings = await Booking.find(recentBookingFilter)
+        .sort({ createdAt: -1 })
+        .select('bookingNumber confirmationNumber totalAmount status checkIn checkOut createdAt guestName roomNumber paymentDetails')
+        .lean()
+        .limit(10);
+
+      const recentTransactions = recentBookings.map(b => ({
+        id: b._id,
+        type: 'revenue',
+        date: b.checkIn || b.createdAt,
+        amount: b.totalAmount || 0,
+        description: `Booking - Room ${b.roomNumber || ''} (${b.status})`,
+        reference: b.bookingNumber || b.confirmationNumber || String(b._id).slice(-8),
+        status: ['checked_out', 'completed'].includes(b.status) ? 'posted' : 'pending',
+        guestName: b.guestName || b.guest?.name || 'Guest'
+      }));
+
       return {
         summary,
         revenueBreakdown,
         expenseBreakdown,
         trends,
         topAccounts,
-        cashFlowData
+        cashFlowData,
+        recentTransactions
       };
     } catch (error) {
       logger.error('Error generating financial dashboard:', error);
@@ -1443,10 +1573,11 @@ class FinancialService {
       const dateFormat = this.getDateFormatForPeriod(period);
 
       // Get revenue trends from bookings
+      const matchHotelId = hotelId instanceof mongoose.Types.ObjectId ? hotelId : new mongoose.Types.ObjectId(String(hotelId));
       const revenueTrends = await Booking.aggregate([
         {
           $match: {
-            hotelId: mongoose.Types.ObjectId(hotelId),
+            hotelId: matchHotelId,
             createdAt: { $gte: startDate, $lte: endDate },
             status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
           }
@@ -1466,7 +1597,7 @@ class FinancialService {
       const expenseTrends = await SupplyRequest.aggregate([
         {
           $match: {
-            hotelId: mongoose.Types.ObjectId(hotelId),
+            hotelId: matchHotelId,
             createdAt: { $gte: startDate, $lte: endDate },
             status: { $in: ['approved', 'ordered', 'received'] }
           }

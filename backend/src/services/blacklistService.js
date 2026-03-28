@@ -149,14 +149,14 @@ class BlacklistService {
 
       // Search functionality
       if (search) {
-        const guestIds = await User.find({
+        const guestIds = await User.distinct('_id', {
           $or: [
             { name: { $regex: search, $options: 'i' } },
             { email: { $regex: search, $options: 'i' } },
             { phone: { $regex: search, $options: 'i' } }
           ],
           role: 'guest'
-        }).distinct('_id').lean().limit(1000);
+        });
 
         query.guestId = { $in: guestIds };
       }

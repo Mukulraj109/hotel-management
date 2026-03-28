@@ -38,7 +38,6 @@ import {
   Search
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
-import { api } from '../../services/api';
 import billingSessionService, { BillingSession as BackendBillingSession, CreateBillingSessionRequest } from '../../services/billingSessionService';
 import guestLookupService from '../../services/guestLookupService';
 import { useAuth } from '../../context/AuthContext';

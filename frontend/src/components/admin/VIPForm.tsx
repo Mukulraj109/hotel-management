@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, CrownIcon, StarIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, SparklesIcon as CrownIcon, StarIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
 
@@ -135,9 +135,7 @@ const VIPForm: React.FC<VIPFormProps> = ({
   const fetchConciergeStaff = async () => {
     try {
       const { data: data } = await api.get('/vip/concierge-staff');
-      {
-        setConciergeStaff(data.data.conciergeStaff);
-      }
+      setConciergeStaff(data.data.conciergeStaff);
     } catch {
       // Error handled silently
     }
@@ -146,9 +144,7 @@ const VIPForm: React.FC<VIPFormProps> = ({
   const searchGuests = async () => {
     try {
       const { data } = await api.get(`/guests?search=${encodeURIComponent(guestSearch)}&limit=10`);
-      {
-        setGuestSuggestions(data.data.guests);
-      }
+      setGuestSuggestions(data.data.guests);
     } catch {
       // Error handled silently
     }

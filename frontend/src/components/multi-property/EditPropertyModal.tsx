@@ -8,6 +8,17 @@ import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
+import {
   X,
   Plus,
   Building2,
@@ -139,23 +150,31 @@ interface PropertyFormData {
 
 interface Room {
   _id: string;
-  number: string;
-  type: {
-    _id: string;
-    name: string;
-    basePrice: number;
-    amenities: string[];
-  };
+  roomNumber?: string;
+  number?: string;
+  type?:
+    | string
+    | {
+        _id: string;
+        name: string;
+        basePrice: number;
+        amenities: string[];
+      };
+  roomTypeId?: { name?: string; basePrice?: number; amenities?: string[] } | string;
   status: string;
-  effectiveStatus: string;
+  effectiveStatus?: string;
+  /** Live status from occupancy API (booking-aware); matches summary cards */
+  liveStatus?: string;
   floor: number;
-  size: number;
-  pricing: {
+  size?: number;
+  baseRate?: number;
+  capacity?: number;
+  pricing?: {
     baseRate: number;
     currency: string;
   };
-  amenities: string[];
-  isActive: boolean;
+  amenities?: string[];
+  isActive?: boolean;
 }
 
 interface RoomTypeConfig {
@@ -223,6 +242,8 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
   onSuccess,
   property
 }) => {
+  const { toast } = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({
     name: '',
     brand: '',
@@ -281,15 +302,33 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
-  // Fetch property rooms from our new API
+  /**
+   * Room list + occupancy merge: DB `status` stays vacant until housekeeping updates it;
+   * occupancy endpoint computes occupied from active bookings.
+   */
   const fetchPropertyRooms = async (propertyId: string) => {
     setRoomsLoading(true);
     try {
-      const response = await api.get(`/property-rooms/${propertyId}/rooms`);
-      const roomsData = response.data.data.rooms || [];
-      setRooms(roomsData);
-      return roomsData;
-    } catch (error) {
+      const [roomsRes, occRes] = await Promise.all([
+        api.get(`/property-rooms/${propertyId}/rooms?limit=200&page=1`),
+        api.get(`/admin-dashboard/occupancy?hotelId=${propertyId}`).catch(() => ({
+          data: { data: { rooms: [] as { _id?: string; status?: string }[] } },
+        })),
+      ]);
+      const roomsData = (roomsRes.data?.data?.rooms || []) as Room[];
+      const occRooms = (occRes.data?.data?.rooms || []) as { _id?: string; status?: string }[];
+      const statusById = new Map<string, string>();
+      for (const r of occRooms) {
+        if (r._id) statusById.set(String(r._id), r.status || 'vacant');
+      }
+      const merged = roomsData.map((r) => {
+        const id = String(r._id);
+        const live = statusById.get(id) || r.status || 'vacant';
+        return { ...r, liveStatus: live };
+      });
+      setRooms(merged);
+      return merged;
+    } catch {
       setRooms([]);
       return [];
     } finally {
@@ -428,7 +467,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
               outOfOrder: roomCounts.outOfOrder || 0
             },
             status: property.isActive ? 'active' : 'inactive',
-            rating: 4.2 // Default rating
+            rating: typeof hotel.rating === 'number' ? hotel.rating : 0
           });
         } else {
           // Handle transformed property data structure
@@ -575,34 +614,35 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!property) return;
+    setShowDeleteConfirm(true);
+  };
 
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete the property "${property.name}"? This action cannot be undone.`
-    );
-
-    if (!confirmDelete) return;
-
+  const confirmDelete = async () => {
     setIsLoading(true);
-
     try {
-      // Get the correct property ID (handle both raw hotel data and transformed property data)
-      const propertyId = property.id || property._id;
-      
+      const propertyId = property?.id || property?._id;
       await api.delete(`/admin/hotels/${propertyId}`);
       onSuccess();
       onClose();
-    } catch (error) {
-      // Handle error (show toast notification)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to delete property."
+      });
     } finally {
       setIsLoading(false);
+      setShowDeleteConfirm(false);
     }
   };
 
   if (!property) return null;
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden bg-gradient-to-br from-slate-50 to-white border-0 shadow-2xl">
         <DialogHeader className="pb-8 bg-gradient-to-r from-blue-600 to-indigo-600 -m-6 mb-0 px-8 py-6 text-white">
@@ -925,29 +965,43 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                         <div className="col-span-1">Size</div>
                         <div className="col-span-2">Active</div>
                       </div>
-                      {rooms.map((room) => (
+                      {rooms.map((room) => {
+                        const displayStatus = room.liveStatus || room.effectiveStatus || room.status || 'vacant';
+                        const typeLabel =
+                          typeof room.type === 'object' && room.type && 'name' in room.type
+                            ? room.type.name
+                            : typeof room.roomTypeId === 'object' && room.roomTypeId?.name
+                              ? room.roomTypeId.name
+                              : String(room.type ?? '');
+                        const rate = room.baseRate ?? room.pricing?.baseRate ?? 0;
+                        return (
                         <div key={room._id} className="grid grid-cols-12 gap-2 items-center py-2 border-b border-gray-100">
-                          <div className="col-span-2 font-medium">{room.roomNumber}</div>
-                          <div className="col-span-2 text-sm capitalize">{room.type}</div>
+                          <div className="col-span-2 font-medium">{room.roomNumber ?? room.number}</div>
+                          <div className="col-span-2 text-sm capitalize">{typeLabel}</div>
                           <div className="col-span-1 text-sm">{room.floor}</div>
                           <div className="col-span-2">
                             <Badge
-                              variant={room.effectiveStatus === 'available' || room.status === 'vacant' ? 'default' :
-                                     room.effectiveStatus === 'occupied' || room.status === 'occupied' ? 'secondary' : 'destructive'}
-                              className="text-xs"
+                              variant={
+                                displayStatus === 'vacant' || displayStatus === 'available' ? 'default' :
+                                displayStatus === 'occupied' ? 'secondary' : 'destructive'
+                              }
+                              className="text-xs capitalize"
                             >
-                              {room.effectiveStatus || room.status || 'vacant'}
+                              {displayStatus.replace(/_/g, ' ')}
                             </Badge>
                           </div>
-                          <div className="col-span-2 text-sm">₹{room.baseRate}/night</div>
-                          <div className="col-span-1 text-sm">25 sq ft</div>
+                          <div className="col-span-2 text-sm">₹{rate}/night</div>
+                          <div className="col-span-1 text-sm">
+                            {room.capacity != null ? `${room.capacity} guests` : '—'}
+                          </div>
                           <div className="col-span-2">
                             <Badge variant="outline" className="text-xs">
-                              Active
+                              {room.isActive ? 'Active' : 'Inactive'}
                             </Badge>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -1259,6 +1313,25 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Delete Confirmation Dialog */}
+    <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Property</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete &quot;{property?.name}&quot;? This will also remove all associated rooms and data. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+            Delete Property
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 

@@ -226,7 +226,7 @@ class OTAMonitoringService extends EventEmitter {
       await this.recordMetric(hotelId, channelId, 'error_tracking', errorMetric, {
         errorType: errorData.type,
         severity: errorData.severity,
-        recoverable: errorData.recoverable.toString()
+        recoverable: String(errorData.recoverable ?? false)
       });
     } catch (error) {
       throw new Error(`${error.message}`);
@@ -583,10 +583,13 @@ class OTAMonitoringService extends EventEmitter {
 
     for (const channel of activeChannels) {
       try {
+        // Skip channels without valid hotelId
+        if (!channel.hotelId) continue;
+
         // Check if last sync was recent enough
-        const lastSyncTime = channel.status.lastSync?.rates || 
-                            channel.status.lastSync?.inventory || 
-                            channel.status.lastSync?.content;
+        const lastSyncTime = channel.status?.lastSync?.rates ||
+                            channel.status?.lastSync?.inventory ||
+                            channel.status?.lastSync?.content;
 
         if (lastSyncTime) {
           const timeSinceLastSync = Date.now() - new Date(lastSyncTime).getTime();
@@ -603,7 +606,11 @@ class OTAMonitoringService extends EventEmitter {
         }
 
       } catch (error) {
-        logger.error(`Health check failed for ${channel.channelId}:`, error);
+        if (process.env.NODE_ENV === 'production') {
+          logger.error(`Health check failed for ${channel.channelId}:`, error);
+        } else {
+          logger.warn(`Health check failed for ${channel.channelId}:`, { error: error?.message });
+        }
       }
     }
   }

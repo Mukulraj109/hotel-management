@@ -1,6 +1,31 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { api } from '../services/api';
+import { authService } from '../services/authService';
+import { useAuth } from './AuthContext';
+import type { User } from '../types/auth';
+
+const HOTEL_SWITCH_ROLES = new Set(['admin', 'manager']);
+
+function readStoredPropertyId(): string | null {
+  const stored = localStorage.getItem('selectedPropertyId');
+  if (!stored || stored === 'null' || stored === 'undefined') {
+    if (stored === 'null' || stored === 'undefined') {
+      localStorage.removeItem('selectedPropertyId');
+    }
+    return null;
+  }
+  return stored;
+}
+
+function getPrimaryHotelIdString(user: User | null): string | null {
+  if (!user?.hotelId) return null;
+  if (typeof user.hotelId === 'string') return user.hotelId;
+  const ref = user.hotelId as { _id?: string };
+  if (ref._id) return ref._id;
+  return null;
+}
 
 /**
  * Hotel/Property Interface
@@ -34,6 +59,10 @@ interface PropertyContextType {
   isMultiProperty: boolean;
   isLoading: boolean;
   error: Error | null;
+  /** Primary property id from JWT (`/auth/me`); API tenant overrides match this on mutating routes */
+  primaryTenantHotelId: string | null;
+  /** True while a switchHotel call is in-flight */
+  isSwitchingProperty: boolean;
   setSelectedPropertyId: (id: string) => void;
   setViewMode: (mode: 'single' | 'all') => void;
 }
@@ -60,12 +89,15 @@ export const PropertyContext = createContext<PropertyContextType | undefined>(un
  * ```
  */
 export function PropertyProvider({ children }: { children: React.ReactNode }) {
+  const { user, isLoading: authLoading, updateUser } = useAuth();
+  const queryClient = useQueryClient();
+
   // State management for selected property
-  const [selectedPropertyId, setSelectedPropertyIdState] = useState<string | null>(() => {
-    // Load from localStorage on mount
-    const stored = localStorage.getItem('selectedPropertyId');
-    return stored && stored !== 'null' ? stored : null;
-  });
+  const [selectedPropertyId, setSelectedPropertyIdState] = useState<string | null>(() =>
+    readStoredPropertyId()
+  );
+  const selectedPropertyIdRef = useRef<string | null>(null);
+  selectedPropertyIdRef.current = selectedPropertyId;
 
   // State management for view mode (single property or all properties/portfolio)
   const [viewMode, setViewModeState] = useState<'single' | 'all'>(() => {
@@ -73,39 +105,49 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
     return (saved as 'single' | 'all') || 'single';
   });
 
-  // Fetch user's properties from API using React Query
-  const { data: propertiesData, isLoading, error } = useQuery({
-    queryKey: ['user-properties'],
+  const ADMIN_LIKE_ROLES = new Set(['admin', 'staff', 'frontdesk']);
+  const isAdminLike = !!user && ADMIN_LIKE_ROLES.has(user.role);
+
+  /**
+   * For admin-like roles, ALWAYS fetch all accessible properties from /admin/hotels.
+   * The backend's getUserPropertyIds collects owned + assigned + allowed + primary + hotelId,
+   * so this returns the full list — not just the User.properties array.
+   */
+  const { data: allAccessibleHotels, isLoading: hotelsQueryLoading, error } = useQuery({
+    queryKey: ['admin-hotels-all', user?.role, getPrimaryHotelIdString(user)],
     queryFn: async () => {
-      const response = await api.get('/auth/me');
-      // Extract properties from user object
-      // Support both array format and populated objects
-      const userData = response.data.data?.user || response.data.user;
-
-      if (userData?.properties && Array.isArray(userData.properties)) {
-        return userData.properties;
-      }
-
-      // Fallback: if user has hotelId but no properties array, create single-item array
-      if (userData?.hotelId) {
-        // If hotelId is an object (populated), use it directly
-        if (typeof userData.hotelId === 'object' && userData.hotelId._id) {
-          return [userData.hotelId];
-        }
-        // If hotelId is just a string, fetch the hotel details
-        const hotelResponse = await api.get(`/admin/hotels/${userData.hotelId}`);
-        return [hotelResponse.data.data];
-      }
-
-      return [];
+      const response = await api.get('/admin/hotels', { params: { limit: 100 } });
+      return (response.data?.data?.hotels || []) as Hotel[];
     },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: 2, // Retry failed requests twice
-    refetchOnWindowFocus: false, // Don't refetch on window focus
+    enabled: isAdminLike && !authLoading,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 
-  const properties: Hotel[] = propertiesData || [];
+  const properties: Hotel[] = useMemo(() => {
+    if (!user) return [];
+
+    // For admin-like roles, prefer the full list from /admin/hotels (includes owned hotels)
+    if (isAdminLike && allAccessibleHotels && allAccessibleHotels.length > 0) {
+      return allAccessibleHotels;
+    }
+
+    // For non-admin roles (or while admin query is loading), use user.properties
+    if (user.properties && Array.isArray(user.properties) && user.properties.length > 0) {
+      return user.properties as Hotel[];
+    }
+    if (user.hotelId && typeof user.hotelId === 'object' && (user.hotelId as { _id?: string })._id) {
+      return [user.hotelId as unknown as Hotel];
+    }
+    return [];
+  }, [user, isAdminLike, allAccessibleHotels]);
+
+  const isLoading = authLoading || (isAdminLike && hotelsQueryLoading);
   const isMultiProperty = properties.length > 1;
+
+  const primaryTenantHotelId = useMemo(() => getPrimaryHotelIdString(user), [user]);
+  const [isSwitchingProperty, setIsSwitchingProperty] = useState(false);
 
   // Find selected property object
   const selectedProperty = properties.find((p: Hotel) => p._id === selectedPropertyId) || null;
@@ -138,12 +180,47 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
    * Persists selection to localStorage
    */
   const setSelectedPropertyId = (id: string) => {
+    const prevId = selectedPropertyIdRef.current;
+    const tenantId = getPrimaryHotelIdString(user);
+    const shouldSyncJwt =
+      !!user &&
+      HOTEL_SWITCH_ROLES.has(user.role) &&
+      !!tenantId &&
+      id !== tenantId;
+
     setSelectedPropertyIdState(id);
     localStorage.setItem('selectedPropertyId', id);
 
     // When selecting a specific property, switch to single view mode
     setViewModeState('single');
     localStorage.setItem('propertyViewMode', 'single');
+
+    if (shouldSyncJwt) {
+      setIsSwitchingProperty(true);
+      authService
+        .switchHotel(id)
+        .then(({ user: nextUser }) => {
+          updateUser(nextUser);
+          // Invalidate all cached queries so they refetch with the new JWT
+          queryClient.invalidateQueries();
+        })
+        .catch(() => {
+          if (prevId) {
+            setSelectedPropertyIdState(prevId);
+            localStorage.setItem('selectedPropertyId', prevId);
+          } else {
+            setSelectedPropertyIdState(null);
+            localStorage.removeItem('selectedPropertyId');
+          }
+          toast.error('Could not switch property. Try again or re-login.');
+        })
+        .finally(() => {
+          setIsSwitchingProperty(false);
+        });
+    } else {
+      // Same JWT hotel — just invalidate cached data for the new property scope
+      queryClient.invalidateQueries();
+    }
   };
 
   /**
@@ -170,6 +247,8 @@ export function PropertyProvider({ children }: { children: React.ReactNode }) {
     isMultiProperty,
     isLoading,
     error: error as Error | null,
+    primaryTenantHotelId,
+    isSwitchingProperty,
     setSelectedPropertyId,
     setViewMode,
   };

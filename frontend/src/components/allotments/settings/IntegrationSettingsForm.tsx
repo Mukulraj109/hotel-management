@@ -326,7 +326,7 @@ function IntegrationSettingsForm({
                           <Input
                             id="cm-api-url"
                             placeholder="https://api.example.com/v1"
-                            value={formData.channelManager.connectionSettings.apiUrl || ''}
+                            value={formData.channelManager?.connectionSettings?.apiUrl || ''}
                             onChange={(e) => handleNestedInputChange('channelManager', 'connectionSettings', 'apiUrl', e.target.value)}
                             className="mt-1"
                           />
@@ -338,7 +338,7 @@ function IntegrationSettingsForm({
                             id="cm-api-key"
                             type="password"
                             placeholder="Enter API key"
-                            value={formData.channelManager.connectionSettings.apiKey || ''}
+                            value={formData.channelManager?.connectionSettings?.apiKey || ''}
                             onChange={(e) => handleNestedInputChange('channelManager', 'connectionSettings', 'apiKey', e.target.value)}
                             className="mt-1"
                           />
@@ -349,7 +349,7 @@ function IntegrationSettingsForm({
                           <Input
                             id="cm-property-id"
                             placeholder="Property identifier"
-                            value={formData.channelManager.connectionSettings.propertyId || ''}
+                            value={formData.channelManager?.connectionSettings?.propertyId || ''}
                             onChange={(e) => handleNestedInputChange('channelManager', 'connectionSettings', 'propertyId', e.target.value)}
                             className="mt-1"
                           />
@@ -360,7 +360,7 @@ function IntegrationSettingsForm({
                           <Input
                             id="cm-username"
                             placeholder="Username (if required)"
-                            value={formData.channelManager.connectionSettings.username || ''}
+                            value={formData.channelManager?.connectionSettings?.username || ''}
                             onChange={(e) => handleNestedInputChange('channelManager', 'connectionSettings', 'username', e.target.value)}
                             className="mt-1"
                           />
@@ -378,7 +378,7 @@ function IntegrationSettingsForm({
                               type="number"
                               min="5"
                               max="1440"
-                              value={formData.channelManager.syncSettings.syncFrequency}
+                              value={formData.channelManager?.syncSettings?.syncFrequency}
                               onChange={(e) => handleNestedInputChange('channelManager', 'syncSettings', 'syncFrequency', parseInt(e.target.value))}
                               className="mt-1"
                             />
@@ -389,7 +389,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Auto Sync</Label>
                             <Switch
-                              checked={formData.channelManager.syncSettings.autoSync}
+                              checked={formData.channelManager?.syncSettings?.autoSync}
                               onCheckedChange={(checked) => handleNestedInputChange('channelManager', 'syncSettings', 'autoSync', checked)}
                             />
                           </div>
@@ -397,7 +397,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Sync Inventory</Label>
                             <Switch
-                              checked={formData.channelManager.syncSettings.syncInventory}
+                              checked={formData.channelManager?.syncSettings?.syncInventory}
                               onCheckedChange={(checked) => handleNestedInputChange('channelManager', 'syncSettings', 'syncInventory', checked)}
                             />
                           </div>
@@ -405,7 +405,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Sync Rates</Label>
                             <Switch
-                              checked={formData.channelManager.syncSettings.syncRates}
+                              checked={formData.channelManager?.syncSettings?.syncRates}
                               onCheckedChange={(checked) => handleNestedInputChange('channelManager', 'syncSettings', 'syncRates', checked)}
                             />
                           </div>
@@ -413,7 +413,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Sync Restrictions</Label>
                             <Switch
-                              checked={formData.channelManager.syncSettings.syncRestrictions}
+                              checked={formData.channelManager?.syncSettings?.syncRestrictions}
                               onCheckedChange={(checked) => handleNestedInputChange('channelManager', 'syncSettings', 'syncRestrictions', checked)}
                             />
                           </div>
@@ -462,7 +462,7 @@ function IntegrationSettingsForm({
                       <div className="flex items-center justify-between text-sm">
                         <span>Last Sync:</span>
                         <span className="text-gray-500">
-                          {formData.channelManager.lastSync
+                          {formData.channelManager?.lastSync
                             ? new Date(formData.channelManager.lastSync).toLocaleString()
                             : 'Never'
                           }
@@ -471,7 +471,7 @@ function IntegrationSettingsForm({
                       <div className="flex items-center justify-between text-sm">
                         <span>Error Count:</span>
                         <Badge variant="secondary">
-                          {formData.channelManager.errorLog.filter(log => !log.resolved).length}
+                          {(formData.channelManager?.errorLog || []).filter(log => !log.resolved).length}
                         </Badge>
                       </div>
                     </CardContent>
@@ -527,7 +527,7 @@ function IntegrationSettingsForm({
                           <Input
                             id="pms-api-url"
                             placeholder="https://pms.example.com/api"
-                            value={formData.pms.connectionSettings.apiUrl || ''}
+                            value={formData.pms?.connectionSettings?.apiUrl || ''}
                             onChange={(e) => handleNestedInputChange('pms', 'connectionSettings', 'apiUrl', e.target.value)}
                             className="mt-1"
                           />
@@ -539,7 +539,7 @@ function IntegrationSettingsForm({
                             id="pms-api-key"
                             type="password"
                             placeholder="Enter API key"
-                            value={formData.pms.connectionSettings.apiKey || ''}
+                            value={formData.pms?.connectionSettings?.apiKey || ''}
                             onChange={(e) => handleNestedInputChange('pms', 'connectionSettings', 'apiKey', e.target.value)}
                             className="mt-1"
                           />
@@ -550,7 +550,7 @@ function IntegrationSettingsForm({
                           <Input
                             id="pms-property-code"
                             placeholder="Property code in PMS"
-                            value={formData.pms.connectionSettings.propertyCode || ''}
+                            value={formData.pms?.connectionSettings?.propertyCode || ''}
                             onChange={(e) => handleNestedInputChange('pms', 'connectionSettings', 'propertyCode', e.target.value)}
                             className="mt-1"
                           />
@@ -564,12 +564,12 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Real-time Sync</Label>
                             <Switch
-                              checked={formData.pms.syncSettings.realTimeSync}
+                              checked={formData.pms?.syncSettings?.realTimeSync}
                               onCheckedChange={(checked) => handleNestedInputChange('pms', 'syncSettings', 'realTimeSync', checked)}
                             />
                           </div>
 
-                          {!formData.pms.syncSettings.realTimeSync && (
+                          {!formData.pms?.syncSettings?.realTimeSync && (
                             <div>
                               <Label htmlFor="pms-sync-frequency">Sync Frequency (minutes)</Label>
                               <Input
@@ -577,7 +577,7 @@ function IntegrationSettingsForm({
                                 type="number"
                                 min="15"
                                 max="1440"
-                                value={formData.pms.syncSettings.syncFrequency}
+                                value={formData.pms?.syncSettings?.syncFrequency}
                                 onChange={(e) => handleNestedInputChange('pms', 'syncSettings', 'syncFrequency', parseInt(e.target.value))}
                                 className="mt-1"
                               />
@@ -587,7 +587,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Sync Bookings</Label>
                             <Switch
-                              checked={formData.pms.syncSettings.syncBookings}
+                              checked={formData.pms?.syncSettings?.syncBookings}
                               onCheckedChange={(checked) => handleNestedInputChange('pms', 'syncSettings', 'syncBookings', checked)}
                             />
                           </div>
@@ -595,7 +595,7 @@ function IntegrationSettingsForm({
                           <div className="flex items-center justify-between">
                             <Label>Sync Inventory</Label>
                             <Switch
-                              checked={formData.pms.syncSettings.syncInventory}
+                              checked={formData.pms?.syncSettings?.syncInventory}
                               onCheckedChange={(checked) => handleNestedInputChange('pms', 'syncSettings', 'syncInventory', checked)}
                             />
                           </div>
@@ -644,7 +644,7 @@ function IntegrationSettingsForm({
                       <div className="flex items-center justify-between text-sm">
                         <span>Last Sync:</span>
                         <span className="text-gray-500">
-                          {formData.pms.lastSync
+                          {formData.pms?.lastSync
                             ? new Date(formData.pms.lastSync).toLocaleString()
                             : 'Never'
                           }
@@ -653,7 +653,7 @@ function IntegrationSettingsForm({
                       <div className="flex items-center justify-between text-sm">
                         <span>Sync Mode:</span>
                         <Badge variant="secondary">
-                          {formData.pms.syncSettings.realTimeSync ? 'Real-time' : 'Batch'}
+                          {formData.pms?.syncSettings?.realTimeSync ? 'Real-time' : 'Batch'}
                         </Badge>
                       </div>
                     </CardContent>

@@ -438,7 +438,7 @@ const bookingFormTemplateSchema = new mongoose.Schema({
   // Template status
   status: {
     type: String,
-    enum: ['draft', 'published', 'archived'],
+    enum: ['draft', 'active', 'published', 'archived'],
     default: 'draft'
   },
   tags: [String],
@@ -602,7 +602,11 @@ bookingFormTemplateSchema.methods.validateForm = function(formData) {
             isValid = /^https?:\/\/.+/.test(value);
             break;
           case 'regex':
-            isValid = new RegExp(rule.value).test(value);
+            try {
+              isValid = new RegExp(rule.value).test(String(value).slice(0, 1000));
+            } catch {
+              isValid = false;
+            }
             break;
         }
         
@@ -658,34 +662,42 @@ bookingFormTemplateSchema.methods.archive = function() {
 };
 
 bookingFormTemplateSchema.methods.incrementViews = function() {
-  this.usage.views += 1;
-  this.usage.lastUsed = new Date();
-  this.usage.conversionRate = this.calculatedConversionRate;
-  return this.save();
+  return this.constructor.updateOne(
+    { _id: this._id },
+    { $inc: { 'usage.views': 1 }, $set: { 'usage.lastUsed': new Date() } }
+  );
 };
 
 bookingFormTemplateSchema.methods.incrementSubmissions = function() {
-  this.usage.submissions += 1;
-  this.usage.lastUsed = new Date();
-  this.usage.conversionRate = this.calculatedConversionRate;
-  return this.save();
+  return this.constructor.updateOne(
+    { _id: this._id },
+    { $inc: { 'usage.submissions': 1 }, $set: { 'usage.lastUsed': new Date() } }
+  );
 };
 
 // Static methods
-bookingFormTemplateSchema.statics.getPublishedTemplates = function(hotelId) {
-  return this.find({ 
-    hotelId, 
-    isPublished: true, 
-    status: 'published' 
-  }).populate('createdBy updatedBy', 'name email');
+bookingFormTemplateSchema.statics.getPublishedTemplates = function(hotelId, { page = 1, limit = 20 } = {}) {
+  return this.find({
+    hotelId,
+    isPublished: true,
+    status: { $in: ['published', 'active'] }
+  })
+    .populate('createdBy updatedBy', 'name email')
+    .skip((page - 1) * limit)
+    .limit(Math.min(limit, 100))
+    .lean();
 };
 
-bookingFormTemplateSchema.statics.getTemplateByCategory = function(hotelId, category) {
-  return this.find({ 
-    hotelId, 
-    category, 
-    status: { $ne: 'archived' } 
-  }).populate('createdBy updatedBy', 'name email');
+bookingFormTemplateSchema.statics.getTemplateByCategory = function(hotelId, category, { page = 1, limit = 20 } = {}) {
+  return this.find({
+    hotelId,
+    category,
+    status: { $ne: 'archived' }
+  })
+    .populate('createdBy updatedBy', 'name email')
+    .skip((page - 1) * limit)
+    .limit(Math.min(limit, 100))
+    .lean();
 };
 
 bookingFormTemplateSchema.statics.createFromDefault = function(hotelId, userId, category = 'booking') {

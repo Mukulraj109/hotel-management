@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/utils/toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { api } from '@/services/api';
+import { useProperty } from '@/context/PropertyContext';
 import {
   Mic, MicOff, Volume2, VolumeX, Languages,
   MessageSquare, Settings, Play, Pause,
@@ -50,6 +52,7 @@ interface ConversationLog {
 }
 
 export const VoiceInterface: React.FC = () => {
+  const { selectedPropertyId } = useProperty();
   const [isListening, setIsListening] = useState(false);
   const [isEnabled, setIsEnabled] = useState(false);
   const [recognition, setRecognition] = useState<unknown>(null);
@@ -239,6 +242,36 @@ export const VoiceInterface: React.FC = () => {
         language: 'en-US',
         enabled: true,
         confidence: 0.9
+      },
+      {
+        id: 'search-bookings',
+        trigger: 'search bookings',
+        action: 'searchBookings',
+        description: 'Search recent bookings',
+        category: 'booking',
+        language: 'en-US',
+        enabled: true,
+        confidence: 0.8
+      },
+      {
+        id: 'open-reports',
+        trigger: 'open reports',
+        action: 'openReports',
+        description: 'Navigate to reports page',
+        category: 'navigation',
+        language: 'en-US',
+        enabled: true,
+        confidence: 0.9
+      },
+      {
+        id: 'request-maintenance',
+        trigger: 'request maintenance',
+        action: 'requestMaintenance',
+        description: 'Create a maintenance request for a room',
+        category: 'housekeeping',
+        language: 'en-US',
+        enabled: true,
+        confidence: 0.8
       }
     ];
 
@@ -292,70 +325,246 @@ export const VoiceInterface: React.FC = () => {
     }
   };
 
+  /**
+   * Helper: find a room document by its roomNumber for the current property.
+   * The /rooms endpoint does not support a roomNumber filter, so we fetch a
+   * page of up to 200 rooms and match client-side.  For properties with more
+   * rooms a dedicated search endpoint would be better, but this covers the
+   * vast majority of hotels.
+   */
+  const findRoomByNumber = async (roomNumber: string) => {
+    const res = await api.get('/rooms', {
+      params: { hotelId: selectedPropertyId, page: 1, limit: 200 },
+    });
+    const rooms = res.data?.data?.rooms ?? res.data?.rooms ?? res.data?.data ?? [];
+    return (rooms as Array<{ _id: string; roomNumber: string; status: string; type: string; floor?: number }>)
+      .find((r) => String(r.roomNumber) === String(roomNumber)) ?? null;
+  };
+
   const executeVoiceCommand = async (command: VoiceCommand, fullTranscript: string): Promise<{success: boolean, message: string}> => {
     try {
       switch (command.action) {
-        case 'checkRoomStatus':
+        // ----- Room commands -----
+        case 'checkRoomStatus': {
           const roomNumber = extractRoomNumber(fullTranscript);
-          if (roomNumber) {
-            // Mock room status check
-            const status = ['clean', 'dirty', 'maintenance', 'occupied'][Math.floor(Math.random() * 4)];
-            return {
-              success: true,
-              message: `Room ${roomNumber} is currently ${status}`
-            };
-          }
-          return { success: false, message: 'Please specify a room number' };
+          if (!roomNumber) return { success: false, message: 'Please specify a room number' };
 
-        case 'setRoomClean':
-          const cleanRoomNumber = extractRoomNumber(fullTranscript);
-          if (cleanRoomNumber) {
-            // Mock setting room status
-            return {
-              success: true,
-              message: `Room ${cleanRoomNumber} has been marked as clean`
-            };
-          }
-          return { success: false, message: 'Please specify a room number' };
+          const room = await findRoomByNumber(roomNumber);
+          if (!room) return { success: false, message: `Room ${roomNumber} was not found` };
 
-        case 'setRoomDirty':
-          const dirtyRoomNumber = extractRoomNumber(fullTranscript);
-          if (dirtyRoomNumber) {
-            return {
-              success: true,
-              message: `Room ${dirtyRoomNumber} has been marked as dirty`
-            };
-          }
-          return { success: false, message: 'Please specify a room number' };
+          return {
+            success: true,
+            message: `Room ${roomNumber} is currently ${room.status}${room.type ? ` (${room.type})` : ''}`
+          };
+        }
 
-        case 'checkGuestInfo':
-          const guestRoomNumber = extractRoomNumber(fullTranscript);
-          if (guestRoomNumber) {
-            return {
-              success: true,
-              message: `Guest in room ${guestRoomNumber} is John Smith, checking out tomorrow`
-            };
-          }
-          return { success: false, message: 'Please specify a room number' };
+        case 'setRoomClean': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number' };
 
-        case 'navigateDashboard':
-          // Mock navigation
+          const room = await findRoomByNumber(roomNumber);
+          if (!room) return { success: false, message: `Room ${roomNumber} was not found` };
+
+          await api.put(`/tape-chart/rooms/${room._id}/status`, {
+            status: 'vacant',
+            changeReason: 'Marked clean via voice command',
+            notes: 'Voice command: set room clean',
+          });
+
+          return { success: true, message: `Room ${roomNumber} has been marked as clean` };
+        }
+
+        case 'setRoomDirty': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number' };
+
+          const room = await findRoomByNumber(roomNumber);
+          if (!room) return { success: false, message: `Room ${roomNumber} was not found` };
+
+          await api.put(`/tape-chart/rooms/${room._id}/status`, {
+            status: 'dirty',
+            changeReason: 'Marked dirty via voice command',
+            notes: 'Voice command: set room dirty',
+          });
+
+          return { success: true, message: `Room ${roomNumber} has been marked as dirty` };
+        }
+
+        // ----- Guest commands -----
+        case 'checkGuestInfo': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number' };
+
+          const res = await api.get(`/guest-lookup/room/${roomNumber}`, {
+            params: { hotelId: selectedPropertyId },
+          });
+
+          const data = res.data?.data;
+          if (!data?.guest) return { success: false, message: `No guest found for room ${roomNumber}` };
+
+          const guest = data.guest;
+          const booking = data.booking;
+          const checkOut = booking?.checkOut ? new Date(booking.checkOut).toLocaleDateString() : 'N/A';
+
+          return {
+            success: true,
+            message: `Guest in room ${roomNumber}: ${guest.name}. Booking #${booking?.bookingNumber ?? 'N/A'}, status: ${booking?.status ?? 'N/A'}, check-out: ${checkOut}`
+          };
+        }
+
+        case 'checkInGuest': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number for check-in' };
+
+          // Find the booking associated with this room
+          const lookupRes = await api.get(`/guest-lookup/room/${roomNumber}`, {
+            params: { hotelId: selectedPropertyId },
+          });
+
+          const bookingData = lookupRes.data?.data?.booking;
+          if (!bookingData?.id) return { success: false, message: `No active booking found for room ${roomNumber}` };
+
+          await api.patch(`/bookings/${bookingData.id}/check-in`, {});
+
+          return {
+            success: true,
+            message: `Guest in room ${roomNumber} (Booking #${bookingData.bookingNumber}) has been checked in`
+          };
+        }
+
+        case 'checkOutGuest': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number for check-out' };
+
+          const lookupRes = await api.get(`/guest-lookup/room/${roomNumber}`, {
+            params: { hotelId: selectedPropertyId },
+          });
+
+          const bookingData = lookupRes.data?.data?.booking;
+          if (!bookingData?.id) return { success: false, message: `No active booking found for room ${roomNumber}` };
+
+          await api.patch(`/bookings/${bookingData.id}/check-out`, {});
+
+          return {
+            success: true,
+            message: `Guest in room ${roomNumber} (Booking #${bookingData.bookingNumber}) has been checked out`
+          };
+        }
+
+        // ----- Booking commands -----
+        case 'createBooking': {
+          // Creating a booking requires many fields; navigate to the booking creation page instead
+          window.location.href = '/admin/bookings/new';
+          return {
+            success: true,
+            message: 'Navigating to create a new booking'
+          };
+        }
+
+        case 'cancelBooking': {
+          // Extract a booking number from the transcript (e.g., "cancel booking 12345")
+          const bookingMatch = fullTranscript.match(/booking\s+(?:#?\s*)?(\w+)/i);
+          if (!bookingMatch) return { success: false, message: 'Please specify a booking number to cancel' };
+          const searchTerm = bookingMatch[1];
+
+          // Search for the booking first
+          const searchRes = await api.get('/bookings', {
+            params: { hotelId: selectedPropertyId, page: 1, limit: 5 },
+          });
+          const bookings = searchRes.data?.data?.bookings ?? searchRes.data?.bookings ?? [];
+          const found = (bookings as Array<{ _id: string; bookingNumber: string; status: string }>)
+            .find((b) => String(b.bookingNumber).includes(searchTerm));
+
+          if (!found) return { success: false, message: `Booking ${searchTerm} not found` };
+
+          await api.patch(`/bookings/${found._id}`, { status: 'cancelled' });
+
+          return {
+            success: true,
+            message: `Booking #${found.bookingNumber} has been cancelled`
+          };
+        }
+
+        case 'searchBookings': {
+          const searchQuery = fullTranscript.replace(/search\s+bookings?\s*/i, '').trim();
+          const searchRes = await api.get('/bookings', {
+            params: {
+              hotelId: selectedPropertyId,
+              page: 1,
+              limit: 5,
+            },
+          });
+          const bookings = searchRes.data?.data?.bookings ?? searchRes.data?.bookings ?? [];
+          if (!bookings.length) return { success: true, message: 'No bookings found' };
+
+          const summary = (bookings as Array<{ bookingNumber: string; status: string; userId?: { name?: string } }>)
+            .slice(0, 3)
+            .map((b) => `#${b.bookingNumber} (${b.status})${b.userId?.name ? ` - ${b.userId.name}` : ''}`)
+            .join('; ');
+
+          return {
+            success: true,
+            message: `Found ${bookings.length} booking(s): ${summary}`
+          };
+        }
+
+        // ----- Navigation commands -----
+        case 'navigateDashboard': {
+          window.location.href = '/admin';
           return {
             success: true,
             message: 'Navigating to dashboard'
           };
+        }
 
-        case 'navigateBookings':
+        case 'navigateBookings': {
+          window.location.href = '/admin/bookings';
           return {
             success: true,
             message: 'Navigating to bookings page'
           };
+        }
+
+        case 'openReports': {
+          window.location.href = '/admin/reports';
+          return {
+            success: true,
+            message: 'Navigating to reports page'
+          };
+        }
+
+        // ----- Housekeeping / Maintenance commands -----
+        case 'requestMaintenance': {
+          const roomNumber = extractRoomNumber(fullTranscript);
+          if (!roomNumber) return { success: false, message: 'Please specify a room number for the maintenance request' };
+
+          const room = await findRoomByNumber(roomNumber);
+          if (!room) return { success: false, message: `Room ${roomNumber} was not found` };
+
+          await api.post('/housekeeping', {
+            title: `Maintenance request for Room ${roomNumber}`,
+            roomId: room._id,
+            taskType: 'maintenance',
+            priority: 'medium',
+            description: `Maintenance requested via voice command: "${fullTranscript}"`,
+          });
+
+          return {
+            success: true,
+            message: `Maintenance request created for room ${roomNumber}`
+          };
+        }
 
         default:
           return { success: false, message: 'Command not implemented' };
       }
-    } catch (error) {
-      return { success: false, message: 'An error occurred while processing the command' };
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : 'An error occurred while processing the command';
+      const axiosMsg = (error as { response?: { data?: { message?: string; error?: { message?: string } } } })
+        ?.response?.data?.message
+        ?? (error as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message;
+      return { success: false, message: axiosMsg || errMsg };
     }
   };
 

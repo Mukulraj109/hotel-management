@@ -1,28 +1,38 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '../../context/AuthContext';
-import { mockApiResponse, mockApiError, createMockUser } from '../setup';
 
-// Mock the API service
-vi.mock('../../services/api', () => ({
-  api: {
-    post: vi.fn(),
-    get: vi.fn(),
-    delete: vi.fn(),
+// Mock authService
+vi.mock('../../services/authService', () => ({
+  authService: {
+    login: vi.fn(),
+    register: vi.fn(),
+    getCurrentUser: vi.fn(),
+    switchHotel: vi.fn(),
+    logout: vi.fn(),
   },
 }));
 
-// Test component to access auth context
+// Mock react-hot-toast
+vi.mock('react-hot-toast', () => ({
+  default: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 const TestComponent = () => {
-  const { user, login, logout, isLoading } = useAuth();
-  
+  const { user, login, logout, isLoading, isAuthenticated } = useAuth();
+
   return (
     <div>
       <div data-testid="user-info">
-        {user ? `${user.firstName} ${user.lastName}` : 'No user'}
+        {user ? user.name : 'No user'}
       </div>
       <div data-testid="loading">{isLoading ? 'Loading' : 'Not loading'}</div>
+      <div data-testid="authenticated">{isAuthenticated ? 'Yes' : 'No'}</div>
       <button onClick={() => login('test@example.com', 'password')}>
         Login
       </button>
@@ -31,66 +41,96 @@ const TestComponent = () => {
   );
 };
 
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {ui}
+    </QueryClientProvider>
+  );
+}
+
 describe('AuthContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
   });
 
-  it('should provide initial state', () => {
-    render(
+  it('should provide initial state', async () => {
+    const { authService } = await import('../../services/authService');
+    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('No session'));
+
+    renderWithProviders(
       <AuthProvider>
         <TestComponent />
       </AuthProvider>
     );
 
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('Not loading');
+    });
+
     expect(screen.getByTestId('user-info')).toHaveTextContent('No user');
-    expect(screen.getByTestId('loading')).toHaveTextContent('Not loading');
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('No');
   });
 
   it('should handle successful login', async () => {
-    const mockUser = createMockUser();
-    const mockResponse = {
-      success: true,
-      data: {
-        user: mockUser,
-        token: 'test-token'
-      }
+    const { authService } = await import('../../services/authService');
+    const mockUser = {
+      _id: '123',
+      name: 'Test User',
+      email: 'test@example.com',
+      role: 'guest' as const,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const { api } = await import('../../services/api');
-    vi.mocked(api.post).mockResolvedValue({
-      data: mockResponse
-    } as any);
+    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('No session'));
+    vi.mocked(authService.login).mockResolvedValue({
+      status: 'success',
+      user: mockUser,
+    });
 
-    render(
+    renderWithProviders(
       <AuthProvider>
         <TestComponent />
       </AuthProvider>
     );
 
-    const loginButton = screen.getByText('Login');
-    fireEvent.click(loginButton);
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('Not loading');
+    });
+
+    fireEvent.click(screen.getByText('Login'));
 
     await waitFor(() => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('Test User');
     });
 
-    expect(localStorage.setItem).toHaveBeenCalledWith('token', 'test-token');
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('Yes');
   });
 
   it('should handle login failure', async () => {
-    const { api } = await import('../../services/api');
-    vi.mocked(api.post).mockRejectedValue(new Error('Login failed'));
+    const { authService } = await import('../../services/authService');
+    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('No session'));
+    vi.mocked(authService.login).mockRejectedValue({
+      response: { data: { message: 'Invalid credentials' } },
+    });
 
-    render(
+    renderWithProviders(
       <AuthProvider>
         <TestComponent />
       </AuthProvider>
     );
 
-    const loginButton = screen.getByText('Login');
-    fireEvent.click(loginButton);
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('Not loading');
+    });
+
+    fireEvent.click(screen.getByText('Login'));
 
     await waitFor(() => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('No user');
@@ -98,58 +138,63 @@ describe('AuthContext', () => {
   });
 
   it('should handle logout', async () => {
-    const mockUser = createMockUser();
-    const mockResponse = {
-      success: true,
-      data: {
-        user: mockUser,
-        token: 'test-token'
-      }
+    const { authService } = await import('../../services/authService');
+    const mockUser = {
+      _id: '123',
+      name: 'Test User',
+      email: 'test@example.com',
+      role: 'guest' as const,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const { api } = await import('../../services/api');
-    vi.mocked(api.post).mockResolvedValue({
-      data: mockResponse
-    } as any);
+    vi.mocked(authService.getCurrentUser).mockRejectedValue(new Error('No session'));
+    vi.mocked(authService.login).mockResolvedValue({
+      status: 'success',
+      user: mockUser,
+    });
+    vi.mocked(authService.logout).mockResolvedValue();
 
-    render(
+    renderWithProviders(
       <AuthProvider>
         <TestComponent />
       </AuthProvider>
     );
 
-    // First login
-    const loginButton = screen.getByText('Login');
-    fireEvent.click(loginButton);
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('Not loading');
+    });
+
+    fireEvent.click(screen.getByText('Login'));
 
     await waitFor(() => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('Test User');
     });
 
-    // Then logout
-    const logoutButton = screen.getByText('Logout');
-    fireEvent.click(logoutButton);
+    fireEvent.click(screen.getByText('Logout'));
 
     await waitFor(() => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('No user');
+      expect(screen.getByTestId('authenticated')).toHaveTextContent('No');
     });
-
-    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
   });
 
-  it('should load user from localStorage on mount', async () => {
-    const mockUser = createMockUser();
-    localStorage.getItem.mockReturnValue('test-token');
+  it('should restore session from cookie on mount', async () => {
+    const { authService } = await import('../../services/authService');
+    const mockUser = {
+      _id: '123',
+      name: 'Test User',
+      email: 'test@example.com',
+      role: 'admin' as const,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    const { api } = await import('../../services/api');
-    vi.mocked(api.get).mockResolvedValue({
-      data: {
-        success: true,
-        data: mockUser
-      }
-    } as any);
+    vi.mocked(authService.getCurrentUser).mockResolvedValue(mockUser);
 
-    render(
+    renderWithProviders(
       <AuthProvider>
         <TestComponent />
       </AuthProvider>
@@ -157,25 +202,7 @@ describe('AuthContext', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('Test User');
+      expect(screen.getByTestId('authenticated')).toHaveTextContent('Yes');
     });
-  });
-
-  it('should handle invalid token on mount', async () => {
-    localStorage.getItem.mockReturnValue('invalid-token');
-
-    const { api } = await import('../../services/api');
-    vi.mocked(api.get).mockRejectedValue(new Error('Invalid token'));
-
-    render(
-      <AuthProvider>
-        <TestComponent />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('user-info')).toHaveTextContent('No user');
-    });
-
-    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
   });
 });

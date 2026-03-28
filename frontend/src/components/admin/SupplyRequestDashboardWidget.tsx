@@ -250,7 +250,7 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
                   </Badge>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-medium">{dept.count} requests</div>
+                  <div className="text-sm font-medium">{dept.count} {dept.count === 1 ? 'request' : 'requests'}</div>
                   <div className="text-xs text-gray-500">{formatCurrency(dept.value)}</div>
                 </div>
               </div>
@@ -301,7 +301,7 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
           <div className="text-sm text-gray-600">
             {summary.pendingRequests > 0 && (
               <span className="text-yellow-600 font-medium">
-                {summary.pendingRequests} requests need approval
+                {summary.pendingRequests} {summary.pendingRequests === 1 ? 'request needs' : 'requests need'} approval
               </span>
             )}
             {summary.overdueRequests > 0 && (

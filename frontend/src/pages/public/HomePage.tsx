@@ -4,13 +4,14 @@ import { Star, Wifi, Car, Coffee, Utensils, Waves, Dumbbell, Shield, MapPin, Awa
 import { Button } from '@/components/ui/button';
 import LocalAttractions from '../../components/LocalAttractions';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
 
 export default function HomePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(true);
 
-  const HOTEL_ID = '68cd01414419c17b5f6b4c12'; // Correct hotel ID matching database
+  const HOTEL_ID = DEFAULT_PUBLIC_HOTEL_ID;
 
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },
@@ -216,8 +217,8 @@ export default function HomePage() {
           </div>
           
           <div className="max-w-4xl mx-auto">
-            <LocalAttractions 
-              hotelId="68c7e6ebca8aed0ec8036a9c"
+            <LocalAttractions
+              hotelId={HOTEL_ID}
               maxDistance={10}
               className="shadow-xl border-0"
             />

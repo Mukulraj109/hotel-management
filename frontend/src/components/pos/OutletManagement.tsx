@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, Settings, Users, Clock, Loader2 } from 'lucide-react';
+import { Plus, Edit, Settings, Users, Clock, Loader2, Building } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface Outlet {
@@ -94,7 +94,8 @@ const OutletManagement: React.FC = () => {
         setOutlets([]);
       }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch outlets';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to fetch outlets');
       setOutlets([]);
     } finally {
       setIsLoading(false);
@@ -121,7 +122,8 @@ const OutletManagement: React.FC = () => {
         alert('Error creating outlet: ' + response.data.message);
       }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Unknown error occurred');
       alert('Error creating outlet: ' + errorMessage);
     }
   };
@@ -149,7 +151,8 @@ const OutletManagement: React.FC = () => {
         alert('Error updating outlet: ' + response.data.message);
       }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Unknown error occurred');
       alert('Error updating outlet: ' + errorMessage);
     }
   };
@@ -263,6 +266,13 @@ const OutletManagement: React.FC = () => {
       </div>
 
       {/* Outlets Grid */}
+      {outlets.length === 0 && !isLoading && (
+        <div className="text-center py-16 text-gray-500">
+          <Building className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <h3 className="text-lg font-medium text-gray-700 mb-1">No outlets configured</h3>
+          <p className="text-sm">Create your first outlet to start managing POS operations.</p>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {outlets.map((outlet) => (
           <Card key={outlet._id} className="hover:shadow-lg transition-shadow">

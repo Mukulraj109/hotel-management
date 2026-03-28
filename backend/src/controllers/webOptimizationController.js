@@ -511,87 +511,19 @@ class WebOptimizationController {
   }
   
   async getHeatmapData(req, res) {
-    try {
-      const { hotelId } = req.params;
-      const { page, startDate, endDate, device } = req.query;
-      
-      // For now, return mock heatmap data as this would typically require
-      // integration with external heatmap services like Hotjar or Crazy Egg
-      const heatmapData = {
-        clicks: [],
-        mouseMoves: [],
-        scrollEvents: [],
-        page,
-        device,
-        dateRange: {
-          start: startDate,
-          end: endDate
-        },
-        summary: {
-          totalClicks: 0,
-          totalSessions: 0,
-          avgScrollDepth: 0
-        }
-      };
-      
-      res.json({
-        success: true,
-        data: heatmapData,
-        message: 'Heatmap data retrieved successfully'
-      });
-      
-    } catch (error) {
-      console.error('Error fetching heatmap data:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch heatmap data'
-      });
-    }
+    res.status(501).json({
+      success: false,
+      message: 'Requires integration with external analytics service (e.g., Hotjar, Crazy Egg). Not available in current deployment.',
+      data: null
+    });
   }
   
   async getUserBehaviorAnalytics(req, res) {
-    try {
-      const { hotelId } = req.params;
-      const { timeframe = 30, segment } = req.query;
-      
-      // For now, return mock analytics data
-      const analytics = {
-        overview: {
-          totalSessions: 0,
-          uniqueVisitors: 0,
-          avgSessionDuration: 0,
-          bounceRate: 0,
-          pageViews: 0
-        },
-        topPages: [],
-        userFlow: [],
-        deviceBreakdown: {
-          desktop: 0,
-          mobile: 0,
-          tablet: 0
-        },
-        trafficSources: {
-          direct: 0,
-          search: 0,
-          social: 0,
-          referral: 0
-        },
-        timeframe: parseInt(timeframe),
-        segment
-      };
-      
-      res.json({
-        success: true,
-        data: analytics
-      });
-      
-    } catch (error) {
-      console.error('Error fetching user behavior analytics:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch user behavior analytics'
-      });
-    }
+    res.status(501).json({
+      success: false,
+      message: 'Requires integration with external analytics service (e.g., Google Analytics, Mixpanel). Not available in current deployment.',
+      data: null
+    });
   }
   
   // Conversion Funnel Endpoints

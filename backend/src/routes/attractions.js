@@ -68,14 +68,16 @@ router.get('/', catchAsync(async (req, res) => {
     limit = 20
   } = req.query;
 
-  // Build query
+  // Build query with mandatory tenant isolation
+  const resolvedHotelId = hotelId || req.user?.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
   const query = {
     isActive: true
   };
 
-  if (hotelId) {
-    query.hotelId = hotelId;
-  }
+  query.hotelId = resolvedHotelId;
 
   if (category) {
     query.category = category;

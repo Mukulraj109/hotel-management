@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Calendar,
@@ -8,14 +8,11 @@ import {
   Filter,
   Plus,
   Eye,
-  Edit,
   Play,
   CheckSquare,
   X,
   User,
   MapPin,
-  AlertTriangle,
-  ChevronDown,
   Save,
   Wifi,
   WifiOff,
@@ -27,18 +24,15 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Modal } from '../../components/ui/Modal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import HousekeepingInventoryDashboard from '../../components/admin/HousekeepingInventoryDashboard';
 import { adminService } from '../../services/adminService';
 import { api } from '../../services/api';
 import { HousekeepingTask } from '../../types/admin';
-import { formatNumber, getStatusColor } from '../../utils/dashboardUtils';
+import { formatNumber } from '../../utils/dashboardUtils';
 import EmptyState from '../../components/ui/EmptyState';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
-import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
-import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
@@ -83,6 +77,18 @@ interface HousekeepingColumn {
   render?: (value: unknown, task: HousekeepingTask) => React.ReactNode;
 }
 
+/** Extract a user-facing message from an axios-style error or generic Error. */
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object') {
+    const err = error as Record<string, unknown>;
+    const resp = err.response as Record<string, unknown> | undefined;
+    const data = resp?.data as Record<string, unknown> | undefined;
+    if (data?.message && typeof data.message === 'string') return data.message;
+  }
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
+
 const HousekeepingTaskRow = React.memo(({ task, columns, onSelect }: {
   task: HousekeepingTask;
   columns: HousekeepingColumn[];
@@ -109,7 +115,7 @@ HousekeepingTaskRow.displayName = 'HousekeepingTaskRow';
 
 function AdminHousekeeping() {
   // Property Context
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId } = useProperty();
 
   // State
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
@@ -126,7 +132,7 @@ function AdminHousekeeping() {
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
-  const [rooms, setRooms] = useState<unknown[]>([]);
+  const [rooms, setRooms] = useState<Array<{ _id: string; roomNumber: string; type: string }>>([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -162,10 +168,10 @@ function AdminHousekeeping() {
       if (response.pagination) {
         setPagination(response.pagination);
       }
-    } catch (error) {
-      
+    } catch (error: unknown) {
+
       // Show error to user
-      const errorMessage = error.response?.data?.message || 'Failed to fetch housekeeping tasks';
+      const errorMessage = getErrorMessage(error, 'Failed to fetch housekeeping tasks');
       
       // Set empty tasks array on error
         setTasks([]);
@@ -221,8 +227,8 @@ function AdminHousekeeping() {
       }
 
       setStats(transformedStats);
-    } catch (error) {
-      
+    } catch (error: unknown) {
+
       // Set empty stats on error
       setStats({
         total: 0,
@@ -255,9 +261,9 @@ function AdminHousekeeping() {
       }));
       
       setStaffMembers(transformedStaff);
-    } catch (error) {
+    } catch (error: unknown) {
       setStaffMembers([]);
-      toast.error('Failed to fetch staff members');
+      toast.error(getErrorMessage(error, 'Failed to fetch staff members'));
     }
   };
 
@@ -270,10 +276,10 @@ function AdminHousekeeping() {
       const response = await api.get('/rooms', {
         params: { limit: 100, hotelId: selectedPropertyId }
       });
-      setRooms(response.data.data.rooms || []);
-    } catch (error) {
+      setRooms(response.data?.data?.rooms || []);
+    } catch (error: unknown) {
       setRooms([]);
-      toast.error('Failed to fetch rooms');
+      toast.error(getErrorMessage(error, 'Failed to fetch rooms'));
     }
   };
 
@@ -349,9 +355,8 @@ function AdminHousekeeping() {
       await fetchTasks();
       await fetchStats();
       toast.success(`Task status updated to ${newStatus.replace('_', ' ')}`);
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Error updating task status. Please try again.';
-      toast.error(errorMessage);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Error updating task status. Please try again.'));
     } finally {
       setUpdating(false);
     }
@@ -379,18 +384,17 @@ function AdminHousekeeping() {
         status: 'assigned' as const,
         assignedToUserId: staffId,
         assignedTo: staffId
-      } as unknown;
+      };
 
-      const updateResponse = await adminService.updateHousekeepingTask(taskId, updateData);
+      await adminService.updateHousekeepingTask(taskId, updateData);
        
        await fetchTasks();
        await fetchStats();
        setShowAssignmentModal(false);
        setSelectedStaffId('');
        toast.success('Task assigned to staff successfully!');
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Error assigning staff. Please try again.';
-      toast.error(errorMessage);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Error assigning staff. Please try again.'));
     } finally {
       setUpdating(false);
     }
@@ -408,15 +412,16 @@ function AdminHousekeeping() {
       setUpdating(true);
       
       // Filter out empty supplies
+      const supplies = Array.isArray(taskData.supplies) ? taskData.supplies : [];
       const cleanedTaskData = {
         ...taskData,
-        supplies: taskData.supplies.filter((supply: Record<string, unknown>) => supply.name && supply.name.trim() !== '')
+        supplies: supplies.filter((supply: Record<string, unknown>) => supply.name && String(supply.name).trim() !== '')
       };
-      
+
        // Validate that roomId exists in our rooms list
        const selectedRoom = rooms.find(room => room._id === cleanedTaskData.roomId);
        if (!selectedRoom) {
-         alert('Please select a valid room');
+         toast.error('Please select a valid room');
          return;
        }
       
@@ -426,10 +431,8 @@ function AdminHousekeeping() {
       setShowCreateModal(false);
       resetFormData();
       toast.success('Housekeeping task created successfully!');
-    } catch (error) {
-      // Show more detailed error information
-      const errorMessage = error.response?.data?.message || 'Error creating task. Please try again.';
-      toast.error(errorMessage);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Error creating task. Please try again.'));
     } finally {
       setUpdating(false);
     }
@@ -510,19 +513,22 @@ function AdminHousekeeping() {
     {
       key: 'roomId',
       header: 'Room',
-      render: (value: unknown) => (
-        <div className="flex items-center">
-          <MapPin className="h-4 w-4 text-gray-400 mr-1" />
-          {value ? (
-            <>
-              <span className="font-medium">{value.roomNumber}</span>
-              <span className="text-sm text-gray-500 ml-1">({value.type})</span>
-            </>
-          ) : (
-            <span className="text-gray-500">No room assigned</span>
-          )}
-        </div>
-      )
+      render: (value: unknown) => {
+        const room = value as { roomNumber?: string; type?: string } | null;
+        return (
+          <div className="flex items-center">
+            <MapPin className="h-4 w-4 text-gray-400 mr-1" />
+            {room && room.roomNumber ? (
+              <>
+                <span className="font-medium">{room.roomNumber}</span>
+                <span className="text-sm text-gray-500 ml-1">({room.type})</span>
+              </>
+            ) : (
+              <span className="text-gray-500">No room assigned</span>
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'priority',
@@ -548,35 +554,34 @@ function AdminHousekeeping() {
         <StatusBadge status={value} variant="pill" size="sm" />
       )
     },
-         {
-       key: 'assignedToUserId',
-       header: 'Assigned To',
-       render: (value: unknown, row: HousekeepingTask) => {
-         // Check both assignedTo and assignedToUserId for backward compatibility
-         const assignedValue = value || row.assignedToUserId;
+    {
+      key: 'assignedToUserId',
+      header: 'Assigned To',
+      render: (value: unknown, row: HousekeepingTask) => {
+        // Check both assignedTo and assignedToUserId for backward compatibility
+        const assignedValue = value || row.assignedToUserId;
 
-         let staffName = 'Unassigned';
-         if (assignedValue) {
-           if (typeof assignedValue === 'string') {
-             // If it's just a string (user ID), find the staff member
-             const staff = staffMembers.find(staff => staff._id === assignedValue);
-             staffName = staff ? staff.name : 'Unknown Staff';
-           } else if (assignedValue.name) {
-             // If it's a populated object, use the name
-             staffName = assignedValue.name;
-           }
-         }
-         
-         return (
-           <div className="flex items-center">
-             <User className="h-4 w-4 text-gray-400 mr-1" />
-             <span className={assignedValue ? 'text-gray-900' : 'text-gray-500'}>
-               {staffName}
-             </span>
-           </div>
-         );
-       }
-     },
+        let staffName = 'Unassigned';
+        if (assignedValue) {
+          if (typeof assignedValue === 'string') {
+            const matchedStaff = staffMembers.find(s => s._id === assignedValue);
+            staffName = matchedStaff ? matchedStaff.name : 'Unknown Staff';
+          } else if (typeof assignedValue === 'object' && assignedValue !== null) {
+            const populated = assignedValue as { name?: string };
+            staffName = populated.name || 'Unknown Staff';
+          }
+        }
+
+        return (
+          <div className="flex items-center">
+            <User className="h-4 w-4 text-gray-400 mr-1" />
+            <span className={assignedValue ? 'text-gray-900' : 'text-gray-500'}>
+              {staffName}
+            </span>
+          </div>
+        );
+      }
+    },
     {
       key: 'estimatedDuration',
       header: 'Duration',
@@ -1354,7 +1359,7 @@ function AdminHousekeeping() {
             <div className="border-b border-gray-200 pb-3 sm:pb-4">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">{selectedTask.title}</h3>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                 {selectedTask.roomId ? `Room ${selectedTask.roomId.roomNumber}` : 'No room assigned'} - {selectedTask.taskType.replace('_', ' ')}
+                 {selectedTask.roomId ? `Room ${selectedTask.roomId?.roomNumber}` : 'No room assigned'} - {selectedTask.taskType?.replace('_', ' ')}
                </p>
              </div>
           )}
@@ -1484,8 +1489,9 @@ function AdminHousekeeping() {
               <Input
                 type="number"
                 placeholder="30"
+                min={1}
                 value={formData.estimatedDuration}
-                onChange={(e) => setFormData({ ...formData, estimatedDuration: parseInt(e.target.value) || 30 })}
+                onChange={(e) => setFormData({ ...formData, estimatedDuration: Math.max(1, parseInt(e.target.value) || 1) })}
                 className="text-sm"
               />
             </div>
@@ -1594,7 +1600,7 @@ function AdminHousekeeping() {
             </Button>
             <Button
               onClick={() => handleCreateTask(formData)}
-              disabled={updating || !formData.title || !formData.roomId}
+              disabled={updating || !formData.title.trim() || !formData.roomId || formData.estimatedDuration <= 0}
               className="w-full sm:w-auto text-sm"
             >
               <Save className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -1671,12 +1677,12 @@ function AdminHousekeeping() {
 
                          if (!assignedValue) return 'Unassigned';
                          if (typeof assignedValue === 'string') {
-                           const staff = staffMembers.find(staff => staff._id === assignedValue);
-                           return staff ? staff.name : 'Unknown Staff';
-                         } else if (assignedValue && assignedValue.name) {
-                           return assignedValue.name;
+                           const matchedStaff = staffMembers.find(s => s._id === assignedValue);
+                           return matchedStaff ? matchedStaff.name : 'Unknown Staff';
+                         } else if (typeof assignedValue === 'object' && assignedValue !== null) {
+                           return (assignedValue as { name?: string }).name || 'Unknown Staff';
                          }
-                         
+
                          return 'Unknown Staff';
                        })()}
                      </span>

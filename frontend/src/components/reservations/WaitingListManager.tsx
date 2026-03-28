@@ -26,6 +26,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 import waitingListService, {
   WaitingListEntry,
   RoomAvailability,
@@ -145,7 +152,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update status",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {
@@ -174,7 +181,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update priority",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {
@@ -205,7 +212,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to add note",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {
@@ -228,7 +235,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to remove entry",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {
@@ -276,7 +283,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to create waiting list entry",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {
@@ -296,7 +303,7 @@ export const WaitingListManager: React.FC = () => {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to send notification",
+        description: getErrorMessage(error),
         variant: "destructive"
       });
     } finally {

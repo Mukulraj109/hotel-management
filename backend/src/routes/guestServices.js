@@ -271,17 +271,15 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
 
   const query = {};
 
-  // Role-based filtering
+  // Role-based filtering with mandatory tenant isolation
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
-  } else if (req.user.role === 'admin') {
-    // Admin users can filter by hotelId from query parameter
-    const hotelId = req.query.hotelId;
-    if (hotelId) {
-      query.hotelId = hotelId;
+  } else {
+    const hotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+    if (!hotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
     }
+    query.hotelId = hotelId;
   }
 
   // Apply filters
@@ -454,6 +452,83 @@ router.get('/available-staff', authenticate, authorizePolicy('guestServices', 's
  *       200:
  *         description: Service request details
  */
+// Bulk assign services to staff (MUST be before /:id routes)
+router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { serviceIds, assignedTo } = req.body;
+  if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+    throw new ApplicationError('serviceIds array is required', 400);
+  }
+  if (!assignedTo) {
+    throw new ApplicationError('assignedTo is required', 400);
+  }
+  const result = await GuestService.updateMany(
+    { _id: { $in: serviceIds } },
+    { $set: { assignedTo, status: 'assigned', updatedAt: new Date() } }
+  );
+  res.json({ status: 'success', data: { updated: result.modifiedCount } });
+}));
+
+// Bulk update status
+router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { serviceIds, status } = req.body;
+  if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+    throw new ApplicationError('serviceIds array is required', 400);
+  }
+  const validStatuses = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    throw new ApplicationError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
+  }
+  const updateData = { status, updatedAt: new Date() };
+  if (status === 'completed') updateData.completedAt = new Date();
+  const result = await GuestService.updateMany(
+    { _id: { $in: serviceIds } },
+    { $set: updateData }
+  );
+  res.json({ status: 'success', data: { updated: result.modifiedCount } });
+}));
+
+// Export services as CSV
+router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+  const { format = 'csv', status: statusFilter, serviceType, priority } = req.query;
+  const hotelId = req.query.hotelId || req.user?.hotelId;
+  const filter = {};
+  if (hotelId) filter.hotelId = hotelId;
+  if (statusFilter) filter.status = statusFilter;
+  if (serviceType) filter.serviceType = serviceType;
+  if (priority) filter.priority = priority;
+
+  const services = await GuestService.find(filter)
+    .populate('userId', 'name email')
+    .populate('assignedTo', 'name email')
+    .sort({ createdAt: -1 }).lean().limit(5000);
+
+  if (format === 'csv') {
+    const headers = ['ID', 'Service Type', 'Guest', 'Priority', 'Status', 'Assigned To', 'Cost', 'Created', 'Completed'];
+    const rows = services.map(s => [
+      s._id, s.serviceType || '', s.userId?.name || '', s.priority || '',
+      s.status || '', s.assignedTo?.name || '', s.cost || 0,
+      s.createdAt ? new Date(s.createdAt).toISOString() : '',
+      s.completedAt ? new Date(s.completedAt).toISOString() : ''
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=guest-services-${new Date().toISOString().split('T')[0]}.csv`);
+    return res.send(csv);
+  }
+  res.json({ status: 'success', data: { services } });
+}));
+
+// Delete a service request (only pending/cancelled)
+router.delete('/:id', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+  const service = await GuestService.findById(req.params.id);
+  if (!service) throw new ApplicationError('Service request not found', 404);
+  if (!['pending', 'cancelled'].includes(service.status)) {
+    throw new ApplicationError('Only pending or cancelled service requests can be deleted', 400);
+  }
+  await GuestService.findByIdAndDelete(req.params.id);
+  res.json({ status: 'success', message: 'Service request deleted successfully' });
+}));
+
 router.get('/:id', authenticate, catchAsync(async (req, res) => {
   const serviceRequest = await GuestService.findById(req.params.id)
     .populate('hotelId', 'name contact')

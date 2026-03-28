@@ -14,6 +14,7 @@ import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import Review from '../models/Review.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -51,12 +52,12 @@ router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ens
     }
   ];
 
-  // Add hotel filtering if needed
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(req.user.hotelId) } });
-  } else if (hotelId) {
-    pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(hotelId) } });
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(resolvedHotelId) } });
 
   // Group by date format
   let dateFormat;
@@ -143,12 +144,12 @@ router.get('/revenue', authenticate, authorize('admin', 'staff'), ensureProperty
     // }
   };
 
-  // Filter by hotel if user is staff
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedRevenueHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedRevenueHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedRevenueHotelId);
 
   // Group by format
   let dateFormat;
@@ -227,11 +228,12 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensureProper
     ]
   };
 
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedOccupancyHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedOccupancyHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedOccupancyHotelId);
 
   // Get bookings in the period
   const bookings = await Booking.find(matchQuery)
@@ -239,11 +241,7 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensureProper
     .populate('hotelId', 'name').lean().limit(1000);
 
   // Get total rooms by hotel
-  const roomsQuery = req.user.role === 'staff' && req.user.hotelId 
-    ? { hotelId: req.user.hotelId, isActive: true }
-    : { isActive: true };
-    
-  if (hotelId) roomsQuery.hotelId = hotelId;
+  const roomsQuery = { hotelId: resolvedOccupancyHotelId, isActive: true };
 
   const totalRooms = await Room.countDocuments(roomsQuery);
 
@@ -311,11 +309,12 @@ router.get('/bookings', authenticate, authorize('admin', 'staff'), ensurePropert
   //   };
   // }
 
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedBookingsHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedBookingsHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedBookingsHotelId);
 
   const pipeline = [
     { $match: matchQuery },
@@ -365,11 +364,12 @@ router.get('/bookings/stats', authenticate, authorize('admin', 'staff', 'frontde
   //   };
   // }
 
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedStatsHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedStatsHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedStatsHotelId);
 
   const pipeline = [
     { $match: matchQuery },
@@ -447,12 +447,12 @@ router.get('/revenue-breakdown', authenticate, authorize('admin', 'staff'), ensu
     }
   };
 
-  // Filter by hotel if user is staff
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedBreakdownHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedBreakdownHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedBreakdownHotelId);
 
   // Get detailed booking data
   const bookings = await Booking.aggregate([
@@ -645,11 +645,12 @@ router.get('/occupancy-breakdown', authenticate, authorize('admin', 'staff'), en
     checkOut: { $gte: currentDate }  // Check-out date is today or in the future (guest stays until end of day)
   };
 
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedOccBreakdownHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedOccBreakdownHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedOccBreakdownHotelId);
 
   // Get bookings and rooms data
   const [bookings, rooms] = await Promise.all([
@@ -664,9 +665,9 @@ router.get('/occupancy-breakdown', authenticate, authorize('admin', 'staff'), en
         }
       }
     ]),
-    Room.find({ 
-      hotelId: req.user.role === 'staff' ? req.user.hotelId : hotelId,
-      isActive: true 
+    Room.find({
+      hotelId: resolvedOccBreakdownHotelId,
+      isActive: true
     })
   ]);
   
@@ -797,11 +798,12 @@ router.get('/bookings-breakdown', authenticate, authorize('admin', 'staff'), ens
     createdAt: { $gte: startDate, $lte: endDate }
   };
 
-  if (req.user.role === 'staff' && req.user.hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(req.user.hotelId);
-  } else if (hotelId) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  // Mandatory hotel filtering for tenant isolation
+  const resolvedBkgBreakdownHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedBkgBreakdownHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedBkgBreakdownHotelId);
 
   const bookings = await Booking.aggregate([
     { $match: matchQuery },
@@ -919,56 +921,81 @@ router.get('/satisfaction-breakdown', authenticate, authorize('admin', 'staff'),
   const startDate = new Date(targetYear, targetMonth, 1);
   const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
 
-  // Mock satisfaction data (in real app, this would come from reviews/feedback)
-  const mockSatisfactionData = {
-    overall: {
-      rating: 3.8,
-      totalReviews: 24,
-      distribution: {
-        5: 8,
-        4: 6,
-        3: 5,
-        2: 3,
-        1: 2
-      }
-    },
-    categories: {
-      cleanliness: { rating: 4.2, reviews: 24 },
-      service: { rating: 3.9, reviews: 24 },
-      location: { rating: 4.1, reviews: 24 },
-      value: { rating: 3.5, reviews: 24 },
-      amenities: { rating: 3.7, reviews: 24 }
-    },
-    trends: {
-      thisMonth: 3.8,
-      lastMonth: 3.8,
-      improvement: 0.0
-    }
-  };
+  // Build hotel filter with mandatory tenant isolation
+  const resolvedSatisfactionHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+  if (!resolvedSatisfactionHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+  const reviewFilter = { createdAt: { $gte: startDate, $lte: endDate } };
+  reviewFilter.hotelId = new mongoose.Types.ObjectId(resolvedSatisfactionHotelId);
+
+  // Aggregate real reviews from the Review model
+  const reviews = await Review.find(reviewFilter).lean().limit(1000);
+  const totalReviews = reviews.length;
+
+  // Calculate overall rating
+  const overallRating = totalReviews > 0
+    ? Math.round((reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalReviews) * 10) / 10
+    : 0;
+
+  // Build rating distribution
+  const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  reviews.forEach(r => {
+    const rounded = Math.round(r.rating || 0);
+    if (rounded >= 1 && rounded <= 5) distribution[rounded]++;
+  });
+
+  // Calculate category averages from review categories field
+  const categoryKeys = ['cleanliness', 'service', 'location', 'value', 'amenities'];
+  const categoryRatings = categoryKeys.map(key => {
+    const rated = reviews.filter(r => r.categories && r.categories[key]);
+    const avg = rated.length > 0
+      ? Math.round((rated.reduce((sum, r) => sum + r.categories[key], 0) / rated.length) * 10) / 10
+      : 0;
+    return {
+      category: key.charAt(0).toUpperCase() + key.slice(1),
+      rating: avg,
+      reviews: rated.length
+    };
+  });
+
+  // Calculate trend vs previous month
+  const prevMonthStart = new Date(targetYear, targetMonth - 1, 1);
+  const prevMonthEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+  const prevFilter = { ...reviewFilter, createdAt: { $gte: prevMonthStart, $lte: prevMonthEnd } };
+  const prevReviews = await Review.find(prevFilter).lean().limit(1000);
+  const prevRating = prevReviews.length > 0
+    ? Math.round((prevReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / prevReviews.length) * 10) / 10
+    : 0;
+  const improvement = Math.round((overallRating - prevRating) * 10) / 10;
+
+  // Generate insights from real data
+  const insights = [];
+  if (totalReviews === 0) {
+    insights.push('No reviews found for this period.');
+  } else {
+    const bestCategory = categoryRatings.reduce((best, c) => c.rating > best.rating ? c : best, { rating: 0, category: 'N/A' });
+    const worstCategory = categoryRatings.filter(c => c.rating > 0).reduce((worst, c) => c.rating < worst.rating ? c : worst, { rating: 6, category: 'N/A' });
+    if (bestCategory.rating > 0) insights.push(`${bestCategory.category} rated highest at ${bestCategory.rating}/5`);
+    if (worstCategory.rating < 6) insights.push(`${worstCategory.category} needs improvement at ${worstCategory.rating}/5`);
+    const goodReviews = reviews.filter(r => r.rating >= 4).length;
+    insights.push(`${totalReviews > 0 ? Math.round((goodReviews / totalReviews) * 100) : 0}% of guests rate their experience as good or excellent`);
+  }
 
   const breakdown = {
-    overallRating: mockSatisfactionData.overall.rating,
-    totalReviews: mockSatisfactionData.overall.totalReviews,
-    ratingDistribution: Object.entries(mockSatisfactionData.overall.distribution).map(([rating, count]) => ({
+    overallRating,
+    totalReviews,
+    ratingDistribution: Object.entries(distribution).map(([rating, count]) => ({
       rating: parseInt(rating),
       count,
-      percentage: mockSatisfactionData.overall.totalReviews > 0 ? 
-        (count / mockSatisfactionData.overall.totalReviews * 100).toFixed(1) : 0
+      percentage: totalReviews > 0 ? (count / totalReviews * 100).toFixed(1) : '0.0'
     })).reverse(),
-    categoryRatings: Object.entries(mockSatisfactionData.categories).map(([category, data]) => ({
-      category: category.charAt(0).toUpperCase() + category.slice(1),
-      rating: data.rating,
-      reviews: data.reviews
-    })),
+    categoryRatings,
     trends: {
-      monthlyChange: mockSatisfactionData.trends.improvement,
-      trend: mockSatisfactionData.trends.improvement >= 0 ? 'up' : 'down'
+      monthlyChange: improvement,
+      trend: improvement >= 0 ? 'up' : 'down'
     },
-    insights: [
-      'Room cleanliness rated highest at 4.2/5',
-      'Value for money needs improvement at 3.5/5',
-      '67% of guests rate service as good or excellent'
-    ],
+    insights,
     period: {
       month: targetMonth + 1,
       year: targetYear,
@@ -1091,31 +1118,13 @@ router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), 
     KPI.getTrendData(hotelId, 'risk.guestSatisfaction.averageRating', 365)
   ]);
 
-  // Generate sample trend data if no historical data exists
-  const generateSampleTrendData = (baseValue, days = 30) => {
-    const data = [];
-    const today = new Date();
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today.getTime() - (i * 24 * 60 * 60 * 1000));
-      const variation = (Math.random() - 0.5) * 0.2; // ±10% variation
-      const value = Math.max(0, baseValue * (1 + variation));
-      
-      data.push({
-        date: date.toISOString().split('T')[0],
-        value: Math.round(value * 100) / 100
-      });
-    }
-    
-    return data;
-  };
-
-  // Use actual trend data if available, otherwise generate sample data
+  // Use actual trend data if available; return empty array if no historical data exists
+  // (do not generate fake trend data with random noise)
   const trendData = {
-    adr: trends[0].length > 0 ? trends[0] : generateSampleTrendData(kpiData ? kpiData.rates.adr : 3500, 30),
-    occupancy: trends[1].length > 0 ? trends[1] : generateSampleTrendData(kpiData ? kpiData.occupancy.occupancyRate : 65, 30),
-    revenue: trends[2].length > 0 ? trends[2] : generateSampleTrendData(kpiData ? kpiData.revenue.totalRevenue : 150000, 30),
-    satisfaction: trends[3].length > 0 ? trends[3] : generateSampleTrendData(4.2, 30)
+    adr: trends[0].length > 0 ? trends[0] : [],
+    occupancy: trends[1].length > 0 ? trends[1] : [],
+    revenue: trends[2].length > 0 ? trends[2] : [],
+    satisfaction: trends[3].length > 0 ? trends[3] : []
   };
 
   // Performance score

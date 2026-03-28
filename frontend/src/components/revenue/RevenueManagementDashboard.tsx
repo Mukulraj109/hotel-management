@@ -13,29 +13,27 @@ import {
   TrendingUp,
   TrendingDown,
   IndianRupee,
-  Calendar,
   Target,
   Brain,
-  Zap,
   AlertTriangle,
   Settings,
   RefreshCw,
   Eye,
   BarChart3,
   LineChart,
-  PieChart,
   Activity,
-  Users,
-  Building,
-  MapPin,
-  Clock,
-  Star,
-  Percent,
   Save
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import revenueManagementService, { RevenueMetrics, RateShopping, DemandForecast, PerformanceMetrics } from '@/services/revenueManagementService';
 import { withErrorBoundary } from '../ErrorBoundary';
+
+/** Strip trailing '%' from backend values that may be strings like "75%" */
+const stripPercent = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return parseFloat(value.replace('%', '')) || 0;
+  return 0;
+};
 
 const getProgressBarWidth = (percentage: number) => {
   const clampedPercentage = Math.max(0, Math.min(100, percentage));
@@ -49,26 +47,26 @@ const validateRateValue = (field: string, value: number, currentRate: Record<str
     case 'baseRate':
       if (value < 500) errors.push('Base rate must be at least ₹500');
       if (value > 50000) errors.push('Base rate cannot exceed ₹50,000');
-      if (currentRate.maxRate && value > currentRate.maxRate) errors.push('Base rate cannot exceed max rate');
+      if (currentRate.maxRate != null && value > currentRate.maxRate) errors.push('Base rate cannot exceed max rate');
       break;
 
     case 'currentRate':
       if (value < 500) errors.push('Current rate must be at least ₹500');
       if (value > 50000) errors.push('Current rate cannot exceed ₹50,000');
-      if (currentRate.minRate && value < currentRate.minRate) errors.push('Current rate cannot be below min rate');
-      if (currentRate.maxRate && value > currentRate.maxRate) errors.push('Current rate cannot exceed max rate');
+      if (currentRate.minRate != null && value < currentRate.minRate) errors.push('Current rate cannot be below min rate');
+      if (currentRate.maxRate != null && value > currentRate.maxRate) errors.push('Current rate cannot exceed max rate');
       break;
 
     case 'minRate':
       if (value < 100) errors.push('Min rate must be at least ₹100');
-      if (currentRate.currentRate && value > currentRate.currentRate) errors.push('Min rate cannot exceed current rate');
-      if (currentRate.maxRate && value > currentRate.maxRate) errors.push('Min rate cannot exceed max rate');
+      if (currentRate.currentRate != null && value > currentRate.currentRate) errors.push('Min rate cannot exceed current rate');
+      if (currentRate.maxRate != null && value > currentRate.maxRate) errors.push('Min rate cannot exceed max rate');
       break;
 
     case 'maxRate':
       if (value > 100000) errors.push('Max rate cannot exceed ₹1,00,000');
-      if (currentRate.currentRate && value < currentRate.currentRate) errors.push('Max rate cannot be below current rate');
-      if (currentRate.minRate && value < currentRate.minRate) errors.push('Max rate cannot be below min rate');
+      if (currentRate.currentRate != null && value < currentRate.currentRate) errors.push('Max rate cannot be below current rate');
+      if (currentRate.minRate != null && value < currentRate.minRate) errors.push('Max rate cannot be below min rate');
       break;
 
     case 'occupancyThreshold':
@@ -97,7 +95,6 @@ interface RoomTypeRate {
 const RevenueManagementDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [dateRange, setDateRange] = useState('30d');
-  const [autoOptimization, setAutoOptimization] = useState(true);
   const [rateTypes, setRateTypes] = useState<RoomTypeRate[]>([]);
   const [demandForecast, setDemandForecast] = useState<DemandForecast[]>([]);
   const [metrics, setMetrics] = useState<RevenueMetrics | null>(null);
@@ -108,8 +105,11 @@ const RevenueManagementDashboard: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<Array<{
+    type: string; priority: string; title: string; description: string; action: string;
+  }>>([]);
 
-  // Mock data initialization
+  // Timer refs
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup timers on unmount
@@ -158,16 +158,8 @@ const RevenueManagementDashboard: React.FC = () => {
         })
       ]).finally(() => clearTimeout(raceTimeoutTimer)) as unknown;
 
-      // Fetch real room types from the system
+      // Fetch real room types from the system (hotelId is resolved server-side from auth token)
       try {
-        // Get the hotel ID from the dedicated hotel endpoint
-        const { data: hotelData } = await api.get('/admin-dashboard/hotel');
-        let hotelId = hotelData.data?.hotel?._id;
-
-        if (!hotelId) {
-          throw new Error('Hotel ID not found');
-        }
-
         const { data: roomTypesData } = await api.get('/revenue-management/room-types');
         if (roomTypesData.success && roomTypesData.data?.length > 0) {
           // Use the real data from the backend API
@@ -212,43 +204,27 @@ const RevenueManagementDashboard: React.FC = () => {
       setMetrics(dashboardData.metrics);
       setPerformanceMetrics(dashboardData.performanceMetrics);
       setRateShopping(dashboardData.rateShopping);
+
+      // Fetch AI recommendations from real API
+      try {
+        const recData = await revenueManagementService.getOptimizationRecommendations() as { recommendations?: Array<{ type: string; priority: string; title: string; description: string; action: string }> };
+        setAiRecommendations(recData?.recommendations || []);
+      } catch {
+        setAiRecommendations([]);
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch revenue data';
 
-      // Set error state but keep fallback mock data
+      // Set error state — do not show fake fallback data
       setError(`${errorMessage}${retryCount > 0 ? ` (Retry ${retryCount})` : ''}`);
 
-      // Set empty array to trigger no content display
+      // Clear all stale data on error
+      setMetrics(null);
+      setPerformanceMetrics(null);
+      setRateShopping(null);
       setRateTypes([]);
       setDemandForecast([]);
-      setMetrics({
-        totalRevenue: 62500,
-        revPAR: 21,
-        adr: 3500,
-        occupancyRate: 68.5,
-        rateOptimizationImpact: 12.3,
-        competitiveIndex: 108,
-        demandCaptureRate: 15.6,
-        priceElasticity: 0.75
-      });
-      setPerformanceMetrics({
-        currentVsTarget: 75,
-        targetRevenue: 85000,
-        marketShare: 62,
-        rateOptimization: 83,
-        revenueGrowth: 12.3
-      });
-      setRateShopping({
-        competitors: [
-          { hotelName: 'Grand Plaza', roomType: 'Standard', currentRate: 3325, availability: 15, lastUpdated: new Date(), source: 'API' },
-          { hotelName: 'Royal Palace', roomType: 'Standard', currentRate: 3745, availability: 8, lastUpdated: new Date(), source: 'Scraping' }
-        ],
-        marketPosition: 'competitive',
-        priceGap: 175,
-        recommendations: [
-          { action: 'Monitor competitor rates closely', impact: 'Market positioning', urgency: 'medium' }
-        ]
-      });
+      setAiRecommendations([]);
     } finally {
       setIsLoading(false);
     }
@@ -311,7 +287,7 @@ const RevenueManagementDashboard: React.FC = () => {
           const originalRate = { ...rate };
           for (const field of Object.keys(updates)) {
             if (field in currentRate) {
-              (originalRate as unknown)[field] = (currentRate as unknown)[field];
+              (originalRate as Record<string, unknown>)[field] = (currentRate as Record<string, unknown>)[field];
             }
           }
           return originalRate;
@@ -320,7 +296,8 @@ const RevenueManagementDashboard: React.FC = () => {
       }));
 
       // Show user-friendly error message based on error type
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to save rate changes';
+      const axiosError = error as { response?: { data?: { message?: string }; status?: number }; message?: string };
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to save rate changes';
       setError(`Error updating ${currentRate.roomType}: ${errorMessage}`);
 
       // Clear error after 7 seconds
@@ -337,7 +314,7 @@ const RevenueManagementDashboard: React.FC = () => {
     rateTypes.forEach(rate => {
       const fields = ['baseRate', 'currentRate', 'minRate', 'maxRate', 'occupancyThreshold'];
       fields.forEach(field => {
-        const value = (rate as unknown)[field];
+        const value = (rate as Record<string, unknown>)[field];
         if (typeof value === 'number') {
           const validationError = validateRateValue(field, value, rate);
           if (validationError) {
@@ -371,10 +348,11 @@ const RevenueManagementDashboard: React.FC = () => {
         isActive: rate.isActive
       }));
 
-      const result = await revenueManagementService.bulkUpdateRoomTypeRates(updates);
+      await revenueManagementService.bulkUpdateRoomTypeRates(updates);
 
       // Show success message
       setSaveSuccess(`Successfully saved rates for all ${rateTypes.length} room types`);
+      setTimeout(() => setSaveSuccess(null), 5000);
 
       // Clear any validation errors
       setValidationErrors({});
@@ -382,8 +360,9 @@ const RevenueManagementDashboard: React.FC = () => {
     } catch (error: unknown) {
 
       // Handle different types of errors
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
-      const statusCode = error.response?.status;
+      const axiosError = error as { response?: { data?: { message?: string }; status?: number }; message?: string };
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Unknown error occurred';
+      const statusCode = axiosError.response?.status;
 
       if (statusCode === 400) {
         setError('Invalid data provided. Please check your inputs and try again.');
@@ -449,7 +428,7 @@ const RevenueManagementDashboard: React.FC = () => {
               <div>
                 <h4 className="text-red-800 font-medium">Unable to fetch latest data</h4>
                 <p className="text-red-600 text-sm">{error}</p>
-                <p className="text-red-500 text-xs mt-1">Showing fallback data to maintain functionality</p>
+                <p className="text-red-500 text-xs mt-1">Please retry or contact support if the issue persists</p>
               </div>
             </div>
             <Button
@@ -474,15 +453,6 @@ const RevenueManagementDashboard: React.FC = () => {
         </div>
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="flex items-center justify-between sm:justify-start gap-2">
-            <Label htmlFor="auto-optimization" className="text-sm">Auto Optimization</Label>
-            <Switch
-              id="auto-optimization"
-              checked={autoOptimization}
-              onCheckedChange={setAutoOptimization}
-            />
-          </div>
-          
           <div className="flex gap-2">
             <Select value={dateRange} onValueChange={setDateRange}>
               <SelectTrigger className="w-full sm:w-32">
@@ -517,8 +487,10 @@ const RevenueManagementDashboard: React.FC = () => {
                 <IndianRupee className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 flex-shrink-0 ml-2" />
               </div>
               <div className="flex items-center gap-1 mt-2">
-                {getChangeIcon(12.3)}
-                <span className={`text-xs sm:text-sm ${getChangeColor(12.3)} truncate`}>+12.3% vs last period</span>
+                {getChangeIcon(performanceMetrics?.revenueGrowth ?? 0)}
+                <span className={`text-xs sm:text-sm ${getChangeColor(performanceMetrics?.revenueGrowth ?? 0)} truncate`}>
+                  {(performanceMetrics?.revenueGrowth ?? 0) > 0 ? '+' : ''}{performanceMetrics?.revenueGrowth ?? 0}% vs last period
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -533,8 +505,10 @@ const RevenueManagementDashboard: React.FC = () => {
                 <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0 ml-2" />
               </div>
               <div className="flex items-center gap-1 mt-2">
-                {getChangeIcon(8.7)}
-                <span className={`text-xs sm:text-sm ${getChangeColor(8.7)} truncate`}>+8.7% optimization impact</span>
+                {getChangeIcon(metrics.rateOptimizationImpact)}
+                <span className={`text-xs sm:text-sm ${getChangeColor(metrics.rateOptimizationImpact)} truncate`}>
+                  {metrics.rateOptimizationImpact > 0 ? '+' : ''}{metrics.rateOptimizationImpact}% optimization impact
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -561,7 +535,15 @@ const RevenueManagementDashboard: React.FC = () => {
                 </div>
                 <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600 flex-shrink-0 ml-2" />
               </div>
-              <div className="text-xs sm:text-sm text-green-600 mt-2 truncate">Excellent performance</div>
+              <div className={`text-xs sm:text-sm mt-2 truncate ${
+                (metrics.demandCaptureRate ?? 0) >= 80 ? 'text-green-600' :
+                (metrics.demandCaptureRate ?? 0) >= 50 ? 'text-yellow-600' :
+                'text-red-600'
+              }`}>
+                {(metrics.demandCaptureRate ?? 0) >= 80 ? 'Excellent performance' :
+                 (metrics.demandCaptureRate ?? 0) >= 50 ? 'Average performance' :
+                 'Needs improvement'}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -648,34 +630,34 @@ const RevenueManagementDashboard: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
-                    <div className="flex items-center gap-2 mb-1">
-                      <TrendingUp className="w-4 h-4 text-green-600 flex-shrink-0" />
-                      <span className="font-medium text-green-800 text-sm sm:text-base">Increase Weekend Rates</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-green-700">High demand predicted for weekends. Increase rates by 15-20%.</p>
-                    <p className="text-xs text-green-600 mt-1">Potential revenue: +₹95K</p>
+                {aiRecommendations.length === 0 ? (
+                  <div className="text-center py-6 text-gray-500">
+                    <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">No recommendations available yet.</p>
+                    <p className="text-xs mt-1">Recommendations will appear as more booking data is collected.</p>
                   </div>
-
-                  <div className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Target className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                      <span className="font-medium text-blue-800 text-sm sm:text-base">Optimize Corporate Rates</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-blue-700">Adjust corporate discount tiers based on volume commitments.</p>
-                    <p className="text-xs text-blue-600 mt-1">Impact: +8% corporate revenue</p>
+                ) : (
+                  <div className="space-y-3">
+                    {aiRecommendations.map((rec, idx) => {
+                      const colorMap: Record<string, { bg: string; border: string; text: string; subtext: string }> = {
+                        high: { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-800', subtext: 'text-red-700' },
+                        medium: { bg: 'bg-yellow-50', border: 'border-yellow-500', text: 'text-yellow-800', subtext: 'text-yellow-700' },
+                        low: { bg: 'bg-green-50', border: 'border-green-500', text: 'text-green-800', subtext: 'text-green-700' },
+                      };
+                      const colors = colorMap[rec.priority] || colorMap.medium;
+                      return (
+                        <div key={idx} className={`p-3 ${colors.bg} rounded-lg border-l-4 ${colors.border}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <AlertTriangle className={`w-4 h-4 ${colors.text} flex-shrink-0`} />
+                            <span className={`font-medium ${colors.text} text-sm sm:text-base`}>{rec.title}</span>
+                          </div>
+                          <p className={`text-xs sm:text-sm ${colors.subtext}`}>{rec.description}</p>
+                          <p className={`text-xs ${colors.subtext} mt-1`}>Action: {rec.action}</p>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  <div className="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-500">
-                    <div className="flex items-center gap-2 mb-1">
-                      <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
-                      <span className="font-medium text-orange-800 text-sm sm:text-base">Competitive Response</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-orange-700">Grand Plaza reduced rates by 8%. Consider tactical response.</p>
-                    <p className="text-xs text-orange-600 mt-1">Urgency: High</p>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -691,11 +673,18 @@ const RevenueManagementDashboard: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {rateTypes.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Settings className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium">No room types configured</p>
+                    <p className="text-sm mt-1">Room type pricing will appear once room types are set up for this property.</p>
+                  </div>
+                ) : (
                 <div className="space-y-4 sm:space-y-6">
                   {rateTypes.map(rate => (
                     <div key={rate.id} className="border rounded-lg p-3 sm:p-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                        <h3 className="font-medium text-sm sm:text-base">{rate.roomType}</h3>
+                        <h3 className="font-medium text-sm sm:text-base capitalize">{rate.roomType}</h3>
                         <div className="flex items-center gap-2">
                           <Badge className={`text-xs ${rate.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                             {rate.isActive ? 'Active' : 'Inactive'}
@@ -763,14 +752,15 @@ const RevenueManagementDashboard: React.FC = () => {
                         <Slider
                           value={[rate.occupancyThreshold]}
                           onValueChange={([value]) => updateRateType(rate.id, { occupancyThreshold: value })}
-                          max={100}
+                          min={30}
+                          max={95}
                           step={5}
                           className="mt-2"
                         />
                       </div>
 
                       <div className="mt-2 text-xs sm:text-sm text-gray-600">
-                        Last updated: {rate.lastUpdated.toLocaleString()}
+                        Last updated: {new Date(rate.lastUpdated).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                       </div>
                     </div>
                   ))}
@@ -788,6 +778,7 @@ const RevenueManagementDashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -802,6 +793,13 @@ const RevenueManagementDashboard: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {demandForecast.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Activity className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No demand forecast data available</p>
+                  <p className="text-sm mt-1">Forecast data will appear once sufficient booking history is available.</p>
+                </div>
+              ) : (
               <div className="space-y-3 sm:space-y-4">
                 {demandForecast.map((forecast, index) => (
                   <div key={`demandForecast-${index}-${forecast.date}`} className="p-3 sm:p-4 border rounded-lg">
@@ -812,19 +810,19 @@ const RevenueManagementDashboard: React.FC = () => {
                           <div className="text-xs sm:text-sm text-gray-500">{new Date(forecast.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                         </div>
                         
-                        <Badge className={`text-xs ${getDemandLevelColor(forecast.demandLevel)}`}>
-                          {forecast.demandLevel.toUpperCase()}
+                        <Badge className={`text-xs ${getDemandLevelColor(forecast.demandLevel?.toLowerCase())}`}>
+                          {forecast.demandLevel?.toUpperCase()}
                         </Badge>
                         
                         <div className="text-xs sm:text-sm">
-                          <div className="font-medium">{forecast.predictedOccupancy}% occupancy predicted</div>
-                          <div className="text-gray-500">{forecast.confidence}% confidence</div>
+                          <div className="font-medium">{stripPercent(forecast.predictedOccupancy)}% occupancy predicted</div>
+                          <div className="text-gray-500">{stripPercent(forecast.confidence)}% confidence</div>
                         </div>
                       </div>
                       
                       <div className="text-left sm:text-right">
-                        <div className={`text-base sm:text-lg font-bold ${getChangeColor(forecast.recommendedRateChange)}`}>
-                          {forecast.recommendedRateChange > 0 ? '+' : ''}{forecast.recommendedRateChange}%
+                        <div className={`text-base sm:text-lg font-bold ${getChangeColor(stripPercent(forecast.recommendedRateChange))}`}>
+                          {stripPercent(forecast.recommendedRateChange) > 0 ? '+' : ''}{stripPercent(forecast.recommendedRateChange)}%
                         </div>
                         <div className="text-xs sm:text-sm text-gray-600">rate change</div>
                         <div className="text-xs sm:text-sm font-medium">{formatCurrency(forecast.potentialRevenue)}</div>
@@ -841,12 +839,23 @@ const RevenueManagementDashboard: React.FC = () => {
                   </div>
                 ))}
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="competition">
-          {rateShopping && (
+          {!rateShopping ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="text-center py-8 text-gray-500">
+                  <Eye className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No rate shopping data available</p>
+                  <p className="text-sm mt-1">Competitor rate data will appear once configured.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
             <div className="space-y-4 sm:space-y-6">
               <Card>
                 <CardHeader>
@@ -924,65 +933,65 @@ const RevenueManagementDashboard: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {demandForecast.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Brain className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No forecast data available</p>
+                  <p className="text-sm mt-1">Revenue forecasts will appear once sufficient booking history is available.</p>
+                </div>
+              ) : (
               <div className="space-y-4 sm:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                  <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
-                    <LineChart className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mx-auto mb-2" />
-                    <p className="text-lg sm:text-2xl font-bold text-blue-600">₹12.5M</p>
-                    <p className="text-xs sm:text-sm text-gray-600">30-day forecast</p>
-                  </div>
-                  <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
-                    <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 mx-auto mb-2" />
-                    <p className="text-lg sm:text-2xl font-bold text-green-600">+18%</p>
-                    <p className="text-xs sm:text-sm text-gray-600">vs last period</p>
-                  </div>
-                  <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
-                    <Target className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 mx-auto mb-2" />
-                    <p className="text-lg sm:text-2xl font-bold text-purple-600">92%</p>
-                    <p className="text-xs sm:text-sm text-gray-600">forecast accuracy</p>
-                  </div>
-                </div>
+                {(() => {
+                  const totalForecastRevenue = demandForecast.reduce((sum, f) => sum + (f.potentialRevenue || 0), 0);
+                  const projectedMonthly = totalForecastRevenue > 0 && demandForecast.length > 0 ? (totalForecastRevenue / demandForecast.length) * 30 : 0;
+                  const avgConfidence = demandForecast.length > 0
+                    ? demandForecast.reduce((sum, f) => sum + stripPercent(f.confidence), 0) / demandForecast.length
+                    : 0;
+                  const growthPct = performanceMetrics?.revenueGrowth ?? 0;
 
-                <div className="p-3 sm:p-4 border rounded-lg">
-                  <h4 className="font-medium mb-3 text-sm sm:text-base">Key Forecast Drivers</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-gray-600 mb-2">Positive Factors</p>
-                      <ul className="space-y-1 text-xs sm:text-sm">
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></div>
-                          Conference season starting
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></div>
-                          Increased corporate travel
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></div>
-                          Holiday booking surge
-                        </li>
-                      </ul>
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-gray-600 mb-2">Risk Factors</p>
-                      <ul className="space-y-1 text-xs sm:text-sm">
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
-                          New competitor opening
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
-                          Economic uncertainty
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
-                          Seasonal demand decline
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
+                  // Extract unique factors from all forecast days
+                  const allFactors = demandForecast.flatMap(f => f.factors || []);
+                  const uniqueFactors = [...new Set(allFactors)];
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                        <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
+                          <LineChart className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mx-auto mb-2" />
+                          <p className="text-lg sm:text-2xl font-bold text-blue-600">{formatCurrency(projectedMonthly)}</p>
+                          <p className="text-xs sm:text-sm text-gray-600">30-day forecast</p>
+                        </div>
+                        <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
+                          <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 mx-auto mb-2" />
+                          <p className={`text-lg sm:text-2xl font-bold ${growthPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {growthPct > 0 ? '+' : ''}{growthPct}%
+                          </p>
+                          <p className="text-xs sm:text-sm text-gray-600">vs last period</p>
+                        </div>
+                        <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
+                          <Target className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 mx-auto mb-2" />
+                          <p className="text-lg sm:text-2xl font-bold text-purple-600">{Math.round(avgConfidence)}%</p>
+                          <p className="text-xs sm:text-sm text-gray-600">forecast accuracy</p>
+                        </div>
+                      </div>
+
+                      {uniqueFactors.length > 0 && (
+                        <div className="p-3 sm:p-4 border rounded-lg">
+                          <h4 className="font-medium mb-3 text-sm sm:text-base">Key Forecast Drivers</h4>
+                          <div className="flex gap-2 flex-wrap">
+                            {uniqueFactors.map((factor, idx) => (
+                              <span key={idx} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                                {factor}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

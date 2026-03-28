@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +13,13 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/utils/toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { securityMonitoringService } from '@/services/securityMonitoringService';
+import type { AuditLogEntry, ThreatAlert as ThreatAlertType } from '@/services/securityMonitoringService';
 import {
   Shield, Lock, Key, Eye, EyeOff, UserCheck,
   AlertTriangle, CheckCircle, XCircle, Clock,
   FileText, Download, Trash2, RefreshCw,
-  Globe, Database, Fingerprint, Smartphone
+  Globe, Database, Fingerprint, Smartphone, Loader2
 } from 'lucide-react';
 
 // Security & Compliance Types
@@ -130,126 +132,100 @@ export const SecurityCompliance: React.FC = () => {
   const [securityThreats, setSecurityThreats] = useState<SecurityThreat[]>([]);
   const [complianceChecks, setComplianceChecks] = useState<ComplianceCheck[]>([]);
   const [securityScore, setSecurityScore] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Map backend audit log entries to the component's AuditLog shape */
+  const mapAuditLogEntry = (entry: AuditLogEntry): AuditLog => ({
+    id: entry._id,
+    timestamp: entry.createdAt,
+    userId: entry.userId || 'unknown',
+    userName: entry.userName || 'Unknown User',
+    action: entry.action,
+    resource: entry.resource,
+    ipAddress: entry.ipAddress || 'N/A',
+    userAgent: entry.userAgent || 'N/A',
+    status: entry.outcome === 'success' ? 'success' : entry.outcome === 'failure' ? 'failed' : 'warning',
+    details: entry.metadata
+      ? Object.entries(entry.metadata).map(([k, v]) => `${k}: ${v}`).join(', ')
+      : entry.action,
+    riskLevel: (entry.metadata?.riskLevel as AuditLog['riskLevel']) || 'low',
+  });
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+  /** Map backend threat alert to the component's SecurityThreat shape */
+  const mapThreatAlert = (alert: ThreatAlertType): SecurityThreat => ({
+    id: alert._id,
+    timestamp: alert.createdAt,
+    type: (alert.type || 'suspicious_login') as SecurityThreat['type'],
+    severity: alert.severity,
+    source: alert.source || 'Unknown',
+    description: alert.description || '',
+    status: alert.status === 'open'
+      ? 'active'
+      : alert.status === 'investigating'
+        ? 'investigated'
+        : alert.status === 'resolved'
+          ? 'resolved'
+          : 'false_positive',
+    mitigationActions: alert.mitigationActions || [],
+  });
+
+  const loadSecurityData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [auditRes, alertRes, dashboardRes] = await Promise.all([
+        securityMonitoringService.getAuditLogs({ limit: 50 }),
+        securityMonitoringService.getThreatAlerts({ status: 'all', limit: 50 }),
+        securityMonitoringService.getSecurityDashboard(),
+      ]);
+
+      // Audit logs
+      const logs = (auditRes.data || []).map(mapAuditLogEntry);
+      setAuditLogs(logs);
+
+      // Threat alerts
+      const threats = (alertRes.data || []).map(mapThreatAlert);
+      setSecurityThreats(threats);
+
+      // Compliance checks from dashboard
+      const dashboard = dashboardRes.data;
+      if (dashboard?.complianceStatus) {
+        const checks: ComplianceCheck[] = dashboard.complianceStatus.map((c, idx) => ({
+          id: `comp-${idx}`,
+          standard: c.standard as ComplianceCheck['standard'],
+          requirement: c.requirement,
+          status: c.status,
+          lastCheck: c.lastCheck,
+          nextCheck: c.nextCheck,
+          details: c.details,
+          remediationActions: c.remediationActions || [],
+        }));
+        setComplianceChecks(checks);
+      }
+
+      // Security score from dashboard
+      if (dashboard?.securityScore != null) {
+        setSecurityScore(dashboard.securityScore);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load security data';
+      setError(message);
+      console.error('SecurityCompliance: failed to load data', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     loadSecurityData();
+  }, [loadSecurityData]);
+
+  // Recalculate the local security score whenever settings change
+  // (only if the dashboard did not provide one)
+  useEffect(() => {
     calculateSecurityScore();
   }, [securitySettings, gdprSettings]);
-
-  const loadSecurityData = () => {
-    // Load mock audit logs
-    const mockAuditLogs: AuditLog[] = [
-      {
-        id: 'audit-001',
-        timestamp: new Date().toISOString(),
-        userId: 'user-123',
-        userName: 'John Smith',
-        action: 'LOGIN',
-        resource: 'Dashboard',
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        status: 'success',
-        details: 'Successful login with MFA',
-        riskLevel: 'low'
-      },
-      {
-        id: 'audit-002',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        userId: 'user-456',
-        userName: 'Jane Doe',
-        action: 'DATA_EXPORT',
-        resource: 'Guest Records',
-        ipAddress: '192.168.1.101',
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)',
-        status: 'success',
-        details: 'Exported 150 guest records for analytics',
-        riskLevel: 'medium'
-      },
-      {
-        id: 'audit-003',
-        timestamp: new Date(Date.now() - 600000).toISOString(),
-        userId: 'unknown',
-        userName: 'Unknown User',
-        action: 'LOGIN_ATTEMPT',
-        resource: 'Admin Panel',
-        ipAddress: '45.123.45.67',
-        userAgent: 'Automated Bot',
-        status: 'failed',
-        details: 'Failed login attempt - suspicious IP',
-        riskLevel: 'high'
-      }
-    ];
-
-    // Load mock security threats
-    const mockThreats: SecurityThreat[] = [
-      {
-        id: 'threat-001',
-        timestamp: new Date(Date.now() - 900000).toISOString(),
-        type: 'suspicious_login',
-        severity: 'high',
-        source: '45.123.45.67',
-        description: 'Multiple failed login attempts from suspicious IP address',
-        status: 'investigated',
-        mitigationActions: ['IP blocked', 'User accounts secured', 'Monitoring increased']
-      },
-      {
-        id: 'threat-002',
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        type: 'unauthorized_access',
-        severity: 'medium',
-        source: 'Internal Network',
-        description: 'Attempt to access restricted guest data without authorization',
-        status: 'resolved',
-        mitigationActions: ['Access revoked', 'User training scheduled', 'Permissions reviewed']
-      }
-    ];
-
-    // Load mock compliance checks
-    const mockCompliance: ComplianceCheck[] = [
-      {
-        id: 'comp-001',
-        standard: 'GDPR',
-        requirement: 'Data retention policy implementation',
-        status: 'compliant',
-        lastCheck: new Date(Date.now() - 604800000).toISOString(), // 1 week ago
-        nextCheck: new Date(Date.now() + 2592000000).toISOString(), // 1 month from now
-        details: 'Automated data retention policy active, guest data purged after 3 years',
-        remediationActions: []
-      },
-      {
-        id: 'comp-002',
-        standard: 'PCI_DSS',
-        requirement: 'Payment data encryption',
-        status: 'compliant',
-        lastCheck: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        nextCheck: new Date(Date.now() + 86400000).toISOString(), // 1 day from now
-        details: 'All payment data encrypted with AES-256, keys rotated monthly',
-        remediationActions: []
-      },
-      {
-        id: 'comp-003',
-        standard: 'ISO_27001',
-        requirement: 'Access control management',
-        status: 'partial',
-        lastCheck: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-        nextCheck: new Date(Date.now() + 604800000).toISOString(), // 1 week from now
-        details: 'Role-based access implemented, regular reviews needed',
-        remediationActions: ['Schedule quarterly access reviews', 'Implement privileged access management']
-      }
-    ];
-
-    setAuditLogs(mockAuditLogs);
-    setSecurityThreats(mockThreats);
-    setComplianceChecks(mockCompliance);
-  };
 
   const calculateSecurityScore = () => {
     let score = 0;
@@ -319,29 +295,47 @@ export const SecurityCompliance: React.FC = () => {
     return colors[risk as keyof typeof colors] || 'text-gray-600';
   };
 
-  const exportAuditLogs = () => {
-    // Mock export functionality
-    toast.success('Audit logs exported successfully');
+  const exportAuditLogs = async () => {
+    try {
+      await securityMonitoringService.exportSecurityReport({
+        format: 'json',
+        include_audit: true,
+        include_events: true,
+        include_alerts: true,
+      });
+      toast.success('Audit logs exported successfully');
+    } catch {
+      toast.error('Failed to export audit logs');
+    }
   };
 
-  const runComplianceCheck = (standard: string) => {
+  const runComplianceCheck = async (standard: string) => {
     toast.info(`Running ${standard} compliance check...`);
-    // Mock compliance check
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      toast.success(`${standard} compliance check completed`);
-    }, 2000);
+    try {
+      const dashboard = await securityMonitoringService.getSecurityDashboard();
+      const data = dashboard?.data || dashboard;
+      toast.success(`${standard} compliance check completed — Score: ${data?.complianceScore || data?.securityScore || 'N/A'}%`);
+      // Refresh compliance data
+      loadSecurityData();
+    } catch {
+      toast.error(`${standard} compliance check failed. Please try again.`);
+    }
   };
 
-  const resolveThreat = (threatId: string) => {
-    setSecurityThreats(prev =>
-      prev.map(threat =>
-        threat.id === threatId
-          ? { ...threat, status: 'resolved' }
-          : threat
-      )
-    );
-    toast.success('Security threat marked as resolved');
+  const resolveThreat = async (threatId: string) => {
+    try {
+      await securityMonitoringService.updateAlertStatus(threatId, { status: 'resolved' });
+      setSecurityThreats(prev =>
+        prev.map(threat =>
+          threat.id === threatId
+            ? { ...threat, status: 'resolved' }
+            : threat
+        )
+      );
+      toast.success('Security threat marked as resolved');
+    } catch {
+      toast.error('Failed to resolve threat');
+    }
   };
 
   return (
@@ -366,6 +360,26 @@ export const SecurityCompliance: React.FC = () => {
             Advanced security features, GDPR compliance, and comprehensive audit system
           </DialogDescription>
         </DialogHeader>
+
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <span className="ml-3 text-gray-500">Loading security data...</span>
+          </div>
+        )}
+
+        {error && !loading && (
+          <Alert className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>{error}</span>
+              <Button size="sm" variant="outline" onClick={loadSecurityData}>
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="dashboard" className="w-full">
           <TabsList className="grid w-full grid-cols-6">
@@ -431,7 +445,9 @@ export const SecurityCompliance: React.FC = () => {
                     <div>
                       <p className="text-sm font-medium text-gray-600">Compliance</p>
                       <p className="text-3xl font-bold text-blue-600">
-                        {Math.round((complianceChecks.filter(c => c.status === 'compliant').length / complianceChecks.length) * 100)}%
+                        {complianceChecks.length > 0
+                          ? Math.round((complianceChecks.filter(c => c.status === 'compliant').length / complianceChecks.length) * 100)
+                          : 0}%
                       </p>
                       <p className="text-xs text-gray-600">Standards met</p>
                     </div>
@@ -490,8 +506,8 @@ export const SecurityCompliance: React.FC = () => {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   Recent Security Events
-                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-                    <RefreshCw className="h-4 w-4 mr-1" />
+                  <Button size="sm" variant="outline" onClick={loadSecurityData} disabled={loading}>
+                    <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </CardTitle>
@@ -859,6 +875,12 @@ export const SecurityCompliance: React.FC = () => {
               <CardContent>
                 <ScrollArea className="h-96">
                   <div className="space-y-3">
+                    {auditLogs.length === 0 && !loading && (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No audit logs found</p>
+                      </div>
+                    )}
                     {auditLogs.map((log) => (
                       <div key={log.id} className="border rounded-lg p-4">
                         <div className="flex items-start justify-between mb-2">
@@ -903,6 +925,12 @@ export const SecurityCompliance: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {securityThreats.length === 0 && !loading && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Shield className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No security threats detected</p>
+                    </div>
+                  )}
                   {securityThreats.map((threat) => (
                     <Card key={threat.id} className="border-l-4 border-l-red-500">
                       <CardContent className="p-4">
@@ -963,6 +991,12 @@ export const SecurityCompliance: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {complianceChecks.length === 0 && !loading && (
+                    <div className="text-center py-8 text-gray-500">
+                      <CheckCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No compliance checks available</p>
+                    </div>
+                  )}
                   {complianceChecks.map((check) => (
                     <Card key={check.id}>
                       <CardContent className="p-4">

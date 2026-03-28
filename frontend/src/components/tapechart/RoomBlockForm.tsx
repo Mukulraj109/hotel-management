@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { formatCurrency } from '@/utils/currencyUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -258,7 +259,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
       onSuccess(newRoomBlock);
       
     } catch (error: unknown) {
-      setErrors({ submit: error.message || 'Failed to create room block' });
+      setErrors({ submit: error instanceof Error ? error.message : 'Failed to create room block' });
     } finally {
       setLoading(false);
     }
@@ -427,7 +428,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
                       <div className="flex-1">
                         <div className="font-medium">{room.roomNumber}</div>
                         <div className="text-sm text-gray-500">{room.type}</div>
-                        <div className="text-sm text-gray-500">₹{room.currentRate}/night</div>
+                        <div className="text-sm text-gray-500">{formatCurrency(room.currentRate)}/night</div>
                         {room.floor && <div className="text-xs text-gray-400">Floor {room.floor}</div>}
                       </div>
                     </div>

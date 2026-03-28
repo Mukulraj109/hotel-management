@@ -477,8 +477,8 @@ class WorkflowController {
           averageStayDuration,
           revenuePerRoom,
           maintenanceRequests: maintenanceRequests.length,
-          housekeepingEfficiency: 85, // Placeholder
-          guestSatisfaction: 4.2 // Placeholder
+          housekeepingEfficiency: 0, // Not yet calculated — requires completed vs assigned task tracking
+          guestSatisfaction: 0 // Not yet calculated — requires guest review aggregation
         }
       });
 
@@ -511,51 +511,65 @@ class WorkflowController {
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
       }).lean().limit(1000);
 
-      // Simple forecasting (in a real system, you'd use more sophisticated algorithms)
+      // Calculate historical averages from actual booking data
+      const totalRooms = await Room.countDocuments({ hotelId });
+      const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+      const totalNights = bookings.reduce((sum, b) => {
+        const checkIn = new Date(b.checkIn);
+        const checkOut = new Date(b.checkOut);
+        return sum + Math.max(1, Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24)));
+      }, 0);
+
+      const avgDailyOccupancy = totalRooms > 0 && days > 0
+        ? Math.min(100, (totalNights / (totalRooms * days)) * 100)
+        : 0;
+      const avgDailyRevenue = days > 0 ? totalRevenue / days : 0;
+
+      // Build deterministic forecast based on historical averages (no random noise)
       const occupancyForecast = [];
       const revenueForecast = [];
-      
+
       for (let i = 1; i <= 7; i++) {
         const date = new Date();
         date.setDate(date.getDate() + i);
-        
-        // Simple trend calculation
-        const predictedOccupancy = Math.min(95, 60 + Math.random() * 30);
-        const predictedRevenue = predictedOccupancy * 2500; // Average room rate
-        
+
         occupancyForecast.push({
           date: date.toISOString().split('T')[0],
-          predictedOccupancy: Math.round(predictedOccupancy),
-          confidence: 75 + Math.random() * 20
+          predictedOccupancy: Math.round(avgDailyOccupancy),
+          confidence: bookings.length >= 30 ? 80 : bookings.length >= 10 ? 60 : 40
         });
-        
+
         revenueForecast.push({
           date: date.toISOString().split('T')[0],
-          predictedRevenue: Math.round(predictedRevenue),
-          confidence: 70 + Math.random() * 25
+          predictedRevenue: Math.round(avgDailyRevenue),
+          confidence: bookings.length >= 30 ? 75 : bookings.length >= 10 ? 55 : 35
         });
       }
 
-      // Maintenance predictions (placeholder)
-      const maintenancePredictions = [];
-      const rooms = await Room.find({ hotelId }).limit(5).lean();
-      for (const room of rooms) {
-        if (Math.random() > 0.7) { // 30% chance of maintenance needed
-          maintenancePredictions.push({
-            roomId: room._id,
-            issueType: ['plumbing', 'electrical', 'hvac', 'furniture'][Math.floor(Math.random() * 4)],
-            probability: Math.round((Math.random() * 40 + 30) * 100) / 100,
-            estimatedDate: new Date(Date.now() + Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          });
-        }
-      }
+      // Maintenance predictions: based on actual pending maintenance requests, not random
+      const pendingMaintenance = await MaintenanceRequest.find({
+        hotelId,
+        status: { $in: ['pending', 'in_progress'] }
+      }).lean().limit(20);
+
+      const maintenancePredictions = pendingMaintenance.map(req => ({
+        roomId: req.roomId,
+        issueType: req.issueType || 'general',
+        status: req.status,
+        scheduledDate: req.scheduledDate ? new Date(req.scheduledDate).toISOString().split('T')[0] : null
+      }));
 
       res.json({
         status: 'success',
         data: {
           occupancyForecast,
           revenueForecast,
-          maintenancePredictions
+          maintenancePredictions,
+          _meta: {
+            basedOnBookings: bookings.length,
+            historicalPeriodDays: days,
+            note: 'Forecasts are simple historical averages. A proper ML prediction engine is not yet implemented.'
+          }
         }
       });
 
@@ -789,19 +803,25 @@ class WorkflowController {
       const totalRevenue = approvedUpgrades * 125; // Average upgrade value
       const conversionRate = totalSuggestions > 0 ? Math.round((approvedUpgrades / totalSuggestions) * 100) : 0;
 
+      // Calculate average increase from actual data only
+      const averageIncrease = approvedUpgrades > 0 ? Math.round(totalRevenue / approvedUpgrades) : 0;
+
       res.json({
         status: 'success',
         data: {
-          totalSuggestions: totalSuggestions || 145, // Mock data if no real data
-          acceptedUpgrades: approvedUpgrades || 87,
-          rejectedUpgrades: rejectedUpgrades || 58,
-          totalRevenue: totalRevenue || 15450,
-          averageIncrease: 125,
-          conversionRate: conversionRate || 60,
+          totalSuggestions,
+          acceptedUpgrades: approvedUpgrades,
+          rejectedUpgrades,
+          totalRevenue,
+          averageIncrease,
+          conversionRate,
           byTier: {
-            vip: { acceptance: 85, count: Math.floor(approvedUpgrades * 0.3) },
-            corporate: { acceptance: 72, count: Math.floor(approvedUpgrades * 0.4) },
-            regular: { acceptance: 45, count: Math.floor(approvedUpgrades * 0.3) }
+            vip: { acceptance: 0, count: 0 },
+            corporate: { acceptance: 0, count: 0 },
+            regular: { acceptance: 0, count: 0 }
+          },
+          _meta: {
+            note: 'Tier-level breakdown requires tagging upgrades by guest tier, which is not yet tracked.'
           }
         }
       });

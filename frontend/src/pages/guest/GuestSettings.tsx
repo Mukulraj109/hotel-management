@@ -104,7 +104,26 @@ export default function GuestSettings() {
   // Save settings mutation
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: GuestSettingsFormData) => {
-      const { data: result } = await api.put('/guest/settings', data);
+      // Map form data to the backend's expected guest preferences structure
+      const guestPreferences = {
+        stayPreferences: {
+          roomType: data.roomType,
+          floor: data.floor,
+          bedType: data.bedType,
+          smoking: data.smoking,
+          dietaryRestrictions: data.dietaryRestrictions,
+        },
+        communication: {
+          preferredChannel: data.preferredChannel,
+          marketingConsent: data.marketingConsent,
+        },
+        privacy: {
+          dataSharing: data.dataSharing,
+          locationTracking: data.locationTracking,
+          analyticsTracking: data.analyticsTracking,
+        },
+      };
+      const { data: result } = await api.put('/user-preferences/guest', guestPreferences);
       return result;
     },
     onSuccess: () => {
@@ -180,7 +199,7 @@ export default function GuestSettings() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/guest')}
+                onClick={() => navigate('/app')}
                 className="flex items-center space-x-2"
               >
                 <ArrowLeft className="h-4 w-4" />

@@ -40,31 +40,50 @@ const router = express.Router();
  *         description: List of hotel services
  */
 router.get('/', catchAsync(async (req, res) => {
-  const { type, search, featured } = req.query;
-  const user = await req.user;
-  
-  let query = { isActive: true };
-  
-  if (user?.hotelId) {
-    query.hotelId = user.hotelId;
+  const { type, search, featured, hotelId: queryHotelId, page = '1', limit = '20' } = req.query;
+  const user = req.user;
+
+  // Resolve hotelId — require it from either user context or query param
+  const resolvedHotelId = user?.hotelId || queryHotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context is required' });
   }
-  
+
+  const query = { isActive: true, hotelId: resolvedHotelId };
+
   if (type) {
     query.type = type;
   }
-  
+
   if (featured === 'true') {
     query.featured = true;
   }
-  
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
   let services;
-  
-  if (search) {
-    services = await HotelService.searchServices(user?.hotelId, search);
+
+  if (search && typeof search === 'string') {
+    const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').trim();
+    if (safeSearch) {
+      const regex = new RegExp(safeSearch, 'i');
+      query.$or = [{ name: regex }, { description: regex }, { tags: regex }];
+    }
+    services = await HotelService.find(query)
+      .sort({ featured: -1, 'rating.average': -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate('hotelId', 'name')
+      .lean();
   } else {
     services = await HotelService.find(query)
       .sort({ featured: -1, 'rating.average': -1 })
-      .populate('hotelId', 'name').lean().limit(1000);
+      .skip(skip)
+      .limit(limitNum)
+      .populate('hotelId', 'name')
+      .lean();
   }
 
   res.json({
@@ -213,9 +232,14 @@ router.get('/types', catchAsync(async (req, res) => {
  *         description: List of featured services
  */
 router.get('/featured', catchAsync(async (req, res) => {
-  const user = await req.user;
-  
-  const featuredServices = await HotelService.getFeaturedServices(user?.hotelId);
+  const user = req.user;
+  const hotelId = user?.hotelId || req.query.hotelId;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context is required' });
+  }
+
+  const featuredServices = await HotelService.getFeaturedServices(hotelId);
 
   res.json({
     status: 'success',
@@ -441,17 +465,27 @@ router.post('/bookings/:bookingId/cancel',
     const { bookingId } = req.params;
     const { reason } = req.body;
     
-    const booking = await ServiceBooking.findById(bookingId).lean();
+    // Do NOT use .lean() — we need the cancelBooking instance method
+    const booking = await ServiceBooking.findById(bookingId);
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
-    
+
     // Check if user owns this booking
     if (booking.userId.toString() !== req.user._id.toString()) {
       throw new ApplicationError('Not authorized to cancel this booking', 403);
     }
-    
-    await booking.cancelBooking(reason, req.user._id);
+
+    if (typeof booking.cancelBooking === 'function') {
+      await booking.cancelBooking(reason, req.user._id);
+    } else {
+      // Fallback: update directly if instance method is not available
+      booking.status = 'cancelled';
+      booking.cancellationReason = reason;
+      booking.cancelledBy = req.user._id;
+      booking.cancelledAt = new Date();
+      await booking.save();
+    }
 
     res.json({
       status: 'success',

@@ -143,59 +143,24 @@ const TravelAgentDashboard: React.FC = () => {
 
   const fetchAnalyticsData = async () => {
     try {
-      // Mock analytics data - replace with actual API calls
-      const bookingTrends: BookingTrend[] = [];
-      const commissionData: CommissionData[] = [];
-      const revenueData: RevenueData[] = [];
-
-      // Generate sample data based on date range
-      const startDate = new Date(dateRange.start);
-      const endDate = new Date(dateRange.end);
-      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
-
-      for (let i = 0; i < daysDiff; i++) {
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + i);
-        const dateStr = format(date, 'yyyy-MM-dd');
-
-        bookingTrends.push({
-          date: dateStr,
-          bookings: Math.floor(Math.random() * 10) + 1,
-          revenue: Math.floor(Math.random() * 5000) + 1000,
-          guests: Math.floor(Math.random() * 20) + 5,
-          averageRate: Math.floor(Math.random() * 200) + 100
-        });
-
-        commissionData.push({
-          period: dateStr,
-          totalCommission: Math.floor(Math.random() * 500) + 100,
-          paidCommission: Math.floor(Math.random() * 300) + 50,
-          pendingCommission: Math.floor(Math.random() * 200) + 50,
-          bonusCommission: Math.floor(Math.random() * 100),
-          commissionRate: 10 + Math.random() * 5,
-          bookingCount: Math.floor(Math.random() * 10) + 1
-        });
-
-        revenueData.push({
-          period: dateStr,
-          totalRevenue: Math.floor(Math.random() * 5000) + 1000,
-          roomRevenue: Math.floor(Math.random() * 4000) + 800,
-          additionalServices: Math.floor(Math.random() * 500) + 100,
-          taxes: Math.floor(Math.random() * 200) + 50,
-          discounts: Math.floor(Math.random() * 100),
-          netRevenue: Math.floor(Math.random() * 4500) + 900,
-          bookingCount: Math.floor(Math.random() * 10) + 1,
-          averageRevenuePerBooking: Math.floor(Math.random() * 500) + 200
-        });
-      }
-
-      setAnalyticsData({
-        bookingTrends,
-        commissionData,
-        revenueData
+      const analyticsResult = await travelAgentService.getTravelAnalytics({
+        startDate: dateRange.start,
+        endDate: dateRange.end,
       });
+
+      if (analyticsResult) {
+        const raw = analyticsResult as Record<string, unknown>;
+        setAnalyticsData({
+          bookingTrends: (raw.bookingTrends as BookingTrend[]) || [],
+          commissionData: (raw.commissionData as CommissionData[]) || [],
+          revenueData: (raw.revenueData as RevenueData[]) || []
+        });
+      } else {
+        setAnalyticsData({ bookingTrends: [], commissionData: [], revenueData: [] });
+      }
     } catch (error) {
-      toast.error('Failed to load analytics data');
+      // On error, show empty data rather than fabricated data
+      setAnalyticsData({ bookingTrends: [], commissionData: [], revenueData: [] });
     }
   };
 
@@ -228,27 +193,8 @@ const TravelAgentDashboard: React.FC = () => {
   };
 
   const initializeNotifications = () => {
-    // Mock notifications - replace with actual data
-    const mockNotifications: Notification[] = [
-      {
-        id: '1',
-        type: 'success',
-        title: 'Commission Payment Processed',
-        message: 'Your commission payment of ₹1,250 has been processed and will be transferred within 24 hours.',
-        timestamp: new Date(),
-        read: false,
-        autoDismiss: true
-      },
-      {
-        id: '2',
-        type: 'info',
-        title: 'New Booking Confirmed',
-        message: 'Booking #HTL-2024-001 for John Smith has been confirmed.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 30),
-        read: false
-      }
-    ];
-    setNotifications(mockNotifications);
+    // No fake notifications - start empty; real notifications come via real-time updates
+    setNotifications([]);
   };
 
   const handleExport = async (format: string, selectedFields: string[]) => {

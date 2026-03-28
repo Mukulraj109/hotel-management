@@ -310,6 +310,51 @@ router.get('/overbooking', authenticate, authorizePolicy('availability', 'staffA
 
 /**
  * @swagger
+ * /api/v1/availability/overbooking/stats:
+ *   get:
+ *     summary: Get overbooking statistics for dashboard
+ *     tags: [Availability]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Overbooking statistics
+ */
+router.get('/overbooking/stats', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingStats);
+
+/**
+ * @swagger
+ * /api/v1/availability/overbooking/alerts:
+ *   get:
+ *     summary: Get overbooking alerts for upcoming dates
+ *     tags: [Availability]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 14
+ *     responses:
+ *       200:
+ *         description: Overbooking alerts list
+ */
+router.get('/overbooking/alerts', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingAlerts);
+
+/**
+ * @swagger
  * /api/v1/availability/with-rates:
  *   get:
  *     summary: Get comprehensive availability and rate information

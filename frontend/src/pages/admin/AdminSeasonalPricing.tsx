@@ -20,6 +20,12 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as Record<string, unknown>).message);
+  return 'An unexpected error occurred';
+};
+
 interface Season {
   _id: string;
   seasonId: string;
@@ -160,7 +166,7 @@ const AdminSeasonalPricing: React.FC = () => {
       setShowCreateSeason(false);
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error creating season', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -189,7 +195,7 @@ const AdminSeasonalPricing: React.FC = () => {
       setShowCreateSpecialPeriod(false);
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error creating special period', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -223,7 +229,7 @@ const AdminSeasonalPricing: React.FC = () => {
       setEditingItem(null);
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error updating item', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 
@@ -254,7 +260,7 @@ const AdminSeasonalPricing: React.FC = () => {
       }
       loadData();
     } catch (error: unknown) {
-      showToast(error.message || 'Error deleting item', 'error');
+      showToast(getErrorMessage(error), 'error');
     }
   };
 

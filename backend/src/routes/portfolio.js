@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensurePropertyAccess, getUserPropertyIds } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import Hotel from '../models/Hotel.js';
@@ -16,6 +16,20 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
+ * Get all accessible property IDs for the current user.
+ * Uses getUserPropertyIds which includes owned + assigned + hotelId + allowedProperties.
+ */
+async function getAccessibleProperties(user) {
+  const propertyIds = await getUserPropertyIds(user._id, user);
+  if (!propertyIds || propertyIds.length === 0) return { propertyIds: [], properties: [] };
+  const properties = await Hotel.find({ _id: { $in: propertyIds }, isActive: { $ne: false } })
+    .select('name address')
+    .lean()
+    .limit(1000);
+  return { propertyIds: properties.map(p => p._id), properties };
+}
+
+/**
  * @swagger
  * /portfolio/metrics:
  *   get:
@@ -28,16 +42,10 @@ router.use(authenticate);
  *         description: Portfolio metrics
  */
 router.get('/metrics', catchAsync(async (req, res) => {
-  // Get all properties owned by user
-  const properties = await Hotel.find({
-    $or: [
-      { ownerId: req.user._id },
-      { createdBy: req.user._id }
-    ],
-    isActive: { $ne: false }
-  }).select('name address').populate('totalRooms').lean().limit(1000);
+  // Get all accessible properties (owned + assigned + hotelId + allowedProperties)
+  const { propertyIds, properties } = await getAccessibleProperties(req.user);
 
-  if (!properties || properties.length === 0) {
+  if (properties.length === 0) {
     return res.json({
       success: true,
       data: {
@@ -50,8 +58,6 @@ router.get('/metrics', catchAsync(async (req, res) => {
       }
     });
   }
-
-  const propertyIds = properties.map(p => p._id);
 
   logger.debug('Portfolio metrics', { propertiesFound: properties.length });
 
@@ -174,16 +180,10 @@ router.get('/metrics', catchAsync(async (req, res) => {
 router.get('/dashboard', catchAsync(async (req, res) => {
   const { period = '30d' } = req.query;
 
-  // Get all user's properties
-  const properties = await Hotel.find({
-    $or: [
-      { ownerId: req.user._id },
-      { createdBy: req.user._id }
-    ],
-    isActive: { $ne: false }
-  }).populate('totalRooms').lean().limit(1000);
+  // Get all accessible properties (owned + assigned + hotelId + allowedProperties)
+  const { propertyIds, properties } = await getAccessibleProperties(req.user);
 
-  if (!properties || properties.length === 0) {
+  if (properties.length === 0) {
     return res.json({
       success: true,
       data: {
@@ -193,8 +193,6 @@ router.get('/dashboard', catchAsync(async (req, res) => {
       }
     });
   }
-
-  const propertyIds = properties.map(p => p._id);
 
   // Calculate date range based on period
   const endDate = new Date();
@@ -298,7 +296,9 @@ router.get('/dashboard', catchAsync(async (req, res) => {
       summary: {
         totalRevenue: propertyBreakdown.reduce((sum, p) => sum + p.metrics.revenue, 0),
         totalBookings: propertyBreakdown.reduce((sum, p) => sum + p.metrics.bookings, 0),
-        avgOccupancy: propertyBreakdown.reduce((sum, p) => sum + p.metrics.occupancy, 0) / propertyBreakdown.length
+        avgOccupancy: propertyBreakdown.length > 0
+          ? propertyBreakdown.reduce((sum, p) => sum + p.metrics.occupancy, 0) / propertyBreakdown.length
+          : 0
       }
     }
   });
@@ -337,15 +337,8 @@ router.get('/revenue', catchAsync(async (req, res) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // Get user's properties
-  const properties = await Hotel.find({
-    $or: [
-      { ownerId: req.user._id },
-      { createdBy: req.user._id }
-    ]
-  }).select('name address').lean().limit(1000);
-
-  const propertyIds = properties.map(p => p._id);
+  // Get all accessible properties
+  const { propertyIds } = await getAccessibleProperties(req.user);
 
   // Get revenue breakdown by property
   const revenueByProperty = await Booking.aggregate([
@@ -434,15 +427,8 @@ router.get('/revenue', catchAsync(async (req, res) => {
 router.get('/bookings', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status } = req.query;
 
-  // Get user's properties
-  const properties = await Hotel.find({
-    $or: [
-      { ownerId: req.user._id },
-      { createdBy: req.user._id }
-    ]
-  }).lean().limit(1000);
-
-  const propertyIds = properties.map(p => p._id);
+  // Get all accessible properties
+  const { propertyIds } = await getAccessibleProperties(req.user);
 
   // Build query
   const query = { hotelId: { $in: propertyIds } };
@@ -503,15 +489,8 @@ router.get('/bookings', catchAsync(async (req, res) => {
 router.get('/occupancy', catchAsync(async (req, res) => {
   const { period = '30d' } = req.query;
 
-  // Get user's properties
-  const properties = await Hotel.find({
-    $or: [
-      { ownerId: req.user._id },
-      { createdBy: req.user._id }
-    ]
-  }).lean().limit(1000);
-
-  const propertyIds = properties.map(p => p._id);
+  // Get all accessible properties
+  const { propertyIds, properties } = await getAccessibleProperties(req.user);
 
   // Calculate date range
   const endDate = new Date();

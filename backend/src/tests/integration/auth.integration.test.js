@@ -5,7 +5,7 @@ import app from '../../server.js';
 // Integration test: imports full server.js (168 routes + import.meta usage).
 // Cannot run under Babel CJS transform — requires Node ESM mode.
 // Run with: npm run test:integration
-describe.skip('Authentication Tests (requires ESM runner)', () => {
+describe('Authentication Tests (requires ESM runner)', () => {
   let testUser;
   let testHotel;
 

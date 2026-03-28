@@ -4,6 +4,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import crypto from 'crypto';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import logger from '../utils/logger.js';
 
 /**
  * Create a new user (Admin, Manager, Staff only)
@@ -317,10 +318,8 @@ export const getUsers = catchAsync(async (req, res) => {
   // Build query - admins can see all users, non-admins can only see users from their properties
   let query = {};
 
-  console.log('👤 User search request:', {
+  logger.debug('User search request', {
     role: req.user.role,
-    userProperties: req.user.properties,
-    userHotelId: req.user.hotelId,
     requestedHotelId: hotelId,
     searchQuery: search,
     requestedRole: role
@@ -337,18 +336,18 @@ export const getUsers = catchAsync(async (req, res) => {
       // Non-admin users can only see staff/admin from properties they have access to
       const userPropertyIds = req.user.properties || [];
       query.hotelId = { $in: userPropertyIds };
-      console.log('🔒 Non-admin filter applied for staff/admin. Properties:', userPropertyIds);
+      logger.debug('Non-admin filter applied for staff/admin', { propertyCount: userPropertyIds.length });
     } else {
-      console.log('👑 Admin user - no property filter for staff/admin');
+      logger.debug('Admin user - no property filter for staff/admin');
     }
 
     // Filter by specific property if hotelId is provided (for staff/admin only)
     if (hotelId) {
       query.hotelId = hotelId;
-      console.log('🏨 HotelId filter applied for staff/admin:', hotelId);
+      logger.debug('HotelId filter applied for staff/admin', { hotelId });
     }
   } else {
-    console.log('👥 Guest role - NO hotelId filter (guests are shared across hotels)');
+    logger.debug('Guest role - no hotelId filter');
   }
   if (search) {
     query.$or = [
@@ -356,10 +355,10 @@ export const getUsers = catchAsync(async (req, res) => {
       { email: { $regex: search, $options: 'i' } },
       { phone: { $regex: search, $options: 'i' } }
     ];
-    console.log('🔍 Search filter applied:', search);
+    logger.debug('Search filter applied', { search });
   }
 
-  console.log('📋 Final MongoDB query:', JSON.stringify(query, null, 2));
+  logger.debug('Staff query filter', { query });
 
   // Pagination
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -377,11 +376,7 @@ export const getUsers = catchAsync(async (req, res) => {
     User.countDocuments(query)
   ]);
 
-  console.log('✅ Query executed successfully:', {
-    totalFound: total,
-    returned: users.length,
-    userNames: users.map(u => u.name).join(', ')
-  });
+  logger.debug('Staff query executed', { totalFound: total, returned: users.length });
 
   res.json({
     success: true,

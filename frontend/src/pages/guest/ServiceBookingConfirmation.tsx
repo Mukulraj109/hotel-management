@@ -427,7 +427,7 @@ For any queries, please contact us.
             </Button>
             
             <Button 
-              onClick={() => navigate('/app/dashboard')}
+              onClick={() => navigate('/app')}
               size="lg"
             >
               Go to Dashboard

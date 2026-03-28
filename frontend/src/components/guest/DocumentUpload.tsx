@@ -196,7 +196,7 @@ export default function DocumentUpload({
         onDocumentUploaded(newDocument);
       }
     } catch (error: unknown) {
-      toast.error(error.message || 'Failed to upload document');
+      toast.error(error instanceof Error ? error.message : 'Failed to upload document');
     } finally {
       setUploading(false);
     }

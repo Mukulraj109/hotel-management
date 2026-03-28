@@ -43,7 +43,8 @@ Code-level closure is complete for the items above. Remaining strict signoff blo
 - PMS acceptance verification: `cd backend && npm run pms:verify`
 - Backup drill precheck: `cd backend && npm run drill:precheck`
 - Restore replay: `cd backend && npm run drill:restore-replay`
-- Integration tests: `cd backend && npm run test:integration`
+- Integration tests: `cd backend && npm run test:integration` (full suite may need ESM/in-band tuning)
+- Switch-hotel (multi-property tenant) HTTP integration: `cd backend && npm run test:integration:switch-hotel`
 
 ## Latest Execution Snapshot (2026-03-26)
 

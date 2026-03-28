@@ -4,7 +4,6 @@ const chartOfAccountsSchema = new mongoose.Schema({
   accountCode: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
   accountName: {

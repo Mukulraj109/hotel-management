@@ -7,12 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { 
-  Calendar, 
-  Users, 
-  Building, 
-  Mail, 
-  Phone, 
+import { formatCurrency } from '@/utils/currencyUtils';
+import {
+  Calendar,
+  Users,
+  Building,
+  Mail,
+  Phone,
   IndianRupee,
   CheckCircle,
   XCircle,
@@ -301,7 +302,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
                 {roomBlock.blockRate && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Block Rate:</span>
-                    <span className="font-medium">₹{roomBlock.blockRate}/night</span>
+                    <span className="font-medium">{formatCurrency(roomBlock.blockRate)}/night</span>
                   </div>
                 )}
               </CardContent>
@@ -315,7 +316,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Estimated Revenue:</span>
-                  <span className="font-medium">₹{estimatedRevenue.toLocaleString()}</span>
+                  <span className="font-medium">{formatCurrency(estimatedRevenue)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Currency:</span>
@@ -378,7 +379,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
                         <div>
                           <div className="font-medium">Room {room.roomNumber}</div>
                           <div className="text-sm text-gray-500">{room.roomType}</div>
-                          {room.rate && <div className="text-sm text-gray-500">₹{room.rate}/night</div>}
+                          {room.rate && <div className="text-sm text-gray-500">{formatCurrency(room.rate)}/night</div>}
                         </div>
                         {getRoomStatusBadge(room.status)}
                       </div>

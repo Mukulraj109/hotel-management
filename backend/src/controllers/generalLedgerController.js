@@ -7,8 +7,7 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 // Get general ledger entries with filtering
 export const getLedgerEntries = catchAsync(async (req, res) => {
-  // Temporarily bypass hotel filtering for testing
-  // const { hotelId } = req.user;
+  const { hotelId } = req.user;
   const {
     accountId,
     startDate,
@@ -19,7 +18,7 @@ export const getLedgerEntries = catchAsync(async (req, res) => {
     limit = 100
   } = req.query;
 
-  let filter = { status }; // Remove hotelId filter temporarily
+  let filter = { hotelId, status };
 
   if (accountId) filter.accountId = accountId;
   if (referenceType) filter.referenceType = referenceType;
@@ -525,11 +524,10 @@ export const exportLedger = catchAsync(async (req, res) => {
     return res.send(csv);
   }
 
-  // For now, return JSON data (Excel export would need a library like exceljs)
-  res.status(200).json({
-    status: 'success',
-    message: 'Excel export not yet implemented',
-    data: exportData
+  // Excel export requires a dedicated library (e.g. exceljs or xlsx)
+  res.status(501).json({
+    status: 'error',
+    message: 'Excel export requires xlsx library integration'
   });
 });
 

@@ -5,23 +5,18 @@ import {
   Edit,
   Trash2,
   Search,
-  Filter,
-  MoreHorizontal,
-  Eye,
-  Activity,
   TrendingUp,
   Users,
   Gift,
   CheckCircle,
-  XCircle,
-  BarChart3
+  XCircle
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
+import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
@@ -259,7 +254,8 @@ function AdminOfferManagement() {
       queryClient.invalidateQueries({ queryKey: ['admin-offers'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to create offer');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to create offer'));
     }
   });
 
@@ -274,7 +270,8 @@ function AdminOfferManagement() {
       queryClient.invalidateQueries({ queryKey: ['admin-offers'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to update offer');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to update offer'));
     }
   });
 
@@ -285,81 +282,98 @@ function AdminOfferManagement() {
       queryClient.invalidateQueries({ queryKey: ['admin-offers'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to delete offer');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Failed to delete offer'));
     }
   });
 
   const bulkMutation = useMutation({
     mutationFn: (data: { offerIds: string[]; operation: string }) =>
       bulkOperation({ ...data, propertyId: selectedPropertyId }),
-    onSuccess: (data) => {
-      toast.success(`Bulk operation completed: ${data.affectedCount} offers affected`);
+    onSuccess: (data: { affectedCount?: number } | undefined) => {
+      toast.success(`Bulk operation completed: ${data?.affectedCount ?? 0} offers affected`);
       setSelectedOffers([]);
       queryClient.invalidateQueries({ queryKey: ['admin-offers'] });
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Bulk operation failed');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr.response?.data?.message || (error instanceof Error ? error.message : 'Bulk operation failed'));
     }
   });
 
   const offers = offersData?.offers || [];
-  const pagination = offersData?.pagination || {};
+  const pagination = offersData?.pagination || { currentPage: 1, totalPages: 1, totalItems: 0, itemsPerPage: 20, hasNext: false, hasPrev: false };
 
-  const handleCreateOffer = () => {
-    const submitData = { ...formData };
-    
-    // Clean up form data
+  const validateForm = (data: OfferFormData): string | null => {
+    if (!data.title.trim()) {
+      return 'Offer title is required';
+    }
+    if (data.pointsRequired < 1) {
+      return 'Points required must be at least 1';
+    }
+    if (data.type === 'discount') {
+      if (data.discountPercentage < 0 || data.discountPercentage > 100) {
+        return 'Discount percentage must be between 0 and 100';
+      }
+      if (data.discountAmount < 0) {
+        return 'Fixed discount amount cannot be negative';
+      }
+      if (!data.discountPercentage && !data.discountAmount) {
+        return 'Discount offers must have either a discount percentage or fixed discount amount greater than 0';
+      }
+    }
+    if (!data.validFrom) {
+      return 'Valid From date is required';
+    }
+    if (data.validUntil && data.validFrom && data.validUntil < data.validFrom) {
+      return 'Valid Until date must be after Valid From date';
+    }
+    return null;
+  };
+
+  const cleanFormData = (data: OfferFormData): Partial<OfferFormData> => {
+    const submitData = { ...data };
+    const cleaned: Partial<OfferFormData> = { ...submitData };
     if (!submitData.validUntil) {
-      const { validUntil, ...rest } = submitData;
-      Object.assign(submitData, rest);
+      delete cleaned.validUntil;
     }
     if (!submitData.maxRedemptions || submitData.maxRedemptions <= 0) {
-      const { maxRedemptions, ...rest } = submitData;
-      Object.assign(submitData, rest);
+      delete cleaned.maxRedemptions;
     }
     if (!submitData.imageUrl) {
-      const { imageUrl, ...rest } = submitData;
-      Object.assign(submitData, rest);
+      delete cleaned.imageUrl;
     }
     if (!submitData.terms) {
-      const { terms, ...rest } = submitData;
-      Object.assign(submitData, rest);
+      delete cleaned.terms;
     }
     if (submitData.type !== 'discount') {
-      const { discountPercentage, discountAmount, ...rest } = submitData;
-      Object.assign(submitData, rest);
+      delete cleaned.discountPercentage;
+      delete cleaned.discountAmount;
+    }
+    return cleaned;
+  };
+
+  const handleCreateOffer = () => {
+    const validationError = validateForm(formData);
+    if (validationError) {
+      toast.error(validationError);
+      return;
     }
 
+    const submitData = cleanFormData(formData);
     createMutation.mutate(submitData);
   };
 
   const handleUpdateOffer = () => {
     if (!editingOffer) return;
 
-    const submitData = { ...formData };
-    
-    // Clean up form data
-    if (!submitData.validUntil) {
-      const { validUntil, ...rest } = submitData;
-      Object.assign(submitData, rest);
-    }
-    if (!submitData.maxRedemptions || submitData.maxRedemptions <= 0) {
-      const { maxRedemptions, ...rest } = submitData;
-      Object.assign(submitData, rest);
-    }
-    if (!submitData.imageUrl) {
-      const { imageUrl, ...rest } = submitData;
-      Object.assign(submitData, rest);
-    }
-    if (!submitData.terms) {
-      const { terms, ...rest } = submitData;
-      Object.assign(submitData, rest);
-    }
-    if (submitData.type !== 'discount') {
-      const { discountPercentage, discountAmount, ...rest } = submitData;
-      Object.assign(submitData, rest);
+    const validationError = validateForm(formData);
+    if (validationError) {
+      toast.error(validationError);
+      return;
     }
 
+    const submitData = cleanFormData(formData);
     updateMutation.mutate({ id: editingOffer._id, data: submitData });
   };
 
@@ -684,28 +698,30 @@ function AdminOfferManagement() {
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Top Performing Offers</h3>
                 <div className="space-y-4">
-                  {analytics?.offerPerformance?.slice(0, 5).map((offer, index) => (
-                    <div key={offer._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-semibold">
-                          {index + 1}
+                  {analytics?.offerPerformance && analytics.offerPerformance.length > 0 ? (
+                    analytics.offerPerformance.slice(0, 5).map((offer: { _id: string; offerTitle?: string; offerCategory?: string; offerType?: string; totalRedemptions: number; totalPointsRedeemed: number }, index: number) => (
+                      <div key={offer._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-semibold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="font-medium">{offer.offerTitle ?? 'Untitled Offer'}</p>
+                            <p className="text-sm text-gray-600">
+                              {offer.offerCategory ?? 'N/A'} • {offer.offerType?.replace('_', ' ') ?? 'N/A'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{offer.offerTitle}</p>
+                        <div className="text-right">
+                          <p className="font-semibold">{offer.totalRedemptions} redemptions</p>
                           <p className="text-sm text-gray-600">
-                            {offer.offerCategory} • {offer.offerType?.replace('_', ' ')}
+                            {(offer.totalPointsRedeemed ?? 0).toLocaleString()} points
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{offer.totalRedemptions} redemptions</p>
-                        <p className="text-sm text-gray-600">
-                          {offer.totalPointsRedeemed.toLocaleString()} points
-                        </p>
-                      </div>
-                    </div>
-                  )) || (
-                    <p className="text-center text-gray-500 py-8">No redemptions yet</p>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-500 py-8">No offers to display. Create your first offer to see performance data.</p>
                   )}
                 </div>
               </Card>
@@ -714,16 +730,18 @@ function AdminOfferManagement() {
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Category Breakdown</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {analytics?.categoryBreakdown?.map((category) => (
-                    <div key={category._id} className="p-4 bg-gray-50 rounded-lg">
-                      <h4 className="font-medium capitalize mb-2">{category._id}</h4>
-                      <p className="text-2xl font-semibold text-blue-600">{category.totalRedemptions}</p>
-                      <p className="text-sm text-gray-600">
-                        {category.totalPointsRedeemed.toLocaleString()} points redeemed
-                      </p>
-                    </div>
-                  )) || (
-                    <p className="text-center text-gray-500 py-8 col-span-full">No data available</p>
+                  {analytics?.categoryBreakdown && analytics.categoryBreakdown.length > 0 ? (
+                    analytics.categoryBreakdown.map((category: { _id: string; totalRedemptions: number; totalPointsRedeemed: number }) => (
+                      <div key={category._id} className="p-4 bg-gray-50 rounded-lg">
+                        <h4 className="font-medium capitalize mb-2">{category._id ?? 'Unknown'}</h4>
+                        <p className="text-2xl font-semibold text-blue-600">{category.totalRedemptions}</p>
+                        <p className="text-sm text-gray-600">
+                          {(category.totalPointsRedeemed ?? 0).toLocaleString()} points redeemed
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-500 py-8 col-span-full">No offers to display. Create your first offer to see performance data.</p>
                   )}
                 </div>
               </Card>
@@ -1026,12 +1044,12 @@ function OfferForm({ formData, setFormData, onSubmit, isLoading, isEdit }: Offer
       </div>
 
       <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
-        <Button type="button" variant="outline" className="w-full sm:w-auto">
+        <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isLoading}>
           Cancel
         </Button>
-        <Button type="button" onClick={onSubmit} disabled={isLoading} className="w-full sm:w-auto">
+        <Button type="button" onClick={onSubmit} disabled={isLoading || !formData.title.trim()} className="w-full sm:w-auto">
           {isLoading && <LoadingSpinner size="sm" className="mr-2" />}
-          {isEdit ? 'Update Offer' : 'Create Offer'}
+          {isLoading ? (isEdit ? 'Updating...' : 'Creating...') : (isEdit ? 'Update Offer' : 'Create Offer')}
         </Button>
       </DialogFooter>
     </div>

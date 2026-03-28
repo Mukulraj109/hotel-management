@@ -147,6 +147,65 @@ function WebSettingsForm({
         </CardContent>
       </Card>
 
+      {/* Address */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <MapPin className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+            Hotel Address
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div>
+            <Label className="text-xs sm:text-sm">Street Address</Label>
+            <Input
+              value={formData.address?.street || ''}
+              onChange={(e) => handleChange('address.street', e.target.value)}
+              placeholder="123 Main Street"
+              className="text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div>
+              <Label className="text-xs sm:text-sm">City</Label>
+              <Input
+                value={formData.address?.city || ''}
+                onChange={(e) => handleChange('address.city', e.target.value)}
+                placeholder="City"
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm">State</Label>
+              <Input
+                value={formData.address?.state || ''}
+                onChange={(e) => handleChange('address.state', e.target.value)}
+                placeholder="State"
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm">Country</Label>
+              <Input
+                value={formData.address?.country || ''}
+                onChange={(e) => handleChange('address.country', e.target.value)}
+                placeholder="Country"
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm">Postal Code</Label>
+              <Input
+                value={formData.address?.postalCode || ''}
+                onChange={(e) => handleChange('address.postalCode', e.target.value)}
+                placeholder="12345"
+                className="text-sm"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Contact Information */}
       <Card>
         <CardHeader className="pb-3">
@@ -360,7 +419,7 @@ function WebSettingsForm({
               <p className="text-xs sm:text-sm text-gray-600">Automatically confirm bookings without manual approval</p>
             </div>
             <Switch
-              checked={formData.instantConfirmation || true}
+              checked={formData.instantConfirmation !== false}
               onCheckedChange={(checked) => handleChange('instantConfirmation', checked)}
             />
           </div>
@@ -460,6 +519,39 @@ function WebSettingsForm({
                 </div>
               </div>
 
+              {/* API Configuration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs sm:text-sm">API Key / Public Key</Label>
+                  <Input
+                    type="password"
+                    value={gateway.configuration?.apiKey || ''}
+                    onChange={(e) => {
+                      const updated = [...formData.gateways];
+                      updated[index].configuration = { ...updated[index].configuration, apiKey: e.target.value };
+                      handleChange('gateways', updated);
+                    }}
+                    placeholder={`Enter ${gateway.name || 'gateway'} API key`}
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs sm:text-sm">Secret Key</Label>
+                  <Input
+                    type="password"
+                    value={gateway.configuration?.secretKey || ''}
+                    onChange={(e) => {
+                      const updated = [...formData.gateways];
+                      updated[index].configuration = { ...updated[index].configuration, secretKey: e.target.value };
+                      handleChange('gateways', updated);
+                    }}
+                    placeholder={`Enter ${gateway.name || 'gateway'} secret key`}
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Fees */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs sm:text-sm">Fee Percentage (%)</Label>
@@ -698,6 +790,32 @@ function WebSettingsForm({
         </CardContent>
       </Card>
 
+      {/* Google Tag Manager */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm sm:text-base">Google Tag Manager</span>
+            <Switch
+              checked={formData.googleTagManager?.isActive || false}
+              onCheckedChange={(checked) => handleChange('googleTagManager.isActive', checked)}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div>
+            <Label htmlFor="gtmContainerId" className="text-xs sm:text-sm">Container ID</Label>
+            <Input
+              id="gtmContainerId"
+              value={formData.googleTagManager?.containerId || ''}
+              onChange={(e) => handleChange('googleTagManager.containerId', e.target.value)}
+              placeholder="GTM-XXXXXXX"
+              disabled={!formData.googleTagManager?.isActive}
+              className="text-sm"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Facebook Pixel */}
       <Card>
         <CardHeader className="pb-3">
@@ -720,6 +838,95 @@ function WebSettingsForm({
               disabled={!formData.facebookPixel?.isActive}
               className="text-sm"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Email Marketing */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm sm:text-base">Email Marketing</span>
+            <Switch
+              checked={formData.emailMarketing?.enabled || false}
+              onCheckedChange={(checked) => handleChange('emailMarketing.enabled', checked)}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs sm:text-sm">Provider</Label>
+              <Select
+                value={formData.emailMarketing?.provider || 'mailchimp'}
+                onValueChange={(value) => handleChange('emailMarketing.provider', value)}
+              >
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mailchimp">Mailchimp</SelectItem>
+                  <SelectItem value="sendgrid">SendGrid</SelectItem>
+                  <SelectItem value="mailgun">Mailgun</SelectItem>
+                  <SelectItem value="ses">Amazon SES</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm">API Key</Label>
+              <Input
+                type="password"
+                value={formData.emailMarketing?.apiKey || ''}
+                onChange={(e) => handleChange('emailMarketing.apiKey', e.target.value)}
+                placeholder="Enter API key"
+                disabled={!formData.emailMarketing?.enabled}
+                className="text-sm"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Chat Widget */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm sm:text-base">Chat Widget</span>
+            <Switch
+              checked={formData.chatWidget?.enabled || false}
+              onCheckedChange={(checked) => handleChange('chatWidget.enabled', checked)}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs sm:text-sm">Provider</Label>
+              <Select
+                value={formData.chatWidget?.provider || 'tawk'}
+                onValueChange={(value) => handleChange('chatWidget.provider', value)}
+              >
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tawk">Tawk.to</SelectItem>
+                  <SelectItem value="intercom">Intercom</SelectItem>
+                  <SelectItem value="crisp">Crisp</SelectItem>
+                  <SelectItem value="zendesk">Zendesk Chat</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs sm:text-sm">Widget ID</Label>
+              <Input
+                value={formData.chatWidget?.widgetId || ''}
+                onChange={(e) => handleChange('chatWidget.widgetId', e.target.value)}
+                placeholder="Enter widget ID"
+                disabled={!formData.chatWidget?.enabled}
+                className="text-sm"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
