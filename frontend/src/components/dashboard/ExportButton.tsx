@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import toast from 'react-hot-toast';
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
@@ -48,7 +49,7 @@ export function ExportButton({
       downloadBlob(blob, `${exportFilename}.${format}`);
       setShowModal(false);
     } catch {
-      // Error handled silently
+      toast.error('Export failed. Please try again.');
     }
   };
 

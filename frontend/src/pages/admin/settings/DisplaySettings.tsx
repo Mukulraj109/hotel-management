@@ -108,8 +108,8 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const { data } = await api.get('/users/display-preferences');
-        const preferences = data.data.preferences;
+        const { data } = await api.get('/user-preferences/display');
+        const preferences = data.data.display || data.data.preferences;
         if (preferences) {
 
           // Update form with current settings from the API
@@ -146,8 +146,7 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
   // Save display settings mutation
   const saveDisplayMutation = useMutation({
     mutationFn: async (data: DisplayFormData) => {
-      // Mock API call - replace with actual API endpoint
-      const response = await api.put('/users/display-preferences', data);
+      const response = await api.put('/user-preferences/display', data);
       return response.data;
     },
     onSuccess: () => {

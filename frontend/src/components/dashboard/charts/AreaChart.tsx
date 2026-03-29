@@ -36,6 +36,25 @@ export function AreaChart({
 }: AreaChartProps) {
   const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('flex items-center justify-center', className)} style={{ height }}>
+        <p className="text-gray-500">No data available</p>
+      </div>
+    );
+  }
+
+  // Sanitize data: replace NaN/undefined/null/Infinity with 0 for all area dataKeys
+  const areaKeys = areas.map(a => a.dataKey);
+  const sanitizedData = (data || []).map(item => {
+    const row = { ...(item as Record<string, unknown>) };
+    for (const key of areaKeys) {
+      const v = Number(row[key]);
+      row[key] = Number.isFinite(v) ? v : 0;
+    }
+    return row;
+  });
+
   const CustomTooltip = ({ active, payload, label }: Record<string, unknown>) => {
     if (active && payload && payload.length) {
       return (
@@ -62,7 +81,7 @@ export function AreaChart({
   return (
     <div className={cn('w-full', className)}>
       <ResponsiveContainer width="100%" height={height}>
-        <RechartsAreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <RechartsAreaChart data={sanitizedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
             {areas.map((area, index) => {
               const color = area.color || defaultColors[index % defaultColors.length];

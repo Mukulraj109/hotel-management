@@ -55,12 +55,13 @@ export const getPricingRules = async (req, res) => {
 
 export const updatePricingRule = async (req, res) => {
   try {
-    const rule = await PricingRule.findByIdAndUpdate(
-      req.params.id,
+    const hotelId = req.user?.hotelId;
+    const rule = await PricingRule.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
       req.body,
       { new: true, runValidators: true }
     );
-    
+
     if (!rule) {
       return res.status(404).json({
         success: false,
@@ -82,8 +83,9 @@ export const updatePricingRule = async (req, res) => {
 
 export const deletePricingRule = async (req, res) => {
   try {
-    const rule = await PricingRule.findByIdAndDelete(req.params.id);
-    
+    const hotelId = req.user?.hotelId;
+    const rule = await PricingRule.findOneAndDelete({ _id: req.params.id, hotelId });
+
     if (!rule) {
       return res.status(404).json({
         success: false,
@@ -279,11 +281,12 @@ export const getCompetitorRates = async (req, res) => {
 
 export const updateCompetitorRates = async (req, res) => {
   try {
+    const hotelId = req.user?.hotelId;
     const { competitorId, rates } = req.body;
-    
+
     const competitor = await RateShopping.findOneAndUpdate(
-      { competitorId },
-      { 
+      { competitorId, hotelId },
+      {
         rates,
         lastUpdated: new Date()
       },
@@ -355,12 +358,13 @@ export const getPackages = async (req, res) => {
 
 export const updatePackage = async (req, res) => {
   try {
-    const updatedPackage = await Package.findByIdAndUpdate(
-      req.params.id,
+    const hotelId = req.user?.hotelId;
+    const updatedPackage = await Package.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
       req.body,
       { new: true, runValidators: true }
     );
-    
+
     if (!updatedPackage) {
       return res.status(404).json({
         success: false,
@@ -427,8 +431,9 @@ export const getCorporateRates = async (req, res) => {
 
 export const updateCorporateRate = async (req, res) => {
   try {
-    const updatedRate = await CorporateRate.findByIdAndUpdate(
-      req.params.id,
+    const hotelId = req.user?.hotelId;
+    const updatedRate = await CorporateRate.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
       req.body,
       { new: true, runValidators: true }
     );
@@ -454,7 +459,8 @@ export const updateCorporateRate = async (req, res) => {
 
 export const deleteCorporateRate = async (req, res) => {
   try {
-    const rate = await CorporateRate.findByIdAndDelete(req.params.id);
+    const hotelId = req.user?.hotelId;
+    const rate = await CorporateRate.findOneAndDelete({ _id: req.params.id, hotelId });
 
     if (!rate) {
       return res.status(404).json({
@@ -477,7 +483,8 @@ export const deleteCorporateRate = async (req, res) => {
 
 export const deletePackage = async (req, res) => {
   try {
-    const pkg = await Package.findByIdAndDelete(req.params.id);
+    const hotelId = req.user?.hotelId;
+    const pkg = await Package.findOneAndDelete({ _id: req.params.id, hotelId });
 
     if (!pkg) {
       return res.status(404).json({
@@ -748,17 +755,19 @@ export const getDashboardMetrics = async (req, res) => {
     };
     
     // Get bookings in date range using checkIn dates for accurate revenue reporting
-    console.log('Querying bookings with date range:', dateRange);
-    const bookings = await Booking.find({
+    const bookingFilter = {
       checkIn: dateRange,
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).populate('rooms.roomId').lean().limit(1000);
-    
-    console.log(`Found ${bookings.length} bookings`);
-    
+    };
+    if (hotelId) bookingFilter.hotelId = hotelId;
+
+    const bookings = await Booking.find(bookingFilter)
+      .populate('rooms.roomId').lean().limit(1000);
+
     // Get total rooms for occupancy calculation
-    const totalRooms = await Room.countDocuments({ isActive: true });
-    console.log(`Total rooms: ${totalRooms}`);
+    const roomFilter = { isActive: true };
+    if (hotelId) roomFilter.hotelId = hotelId;
+    const totalRooms = await Room.countDocuments(roomFilter);
     
     // Enhanced metrics calculation with business intelligence
 
@@ -773,9 +782,13 @@ export const getDashboardMetrics = async (req, res) => {
 
     // Calculate total room nights with proper handling
     const totalRoomNights = bookings.reduce((sum, booking) => {
+      if (!booking.checkIn || !booking.checkOut) return sum + (booking.rooms?.length || 1);
       const checkIn = new Date(booking.checkIn);
       const checkOut = new Date(booking.checkOut);
-      const nights = Math.max(1, Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24)));
+      const diff = checkOut - checkIn;
+      const nights = Number.isFinite(diff) && diff > 0
+        ? Math.ceil(diff / (1000 * 60 * 60 * 24))
+        : 1;
       const roomCount = booking.rooms?.length || 1;
       return sum + (nights * roomCount);
     }, 0);
@@ -789,7 +802,9 @@ export const getDashboardMetrics = async (req, res) => {
       adr = roomRevenue / totalRoomNights;
     } else {
       // Intelligent default based on room types
-      const roomTypes = await RoomType.find({ isActive: true }).lean().limit(1000);
+      const rtFilter = { isActive: true };
+      if (hotelId) rtFilter.hotelId = hotelId;
+      const roomTypes = await RoomType.find(rtFilter).lean().limit(1000);
       const avgBaseRate = roomTypes.length > 0
         ? roomTypes.reduce((sum, rt) => sum + (rt.baseRate || 3500), 0) / roomTypes.length
         : 3500;
@@ -815,17 +830,18 @@ export const getDashboardMetrics = async (req, res) => {
       ? totalRevenue / totalRoomInventory
       : adr * (occupancyRate / 100);
     
-    console.log('Calculated metrics:', { totalRevenue, adr, occupancyRate, revPAR, totalBookings });
-    
     // Get previous period for comparison
     const prevPeriodStart = new Date(dateRange.$gte);
     prevPeriodStart.setDate(prevPeriodStart.getDate() - dayCount);
     const prevPeriodEnd = new Date(dateRange.$gte);
-    
-    const prevBookings = await Booking.find({
+
+    const prevFilter = {
       checkIn: { $gte: prevPeriodStart, $lte: prevPeriodEnd },
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).lean().limit(1000);
+    };
+    if (hotelId) prevFilter.hotelId = hotelId;
+
+    const prevBookings = await Booking.find(prevFilter).lean().limit(1000);
     
     const prevRevenue = prevBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
@@ -1041,23 +1057,26 @@ export const getDashboardMetrics = async (req, res) => {
 
     const rateOptimizationEffectiveness = Math.max(40, Math.min(95, Math.round(rateOptimizationScore)));
 
+    // Guard against NaN in any computed metric
+    const safe = (v) => { const num = Number(v); return Number.isFinite(num) ? num : 0; };
+
     const response = {
       metrics: {
-        totalRevenue,
-        revPAR: Math.round(revPAR),
-        adr: Math.round(adr),
-        occupancyRate: Math.round(occupancyRate * 10) / 10,
-        rateOptimizationImpact: Math.round(revenueGrowth * 10) / 10,
-        competitiveIndex,
-        demandCaptureRate: Math.round(demandCaptureRate * 10) / 10,
+        totalRevenue: safe(totalRevenue),
+        revPAR: safe(Math.round(revPAR)),
+        adr: safe(Math.round(adr)),
+        occupancyRate: safe(Math.round(occupancyRate * 10) / 10),
+        rateOptimizationImpact: safe(Math.round(revenueGrowth * 10) / 10),
+        competitiveIndex: safe(competitiveIndex),
+        demandCaptureRate: safe(Math.round(demandCaptureRate * 10) / 10),
         priceElasticity: 0.75
       },
       performanceMetrics: {
-        currentVsTarget: Math.max(0, Math.min(100, currentVsTarget)),
-        targetRevenue: Math.round(targetRevenue),
-        marketShare: Math.round(marketShare),
-        rateOptimization: Math.round(rateOptimizationEffectiveness),
-        revenueGrowth: Math.round(revenueGrowth * 10) / 10
+        currentVsTarget: Math.max(0, Math.min(100, safe(currentVsTarget))),
+        targetRevenue: safe(Math.round(targetRevenue)),
+        marketShare: safe(Math.round(marketShare)),
+        rateOptimization: safe(Math.round(rateOptimizationEffectiveness)),
+        revenueGrowth: safe(Math.round(revenueGrowth * 10) / 10)
       },
       rateShopping: rateShopping,
       demandForecast: demandForecast,
@@ -1105,9 +1124,10 @@ export const updateRoomTypeRate = async (req, res) => {
       });
     }
 
-    // Update room type with new rate information
-    const updatedRoomType = await RoomType.findByIdAndUpdate(
-      id,
+    // Update room type with new rate information (scoped to hotel)
+    const hotelId = req.user?.hotelId;
+    const updatedRoomType = await RoomType.findOneAndUpdate(
+      { _id: id, hotelId },
       {
         ...updateData,
         updatedAt: new Date()
@@ -1168,6 +1188,7 @@ export const bulkUpdateRoomTypeRates = async (req, res) => {
     const results = [];
     const errors = [];
 
+    const hotelId = req.user?.hotelId;
     for (const update of updates) {
       try {
         const { id, ...updateData } = update;
@@ -1178,8 +1199,8 @@ export const bulkUpdateRoomTypeRates = async (req, res) => {
           continue;
         }
 
-        const updatedRoomType = await RoomType.findByIdAndUpdate(
-          id,
+        const updatedRoomType = await RoomType.findOneAndUpdate(
+          { _id: id, hotelId },
           {
             ...updateData,
             updatedAt: new Date()

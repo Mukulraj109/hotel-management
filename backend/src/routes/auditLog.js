@@ -31,6 +31,7 @@ router.get('/', authenticate, ensurePropertyAccess, authorize('admin', 'manager'
     } = req.query;
 
     const filters = {
+      hotelId: req.user.hotelId,
       userId,
       propertyId,
       groupId,
@@ -81,7 +82,7 @@ router.get('/statistics', authenticate, ensurePropertyAccess, authorize('admin',
       groupBy: groupBy || 'day'
     };
 
-    const statistics = await auditAnalyticsService.getUsageStatistics(dateRange);
+    const statistics = await auditAnalyticsService.getUsageStatistics(dateRange, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',
@@ -108,7 +109,7 @@ router.get('/heatmap', authenticate, ensurePropertyAccess, authorize('admin', 'm
 
     const dateRange = { startDate, endDate };
 
-    const heatmap = await auditAnalyticsService.getPropertyActivityHeatmap(dateRange);
+    const heatmap = await auditAnalyticsService.getPropertyActivityHeatmap(dateRange, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',
@@ -135,7 +136,7 @@ router.get('/time-savings', authenticate, ensurePropertyAccess, authorize('admin
 
     const dateRange = { startDate, endDate };
 
-    const timeSavings = await auditAnalyticsService.calculateTimeSavings(dateRange);
+    const timeSavings = await auditAnalyticsService.calculateTimeSavings(dateRange, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',
@@ -161,7 +162,8 @@ router.get('/recent', authenticate, ensurePropertyAccess, authorize('admin', 'ma
     const { limit } = req.query;
 
     const activity = await auditAnalyticsService.getRecentActivity(
-      limit ? parseInt(limit) : 20
+      limit ? parseInt(limit) : 20,
+      req.user.hotelId
     );
 
     res.status(200).json({
@@ -200,6 +202,7 @@ router.get('/export', authenticate, ensurePropertyAccess, authorize('admin', 'ma
     } = req.query;
 
     const filters = {
+      hotelId: req.user.hotelId,
       userId,
       propertyId,
       groupId,
@@ -259,7 +262,7 @@ router.get('/user/:userId', authenticate, ensurePropertyAccess, async (req, res)
       skip: skip ? parseInt(skip) : 0
     };
 
-    const activity = await auditAnalyticsService.getUserActivity(userId, options);
+    const activity = await auditAnalyticsService.getUserActivity(userId, options, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',
@@ -290,7 +293,7 @@ router.get('/property/:propertyId', authenticate, ensurePropertyAccess, authoriz
       skip: skip ? parseInt(skip) : 0
     };
 
-    const activity = await auditAnalyticsService.getPropertyActivity(propertyId, options);
+    const activity = await auditAnalyticsService.getPropertyActivity(propertyId, options, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',
@@ -315,7 +318,7 @@ router.get('/:logId', authenticate, ensurePropertyAccess, authorize('admin', 'ma
   try {
     const { logId } = req.params;
 
-    const log = await auditAnalyticsService.getAuditLogById(logId);
+    const log = await auditAnalyticsService.getAuditLogById(logId, req.user.hotelId);
 
     res.status(200).json({
       status: 'success',

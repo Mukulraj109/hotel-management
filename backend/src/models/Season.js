@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const seasonSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   seasonId: {
     type: String,
     required: true,
@@ -147,9 +153,9 @@ seasonSchema.virtual('isCurrentlyActive').get(function() {
   return this.isActive && now >= this.startDate && now <= this.endDate;
 });
 
-seasonSchema.index({ startDate: 1, endDate: 1 });
+seasonSchema.index({ hotelId: 1, startDate: 1, endDate: 1 });
 seasonSchema.index({ seasonId: 1 });
-seasonSchema.index({ type: 1, isActive: 1 });
+seasonSchema.index({ hotelId: 1, type: 1, isActive: 1 });
 seasonSchema.index({ priority: -1 });
 seasonSchema.index({ tags: 1 });
 

@@ -38,10 +38,25 @@ export function PieChart({
 }: PieChartProps) {
   const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
 
-  const dataWithColors = data.map((item, index) => ({
-    ...item,
-    color: item.color || defaultColors[index % defaultColors.length],
-  }));
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('flex items-center justify-center', className)} style={{ height }}>
+        <p className="text-gray-500">No data available</p>
+      </div>
+    );
+  }
+
+  // Sanitize numeric values to prevent NaN reaching recharts
+  const dataWithColors = data.map((item, index) => {
+    const v = Number(item.value);
+    const pct = Number(item.percentage);
+    return {
+      ...item,
+      value: Number.isFinite(v) ? v : 0,
+      percentage: Number.isFinite(pct) ? pct : undefined,
+      color: item.color || defaultColors[index % defaultColors.length],
+    };
+  });
 
   const CustomTooltip = ({ active, payload }: Record<string, unknown>) => {
     if (active && payload && payload.length) {
@@ -56,11 +71,11 @@ export function PieChart({
             <span className="text-sm font-medium text-gray-900">{data.name}</span>
           </div>
           <p className="text-sm text-gray-600">
-            Value: <span className="font-medium">{data.value.toLocaleString()}</span>
+            Value: <span className="font-medium">{(Number(data.value) || 0).toLocaleString()}</span>
           </p>
-          {data.percentage && (
+          {data.percentage != null && Number.isFinite(Number(data.percentage)) && (
             <p className="text-sm text-gray-600">
-              Percentage: <span className="font-medium">{data.percentage.toFixed(1)}%</span>
+              Percentage: <span className="font-medium">{Number(data.percentage).toFixed(1)}%</span>
             </p>
           )}
         </div>

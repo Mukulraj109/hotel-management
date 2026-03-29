@@ -19,6 +19,7 @@ class AuditLogger {
   async logChange(options) {
     try {
       const {
+        hotelId,
         userId,
         userName,
         userEmail,
@@ -44,6 +45,7 @@ class AuditLogger {
       } = options;
 
       const auditLog = await SettingsAuditLog.create({
+        hotelId,
         userId,
         userName,
         userEmail,
@@ -137,6 +139,7 @@ class AuditLogger {
    */
   prepareAuditLog(req, options) {
     req.auditLogData = {
+      hotelId: req.user?.hotelId,
       userId: req.user?._id,
       userName: req.user?.name,
       userEmail: req.user?.email,
@@ -194,6 +197,7 @@ class AuditLogger {
    */
   async logBulkUpdate(options) {
     const {
+      hotelId,
       userId,
       userName,
       userEmail,
@@ -210,6 +214,7 @@ class AuditLogger {
 
     try {
       const auditLog = await this.logChange({
+        hotelId,
         userId,
         userName,
         userEmail,
@@ -249,6 +254,7 @@ class AuditLogger {
    */
   async logRollback(options) {
     const {
+      hotelId,
       userId,
       userName,
       userEmail,
@@ -262,6 +268,7 @@ class AuditLogger {
 
     try {
       const auditLog = await this.logChange({
+        hotelId,
         userId,
         userName,
         userEmail,
@@ -300,6 +307,7 @@ class AuditLogger {
    */
   async logScheduledUpdate(options) {
     const {
+      hotelId,
       userId,
       userName,
       userEmail,
@@ -315,6 +323,7 @@ class AuditLogger {
 
     try {
       const auditLog = await this.logChange({
+        hotelId,
         userId,
         userName,
         userEmail,
@@ -350,6 +359,7 @@ class AuditLogger {
    */
   async logScheduledExecution(options) {
     const {
+      hotelId,
       scheduledUpdateId,
       userId,
       settingType,
@@ -360,6 +370,7 @@ class AuditLogger {
 
     try {
       const auditLog = await this.logChange({
+        hotelId,
         userId,
         action: 'update',
         scope: affectedPropertyIds.length > 1 ? 'group' : 'single',

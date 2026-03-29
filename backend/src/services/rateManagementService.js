@@ -49,6 +49,7 @@ class RateManagementService {
         
         // Apply seasonal adjustments using new seasonal pricing service
         const seasonalData = await seasonalPricingService.calculateSeasonalAdjustment(
+          null,
           roomType,
           checkInDate,
           plan.planId
@@ -132,6 +133,7 @@ class RateManagementService {
   async checkSeasonalBookingRestrictions(arrivalDate, departureDate, roomType) {
     try {
       return await seasonalPricingService.isBookingAllowed(
+        null,
         arrivalDate,
         departureDate,
         roomType

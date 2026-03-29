@@ -3,19 +3,17 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  AlertTriangle, 
-  User, 
-  Home, 
-  Calendar, 
-  CreditCard, 
-  FileText, 
-  CheckCircle, 
+import {
+  AlertTriangle,
+  User,
+  Home,
+  Calendar,
+  CreditCard,
+  FileText,
+  CheckCircle,
   Clock,
   Shield,
-  DollarSign,
-  MapPin,
-  Smartphone
+  DollarSign
 } from 'lucide-react';
 import { adminBypassService, CheckedInBooking, AdminBypassRequest } from '../../services/adminBypassService';
 import { bypassApprovalService } from '../../services/bypassApprovalService';
@@ -30,7 +28,14 @@ const AdminBypassCheckout: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'bank_transfer'>('cash');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<unknown>(null);
+  const [pendingApproval, setPendingApproval] = useState<{
+    workflowId: string;
+    riskScore: number;
+    approvalLevels: number;
+    currentLevel: number;
+    timeoutAt: string;
+    reasons?: string[];
+  } | null>(null);
   
   // Enhanced bypass form fields
   const [reasonCategory, setReasonCategory] = useState('system_failure');
@@ -57,10 +62,10 @@ const AdminBypassCheckout: React.FC = () => {
     try {
       setLoading(true);
       const response = await adminBypassService.getCheckedInBookings();
-      setBookings(response.data.bookings);
+      setBookings(response.data?.bookings || []);
       setError(null);
     } catch (err: unknown) {
-      setError('Failed to fetch bookings: ' + err.message);
+      setError('Failed to fetch bookings: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +78,7 @@ const AdminBypassCheckout: React.FC = () => {
 
     // Legacy bypass checkout
     if (!notes.trim()) {
-      alert('Please enter notes explaining the reason for bypass checkout');
+      setError('Please enter notes explaining the reason for bypass checkout');
       return;
     }
 
@@ -101,7 +106,7 @@ const AdminBypassCheckout: React.FC = () => {
       successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
       
     } catch (err: unknown) {
-      setError('Failed to process bypass checkout: ' + err.message);
+      setError('Failed to process bypass checkout: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setProcessing(null);
     }
@@ -128,7 +133,7 @@ const AdminBypassCheckout: React.FC = () => {
         },
         financialImpact: {
           estimatedLoss: estimatedLoss || 0,
-          currency: 'USD',
+          currency: 'INR',
           impactCategory: estimatedLoss > 5000 ? 'high' : estimatedLoss > 1000 ? 'medium' : 'low'
         },
         paymentMethod,
@@ -157,7 +162,7 @@ const AdminBypassCheckout: React.FC = () => {
       }, 8000);
       
     } catch (err: unknown) {
-      setError('Failed to process enhanced bypass checkout: ' + err.message);
+      setError('Failed to process enhanced bypass checkout: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setProcessing(null);
     }
@@ -345,7 +350,7 @@ const AdminBypassCheckout: React.FC = () => {
                             </span>
                             <span className="flex items-center">
                               <CreditCard className="h-4 w-4 mr-1" />
-                              ${booking.totalAmount}
+                              ₹{booking.totalAmount?.toLocaleString('en-IN')}
                             </span>
                           </div>
                           <p className="text-sm text-gray-500 mt-1">
@@ -452,7 +457,7 @@ const AdminBypassCheckout: React.FC = () => {
                       </label>
                       <select
                         value={urgencyLevel}
-                        onChange={(e) => setUrgencyLevel(e.target.value as unknown)}
+                        onChange={(e) => setUrgencyLevel(e.target.value as 'low' | 'medium' | 'high' | 'critical')}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
                         <option value="low">Low</option>
@@ -484,7 +489,7 @@ const AdminBypassCheckout: React.FC = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         <DollarSign className="h-4 w-4 inline mr-1" />
-                        Estimated Financial Impact (USD)
+                        Estimated Financial Impact (INR)
                       </label>
                       <input
                         type="number"
@@ -503,7 +508,7 @@ const AdminBypassCheckout: React.FC = () => {
                       </label>
                       <select
                         value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value as unknown)}
+                        onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'upi' | 'bank_transfer')}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
                         <option value="cash">Cash</option>
@@ -539,7 +544,7 @@ const AdminBypassCheckout: React.FC = () => {
                     </label>
                     <select
                       value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value as unknown)}
+                      onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'upi' | 'bank_transfer')}
                       className="w-full p-2 border border-gray-300 rounded-md"
                     >
                       <option value="cash">Cash</option>

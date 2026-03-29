@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Calendar,
   Clock,
@@ -6,15 +6,12 @@ import {
   Plus,
   Edit,
   Trash2,
-  Filter,
-  Download,
-  Upload,
   AlertTriangle,
   Settings
 } from 'lucide-react';
 import SeasonCalendar from '../../components/pricing/SeasonCalendar';
 import SpecialPeriodManager from '../../components/pricing/SpecialPeriodManager';
-import { seasonalPricingService } from '../../services/seasonalPricingService';
+import { seasonalPricingService, type SeasonalAnalytics } from '../../services/seasonalPricingService';
 import { useToast } from '../../hooks/useToast';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
@@ -71,8 +68,10 @@ interface SpecialPeriod {
   isActive: boolean;
 }
 
+type TabKey = 'calendar' | 'seasons' | 'special-periods' | 'analytics';
+
 const AdminSeasonalPricing: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'calendar' | 'seasons' | 'special-periods' | 'analytics'>('calendar');
+  const [activeTab, setActiveTab] = useState<TabKey>('calendar');
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [specialPeriods, setSpecialPeriods] = useState<SpecialPeriod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,11 +79,11 @@ const AdminSeasonalPricing: React.FC = () => {
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const [showCreateSpecialPeriod, setShowCreateSpecialPeriod] = useState(false);
   const [editingItem, setEditingItem] = useState<Season | SpecialPeriod | null>(null);
-  const [analytics, setAnalytics] = useState<unknown>(null);
+  const [analytics, setAnalytics] = useState<SeasonalAnalytics | null>(null);
   const { showToast } = useToast();
 
   // Multi-property support
-  const { selectedProperty, selectedPropertyId } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -114,14 +113,10 @@ const AdminSeasonalPricing: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedYear]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       const [seasonsRes, periodsRes, analyticsRes] = await Promise.all([
         seasonalPricingService.getSeasons({ year: selectedYear }),
         seasonalPricingService.getSpecialPeriods({ year: selectedYear }),
@@ -131,15 +126,19 @@ const AdminSeasonalPricing: React.FC = () => {
         )
       ]);
 
-      setSeasons(seasonsRes.data);
-      setSpecialPeriods(periodsRes.data);
-      setAnalytics(analyticsRes.data);
+      setSeasons(seasonsRes.data ?? []);
+      setSpecialPeriods(periodsRes.data ?? []);
+      setAnalytics(analyticsRes.data ?? null);
     } catch (error: unknown) {
       showToast('Error loading seasonal pricing data', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedYear, selectedPropertyId, showToast]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleCreateSeason = async (seasonData: Partial<Season>) => {
     try {
@@ -249,7 +248,7 @@ const AdminSeasonalPricing: React.FC = () => {
 
   const handleDeleteItem = async (id: string, type: 'season' | 'period') => {
     if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-    
+
     try {
       if (type === 'season') {
         await seasonalPricingService.deleteSeason(id);
@@ -265,7 +264,7 @@ const AdminSeasonalPricing: React.FC = () => {
   };
 
   const getSeasonTypeColor = (type: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       peak: '#DC2626',
       high: '#EA580C',
       shoulder: '#D97706',
@@ -273,22 +272,7 @@ const AdminSeasonalPricing: React.FC = () => {
       off: '#059669',
       custom: '#6366F1'
     };
-    return colors[type as keyof typeof colors] || '#6B7280';
-  };
-
-  const getPeriodTypeColor = (type: string) => {
-    const colors = {
-      holiday: '#DC2626',
-      festival: '#7C3AED',
-      event: '#2563EB',
-      conference: '#059669',
-      wedding_season: '#EC4899',
-      sports_event: '#EAB308',
-      blackout: '#374151',
-      maintenance: '#6B7280',
-      custom: '#6366F1'
-    };
-    return colors[type as keyof typeof colors] || '#6B7280';
+    return colors[type] ?? '#6B7280';
   };
 
   if (loading) {
@@ -298,6 +282,13 @@ const AdminSeasonalPricing: React.FC = () => {
       </div>
     );
   }
+
+  const tabs: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
+    { key: 'calendar', label: 'Calendar View', icon: Calendar },
+    { key: 'seasons', label: 'Seasons', icon: TrendingUp },
+    { key: 'special-periods', label: 'Special Periods', icon: Clock },
+    { key: 'analytics', label: 'Analytics', icon: Settings }
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -346,7 +337,7 @@ const AdminSeasonalPricing: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Seasonal Pricing Management</h1>
           <p className="text-gray-600 mt-2">Manage seasons, special periods, and holiday pricing</p>
         </div>
-        
+
         <div className="flex space-x-3">
           <select
             value={selectedYear}
@@ -357,7 +348,7 @@ const AdminSeasonalPricing: React.FC = () => {
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          
+
           <button
             onClick={() => setShowCreateSeason(true)}
             className="flex items-center space-x-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
@@ -365,7 +356,7 @@ const AdminSeasonalPricing: React.FC = () => {
             <Plus className="h-4 w-4" />
             <span>Add Season</span>
           </button>
-          
+
           <button
             onClick={() => setShowCreateSpecialPeriod(true)}
             className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
@@ -387,7 +378,7 @@ const AdminSeasonalPricing: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <Clock className="h-8 w-8 text-green-600" />
@@ -397,26 +388,26 @@ const AdminSeasonalPricing: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <AlertTriangle className="h-8 w-8 text-red-600" />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Blackout Dates</p>
               <p className="text-2xl font-bold text-gray-900">
-                {analytics?.blackoutDates?.length || 0}
+                {analytics?.blackoutDates?.length ?? 0}
               </p>
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <TrendingUp className="h-8 w-8 text-blue-600" />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Peak Periods</p>
               <p className="text-2xl font-bold text-gray-900">
-                {analytics?.seasonsByType?.peak || 0}
+                {analytics?.seasonsByType?.peak ?? 0}
               </p>
             </div>
           </div>
@@ -427,15 +418,11 @@ const AdminSeasonalPricing: React.FC = () => {
       <div className="bg-white rounded-lg shadow">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {[
-              { key: 'calendar', label: 'Calendar View', icon: Calendar },
-              { key: 'seasons', label: 'Seasons', icon: TrendingUp },
-              { key: 'special-periods', label: 'Special Periods', icon: Clock },
-              { key: 'analytics', label: 'Analytics', icon: Settings }
-            ].map(({ key, label, icon: Icon }) => (
-              <button aria-label="Close"
+            {tabs.map(({ key, label, icon: Icon }) => (
+              <button
+                aria-label={label}
                 key={key}
-                onClick={() => setActiveTab(key as unknown)}
+                onClick={() => setActiveTab(key)}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === key
                     ? 'border-indigo-500 text-indigo-600'
@@ -464,16 +451,6 @@ const AdminSeasonalPricing: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Seasons ({selectedYear})</h3>
-                <div className="flex space-x-2">
-                  <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                    <Filter className="h-4 w-4" />
-                    <span>Filter</span>
-                  </button>
-                  <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                    <Download className="h-4 w-4" />
-                    <span>Export</span>
-                  </button>
-                </div>
               </div>
 
               {/* Multi-property selector */}
@@ -490,69 +467,77 @@ const AdminSeasonalPricing: React.FC = () => {
               </div>
 
               <div className="grid gap-4">
-                {seasons.map((season) => (
-                  <div key={season._id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className="w-4 h-4 rounded-full"
-                            style={{ backgroundColor: season.color || getSeasonTypeColor(season.type) }}
-                          />
-                          <h4 className="text-lg font-semibold">{season.name}</h4>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            season.type === 'peak' ? 'bg-red-100 text-red-800' :
-                            season.type === 'high' ? 'bg-orange-100 text-orange-800' :
-                            season.type === 'shoulder' ? 'bg-yellow-100 text-yellow-800' :
-                            season.type === 'low' ? 'bg-green-100 text-green-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {season.type.toUpperCase()}
-                          </span>
-                        </div>
-                        
-                        <p className="text-gray-600 mt-1">{season.description}</p>
-                        
-                        <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                          <span>
-                            {new Date(season.startDate).toLocaleDateString()} - {new Date(season.endDate).toLocaleDateString()}
-                          </span>
-                          <span>Priority: {season.priority}</span>
-                          {season.isRecurring && <span className="text-blue-600">Recurring</span>}
-                        </div>
-                        
-                        <div className="mt-3">
-                          <p className="text-sm font-medium text-gray-700">Rate Adjustments:</p>
-                          <div className="flex flex-wrap gap-2 mt-1">
-                            {season.rateAdjustments.map((adj, index) => (
-                              <span
-                                key={`season-rateAdjustments-${index}`}
-                                className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
-                              >
-                                {adj.roomType}: {adj.adjustmentType === 'percentage' ? `${adj.adjustmentValue}%` : `${adj.adjustmentValue} ${adj.currency}`}
-                              </span>
-                            ))}
+                {seasons.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No seasons found</h3>
+                    <p className="text-gray-600">No seasons have been configured for {selectedYear}. Click "Add Season" to create one.</p>
+                  </div>
+                ) : (
+                  seasons.map((season) => (
+                    <div key={season._id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3">
+                            <div
+                              className="w-4 h-4 rounded-full"
+                              style={{ backgroundColor: season.color || getSeasonTypeColor(season.type) }}
+                            />
+                            <h4 className="text-lg font-semibold">{season.name}</h4>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              season.type === 'peak' ? 'bg-red-100 text-red-800' :
+                              season.type === 'high' ? 'bg-orange-100 text-orange-800' :
+                              season.type === 'shoulder' ? 'bg-yellow-100 text-yellow-800' :
+                              season.type === 'low' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {season.type.toUpperCase()}
+                            </span>
+                          </div>
+
+                          <p className="text-gray-600 mt-1">{season.description}</p>
+
+                          <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                            <span>
+                              {new Date(season.startDate).toLocaleDateString()} - {new Date(season.endDate).toLocaleDateString()}
+                            </span>
+                            <span>Priority: {season.priority}</span>
+                            {season.isRecurring && <span className="text-blue-600">Recurring</span>}
+                          </div>
+
+                          <div className="mt-3">
+                            <p className="text-sm font-medium text-gray-700">Rate Adjustments:</p>
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {season.rateAdjustments.map((adj, index) => (
+                                <span
+                                  key={`season-rateAdjustments-${index}`}
+                                  className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
+                                >
+                                  {adj.roomType}: {adj.adjustmentType === 'percentage' ? `${adj.adjustmentValue}%` : `${adj.adjustmentValue} ${adj.currency}`}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        <button aria-label="Edit"
-                          onClick={() => setEditingItem(season)}
-                          className="p-2 text-gray-400 hover:text-gray-600"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button aria-label="Delete"
-                          onClick={() => handleDeleteItem(season._id, 'season')}
-                          className="p-2 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+
+                        <div className="flex items-center space-x-2">
+                          <button aria-label="Edit"
+                            onClick={() => setEditingItem(season)}
+                            className="p-2 text-gray-400 hover:text-gray-600"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button aria-label="Delete"
+                            onClick={() => handleDeleteItem(season._id, 'season')}
+                            className="p-2 text-gray-400 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -566,50 +551,68 @@ const AdminSeasonalPricing: React.FC = () => {
             />
           )}
 
-          {activeTab === 'analytics' && analytics && (
+          {activeTab === 'analytics' && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold">Seasonal Analytics ({selectedYear})</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-semibold mb-3">Seasons by Type</h4>
-                  <div className="space-y-2">
-                    {Object.entries(analytics.seasonsByType || {}).map(([type, count]) => (
-                      <div key={type} className="flex justify-between">
-                        <span className="capitalize">{type}</span>
-                        <span className="font-semibold">{count as number}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-semibold mb-3">Special Periods by Type</h4>
-                  <div className="space-y-2">
-                    {Object.entries(analytics.specialPeriodsByType || {}).map(([type, count]) => (
-                      <div key={type} className="flex justify-between">
-                        <span className="capitalize">{type.replace('_', ' ')}</span>
-                        <span className="font-semibold">{count as number}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
 
-              {analytics.blackoutDates && analytics.blackoutDates.length > 0 && (
-                <div className="bg-red-50 rounded-lg p-4">
-                  <h4 className="font-semibold mb-3 text-red-800">Blackout Dates</h4>
-                  <div className="space-y-2">
-                    {analytics.blackoutDates.map((blackout: Record<string, unknown>, index: number) => (
-                      <div key={`blackout-${blackout.name || index}`} className="flex justify-between text-sm">
-                        <span>{blackout.name}</span>
-                        <span>
-                          {new Date(blackout.startDate).toLocaleDateString()} - {new Date(blackout.endDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+              {!analytics ? (
+                <div className="text-center py-12">
+                  <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No analytics data available</h3>
+                  <p className="text-gray-600">Analytics will appear once seasons or special periods are created.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-semibold mb-3">Seasons by Type</h4>
+                      <div className="space-y-2">
+                        {Object.keys(analytics.seasonsByType ?? {}).length === 0 ? (
+                          <p className="text-sm text-gray-500">No seasons configured for this period.</p>
+                        ) : (
+                          Object.entries(analytics.seasonsByType).map(([type, count]) => (
+                            <div key={type} className="flex justify-between">
+                              <span className="capitalize">{type}</span>
+                              <span className="font-semibold">{count}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-semibold mb-3">Special Periods by Type</h4>
+                      <div className="space-y-2">
+                        {Object.keys(analytics.specialPeriodsByType ?? {}).length === 0 ? (
+                          <p className="text-sm text-gray-500">No special periods configured for this period.</p>
+                        ) : (
+                          Object.entries(analytics.specialPeriodsByType).map(([type, count]) => (
+                            <div key={type} className="flex justify-between">
+                              <span className="capitalize">{type.replace(/_/g, ' ')}</span>
+                              <span className="font-semibold">{count}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {analytics.blackoutDates && analytics.blackoutDates.length > 0 && (
+                    <div className="bg-red-50 rounded-lg p-4">
+                      <h4 className="font-semibold mb-3 text-red-800">Blackout Dates</h4>
+                      <div className="space-y-2">
+                        {analytics.blackoutDates.map((blackout, index) => (
+                          <div key={`blackout-${blackout.name || index}`} className="flex justify-between text-sm">
+                            <span>{blackout.name}</span>
+                            <span>
+                              {new Date(blackout.startDate).toLocaleDateString()} - {new Date(blackout.endDate).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

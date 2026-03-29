@@ -43,7 +43,7 @@ export default function AdminSupplyRequests() {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connectionState, connect, disconnect, on, off } = useRealTime();
   
   // Modal states
   const [showViewModal, setShowViewModal] = useState(false);
@@ -96,32 +96,35 @@ export default function AdminSupplyRequests() {
   }, [selectedPropertyId, filters]);
   
   // Set up real-time event listeners
+  // Note: `isConnected` from useRealTime is a snapshot captured once at hook init;
+  // use the reactive `connectionState` instead so listeners attach when the socket connects.
+  const isSocketConnected = connectionState === 'connected';
   useEffect(() => {
-    if (!isConnected) return;
-    
-    const handleSupplyRequestUpdate = (data: Record<string, unknown>) => {
+    if (!isSocketConnected) return;
+
+    const handleSupplyRequestUpdate = (_data: Record<string, unknown>) => {
       fetchRequests();
       fetchStats();
       toast.success('Supply request data updated in real-time');
     };
-    
-    const handleSupplyRequestCreate = (data: Record<string, unknown>) => {
+
+    const handleSupplyRequestCreate = (_data: Record<string, unknown>) => {
       fetchRequests();
       fetchStats();
       toast.success('New supply request created');
     };
-    
+
     // Subscribe to supply request events
     on('supply-requests:created', handleSupplyRequestCreate);
     on('supply-requests:updated', handleSupplyRequestUpdate);
     on('supply-requests:status_changed', handleSupplyRequestUpdate);
-    
+
     return () => {
       off('supply-requests:created', handleSupplyRequestCreate);
       off('supply-requests:updated', handleSupplyRequestUpdate);
       off('supply-requests:status_changed', handleSupplyRequestUpdate);
     };
-  }, [isConnected, on, off]);
+  }, [isSocketConnected, on, off]);
 
   // Handle approval/rejection
   const handleApprovalAction = async (e: React.FormEvent) => {
@@ -147,7 +150,7 @@ export default function AdminSupplyRequests() {
       await fetchRequests();
       await fetchStats();
       setShowApprovalModal(false);
-      setApprovalData({ action: '' as unknown, notes: '', rejectedReason: '' });
+      setApprovalData({ action: '' as 'approve' | 'reject', notes: '', rejectedReason: '' });
       toast.success(`Request ${approvalData.action}d successfully`);
     } catch (error) {
       toast.error(`Failed to ${approvalData.action} request`);
@@ -214,8 +217,8 @@ export default function AdminSupplyRequests() {
       header: 'Requested By',
       render: (value: unknown, request: SupplyRequest) => (
         <div className="text-sm">
-          <div className="font-medium">{request.requestedBy.name}</div>
-          <div className="text-gray-500">{request.requestedBy.email}</div>
+          <div className="font-medium">{request.requestedBy?.name ?? 'Unknown'}</div>
+          <div className="text-gray-500">{request.requestedBy?.email ?? ''}</div>
         </div>
       )
     },
@@ -368,7 +371,7 @@ export default function AdminSupplyRequests() {
                 connectionState === 'connected' ? 'bg-green-500 animate-pulse' : 
                 connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
               }`}></div>
-              {connectionState === 'connected' ? 'Live Connected' : connectionState}
+              {connectionState === 'connected' ? 'Live Connected' : connectionState === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </div>
             
             <Button 
@@ -614,8 +617,8 @@ export default function AdminSupplyRequests() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Requested By</label>
                 <div className="mt-1">
-                  <div className="font-medium">{selectedRequest.requestedBy.name}</div>
-                  <div className="text-sm text-gray-500">{selectedRequest.requestedBy.email}</div>
+                  <div className="font-medium">{selectedRequest.requestedBy?.name ?? 'Unknown'}</div>
+                  <div className="text-sm text-gray-500">{selectedRequest.requestedBy?.email ?? ''}</div>
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${getDepartmentColor(selectedRequest.department)}`}>
                     {selectedRequest.department.replace('_', ' ')}
                   </span>

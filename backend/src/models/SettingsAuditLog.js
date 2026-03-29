@@ -3,6 +3,12 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const SettingsAuditLogSchema = new Schema({
+  hotelId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   timestamp: {
     type: Date,
     default: Date.now,
@@ -94,6 +100,7 @@ const SettingsAuditLogSchema = new Schema({
 });
 
 // Compound indexes for efficient querying
+SettingsAuditLogSchema.index({ hotelId: 1, timestamp: -1 });
 SettingsAuditLogSchema.index({ userId: 1, timestamp: -1 });
 SettingsAuditLogSchema.index({ propertyId: 1, timestamp: -1 });
 SettingsAuditLogSchema.index({ settingType: 1, timestamp: -1 });
@@ -133,6 +140,7 @@ SettingsAuditLogSchema.statics.getLogsByProperty = function(propertyId, options 
       { affectedPropertyIds: propertyId }
     ]
   };
+  if (options.hotelId) query.hotelId = options.hotelId;
 
   return this.find(query)
     .sort({ timestamp: -1 })
@@ -145,7 +153,10 @@ SettingsAuditLogSchema.statics.getLogsByProperty = function(propertyId, options 
 
 // Static method to get logs by user
 SettingsAuditLogSchema.statics.getLogsByUser = function(userId, options = {}) {
-  return this.find({ userId })
+  const query = { userId };
+  if (options.hotelId) query.hotelId = options.hotelId;
+
+  return this.find(query)
     .sort({ timestamp: -1 })
     .limit(options.limit || 100)
     .skip(options.skip || 0)
@@ -162,6 +173,7 @@ SettingsAuditLogSchema.statics.getLogsByDateRange = function(startDate, endDate,
       $lte: new Date(endDate)
     }
   };
+  if (options.hotelId) query.hotelId = options.hotelId;
 
   if (options.propertyId) {
     query.$or = [
@@ -204,6 +216,7 @@ SettingsAuditLogSchema.statics.getLogsByDateRange = function(startDate, endDate,
 SettingsAuditLogSchema.statics.getStatistics = async function(dateRange = {}) {
   try {
     const matchStage = {};
+    if (dateRange.hotelId) matchStage.hotelId = dateRange.hotelId;
 
     if (dateRange.startDate && dateRange.endDate) {
       matchStage.timestamp = {
@@ -254,6 +267,7 @@ SettingsAuditLogSchema.statics.getStatistics = async function(dateRange = {}) {
 SettingsAuditLogSchema.statics.getMostActiveUsers = async function(limit = 10, dateRange = {}) {
   try {
     const matchStage = {};
+    if (dateRange.hotelId) matchStage.hotelId = dateRange.hotelId;
 
     if (dateRange.startDate && dateRange.endDate) {
       matchStage.timestamp = {
@@ -286,6 +300,7 @@ SettingsAuditLogSchema.statics.getMostActiveUsers = async function(limit = 10, d
 SettingsAuditLogSchema.statics.getMostChangedSettings = async function(limit = 10, dateRange = {}) {
   try {
     const matchStage = {};
+    if (dateRange.hotelId) matchStage.hotelId = dateRange.hotelId;
 
     if (dateRange.startDate && dateRange.endDate) {
       matchStage.timestamp = {
@@ -317,6 +332,7 @@ SettingsAuditLogSchema.statics.getMostChangedSettings = async function(limit = 1
 SettingsAuditLogSchema.statics.getActivityHeatmap = async function(dateRange = {}) {
   try {
     const matchStage = {};
+    if (dateRange.hotelId) matchStage.hotelId = dateRange.hotelId;
 
     if (dateRange.startDate && dateRange.endDate) {
       matchStage.timestamp = {

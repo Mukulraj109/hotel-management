@@ -111,7 +111,7 @@ class BypassApprovalService {
       try {
           const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
               .populate('adminId', 'name email role')
-              .populate('hotelId', 'name').lean();
+              .populate('hotelId', 'name');
 
           if (!auditRecord) {
               throw new Error('Bypass audit record not found');
@@ -475,11 +475,19 @@ class BypassApprovalService {
           const workflow = await BypassApprovalWorkflow.findOne({
                   workflowId
               })
-              .populate('bypassAuditId')
+              .populate({
+                  path: 'bypassAuditId',
+                  select: 'hotelId bypassId reason'
+              })
               .populate('initiatedBy', 'name email');
 
           if (!workflow) {
               throw new Error('Approval workflow not found');
+          }
+
+          // Verify the workflow belongs to a valid hotel context
+          if (!workflow.hotelId) {
+              throw new Error('Workflow has no hotel context');
           }
 
           // Verify approver is authorized for current level

@@ -71,8 +71,7 @@ const adminBypassAuditSchema = new mongoose.Schema({
   },
   checkoutInventoryId: {
     type: mongoose.Schema.ObjectId,
-    ref: 'CheckoutInventory',
-    required: true
+    ref: 'CheckoutInventory'
   },
   adminId: {
     type: mongoose.Schema.ObjectId,
@@ -141,7 +140,7 @@ const adminBypassAuditSchema = new mongoose.Schema({
     },
     currency: {
       type: String,
-      default: 'USD',
+      default: 'INR',
       enum: ['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD']
     },
     impactCategory: {
@@ -205,9 +204,14 @@ const adminBypassAuditSchema = new mongoose.Schema({
       default: 0
     },
     securityFlags: [{
-      flag: {
+      type: {
         type: String,
-        enum: ['suspicious_timing', 'unusual_location', 'rapid_succession', 'high_value', 'pattern_anomaly']
+        enum: [
+          'suspicious_timing', 'unusual_location', 'rapid_succession',
+          'high_value', 'pattern_anomaly', 'high_frequency',
+          'suspicious_reason', 'new_device', 'hotel_wide_pattern',
+          'low_urgency_bypass', 'unusual_category', 'escalating_risk'
+        ]
       },
       severity: {
         type: String,
@@ -217,6 +221,7 @@ const adminBypassAuditSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
       },
+      message: String,
       details: String
     }]
   },
@@ -505,19 +510,28 @@ adminBypassAuditSchema.pre('save', async function(next) {
 adminBypassAuditSchema.methods.encryptSensitiveNotes = function(notes, secretKey) {
   if (!notes) return;
 
-  const cipher = crypto.createCipher('aes-256-cbc', secretKey);
+  const iv = crypto.randomBytes(16);
+  const key = crypto.scryptSync(secretKey, 'salt', 32);
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
   let encrypted = cipher.update(notes, 'utf8', 'hex');
   encrypted += cipher.final('hex');
 
-  this.reason.encryptedNotes = encrypted;
+  // Store IV with the encrypted data (iv:encrypted)
+  this.reason.encryptedNotes = iv.toString('hex') + ':' + encrypted;
 };
 
 adminBypassAuditSchema.methods.decryptSensitiveNotes = function(secretKey) {
   if (!this.reason.encryptedNotes) return '';
 
   try {
-    const decipher = crypto.createDecipher('aes-256-cbc', secretKey);
-    let decrypted = decipher.update(this.reason.encryptedNotes, 'hex', 'utf8');
+    const parts = this.reason.encryptedNotes.split(':');
+    if (parts.length !== 2) return '[DECRYPTION_FAILED]';
+
+    const iv = Buffer.from(parts[0], 'hex');
+    const encryptedText = parts[1];
+    const key = crypto.scryptSync(secretKey, 'salt', 32);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (error) {
@@ -526,10 +540,11 @@ adminBypassAuditSchema.methods.decryptSensitiveNotes = function(secretKey) {
   }
 };
 
-adminBypassAuditSchema.methods.addSecurityFlag = function(flag, severity = 'warning', details = '') {
+adminBypassAuditSchema.methods.addSecurityFlag = function(flagType, severity = 'warning', details = '') {
   this.securityMetadata.securityFlags.push({
-    flag,
+    type: flagType,
     severity,
+    message: details,
     details,
     timestamp: new Date()
   });
@@ -756,7 +771,7 @@ adminBypassAuditSchema.virtual('formattedFinancialImpact').get(function() {
   const amount = this.financialImpact.actualLoss || this.financialImpact.estimatedLoss || 0;
   const currency = this.financialImpact.currency || 'INR';
 
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: currency
   }).format(amount);

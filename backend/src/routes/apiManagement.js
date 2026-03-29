@@ -31,6 +31,7 @@ router.route('/api-keys')
   .post(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.createAPIKey), apiManagementController.createAPIKey);
 
 router.route('/api-keys/:id')
+  .get(authorizePolicy('apiManagement', 'manageAccess'), apiManagementController.getAPIKeyById)
   .put(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.updateAPIKey), apiManagementController.updateAPIKey)
   .delete(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), apiManagementController.deleteAPIKey);
 
@@ -46,6 +47,7 @@ router.route('/webhooks')
   .post(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.createWebhook), apiManagementController.createWebhook);
 
 router.route('/webhooks/:id')
+  .get(authorizePolicy('apiManagement', 'manageAccess'), apiManagementController.getWebhookById)
   .put(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.updateWebhook), apiManagementController.updateWebhook)
   .delete(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), apiManagementController.deleteWebhook);
 

@@ -166,8 +166,6 @@ export interface OrderRequestData {
 
 class AdminSupplyRequestsService {
   private basePath = '/supply-requests';
-  private hotelIdCache: string | null = null;
-  private hotelIdCacheExpiry: number = 0;
 
   private async apiRequest<T>(endpoint: string, options: { method?: string; data?: Record<string, unknown>; basePath?: string } = {}): Promise<ApiResponse<T>> {
     try {
@@ -200,33 +198,6 @@ class AdminSupplyRequestsService {
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
-  }
-
-  private async getUserHotelId(): Promise<string> {
-    // Check cache first (cache for 10 minutes)
-    const now = Date.now();
-    if (this.hotelIdCache && now < this.hotelIdCacheExpiry) {
-      return this.hotelIdCache;
-    }
-
-    // Get hotelId from user profile API using the configured api instance
-    try {
-      const response = await api.get('/auth/me');
-      const userData = response.data?.user;
-
-      if (userData?.hotelId) {
-        const id = typeof userData.hotelId === 'object' ? (userData.hotelId._id || userData.hotelId.id) : userData.hotelId;
-        this.hotelIdCache = String(id);
-        this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-        return this.hotelIdCache;
-      }
-    } catch {
-      // Error handled silently
-    }
-
-    // Fallback: Use a placeholder error or throw - the API should provide hotelId
-    console.warn('No hotelId found from auth endpoint, falling back to user context');
-    throw new Error('Unable to determine hotel ID. Please ensure you are logged in.');
   }
 
   async getRequests(filters: SupplyRequestFilters = {}): Promise<ApiResponse<{ requests: SupplyRequest[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
@@ -293,9 +264,8 @@ class AdminSupplyRequestsService {
   async getStats(filters?: { dateFrom?: string; dateTo?: string; department?: string }): Promise<ApiResponse<SupplyRequestStats>> {
     const queryParams = new URLSearchParams();
 
-    // Add hotelId dynamically
-    const hotelId = await this.getUserHotelId();
-    queryParams.append('hotelId', hotelId);
+    // hotelId is injected automatically by the api interceptor from selectedPropertyId
+    // (same mechanism used by getRequests), ensuring stats match the selected property.
 
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
@@ -305,7 +275,8 @@ class AdminSupplyRequestsService {
       });
     }
 
-    const endpoint = `/stats?${queryParams.toString()}`;
+    const queryString = queryParams.toString();
+    const endpoint = queryString ? `/stats?${queryString}` : '/stats';
 
     return this.apiRequest(endpoint);
   }

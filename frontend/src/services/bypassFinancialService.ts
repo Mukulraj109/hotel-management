@@ -220,7 +220,7 @@ class BypassFinancialService {
   async getFinancialSummary(timeRange: number = 30): Promise<{ data: FinancialSummary }> {
     
     try {
-      const response = await api.get(`/admin-bypass-management/summary?timeRange=${timeRange}`);
+      const response = await api.get(`/admin-bypass-management/analytics/summary?timeRange=${timeRange}`);
       return response.data;
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
@@ -233,7 +233,7 @@ class BypassFinancialService {
    */
   async getCostTrends(months: number = 12): Promise<{ data: CostTrend[] }> {
     try {
-      const response = await api.get(`/admin-bypass-management/trends?months=${months}`);
+      const response = await api.get(`/admin-bypass-management/analytics/trends?months=${months}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -245,7 +245,7 @@ class BypassFinancialService {
    */
   async getTopCostDrivers(limit: number = 10): Promise<{ data: CostDriver[] }> {
     try {
-      const response = await api.get(`/admin-bypass-management/cost-drivers?limit=${limit}`);
+      const response = await api.get(`/admin-bypass-management/analytics/cost-drivers?limit=${limit}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -257,7 +257,7 @@ class BypassFinancialService {
    */
   async getFinancialImpact(impactId: string): Promise<{ data: FinancialImpact }> {
     try {
-      const response = await api.get(`/admin-bypass-management/impact/${impactId}`);
+      const response = await api.get(`/admin-bypass-management/analytics/impact/${impactId}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -286,7 +286,7 @@ class BypassFinancialService {
         }
       });
 
-      const response = await api.get(`/admin-bypass-management/impacts?${queryParams.toString()}`);
+      const response = await api.get(`/admin-bypass-management/analytics/impacts?${queryParams.toString()}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -310,7 +310,7 @@ class BypassFinancialService {
         }
       });
 
-      const response = await api.get(`/admin-bypass-management/budget-impact?${queryParams.toString()}`);
+      const response = await api.get(`/admin-bypass-management/analytics/budget-impact?${queryParams.toString()}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -322,7 +322,7 @@ class BypassFinancialService {
    */
   async getRecoveryData(timeRange: number = 90): Promise<{ data: RecoveryData }> {
     try {
-      const response = await api.get(`/admin-bypass-management/recovery?timeRange=${timeRange}`);
+      const response = await api.get(`/admin-bypass-management/analytics/recovery?timeRange=${timeRange}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -345,7 +345,7 @@ class BypassFinancialService {
         }
       });
 
-      const response = await api.get(`/admin-bypass-management/predictive?${queryParams.toString()}`);
+      const response = await api.get(`/admin-bypass-management/analytics/predictive?${queryParams.toString()}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -357,21 +357,7 @@ class BypassFinancialService {
    */
   async getExecutiveReport(timeRange: number = 90, format: string = 'json'): Promise<{ data: ExecutiveReport }> {
     try {
-      const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`);
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
-  }
-
-  /**
-   * Export executive report as PDF
-   */
-  async exportExecutiveReport(timeRange: number = 90, format: string = 'pdf'): Promise<{ data: unknown }> {
-    try {
-      const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`, {
-        responseType: 'blob'
-      });
+      const response = await api.get(`/admin-bypass-management/analytics/executive-report?timeRange=${timeRange}&format=${format}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -383,7 +369,7 @@ class BypassFinancialService {
    */
   async updateFinancialImpact(impactId: string, updateData: Partial<FinancialImpact>): Promise<{ data: FinancialImpact }> {
     try {
-      const response = await api.put(`/admin-bypass-management/impact/${impactId}`, updateData);
+      const response = await api.put(`/admin-bypass-management/analytics/impact/${impactId}`, updateData);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -402,7 +388,7 @@ class BypassFinancialService {
     expectedSavings?: number;
   }): Promise<{ data: unknown }> {
     try {
-      const response = await api.post(`/admin-bypass-management/impact/${impactId}/recovery-action`, actionData);
+      const response = await api.post(`/admin-bypass-management/analytics/impact/${impactId}/recovery-action`, actionData);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -414,7 +400,7 @@ class BypassFinancialService {
    */
   async completeRecoveryAction(impactId: string, actionId: string, actualSavings: number): Promise<{ data: unknown }> {
     try {
-      const response = await api.put(`/admin-bypass-management/impact/${impactId}/recovery-action/${actionId}/complete`, {
+      const response = await api.put(`/admin-bypass-management/analytics/impact/${impactId}/recovery-action/${actionId}/complete`, {
         actualSavings
       });
       return response.data;
@@ -433,7 +419,7 @@ class BypassFinancialService {
         params.append('category', category);
       }
 
-      const response = await api.get(`/admin-bypass-management/predictive?${params.toString()}`);
+      const response = await api.get(`/admin-bypass-management/analytics/predictive?${params.toString()}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -473,11 +459,11 @@ class BypassFinancialService {
     if (budgetData.length === 0) return null;
 
     const dept = budgetData[0];
-    const avgImpact = impacts.reduce((sum, impact) => sum + impact.totalFinancialImpact, 0) / impacts.length;
-    const recoveryRate = impacts.reduce((sum, impact) => sum + impact.recovery.recoveryPercentage, 0) / impacts.length;
+    const avgImpact = impacts.length > 0 ? impacts.reduce((sum, impact) => sum + impact.totalFinancialImpact, 0) / impacts.length : 0;
+    const recoveryRate = impacts.length > 0 ? impacts.reduce((sum, impact) => sum + impact.recovery.recoveryPercentage, 0) / impacts.length : 0;
 
     return {
-      budgetUtilization: (dept.totalImpact / dept.totalBudget) * 100,
+      budgetUtilization: dept.totalBudget > 0 ? (dept.totalImpact / dept.totalBudget) * 100 : 0,
       averageImpactPerBypass: avgImpact,
       recoveryRate,
       performanceScore: this.calculatePerformanceScore(dept, avgImpact, recoveryRate),
@@ -493,7 +479,7 @@ class BypassFinancialService {
     let score = 100;
 
     // Deduct points for budget overruns
-    const budgetUtilization = (dept.totalImpact / dept.totalBudget) * 100;
+    const budgetUtilization = dept.totalBudget > 0 ? (dept.totalImpact / dept.totalBudget) * 100 : 0;
     if (budgetUtilization > 100) {
       score -= Math.min(50, (budgetUtilization - 100) * 2);
     }
@@ -517,14 +503,14 @@ class BypassFinancialService {
   private determineTrend(impacts: FinancialImpact[]): string {
     if (impacts.length < 2) return 'stable';
 
-    const sortedImpacts = impacts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const sortedImpacts = [...impacts].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     const firstHalf = sortedImpacts.slice(0, Math.ceil(sortedImpacts.length / 2));
     const secondHalf = sortedImpacts.slice(Math.floor(sortedImpacts.length / 2));
 
     const firstAvg = firstHalf.reduce((sum, impact) => sum + impact.totalFinancialImpact, 0) / firstHalf.length;
     const secondAvg = secondHalf.reduce((sum, impact) => sum + impact.totalFinancialImpact, 0) / secondHalf.length;
 
-    const change = (secondAvg - firstAvg) / firstAvg;
+    const change = firstAvg > 0 ? (secondAvg - firstAvg) / firstAvg : 0;
 
     if (change > 0.1) return 'increasing';
     if (change < -0.1) return 'decreasing';

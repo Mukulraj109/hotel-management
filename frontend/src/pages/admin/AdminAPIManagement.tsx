@@ -1,10 +1,10 @@
 import React from 'react';
-import { ComprehensiveAPIAccess } from '../../components/api/ComprehensiveAPIAccess';
+import ComprehensiveAPIAccess from '../../components/api/ComprehensiveAPIAccess';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 const AdminAPIManagement: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
 
   // If in single mode and no property selected, show selection prompt
   if (!selectedPropertyId && viewMode === 'single') {

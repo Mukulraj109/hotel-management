@@ -384,8 +384,35 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
         pendingCount: {
           $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
         },
+        assignedCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'assigned'] }, 1, 0] }
+        },
+        inProgressCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+        },
         completedCount: {
           $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        },
+        cancelledCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
+        },
+        totalResponseTime: {
+          $avg: {
+            $cond: [
+              { $and: [{ $ne: ['$respondedAt', null] }, { $ne: ['$createdAt', null] }] },
+              { $subtract: ['$respondedAt', '$createdAt'] },
+              null
+            ]
+          }
+        },
+        totalCompletionTime: {
+          $avg: {
+            $cond: [
+              { $and: [{ $ne: ['$completedAt', null] }, { $ne: ['$createdAt', null] }] },
+              { $subtract: ['$completedAt', '$createdAt'] },
+              null
+            ]
+          }
         }
       }
     }
@@ -461,8 +488,9 @@ router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'sta
   if (!assignedTo) {
     throw new ApplicationError('assignedTo is required', 400);
   }
+  const hotelId = req.query.hotelId || req.user.hotelId;
   const result = await GuestService.updateMany(
-    { _id: { $in: serviceIds } },
+    { _id: { $in: serviceIds }, hotelId },
     { $set: { assignedTo, status: 'assigned', updatedAt: new Date() } }
   );
   res.json({ status: 'success', data: { updated: result.modifiedCount } });
@@ -480,8 +508,9 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
   }
   const updateData = { status, updatedAt: new Date() };
   if (status === 'completed') updateData.completedAt = new Date();
+  const bulkHotelId = req.query.hotelId || req.user.hotelId;
   const result = await GuestService.updateMany(
-    { _id: { $in: serviceIds } },
+    { _id: { $in: serviceIds }, hotelId: bulkHotelId },
     { $set: updateData }
   );
   res.json({ status: 'success', data: { updated: result.modifiedCount } });

@@ -487,12 +487,16 @@ class DayUseService {
       
       // Apply seasonal adjustments
       if (seasonalPricingService) {
-        const seasonalAdjustment = await seasonalPricingService.calculateAdjustment(
-          bookingDate,
-          slot.roomType,
-          basePrice
-        );
-        priceBreakdown.seasonalAdjustment = seasonalAdjustment;
+        try {
+          const seasonalData = await seasonalPricingService.calculateSeasonalAdjustment(
+            null,
+            slot.roomType,
+            bookingDate
+          );
+          priceBreakdown.seasonalAdjustment = seasonalData.totalAdjustment || 0;
+        } catch {
+          priceBreakdown.seasonalAdjustment = 0;
+        }
       }
       
       // Apply dynamic pricing based on demand

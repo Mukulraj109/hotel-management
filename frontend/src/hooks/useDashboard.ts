@@ -21,8 +21,8 @@ export const dashboardKeys = {
   kpis: (hotelId?: string, period?: string) => [...dashboardKeys.all, 'kpis', hotelId, period] as const,
   occupancy: (hotelId: string, floor?: string, roomType?: string) => 
     [...dashboardKeys.all, 'occupancy', hotelId, floor, roomType] as const,
-  revenue: (hotelId: string, period?: string, startDate?: string, endDate?: string) => 
-    [...dashboardKeys.all, 'revenue', hotelId, period, startDate, endDate] as const,
+  revenue: (hotelId: string, period?: string, startDate?: string, endDate?: string, groupBy?: string) =>
+    [...dashboardKeys.all, 'revenue', hotelId, period, startDate, endDate, groupBy] as const,
   staffPerformance: (hotelId: string, department?: string, staffId?: string) => 
     [...dashboardKeys.all, 'staff-performance', hotelId, department, staffId] as const,
   guestSatisfaction: (hotelId: string, period?: string, rating?: number) => 
@@ -95,11 +95,12 @@ export const useRevenueData = (
   period?: string,
   startDate?: string,
   endDate?: string,
+  groupBy?: string,
   options?: { enabled?: boolean }
 ) => {
   return useQuery({
-    queryKey: dashboardKeys.revenue(hotelId, period, startDate, endDate),
-    queryFn: () => dashboardService.getRevenueData(hotelId, period, startDate, endDate),
+    queryKey: dashboardKeys.revenue(hotelId, period, startDate, endDate, groupBy),
+    queryFn: () => dashboardService.getRevenueData(hotelId, period, startDate, endDate, groupBy),
     enabled: (options?.enabled ?? true) && !!hotelId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

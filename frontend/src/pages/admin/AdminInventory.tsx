@@ -156,8 +156,14 @@ function AdminInventory() {
         hotelId: selectedPropertyId
       });
       setItems(response.data.items);
-      if (response.pagination) {
-        setPagination(response.pagination);
+      // Backend returns { page, limit, total, pages } — map `page` to `current`
+      const pag = response.pagination as unknown as { page?: number; current?: number; pages: number; total: number } | undefined;
+      if (pag) {
+        setPagination({
+          current: pag.current ?? pag.page ?? 1,
+          pages: pag.pages,
+          total: pag.total
+        });
       }
     } catch {
       // Error handled silently
@@ -166,31 +172,21 @@ function AdminInventory() {
     }
   };
 
-  // Fetch stats (calculated from items data)
+  // Fetch stats from dedicated backend endpoint (aggregated across ALL items)
   const fetchStats = async () => {
+    if (!selectedPropertyId) return;
     try {
-      // Calculate stats from items data
-      const total = items.length;
-      const lowStock = items.filter(item => item.isLowStock).length;
-      const outOfStock = items.filter(item => item.quantity === 0).length;
-      const totalValue = items.reduce((sum, item) => {
-        return sum + (item.costPerUnit || 0) * item.quantity;
-      }, 0);
-      
-      const categories = items.reduce((acc, item) => {
-        acc[item.category] = (acc[item.category] || 0) + 1;
-        return acc;
-      }, {} as { [key: string]: number });
-
-      setStats({
-        total,
-        lowStock,
-        outOfStock,
-        totalValue,
-        categories
-      });
+      const response = await adminService.getInventoryStats();
+      setStats(response.data.stats);
     } catch {
-      // Error handled silently
+      // Fallback: if endpoint unavailable, at least show pagination total
+      setStats({
+        total: pagination.total,
+        lowStock: 0,
+        outOfStock: 0,
+        totalValue: 0,
+        categories: {}
+      });
     }
   };
 
@@ -198,12 +194,12 @@ function AdminInventory() {
   useEffect(() => {
     if (selectedPropertyId) {
       fetchItems();
+      fetchStats();
     }
   }, [filters, selectedPropertyId]);
 
   useEffect(() => {
     if (items.length > 0) {
-      fetchStats();
       calculateAnalytics(); // Phase 5: Calculate analytics when items change
     }
   }, [items]);
@@ -213,7 +209,7 @@ function AdminInventory() {
     try {
       setUpdating(true);
       await adminService.updateInventoryItem(itemId, updates);
-      await fetchItems();
+      await Promise.all([fetchItems(), fetchStats()]);
     } catch {
       // Error handled silently
     } finally {
@@ -226,7 +222,7 @@ function AdminInventory() {
     try {
       setUpdating(true);
       await adminService.createInventoryItem(itemData);
-      await fetchItems();
+      await Promise.all([fetchItems(), fetchStats()]);
       setShowCreateModal(false);
     } catch {
       // Error handled silently
@@ -250,8 +246,8 @@ function AdminInventory() {
         costPerUnit: newCostPerUnit,
         lastRestocked: new Date().toISOString()
       });
-      
-      await fetchItems();
+
+      await Promise.all([fetchItems(), fetchStats()]);
       setShowRestockModal(false);
       setRestockData({ quantity: 0, costPerUnit: 0 });
     } catch {
@@ -267,7 +263,7 @@ function AdminInventory() {
     try {
       setUpdating(true);
       await adminService.deleteInventoryItem(itemId);
-      await fetchItems();
+      await Promise.all([fetchItems(), fetchStats()]);
     } catch {
       // Error handled silently
     } finally {
@@ -358,7 +354,7 @@ function AdminInventory() {
       });
       
       await Promise.all(promises);
-      await fetchItems();
+      await Promise.all([fetchItems(), fetchStats()]);
       setSelectedItems([]);
       setShowBulkModal(false);
     } catch {
@@ -477,15 +473,15 @@ function AdminInventory() {
     const reportData = {
       generatedAt: new Date().toISOString(),
       summary: {
-        totalItems: items.length,
-        totalValue: items.reduce((sum, item) => sum + (item.costPerUnit || 0) * item.quantity, 0),
-        lowStockItems: items.filter(item => item.isLowStock).length,
-        outOfStockItems: items.filter(item => item.quantity === 0).length
+        totalItems: stats?.total ?? items.length,
+        totalValue: stats?.totalValue ?? items.reduce((sum, item) => sum + (item.costPerUnit || 0) * item.quantity, 0),
+        lowStockItems: stats?.lowStock ?? items.filter(item => item.isLowStock).length,
+        outOfStockItems: stats?.outOfStock ?? items.filter(item => item.quantity === 0).length
       },
-      categoryBreakdown: Object.entries(analyticsData.categoryDistribution).map(([category, count]) => ({
+      categoryBreakdown: Object.entries(stats?.categories ?? analyticsData.categoryDistribution).map(([category, count]) => ({
         category,
         count,
-        percentage: items.length > 0 ? ((count / items.length) * 100).toFixed(1) : '0.0'
+        percentage: (stats?.total ?? items.length) > 0 ? ((count / (stats?.total ?? items.length)) * 100).toFixed(1) : '0.0'
       })),
       lowStockItems: analyticsData.lowStockAlerts,
       topSuppliers: Object.entries(analyticsData.supplierPerformance)
@@ -567,29 +563,8 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
     return applyAdvancedFilters();
   }, [items, advancedFilters]);
 
-  const memoizedStats = React.useMemo(() => {
-    if (!items.length) return null;
-    
-    const total = items.length;
-    const lowStock = items.filter(item => item.isLowStock).length;
-    const outOfStock = items.filter(item => item.quantity === 0).length;
-    const totalValue = items.reduce((sum, item) => {
-      return sum + (item.costPerUnit || 0) * item.quantity;
-    }, 0);
-    
-    const categories = items.reduce((acc, item) => {
-      acc[item.category] = (acc[item.category] || 0) + 1;
-      return acc;
-    }, {} as { [key: string]: number });
-
-    return {
-      total,
-      lowStock,
-      outOfStock,
-      totalValue,
-      categories
-    };
-  }, [items]);
+  // Stats come from the dedicated backend endpoint (aggregated across ALL items)
+  const memoizedStats = stats;
 
   // Phase 5: Data Visualization Helpers
   const getCategoryColor = (category: string) => {
@@ -704,14 +679,17 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
     {
       key: 'location',
       header: 'Location',
-      render: (value: unknown) => (
-        <div className="flex items-center">
-          <MapPin className="h-4 w-4 text-gray-400 mr-1" />
-          <span className="text-sm">
-            {value ? `${value.building || ''} ${value.floor || ''} ${value.room || ''}`.trim() : 'Not specified'}
-          </span>
-        </div>
-      )
+      render: (_value: unknown, row: InventoryItem) => {
+        const loc = row.location;
+        return (
+          <div className="flex items-center">
+            <MapPin className="h-4 w-4 text-gray-400 mr-1" />
+            <span className="text-sm">
+              {loc ? `${loc.building || ''} ${loc.floor || ''} ${loc.room || ''}`.trim() || 'Not specified' : 'Not specified'}
+            </span>
+          </div>
+        );
+      }
     },
     {
       key: 'lastRestocked',
@@ -1208,7 +1186,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium">{count}</span>
                               <span className="text-xs text-gray-500">
-                                ({items.length > 0 ? ((count / items.length) * 100).toFixed(1) : '0.0'}%)
+                                ({(stats?.total ?? items.length) > 0 ? ((count / (stats?.total ?? items.length)) * 100).toFixed(1) : '0.0'}%)
                               </span>
                             </div>
                           </div>
@@ -1325,7 +1303,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
               <div className="flex items-center gap-4">
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Total Items</p>
-                  <p className="text-lg font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors duration-300">{items.length}</p>
+                  <p className="text-lg font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors duration-300">{stats?.total ?? pagination.total}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl flex items-center justify-center">
                   <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full animate-pulse"></div>
@@ -1333,12 +1311,12 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
               </div>
             </div>
             <DataTable
-              data={items}
+              data={memoizedItems}
               columns={columns}
               loading={loading}
               searchable={true}
               searchPlaceholder="Search items..."
-              pagination={true}
+              pagination={false}
               pageSize={filters.limit || 10}
               emptyMessage="No inventory items found"
               onRowClick={(item) => {
@@ -1346,6 +1324,59 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                 setShowDetailsModal(true);
               }}
             />
+
+            {/* Server-side Pagination Controls */}
+            {pagination.pages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  Showing {((pagination.current - 1) * (filters.limit || 10)) + 1}
+                  {' '}-{' '}
+                  {Math.min(pagination.current * (filters.limit || 10), pagination.total)}
+                  {' '}of {pagination.total} items
+                </p>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pagination.current <= 1}
+                    onClick={() => setFilters({ ...filters, page: (filters.page || 1) - 1 })}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(pagination.pages, 5) }, (_, i) => {
+                    let pageNum: number;
+                    if (pagination.pages <= 5) {
+                      pageNum = i + 1;
+                    } else if (pagination.current <= 3) {
+                      pageNum = i + 1;
+                    } else if (pagination.current >= pagination.pages - 2) {
+                      pageNum = pagination.pages - 4 + i;
+                    } else {
+                      pageNum = pagination.current - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pagination.current === pageNum ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setFilters({ ...filters, page: pageNum })}
+                        className={pagination.current === pageNum ? 'bg-blue-600 text-white' : ''}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pagination.current >= pagination.pages}
+                    onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

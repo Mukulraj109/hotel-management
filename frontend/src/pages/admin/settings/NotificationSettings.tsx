@@ -209,8 +209,13 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
       };
 
       try {
-        const response = await api.put('/notifications/preferences', apiData);
-        return response.data;
+        // Backend expects { channel, settings } per call, so send one request per channel
+        const results = await Promise.all(
+          Object.entries(apiData).map(([channel, settings]) =>
+            api.patch('/notifications/preferences', { channel, settings })
+          )
+        );
+        return results[results.length - 1].data;
       } catch (error: unknown) {
         throw error instanceof Error ? error : new Error('Failed to save notification preferences');
       }

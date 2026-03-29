@@ -88,7 +88,7 @@ const bypassFinancialImpactSchema = new mongoose.Schema({
         totalBookingValue: Number,
         currency: {
             type: String,
-            default: 'USD'
+            default: 'INR'
         }
     },
 

@@ -9,6 +9,7 @@ class AuditAnalyticsService {
   async getAuditLogs(filters = {}, pagination = {}) {
     try {
       const {
+        hotelId,
         userId,
         propertyId,
         groupId,
@@ -22,14 +23,22 @@ class AuditAnalyticsService {
       } = filters;
 
       const {
-        page = 1,
-        limit = 50,
         sortBy = 'timestamp',
         sortOrder = 'desc'
       } = pagination;
 
+      const page = Math.max(1, parseInt(pagination.page) || 1);
+      const maxLimit = parseInt(pagination.maxLimit) || 100;
+      const limit = Math.min(maxLimit, Math.max(1, parseInt(pagination.limit) || 50));
+
+      // Whitelist sortable fields
+      const allowedSortFields = ['timestamp', 'action', 'scope', 'settingType', 'status', 'duration'];
+      const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'timestamp';
+
       // Build query
       const query = {};
+
+      if (hotelId) query.hotelId = hotelId;
 
       if (userId) query.userId = userId;
       if (groupId) query.groupId = groupId;
@@ -38,14 +47,6 @@ class AuditAnalyticsService {
       if (scope) query.scope = scope;
       if (status) query.status = status;
 
-      // Property filter - include both direct and affected properties
-      if (propertyId) {
-        query.$or = [
-          { propertyId },
-          { affectedPropertyIds: propertyId }
-        ];
-      }
-
       // Date range filter
       if (startDate || endDate) {
         query.timestamp = {};
@@ -53,19 +54,31 @@ class AuditAnalyticsService {
         if (endDate) query.timestamp.$lte = new Date(endDate);
       }
 
-      // Text search
-      if (search) {
-        query.$or = [
-          { userName: { $regex: search, $options: 'i' } },
-          { userEmail: { $regex: search, $options: 'i' } },
-          { settingName: { $regex: search, $options: 'i' } },
-          { settingType: { $regex: search, $options: 'i' } }
-        ];
+      // Property filter and text search — both use $or, so combine with $and when both present
+      const propertyOr = propertyId
+        ? [{ propertyId }, { affectedPropertyIds: propertyId }]
+        : null;
+
+      const searchOr = search
+        ? [
+            { userName: { $regex: search, $options: 'i' } },
+            { userEmail: { $regex: search, $options: 'i' } },
+            { settingName: { $regex: search, $options: 'i' } },
+            { settingType: { $regex: search, $options: 'i' } }
+          ]
+        : null;
+
+      if (propertyOr && searchOr) {
+        query.$and = [{ $or: propertyOr }, { $or: searchOr }];
+      } else if (propertyOr) {
+        query.$or = propertyOr;
+      } else if (searchOr) {
+        query.$or = searchOr;
       }
 
       // Execute query
       const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+      const sort = { [safeSortBy]: sortOrder === 'desc' ? -1 : 1 };
 
       const [logs, totalCount] = await Promise.all([
         SettingsAuditLog.find(query)
@@ -84,7 +97,7 @@ class AuditAnalyticsService {
         pagination: {
           page,
           limit,
-          totalPages: Math.ceil(totalCount / limit),
+          totalPages: limit > 0 ? Math.ceil(totalCount / limit) : 1,
           totalCount
         }
       };
@@ -97,21 +110,22 @@ class AuditAnalyticsService {
   /**
    * Get usage statistics
    */
-  async getUsageStatistics(dateRange = {}) {
+  async getUsageStatistics(dateRange = {}, hotelId = null) {
     try {
       const { startDate, endDate, groupBy = 'day' } = dateRange;
+      const scopedRange = { ...dateRange, hotelId };
 
       // Get overall statistics
-      const stats = await SettingsAuditLog.getStatistics(dateRange);
+      const stats = await SettingsAuditLog.getStatistics(scopedRange);
 
       // Get time series data
-      const timeSeries = await this.getTimeSeriesData(startDate, endDate, groupBy);
+      const timeSeries = await this.getTimeSeriesData(startDate, endDate, groupBy, hotelId);
 
       // Get most active users
-      const mostActiveUsers = await SettingsAuditLog.getMostActiveUsers(10, dateRange);
+      const mostActiveUsers = await SettingsAuditLog.getMostActiveUsers(10, scopedRange);
 
       // Get most changed settings
-      const mostChangedSettings = await SettingsAuditLog.getMostChangedSettings(10, dateRange);
+      const mostChangedSettings = await SettingsAuditLog.getMostChangedSettings(10, scopedRange);
 
       // Calculate additional metrics
       const totalChanges = stats.totalChanges[0]?.count || 0;
@@ -150,9 +164,10 @@ class AuditAnalyticsService {
   /**
    * Get time series data
    */
-  async getTimeSeriesData(startDate, endDate, groupBy = 'day') {
+  async getTimeSeriesData(startDate, endDate, groupBy = 'day', hotelId = null) {
     try {
       const matchStage = {};
+      if (hotelId) matchStage.hotelId = hotelId;
 
       if (startDate && endDate) {
         matchStage.timestamp = {
@@ -222,11 +237,12 @@ class AuditAnalyticsService {
   /**
    * Get property activity heatmap
    */
-  async getPropertyActivityHeatmap(dateRange = {}) {
+  async getPropertyActivityHeatmap(dateRange = {}, hotelId = null) {
     try {
       const { startDate, endDate } = dateRange;
 
       const matchStage = {};
+      if (hotelId) matchStage.hotelId = hotelId;
 
       if (startDate && endDate) {
         matchStage.timestamp = {
@@ -327,19 +343,17 @@ class AuditAnalyticsService {
   /**
    * Get user activity
    */
-  async getUserActivity(userId, options = {}) {
+  async getUserActivity(userId, options = {}, hotelId = null) {
     try {
       const { limit = 100, skip = 0 } = options;
 
-      const logs = await SettingsAuditLog.getLogsByUser(userId, { limit, skip });
+      const logs = await SettingsAuditLog.getLogsByUser(userId, { limit, skip, hotelId });
 
-      // Calculate user statistics
-      // Consider caching this aggregation result for 5 minutes
-
-      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      const userMatch = { userId };
+      if (hotelId) userMatch.hotelId = hotelId;
 
       const stats = await SettingsAuditLog.aggregate([
-        { $match: { userId: userId } },
+        { $match: userMatch },
         {
           $facet: {
             totalChanges: [{ $count: 'count' }],
@@ -381,26 +395,22 @@ class AuditAnalyticsService {
   /**
    * Get property activity
    */
-  async getPropertyActivity(propertyId, options = {}) {
+  async getPropertyActivity(propertyId, options = {}, hotelId = null) {
     try {
       const { limit = 100, skip = 0 } = options;
 
-      const logs = await SettingsAuditLog.getLogsByProperty(propertyId, { limit, skip });
+      const logs = await SettingsAuditLog.getLogsByProperty(propertyId, { limit, skip, hotelId });
 
-      // Calculate property statistics
-      // Consider caching this aggregation result for 5 minutes
-
-      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      const propMatch = {
+        $or: [
+          { propertyId },
+          { affectedPropertyIds: propertyId }
+        ]
+      };
+      if (hotelId) propMatch.hotelId = hotelId;
 
       const stats = await SettingsAuditLog.aggregate([
-        {
-          $match: {
-            $or: [
-              { propertyId },
-              { affectedPropertyIds: propertyId }
-            ]
-          }
-        },
+        { $match: propMatch },
         {
           $facet: {
             totalChanges: [{ $count: 'count' }],
@@ -445,8 +455,8 @@ class AuditAnalyticsService {
    */
   async exportAuditLog(filters = {}, format = 'csv') {
     try {
-      // Get all matching logs (no pagination limit)
-      const { logs } = await this.getAuditLogs(filters, { limit: 100000 });
+      // Get matching logs with a safe upper bound
+      const { logs } = await this.getAuditLogs(filters, { page: 1, limit: 10000, maxLimit: 10000 });
 
       if (format === 'csv') {
         // Define fields for CSV
@@ -493,7 +503,7 @@ class AuditAnalyticsService {
    * Calculate time savings
    * Estimate how much time was saved by bulk operations
    */
-  async calculateTimeSavings(dateRange = {}) {
+  async calculateTimeSavings(dateRange = {}, hotelId = null) {
     try {
       const { startDate, endDate } = dateRange;
 
@@ -501,6 +511,7 @@ class AuditAnalyticsService {
         scope: { $in: ['group', 'all'] },
         action: 'update'
       };
+      if (hotelId) matchStage.hotelId = hotelId;
 
       if (startDate && endDate) {
         matchStage.timestamp = {
@@ -561,9 +572,18 @@ class AuditAnalyticsService {
   /**
    * Get recent activity feed
    */
-  async getRecentActivity(limit = 20) {
+  async getRecentActivity(limit = 20, hotelId = null) {
     try {
-      const logs = await SettingsAuditLog.getRecentLogs(limit);
+      const query = {};
+      if (hotelId) query.hotelId = hotelId;
+
+      const logs = await SettingsAuditLog.find(query)
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .populate('userId', 'name email')
+        .populate('propertyId', 'name')
+        .populate('groupId', 'name')
+        .lean();
 
       return logs;
     } catch (error) {
@@ -575,9 +595,12 @@ class AuditAnalyticsService {
   /**
    * Get audit log by ID
    */
-  async getAuditLogById(logId) {
+  async getAuditLogById(logId, hotelId = null) {
     try {
-      const log = await SettingsAuditLog.findById(logId)
+      const query = { _id: logId };
+      if (hotelId) query.hotelId = hotelId;
+
+      const log = await SettingsAuditLog.findOne(query)
         .populate('userId', 'name email role')
         .populate('propertyId', 'name code')
         .populate('groupId', 'name description')

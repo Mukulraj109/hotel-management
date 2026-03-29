@@ -38,6 +38,15 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+// Helper: get risk level label from numeric score
+function getRiskLevel(riskScore) {
+    if (riskScore >= 80) return 'critical';
+    if (riskScore >= 60) return 'high';
+    if (riskScore >= 40) return 'medium';
+    if (riskScore >= 20) return 'low';
+    return 'minimal';
+}
+
 // Apply authentication to all routes (same as other admin routes)
 router.use(authenticate);
 router.use(authorizePolicy('adminBypassManagement', 'baseAccess'));
@@ -178,14 +187,41 @@ router.get('/security/events', catchAsync(async (req, res) => {
         }
     }
 
-    const events = await AdminBypassAudit.find(query)
+    const parsedLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+    const parsedOffset = Math.max(parseInt(offset) || 0, 0);
+
+    const rawEvents = await AdminBypassAudit.find(query)
         .populate('adminId', 'name email role')
         .populate('bookingId', 'bookingNumber')
         .sort({
             createdAt: -1
         })
-        .limit(parseInt(limit))
-        .skip(parseInt(offset)).lean();
+        .limit(parsedLimit)
+        .skip(parsedOffset).lean();
+
+    // Transform to clean API shape matching frontend SecurityEvent interface
+    const events = rawEvents.map(event => ({
+        _id: event._id,
+        bypassId: event.bypassId,
+        adminId: event.adminId,
+        bookingId: event.bookingId,
+        riskScore: event.securityMetadata?.riskScore || 0,
+        riskLevel: getRiskLevel(event.securityMetadata?.riskScore || 0),
+        reason: event.reason,
+        financialImpact: event.financialImpact,
+        securityFlags: (event.securityMetadata?.securityFlags || []).map(f => ({
+            type: f.type || 'unknown',
+            severity: f.severity || 'info',
+            message: f.message || f.details || '',
+            timestamp: f.timestamp
+        })),
+        operationStatus: event.operationStatus,
+        guestContext: event.guestContext,
+        propertyContext: event.propertyContext,
+        analytics: event.analytics,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt
+    }));
 
     const total = await AdminBypassAudit.countDocuments(query);
 
@@ -194,9 +230,9 @@ router.get('/security/events', catchAsync(async (req, res) => {
         data: events,
         pagination: {
             total,
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            hasMore: total > parseInt(offset) + parseInt(limit)
+            limit: parsedLimit,
+            offset: parsedOffset,
+            hasMore: total > parsedOffset + parsedLimit
         }
     });
 }));
@@ -258,7 +294,7 @@ router.post('/security/validate', validate(mutationBaselineSchema), sanitizeBypa
         data: {
             allowed: securityResult.riskScore < 90,
             riskScore: securityResult.riskScore,
-            riskLevel: bypassSecurityService.getRiskLevel(securityResult.riskScore),
+            riskLevel: getRiskLevel(securityResult.riskScore),
             securityFlags: securityResult.securityFlags,
             requiresApproval: securityResult.requiresApproval,
             requiresPasswordConfirmation: securityResult.riskScore >= 70,
@@ -294,9 +330,14 @@ router.post('/enhanced-checkout',
         const hotelId = req.user.hotelId;
         const securityResult = req.bypassSecurity;
 
-        // Find the booking
-        const booking = await Booking.findById(bookingId).populate('userId rooms.roomId').lean();
+        // Find the booking (no .lean() - we need .save() later)
+        const booking = await Booking.findById(bookingId).populate('userId rooms.roomId');
         if (!booking) {
+            throw new ApplicationError('Booking not found', 404);
+        }
+
+        // Verify booking belongs to this hotel
+        if (booking.hotelId?.toString() !== hotelId?.toString()) {
             throw new ApplicationError('Booking not found', 404);
         }
 
@@ -305,6 +346,7 @@ router.post('/enhanced-checkout',
             throw new ApplicationError('Only checked-in bookings can be checked out', 400);
         }
 
+        let auditRecord = null;
         try {
             // Create comprehensive audit record first
             const auditData = {
@@ -321,7 +363,7 @@ router.post('/enhanced-checkout',
                 },
                 financialImpact: {
                     estimatedLoss: financialImpact.estimatedLoss || 0,
-                    currency: financialImpact.currency || 'USD',
+                    currency: financialImpact.currency || 'INR',
                     impactCategory: financialImpact.impactCategory || 'minimal',
                     recoveryPlan: financialImpact.recoveryPlan
                 },
@@ -357,7 +399,7 @@ router.post('/enhanced-checkout',
                 auditData.reason.sensitiveNotes = reason.sensitiveNotes;
             }
 
-            const auditRecord = await AdminBypassAudit.createBypassAudit(auditData);
+            auditRecord = await AdminBypassAudit.createBypassAudit(auditData);
 
             // Check if approval is required
             let approvalWorkflow = null;
@@ -397,6 +439,12 @@ router.post('/enhanced-checkout',
                 }
             }
 
+            // Validate status transition BEFORE creating records
+            const bypassTransition = validateTransition(booking.status, 'checked_out');
+            if (!bypassTransition.valid) {
+                throw new ApplicationError(bypassTransition.error, 400);
+            }
+
             // Proceed with immediate bypass (approved or no approval required)
             const checkoutInventory = await CheckoutInventory.create({
                 bookingId: booking._id,
@@ -419,12 +467,6 @@ router.post('/enhanced-checkout',
             auditRecord.operationStatus.status = 'completed';
             auditRecord.operationStatus.completedAt = new Date();
             await auditRecord.save();
-
-            // Validate status transition before checkout
-            const bypassTransition = validateTransition(booking.status, 'checked_out');
-            if (!bypassTransition.valid) {
-                throw new ApplicationError(bypassTransition.error, 400);
-            }
 
             // Update booking status to checked out
             booking.status = 'checked_out';
@@ -487,7 +529,7 @@ router.post('/enhanced-checkout',
                     },
                     securitySummary: {
                         riskScore: securityResult.riskScore,
-                        riskLevel: bypassSecurityService.getRiskLevel(securityResult.riskScore),
+                        riskLevel: getRiskLevel(securityResult.riskScore),
                         flagsCount: securityResult.securityFlags.length,
                         requiresFollowUp: auditRecord.reason.followUpRequired
                     }
@@ -543,20 +585,22 @@ router.get('/security/bypass/:bypassId', catchAsync(async (req, res) => {
         })
         .populate('adminId', 'name email role')
         .populate('bookingId', 'bookingNumber')
-        .populate('checkoutInventoryId').lean();
+        .populate('checkoutInventoryId');
 
     if (!bypass) {
         throw new ApplicationError('Bypass operation not found', 404);
     }
 
+    const bypassObj = bypass.toObject();
+
     // Decrypt sensitive notes if user has permission
-    if (bypass.reason.encryptedNotes && req.user.role === 'admin') {
-        bypass.decryptedSensitiveNotes = bypass.decryptSensitiveNotes(process.env.BYPASS_ENCRYPTION_KEY);
+    if (bypass.reason?.encryptedNotes && req.user.role === 'admin' && typeof bypass.decryptSensitiveNotes === 'function') {
+        bypassObj.decryptedSensitiveNotes = bypass.decryptSensitiveNotes(process.env.BYPASS_ENCRYPTION_KEY);
     }
 
     res.status(200).json({
         status: 'success',
-        data: bypass
+        data: bypassObj
     });
 }));
 
@@ -684,6 +728,13 @@ router.post('/approvals/:workflowId/process', validate(mutationBaselineSchema), 
         throw new ApplicationError('Approval notes are required (minimum 5 characters)', 400);
     }
 
+    // Verify workflow belongs to this hotel
+    const hotelId = req.user.hotelId;
+    const existingWorkflow = await BypassApprovalWorkflow.findOne({ workflowId, hotelId });
+    if (!existingWorkflow) {
+        throw new ApplicationError('Workflow not found', 404);
+    }
+
     const workflow = await bypassApprovalService.processApproval(
         workflowId,
         approverId,
@@ -723,13 +774,20 @@ router.post('/approvals/:workflowId/delegate', validate(mutationBaselineSchema),
         delegationReason
     } = req.body;
     const fromApproverId = req.user._id;
+    const hotelId = req.user.hotelId;
 
     if (!toUserId || !delegationReason) {
         throw new ApplicationError('Delegate user ID and delegation reason are required', 400);
     }
 
+    // Verify workflow belongs to this hotel before delegating
+    const existingWorkflow = await BypassApprovalWorkflow.findOne({ workflowId, hotelId });
+    if (!existingWorkflow) {
+        throw new ApplicationError('Workflow not found', 404);
+    }
+
     const workflow = await bypassApprovalService.delegateApproval(
-        workflowId,
+        existingWorkflow._id,
         fromApproverId,
         toUserId,
         delegationReason
@@ -756,8 +814,15 @@ router.post('/approvals/:workflowId/escalate', validate(mutationBaselineSchema),
     const {
         reason = 'manual_escalation'
     } = req.body;
+    const hotelId = req.user.hotelId;
 
-    const workflow = await bypassApprovalService.escalateWorkflow(workflowId, reason);
+    // Verify workflow belongs to this hotel before escalating
+    const existingWorkflow = await BypassApprovalWorkflow.findOne({ workflowId, hotelId });
+    if (!existingWorkflow) {
+        throw new ApplicationError('Workflow not found', 404);
+    }
+
+    const workflow = await bypassApprovalService.escalateWorkflow(existingWorkflow._id, reason);
 
     res.status(200).json({
         status: 'success',
@@ -869,26 +934,35 @@ router.get('/approvals/status/:status', catchAsync(async (req, res) => {
 async function executeApprovedBypass(workflow) {
     try {
         const auditRecord = await AdminBypassAudit.findById(workflow.bypassAuditId)
-            .populate('bookingId')
             .populate('adminId');
 
         if (!auditRecord || !auditRecord.bookingId) {
             throw new Error('Invalid audit record or booking not found');
         }
 
-        const booking = auditRecord.bookingId;
+        // Fetch the booking separately (not via populate) so we can .save()
+        const booking = await Booking.findById(auditRecord.bookingId);
+        if (!booking) {
+            throw new Error('Booking not found');
+        }
+
+        // Validate status transition BEFORE creating records
+        const approvedBypassTransition = validateTransition(booking.status, 'checked_out');
+        if (!approvedBypassTransition.valid) {
+            throw new Error(approvedBypassTransition.error);
+        }
 
         // Create bypass checkout inventory record
         const checkoutInventory = await CheckoutInventory.create({
             bookingId: booking._id,
-            roomId: booking.rooms[0].roomId,
-            checkedBy: auditRecord.adminId._id,
-            items: [], // No items for bypass checkout
+            roomId: booking.rooms?.[0]?.roomId,
+            checkedBy: auditRecord.adminId?._id,
+            items: [],
             subtotal: 0,
             tax: 0,
             totalAmount: 0,
-            status: 'paid', // Directly mark as paid for bypass
-            paymentMethod: 'cash', // Default payment method
+            status: 'paid',
+            paymentMethod: 'cash',
             paymentStatus: 'paid',
             paidAt: new Date(),
             notes: `APPROVED ADMIN BYPASS: ${auditRecord.reason.description} | Bypass ID: ${auditRecord.bypassId} | Workflow: ${workflow.workflowId}`,
@@ -900,12 +974,6 @@ async function executeApprovedBypass(workflow) {
         auditRecord.operationStatus.status = 'completed';
         auditRecord.operationStatus.completedAt = new Date();
         await auditRecord.save();
-
-        // Validate status transition before checkout
-        const approvedBypassTransition = validateTransition(booking.status, 'checked_out');
-        if (!approvedBypassTransition.valid) {
-            throw new Error(approvedBypassTransition.error);
-        }
 
         // Update booking status to checked out
         booking.status = 'checked_out';
@@ -947,9 +1015,14 @@ router.post('/security/alerts/:alertId/acknowledge', validate(mutationBaselineSc
     } = req.body;
     const adminId = req.user._id;
 
-    // Update the audit log entry
-    const alert = await AuditLog.findByIdAndUpdate(
-        alertId, {
+    const hotelId = req.user.hotelId;
+
+    // Update the audit log entry with tenant isolation
+    const alert = await AuditLog.findOneAndUpdate(
+        {
+            _id: alertId,
+            hotelId: new mongoose.Types.ObjectId(hotelId)
+        }, {
             $set: {
                 'metadata.acknowledged': true,
                 'metadata.acknowledgedBy': adminId,

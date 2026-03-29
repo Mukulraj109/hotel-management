@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const specialPeriodSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   periodId: {
     type: String,
     required: true,
@@ -189,9 +195,9 @@ specialPeriodSchema.virtual('isBlackoutPeriod').get(function() {
          this.restrictions.bookingRestriction === 'blocked';
 });
 
-specialPeriodSchema.index({ startDate: 1, endDate: 1 });
+specialPeriodSchema.index({ hotelId: 1, startDate: 1, endDate: 1 });
 specialPeriodSchema.index({ periodId: 1 });
-specialPeriodSchema.index({ type: 1, isActive: 1 });
+specialPeriodSchema.index({ hotelId: 1, type: 1, isActive: 1 });
 specialPeriodSchema.index({ priority: -1 });
 specialPeriodSchema.index({ tags: 1 });
 specialPeriodSchema.index({ 'demand.level': 1 });

@@ -28,6 +28,9 @@ router.route('/analytics/segmentation')
 router.route('/analytics/engagement')
   .get(userManagementController.getUserEngagementMetrics);
 
+router.route('/analytics/export')
+  .get(userManagementController.exportAnalytics);
+
 // Advanced user management routes
 router.route('/advanced-list')
   .get(userManagementController.getAdvancedUserList);

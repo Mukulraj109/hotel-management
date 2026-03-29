@@ -9,13 +9,10 @@ import {
   Clock,
   TrendingUp,
   Eye,
-  MapPin,
-  Smartphone,
   DollarSign,
   Users,
   Activity,
   RefreshCw,
-  Filter,
   Download,
   Search
 } from 'lucide-react';
@@ -104,36 +101,49 @@ const BypassSecurityDashboard: React.FC = () => {
         bypassSecurityService.getActiveAlerts()
       ]);
 
-      setMetrics(metricsData.data);
-      setSecurityEvents(eventsData.data);
-      setSecurityAlerts(alertsData.data);
+      setMetrics(metricsData.data || null);
+      setSecurityEvents(eventsData.data || []);
+      setSecurityAlerts(alertsData.data || []);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch security data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch security data');
     } finally {
       setLoading(false);
     }
   };
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchSecurityData();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      setError(null);
+      const [metricsData, eventsData, alertsData] = await Promise.all([
+        bypassSecurityService.getSecurityMetrics(timeRange),
+        bypassSecurityService.getSecurityEvents({ timeRange, limit: 50 }),
+        bypassSecurityService.getActiveAlerts()
+      ]);
+      setMetrics(metricsData.data || null);
+      setSecurityEvents(eventsData.data || []);
+      setSecurityAlerts(alertsData.data || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh data');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleExportReport = async () => {
     try {
       const report = await bypassSecurityService.exportSecurityReport(timeRange);
-      const blob = new Blob([report.data], { type: 'application/pdf' });
+      const blob = new Blob([JSON.stringify(report.data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bypass_security_report_${timeRange}.pdf`;
+      a.download = `bypass_security_report_${timeRange}.json`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch {
-      // Error handled silently
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to export report');
     }
   };
 
@@ -145,10 +155,10 @@ const BypassSecurityDashboard: React.FC = () => {
   };
 
   const getRiskLevelColor = (riskLevel: string, riskScore: number) => {
-    if (riskLevel === 'Critical' || riskScore >= 80) return 'bg-red-100 text-red-800 border-red-200';
-    if (riskLevel === 'High' || riskScore >= 60) return 'bg-orange-100 text-orange-800 border-orange-200';
-    if (riskLevel === 'Medium' || riskScore >= 40) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    if (riskLevel === 'Low' || riskScore >= 20) return 'bg-blue-100 text-blue-800 border-blue-200';
+    if (riskLevel === 'critical' || riskScore >= 80) return 'bg-red-100 text-red-800 border-red-200';
+    if (riskLevel === 'high' || riskScore >= 60) return 'bg-orange-100 text-orange-800 border-orange-200';
+    if (riskLevel === 'medium' || riskScore >= 40) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    if (riskLevel === 'low' || riskScore >= 20) return 'bg-blue-100 text-blue-800 border-blue-200';
     return 'bg-green-100 text-green-800 border-green-200';
   };
 
@@ -164,7 +174,7 @@ const BypassSecurityDashboard: React.FC = () => {
   };
 
   const filteredEvents = securityEvents.filter(event => {
-    const matchesRiskLevel = filterRiskLevel === 'all' || getRiskLevelFromScore(event.securityMetadata?.riskScore || 0).toLowerCase() === filterRiskLevel;
+    const matchesRiskLevel = filterRiskLevel === 'all' || getRiskLevelFromScore(event.riskScore || 0).toLowerCase() === filterRiskLevel;
     const matchesSearch = searchTerm === '' ||
       event.adminId?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.reason?.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -198,7 +208,7 @@ const BypassSecurityDashboard: React.FC = () => {
         <div className="flex items-center space-x-3">
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as unknown)}
+            onChange={(e) => setTimeRange(e.target.value as '24h' | '7d' | '30d')}
             className="px-3 py-2 border border-gray-300 rounded-md text-sm"
           >
             <option value="24h">Last 24 Hours</option>
@@ -247,7 +257,7 @@ const BypassSecurityDashboard: React.FC = () => {
                     <p className="text-sm text-gray-600">{alert.message}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {new Date(alert.timestamp).toLocaleString()}
-                      {alert.count && ` • ${alert.count} occurrences`}
+                      {alert.count != null && alert.count > 0 && ` • ${alert.count} occurrences`}
                     </p>
                   </div>
                 </div>
@@ -296,7 +306,7 @@ const BypassSecurityDashboard: React.FC = () => {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">Financial Impact</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ${metrics.totalFinancialImpact.toLocaleString()}
+                    ₹{metrics.totalFinancialImpact.toLocaleString('en-IN')}
                   </p>
                 </div>
                 <DollarSign className="h-8 w-8 text-green-600" />
@@ -371,13 +381,13 @@ const BypassSecurityDashboard: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <Badge
-                          className={`${getRiskLevelColor(getRiskLevelFromScore(event.securityMetadata?.riskScore || 0), event.securityMetadata?.riskScore || 0)}`}
+                          className={`${getRiskLevelColor(getRiskLevelFromScore(event.riskScore || 0), event.riskScore || 0)}`}
                         >
-                          {getRiskLevelFromScore(event.securityMetadata?.riskScore || 0)} Risk ({event.securityMetadata?.riskScore || 0})
+                          {getRiskLevelFromScore(event.riskScore || 0)} Risk ({event.riskScore || 0})
                         </Badge>
 
                         <Badge variant="outline">
-                          {event.reason?.category?.replace('_', ' ') || 'Unknown'}
+                          {event.reason?.category?.replace(/_/g, ' ') || 'Unknown'}
                         </Badge>
 
                         <Badge
@@ -413,7 +423,7 @@ const BypassSecurityDashboard: React.FC = () => {
 
                           <div className="flex items-center text-sm text-gray-600">
                             <DollarSign className="h-4 w-4 mr-2" />
-                            ₹{event.financialImpact?.estimatedLoss?.toLocaleString() || '0'} impact
+                            ₹{event.financialImpact?.estimatedLoss?.toLocaleString('en-IN') || '0'} impact
                           </div>
 
                           <div className="flex items-center text-sm text-gray-600">
@@ -424,13 +434,13 @@ const BypassSecurityDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {event.securityMetadata?.securityFlags?.length > 0 && (
+                      {event.securityFlags?.length > 0 && (
                         <div className="mt-3 space-y-1">
                           <p className="text-sm font-medium text-gray-700">Security Flags:</p>
                           <div className="flex flex-wrap gap-2">
-                            {event.securityMetadata.securityFlags.map((flag, index) => (
+                            {event.securityFlags.map((flag, index) => (
                               <Badge
-                                key={`event-securityMetadata-securityFlags-${index}-${flag}`}
+                                key={`event-flag-${index}-${flag.type}`}
                                 variant="outline"
                                 className={
                                   flag.severity === 'critical' ? 'border-red-300 text-red-700' :
@@ -438,7 +448,7 @@ const BypassSecurityDashboard: React.FC = () => {
                                   'border-blue-300 text-blue-700'
                                 }
                               >
-                                {flag.flag?.replace('_', ' ')}: {flag.details || 'No details'}
+                                {flag.type?.replace(/_/g, ' ')}: {flag.message || 'No details'}
                               </Badge>
                             ))}
                           </div>

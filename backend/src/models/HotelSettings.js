@@ -244,10 +244,33 @@ hotelSettingsSchema.statics.getOrCreateForHotel = async function(hotelId, defaul
     let settings = await this.findOne({ hotelId }).lean();
 
     if (!settings) {
-      settings = await this.create({
-        hotelId,
+      // Use findOneAndUpdate with upsert to avoid duplicate key errors
+      // and provide defaults for required fields so validation doesn't fail
+      const defaults = {
+        basicInfo: {
+          name: defaultSettings.basicInfo?.name || 'Hotel',
+          address: {
+            street: defaultSettings.basicInfo?.address?.street || 'Not set',
+            city: defaultSettings.basicInfo?.address?.city || 'Not set',
+            state: defaultSettings.basicInfo?.address?.state || 'Not set',
+            country: defaultSettings.basicInfo?.address?.country || 'Not set',
+            postalCode: defaultSettings.basicInfo?.address?.postalCode || ''
+          },
+          contact: {
+            phone: defaultSettings.basicInfo?.contact?.phone || 'Not set',
+            email: defaultSettings.basicInfo?.contact?.email || 'noreply@hotel.com',
+            website: defaultSettings.basicInfo?.contact?.website || ''
+          }
+        },
         ...defaultSettings
-      });
+      };
+
+      settings = await this.findOneAndUpdate(
+        { hotelId },
+        { $setOnInsert: { hotelId, ...defaults } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      settings = settings.toObject();
     }
 
     return settings;
@@ -261,7 +284,7 @@ hotelSettingsSchema.statics.updateHotelSettings = async function(hotelId, update
     return await this.findOneAndUpdate(
       { hotelId },
       { $set: updates },
-      { new: true, upsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     );
   } catch (error) {
     throw new Error(`${error.message}`);

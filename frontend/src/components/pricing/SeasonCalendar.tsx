@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 
 interface Season {
@@ -29,9 +29,15 @@ interface SpecialPeriod {
     overrideValue: number;
   }>;
   priority: number;
-  restrictions: {
-    bookingRestriction: string;
+  restrictions?: {
+    bookingRestriction?: string;
   };
+}
+
+interface TooltipInfo {
+  date: string;
+  seasons: Season[];
+  periods: SpecialPeriod[];
 }
 
 interface SeasonCalendarProps {
@@ -51,7 +57,9 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
 }) => {
   const [currentMonth, setCurrentMonth] = useState(0);
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
-  const [tooltipInfo, setTooltipInfo] = useState<unknown>(null);
+  const [tooltipInfo, setTooltipInfo] = useState<TooltipInfo | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -70,7 +78,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   };
 
-  const getDatePeriods = (dateStr: string) => {
+  const getDatePeriods = useCallback((dateStr: string) => {
     const date = new Date(dateStr + 'T00:00:00');
     const seasonsForDate: Season[] = [];
     const periodsForDate: SpecialPeriod[] = [];
@@ -92,28 +100,28 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
     });
 
     return { seasons: seasonsForDate, periods: periodsForDate };
-  };
+  }, [seasons, specialPeriods]);
 
-  const getDateColor = (dateStr: string) => {
+  const getDateColor = useCallback((dateStr: string) => {
     const { seasons: dateSeason, periods: datePeriods } = getDatePeriods(dateStr);
-    
+
     // Special periods take priority
     if (datePeriods.length > 0) {
-      const highestPriority = datePeriods.sort((a, b) => b.priority - a.priority)[0];
+      const highestPriority = [...datePeriods].sort((a, b) => b.priority - a.priority)[0];
       return highestPriority.color || getDefaultPeriodColor(highestPriority.type);
     }
-    
+
     // Then seasons
     if (dateSeason.length > 0) {
-      const highestPriority = dateSeason.sort((a, b) => b.priority - a.priority)[0];
+      const highestPriority = [...dateSeason].sort((a, b) => b.priority - a.priority)[0];
       return highestPriority.color || getDefaultSeasonColor(highestPriority.type);
     }
-    
+
     return '#F9FAFB'; // Default gray
-  };
+  }, [getDatePeriods]);
 
   const getDefaultSeasonColor = (type: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       peak: '#FCA5A5',
       high: '#FED7AA',
       shoulder: '#FDE68A',
@@ -121,11 +129,11 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
       off: '#A7F3D0',
       custom: '#C7D2FE'
     };
-    return colors[type as keyof typeof colors] || '#E5E7EB';
+    return colors[type] ?? '#E5E7EB';
   };
 
   const getDefaultPeriodColor = (type: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       holiday: '#FCA5A5',
       festival: '#DDD6FE',
       event: '#BFDBFE',
@@ -136,23 +144,32 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
       maintenance: '#E5E7EB',
       custom: '#C7D2FE'
     };
-    return colors[type as keyof typeof colors] || '#E5E7EB';
+    return colors[type] ?? '#E5E7EB';
   };
 
-  const handleDateHover = (dateStr: string) => {
+  const handleDateHover = (dateStr: string, e: React.MouseEvent) => {
     const { seasons: dateSeasons, periods: datePeriods } = getDatePeriods(dateStr);
-    
+
     if (dateSeasons.length > 0 || datePeriods.length > 0) {
       setTooltipInfo({
         date: dateStr,
         seasons: dateSeasons,
         periods: datePeriods
       });
+      setTooltipPos({ x: e.clientX, y: e.clientY });
     } else {
       setTooltipInfo(null);
     }
-    
+
     setHoveredDate(dateStr);
+  };
+
+  const handleDateClick = (datePeriods: SpecialPeriod[], dateSeasons: Season[]) => {
+    if (datePeriods.length > 0) {
+      onSpecialPeriodClick(datePeriods[0]);
+    } else if (dateSeasons.length > 0) {
+      onSeasonClick(dateSeasons[0]);
+    }
   };
 
   const renderCalendarGrid = () => {
@@ -179,30 +196,24 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
             hasContent ? 'hover:shadow-md hover:z-10 relative' : ''
           }`}
           style={{ backgroundColor: color }}
-          onMouseEnter={() => handleDateHover(dateStr)}
+          onMouseEnter={(e) => handleDateHover(dateStr, e)}
           onMouseLeave={() => {
             setHoveredDate(null);
             setTooltipInfo(null);
           }}
-          onClick={() => {
-            if (datePeriods.length > 0) {
-              onSpecialPeriodClick(datePeriods[0]);
-            } else if (dateSeasons.length > 0) {
-              onSeasonClick(dateSeasons[0]);
+          onClick={() => handleDateClick(datePeriods, dateSeasons)}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleDateClick(datePeriods, dateSeasons);
             }
           }}
-         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
-            if (datePeriods.length > 0) {
-              onSpecialPeriodClick(datePeriods[0]);
-            } else if (dateSeasons.length > 0) {
-              onSeasonClick(dateSeasons[0]);
-            }
-          }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+        >
           <div className="text-sm font-medium text-gray-800">{day}</div>
-          
+
           {hasContent && (
             <div className="mt-1 space-y-1">
-              {dateSeasons.slice(0, 2).map((season, index) => (
+              {dateSeasons.slice(0, 2).map((season) => (
                 <div
                   key={season._id}
                   className="text-xs bg-white bg-opacity-75 rounded px-1 py-0.5 truncate"
@@ -211,7 +222,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
                   {season.name}
                 </div>
               ))}
-              {datePeriods.slice(0, 1).map((period, index) => (
+              {datePeriods.slice(0, 1).map((period) => (
                 <div
                   key={period._id}
                   className="text-xs bg-gray-800 bg-opacity-75 text-white rounded px-1 py-0.5 truncate"
@@ -242,16 +253,16 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
           <h3 className="text-xl font-semibold">
             {months[currentMonth]} {year}
           </h3>
-          
+
           <div className="flex items-center space-x-2">
-            <button aria-label="Previous"
+            <button aria-label="Previous month"
               onClick={() => setCurrentMonth(prev => prev === 0 ? 11 : prev - 1)}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            
-            <button aria-label="Previous"
+
+            <button aria-label="Next month"
               onClick={() => setCurrentMonth(prev => prev === 11 ? 0 : prev + 1)}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
@@ -259,7 +270,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
             </button>
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 text-sm">
             <Info className="h-4 w-4 text-gray-400" />
@@ -271,7 +282,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
       {/* Legend */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-3">Legend</h4>
-        
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <h5 className="text-sm font-medium text-gray-700 mb-2">Seasons</h5>
@@ -287,7 +298,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
               ))}
             </div>
           </div>
-          
+
           <div>
             <h5 className="text-sm font-medium text-gray-700 mb-2">Special Periods</h5>
             <div className="space-y-1">
@@ -315,7 +326,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
             </div>
           ))}
         </div>
-        
+
         {/* Calendar days */}
         <div className="grid grid-cols-7">
           {renderCalendarGrid()}
@@ -324,24 +335,27 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
 
       {/* Tooltip */}
       {tooltipInfo && hoveredDate && (
-        <div className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-sm pointer-events-none transform -translate-x-1/2 -translate-y-full"
-             style={{
-               left: '50%',
-               top: '50%'
-             }}>
+        <div
+          ref={tooltipRef}
+          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-sm pointer-events-none"
+          style={{
+            left: Math.min(tooltipPos.x + 12, window.innerWidth - 320),
+            top: Math.max(tooltipPos.y - 10, 10)
+          }}
+        >
           <div className="text-sm font-medium text-gray-900 mb-2">
-            {new Date(tooltipInfo.date).toLocaleDateString('en-US', { 
+            {new Date(tooltipInfo.date + 'T00:00:00').toLocaleDateString('en-US', {
               weekday: 'long',
               year: 'numeric',
               month: 'long',
               day: 'numeric'
             })}
           </div>
-          
+
           {tooltipInfo.seasons.length > 0 && (
             <div className="mb-3">
               <h5 className="text-xs font-medium text-gray-700 mb-1">Active Seasons:</h5>
-              {tooltipInfo.seasons.map((season: Season) => (
+              {tooltipInfo.seasons.map((season) => (
                 <div key={season._id} className="text-xs text-gray-600 flex items-center space-x-2">
                   <div
                     className="w-2 h-2 rounded-full"
@@ -352,18 +366,18 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
               ))}
             </div>
           )}
-          
+
           {tooltipInfo.periods.length > 0 && (
             <div>
               <h5 className="text-xs font-medium text-gray-700 mb-1">Special Periods:</h5>
-              {tooltipInfo.periods.map((period: SpecialPeriod) => (
+              {tooltipInfo.periods.map((period) => (
                 <div key={period._id} className="text-xs text-gray-600 flex items-center space-x-2">
                   <div
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: period.color || getDefaultPeriodColor(period.type) }}
                   />
                   <span>{period.name} ({period.type})</span>
-                  {period.restrictions.bookingRestriction === 'blocked' && (
+                  {period.restrictions?.bookingRestriction === 'blocked' && (
                     <span className="text-red-600 font-medium">BLOCKED</span>
                   )}
                 </div>

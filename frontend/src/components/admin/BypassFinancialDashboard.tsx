@@ -10,19 +10,15 @@ import {
   AlertTriangle,
   BarChart3,
   PieChart,
-  Calendar,
   Download,
   RefreshCw,
   Target,
   Clock,
   CheckCircle,
   XCircle,
-  ArrowUp,
-  ArrowDown,
   Minus,
   Building,
   Package,
-  Users,
   Activity,
   FileText
 } from 'lucide-react';
@@ -138,20 +134,22 @@ const BypassFinancialDashboard: React.FC = () => {
         summaryData = { data: { totalImpacts: 0, totalDirectCosts: 0, totalIndirectCosts: 0, totalRevenueImpact: 0, averageImpactPerBypass: 0, totalRecoveredAmount: 0, byCategory: [] } };
       }
 
-      const trendsData = await bypassFinancialService.getCostTrends(Math.ceil(timeRange / 30));
-      const costDriversData = await bypassFinancialService.getTopCostDrivers(10);
-      const budgetData = await bypassFinancialService.getBudgetImpact();
-      const recoveryData = await bypassFinancialService.getRecoveryData(timeRange);
-      const reportData = await bypassFinancialService.getExecutiveReport(timeRange);
+      const [trendsData, costDriversData, budgetData, recoveryData, reportData] = await Promise.all([
+        bypassFinancialService.getCostTrends(Math.ceil(timeRange / 30)).catch(() => ({ data: [] as CostTrend[] })),
+        bypassFinancialService.getTopCostDrivers(10).catch(() => ({ data: [] as CostDriver[] })),
+        bypassFinancialService.getBudgetImpact().catch(() => ({ data: [] as BudgetImpact[] })),
+        bypassFinancialService.getRecoveryData(timeRange).catch(() => ({ data: null })),
+        bypassFinancialService.getExecutiveReport(timeRange).catch(() => ({ data: null })),
+      ]);
 
       setSummary(summaryData.data);
-      setTrends(trendsData.data);
-      setCostDrivers(costDriversData.data);
-      setBudgetImpact(budgetData.data);
-      setRecovery(recoveryData.data);
-      setExecutiveReport(reportData.data);
+      setTrends(trendsData.data || []);
+      setCostDrivers(costDriversData.data || []);
+      setBudgetImpact(budgetData.data || []);
+      setRecovery(recoveryData.data as RecoveryData | null);
+      setExecutiveReport(reportData.data as ExecutiveReport | null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch financial data');
+      setError((err as Error)?.message || 'Failed to fetch financial data');
     } finally {
       setLoading(false);
     }
@@ -165,18 +163,19 @@ const BypassFinancialDashboard: React.FC = () => {
 
   const handleExportReport = async () => {
     try {
-      const report = await bypassFinancialService.exportExecutiveReport(timeRange, 'pdf');
-      const blob = new Blob([report.data], { type: 'application/pdf' });
+      const report = await bypassFinancialService.getExecutiveReport(timeRange);
+      const jsonStr = JSON.stringify(report.data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `financial_report_₹{timeRange}d.pdf`;
+      a.download = `financial_report_${timeRange}d.json`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch {
-      // Error handled silently
+    } catch (exportErr) {
+      setError('Failed to export report. Please try again.');
     }
   };
 
@@ -281,9 +280,9 @@ const BypassFinancialDashboard: React.FC = () => {
           ].map(tab => {
             const Icon = tab.icon;
             return (
-              <button aria-label="Close"
+              <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key as unknown)}
+                onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center ${
                   activeTab === tab.key
                     ? 'border-blue-500 text-blue-600'
@@ -419,7 +418,7 @@ const BypassFinancialDashboard: React.FC = () => {
                   {costDrivers.slice(0, 5).map((driver, index) => (
                     <div key={driver._id} className="flex items-center justify-between">
                       <div className="flex items-center">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 ₹{
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 ${
                           index === 0 ? 'bg-red-500' :
                           index === 1 ? 'bg-orange-500' :
                           index === 2 ? 'bg-yellow-500' :
@@ -504,7 +503,7 @@ const BypassFinancialDashboard: React.FC = () => {
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {trends.map((trend, index) => (
-                          <tr key={trend._id}>
+                          <tr key={`${trend._id.year}-${trend._id.month}`}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {trend._id.month}/{trend._id.year}
                             </td>
@@ -571,14 +570,14 @@ const BypassFinancialDashboard: React.FC = () => {
                           <div className="flex items-center mt-1">
                             <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
                               <div 
-                                className={`h-2 rounded-full ₹{
-                                  (dept.totalImpact / dept.totalBudget) > 1 ? 'bg-red-500' : 'bg-blue-500'
+                                className={`h-2 rounded-full ${
+                                  (dept.totalBudget > 0 ? dept.totalImpact / dept.totalBudget : 0) > 1 ? 'bg-red-500' : 'bg-blue-500'
                                 }`}
-                                style={{ width: `₹{Math.min((dept.totalImpact / dept.totalBudget) * 100, 100)}%` }}
+                                style={{ width: `${dept.totalBudget > 0 ? Math.min((dept.totalImpact / dept.totalBudget) * 100, 100) : 0}%` }}
                               ></div>
                             </div>
                             <span className="text-xs font-medium">
-                              {formatPercentage((dept.totalImpact / dept.totalBudget) * 100)}
+                              {formatPercentage(dept.totalBudget > 0 ? (dept.totalImpact / dept.totalBudget) * 100 : 0)}
                             </span>
                           </div>
                         </div>
@@ -620,6 +619,12 @@ const BypassFinancialDashboard: React.FC = () => {
       )}
 
       {/* Recovery Tab */}
+      {activeTab === 'recovery' && !recovery && (
+        <div className="text-center py-8 text-gray-500">
+          <CheckCircle className="mx-auto h-12 w-12 mb-3 text-gray-400" />
+          <p>No recovery data available</p>
+        </div>
+      )}
       {activeTab === 'recovery' && recovery && (
         <div className="space-y-6">
           {/* Recovery Overview */}
@@ -696,7 +701,7 @@ const BypassFinancialDashboard: React.FC = () => {
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div 
                       className="bg-green-500 h-3 rounded-full"
-                      style={{ width: `₹{recovery.overallRecoveryPercentage}%` }}
+                      style={{ width: `${recovery.overallRecoveryPercentage}%` }}
                     ></div>
                   </div>
                 </div>
@@ -709,7 +714,7 @@ const BypassFinancialDashboard: React.FC = () => {
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div 
                       className="bg-blue-500 h-3 rounded-full"
-                      style={{ width: `₹{recovery.actionCompletionRate}%` }}
+                      style={{ width: `${recovery.actionCompletionRate}%` }}
                     ></div>
                   </div>
                 </div>
@@ -720,6 +725,12 @@ const BypassFinancialDashboard: React.FC = () => {
       )}
 
       {/* Executive Report Tab */}
+      {activeTab === 'report' && !executiveReport && (
+        <div className="text-center py-8 text-gray-500">
+          <FileText className="mx-auto h-12 w-12 mb-3 text-gray-400" />
+          <p>No executive report data available</p>
+        </div>
+      )}
       {activeTab === 'report' && executiveReport && (
         <div className="space-y-6">
           <Card>
@@ -774,7 +785,7 @@ const BypassFinancialDashboard: React.FC = () => {
                     {executiveReport.recommendations.map((rec, index) => (
                       <Alert key={`executiveReport-recommendations-${index}-${rec.title}`} className="border-l-4 border-l-yellow-500">
                         <div className="flex items-start">
-                          <Badge className={`mr-3 ₹{getPriorityColor(rec.priority)}`}>
+                          <Badge className={`mr-3 ${getPriorityColor(rec.priority)}`}>
                             {rec.priority.toUpperCase()}
                           </Badge>
                           <div className="flex-1">

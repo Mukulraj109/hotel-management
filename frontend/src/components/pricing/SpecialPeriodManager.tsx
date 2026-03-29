@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { 
-  Edit, 
-  Trash2, 
-  AlertTriangle, 
-  Calendar, 
-  Clock, 
+import {
+  Edit,
+  Trash2,
+  AlertTriangle,
+  Calendar,
+  Clock,
   Users,
   Repeat,
   Ban,
   Filter,
   ArrowUpDown as Sort,
-  Eye,
-  Plus
+  Eye
 } from 'lucide-react';
 
 interface SpecialPeriod {
@@ -29,11 +28,11 @@ interface SpecialPeriod {
     overrideValue: number;
     currency: string;
   }>;
-  restrictions: {
-    bookingRestriction: string;
-    minLength: number;
-    maxLength: number;
-    mustStayThrough: boolean;
+  restrictions?: {
+    bookingRestriction?: string;
+    minLength?: number;
+    maxLength?: number;
+    mustStayThrough?: boolean;
   };
   eventDetails?: {
     eventName?: string;
@@ -41,17 +40,17 @@ interface SpecialPeriod {
     organizer?: string;
     expectedAttendees?: number;
   };
-  demand: {
-    level: string;
+  demand?: {
+    level?: string;
     expectedOccupancy?: number;
-    competitorImpact: string;
+    competitorImpact?: string;
   };
   priority: number;
   color: string;
   isActive: boolean;
-  alerts: {
-    emailNotification: boolean;
-    daysBeforeAlert: number;
+  alerts?: {
+    emailNotification?: boolean;
+    daysBeforeAlert?: number;
   };
 }
 
@@ -62,6 +61,9 @@ interface SpecialPeriodManagerProps {
   onDelete: (id: string) => void;
 }
 
+type SortField = 'startDate' | 'priority' | 'name';
+type SortOrder = 'asc' | 'desc';
+
 const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
   specialPeriods,
   onUpdate,
@@ -69,16 +71,16 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
   onDelete
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'startDate' | 'priority' | 'name'>('startDate');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState<SortField>('startDate');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null);
 
   const periodTypes = [
-    'all', 'holiday', 'festival', 'event', 'conference', 
+    'all', 'holiday', 'festival', 'event', 'conference',
     'wedding_season', 'sports_event', 'blackout', 'maintenance', 'custom'
   ];
 
-  const demandLevels = {
+  const demandLevels: Record<string, { label: string; color: string }> = {
     very_low: { label: 'Very Low', color: 'text-blue-600 bg-blue-100' },
     low: { label: 'Low', color: 'text-green-600 bg-green-100' },
     normal: { label: 'Normal', color: 'text-gray-600 bg-gray-100' },
@@ -87,7 +89,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
     extreme: { label: 'Extreme', color: 'text-purple-600 bg-purple-100' }
   };
 
-  const restrictionTypes = {
+  const restrictionTypes: Record<string, { label: string; icon: React.ElementType | null; color: string }> = {
     none: { label: 'No Restrictions', icon: null, color: 'text-gray-600' },
     closed_to_arrival: { label: 'Closed to Arrival', icon: Ban, color: 'text-orange-600' },
     closed_to_departure: { label: 'Closed to Departure', icon: Ban, color: 'text-orange-600' },
@@ -95,11 +97,12 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
     blocked: { label: 'Blocked', icon: AlertTriangle, color: 'text-red-600' }
   };
 
-  const filteredAndSortedPeriods = specialPeriods
+  const filteredAndSortedPeriods = [...specialPeriods]
     .filter(period => filterType === 'all' || period.type === filterType)
     .sort((a, b) => {
-      let aVal, bVal;
-      
+      let aVal: string | number;
+      let bVal: string | number;
+
       switch (sortBy) {
         case 'startDate':
           aVal = new Date(a.startDate).getTime();
@@ -116,7 +119,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
         default:
           return 0;
       }
-      
+
       if (sortOrder === 'asc') {
         return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
       } else {
@@ -125,11 +128,11 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
     });
 
   const getPeriodTypeLabel = (type: string) => {
-    return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   const getPeriodTypeColor = (type: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       holiday: 'text-red-600 bg-red-100',
       festival: 'text-purple-600 bg-purple-100',
       event: 'text-blue-600 bg-blue-100',
@@ -140,14 +143,14 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
       maintenance: 'text-gray-600 bg-gray-100',
       custom: 'text-indigo-600 bg-indigo-100'
     };
-    return colors[type as keyof typeof colors] || 'text-gray-600 bg-gray-100';
+    return colors[type] ?? 'text-gray-600 bg-gray-100';
   };
 
   const formatDateRange = (startDate: string, endDate: string) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     const duration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    
+
     return {
       formatted: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
       duration: `${duration} day${duration !== 1 ? 's' : ''}`
@@ -168,6 +171,16 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
     return diff > 0 ? diff : 0;
   };
 
+  const handleSortChange = (value: string) => {
+    const parts = value.split('_');
+    // Handle fields like "startDate" which contain no underscore ambiguity,
+    // and sort values like "startDate_asc", "priority_desc", "name_asc"
+    const order = parts[parts.length - 1] as SortOrder;
+    const field = parts.slice(0, -1).join('_') as SortField;
+    setSortBy(field);
+    setSortOrder(order);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header and Controls */}
@@ -175,7 +188,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
         <h3 className="text-lg font-semibold">
           Special Periods ({filteredAndSortedPeriods.length})
         </h3>
-        
+
         <div className="flex flex-wrap items-center gap-3">
           {/* Filter */}
           <div className="flex items-center space-x-2">
@@ -192,17 +205,13 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
               ))}
             </select>
           </div>
-          
+
           {/* Sort */}
           <div className="flex items-center space-x-2">
             <Sort className="h-4 w-4 text-gray-400" />
             <select
               value={`${sortBy}_${sortOrder}`}
-              onChange={(e) => {
-                const [field, order] = e.target.value.split('_');
-                setSortBy(field as unknown);
-                setSortOrder(order as unknown);
-              }}
+              onChange={(e) => handleSortChange(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500"
             >
               <option value="startDate_asc">Date (Earliest)</option>
@@ -223,15 +232,17 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
           const isActive = isCurrentlyActive(period.startDate, period.endDate);
           const daysLeft = daysUntilStart(period.startDate);
           const isExpanded = expandedPeriod === period._id;
-          const restrictionInfo = restrictionTypes[period.restrictions.bookingRestriction as keyof typeof restrictionTypes];
-          const demandInfo = demandLevels[period.demand.level as keyof typeof demandLevels];
+          const bookingRestriction = period.restrictions?.bookingRestriction ?? 'none';
+          const restrictionInfo = restrictionTypes[bookingRestriction] ?? restrictionTypes.none;
+          const demandLevel = period.demand?.level ?? 'normal';
+          const demandInfo = demandLevels[demandLevel] ?? demandLevels.normal;
 
           return (
             <div
               key={period._id}
               className={`border rounded-lg p-4 transition-all duration-200 ${
                 isActive ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white'
-              } ${period.restrictions.bookingRestriction === 'blocked' ? 'border-red-300 bg-red-50' : ''}`}
+              } ${bookingRestriction === 'blocked' ? 'border-red-300 bg-red-50' : ''}`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -240,37 +251,37 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                       className="w-4 h-4 rounded-full"
                       style={{ backgroundColor: period.color }}
                     />
-                    
+
                     <h4 className="text-lg font-semibold text-gray-900">
                       {period.name}
                     </h4>
-                    
+
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPeriodTypeColor(period.type)}`}>
                       {getPeriodTypeLabel(period.type)}
                     </span>
-                    
+
                     {isActive && (
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
                         Active Now
                       </span>
                     )}
-                    
+
                     {period.isRecurring && (
                       <Repeat className="h-4 w-4 text-blue-600" title="Recurring" />
                     )}
-                    
-                    {period.restrictions.bookingRestriction !== 'none' && restrictionInfo.icon && (
-                      <restrictionInfo.icon 
-                        className={`h-4 w-4 ${restrictionInfo.color}`} 
+
+                    {bookingRestriction !== 'none' && restrictionInfo.icon && (
+                      <restrictionInfo.icon
+                        className={`h-4 w-4 ${restrictionInfo.color}`}
                         title={restrictionInfo.label}
                       />
                     )}
                   </div>
-                  
+
                   {period.description && (
                     <p className="text-gray-600 mb-3">{period.description}</p>
                   )}
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                     <div className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4" />
@@ -279,12 +290,12 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                         <div className="text-xs text-gray-500">{dateInfo.duration}</div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
                       <Clock className="h-4 w-4" />
                       <div>
                         {daysLeft > 0 ? (
-                          <div>Starts in {daysLeft} days</div>
+                          <div>Starts in {daysLeft} {daysLeft === 1 ? 'day' : 'days'}</div>
                         ) : isActive ? (
                           <div className="text-green-600 font-medium">Currently Active</div>
                         ) : (
@@ -292,7 +303,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
                       <Users className="h-4 w-4" />
                       <div>
@@ -302,7 +313,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Rate Overrides Summary */}
                   {period.rateOverrides && period.rateOverrides.length > 0 && (
                     <div className="mt-3">
@@ -330,9 +341,9 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Booking Restrictions */}
-                  {period.restrictions.bookingRestriction !== 'none' && (
+                  {bookingRestriction !== 'none' && (
                     <div className="mt-3">
                       <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${restrictionInfo.color} bg-opacity-10 border border-current border-opacity-20`}>
                         {restrictionInfo.icon && <restrictionInfo.icon className="h-4 w-4" />}
@@ -341,16 +352,16 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
-                  <button aria-label="Expand"
+                  <button aria-label="Expand details"
                     onClick={() => setExpandedPeriod(isExpanded ? null : period._id)}
                     className="p-2 text-gray-400 hover:text-gray-600"
                     title="View Details"
                   >
                     <Eye className="h-4 w-4" />
                   </button>
-                  
+
                   <button aria-label="Edit"
                     onClick={() => onEdit(period)}
                     className="p-2 text-gray-400 hover:text-blue-600"
@@ -358,7 +369,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                   >
                     <Edit className="h-4 w-4" />
                   </button>
-                  
+
                   <button aria-label="Delete"
                     onClick={() => onDelete(period._id)}
                     className="p-2 text-gray-400 hover:text-red-600"
@@ -368,7 +379,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                   </button>
                 </div>
               </div>
-              
+
               {/* Expanded Details */}
               {isExpanded && (
                 <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -386,24 +397,24 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                         {period.eventDetails.organizer && (
                           <div><strong>Organizer:</strong> {period.eventDetails.organizer}</div>
                         )}
-                        {period.eventDetails.expectedAttendees && (
+                        {period.eventDetails.expectedAttendees != null && (
                           <div><strong>Expected Attendees:</strong> {period.eventDetails.expectedAttendees.toLocaleString()}</div>
                         )}
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Technical Details */}
                   <div>
                     <h5 className="font-medium text-gray-900 mb-2">Settings</h5>
                     <div className="space-y-1 text-sm text-gray-600">
                       <div><strong>Priority:</strong> {period.priority}</div>
-                      <div><strong>Min Stay:</strong> {period.restrictions.minLength} nights</div>
-                      <div><strong>Max Stay:</strong> {period.restrictions.maxLength} nights</div>
-                      {period.alerts.emailNotification && (
-                        <div><strong>Alert:</strong> {period.alerts.daysBeforeAlert} days before</div>
+                      <div><strong>Min Stay:</strong> {period.restrictions?.minLength ?? 1} nights</div>
+                      <div><strong>Max Stay:</strong> {period.restrictions?.maxLength ?? 30} nights</div>
+                      {period.alerts?.emailNotification && (
+                        <div><strong>Alert:</strong> {period.alerts.daysBeforeAlert ?? 30} days before</div>
                       )}
-                      {period.demand.expectedOccupancy && (
+                      {period.demand?.expectedOccupancy != null && (
                         <div><strong>Expected Occupancy:</strong> {period.demand.expectedOccupancy}%</div>
                       )}
                     </div>
@@ -413,13 +424,13 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
             </div>
           );
         })}
-        
+
         {filteredAndSortedPeriods.length === 0 && (
           <div className="text-center py-12">
             <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No special periods found</h3>
             <p className="text-gray-600 mb-4">
-              {filterType === 'all' 
+              {filterType === 'all'
                 ? "No special periods have been created yet."
                 : `No special periods of type "${getPeriodTypeLabel(filterType)}" found.`
               }

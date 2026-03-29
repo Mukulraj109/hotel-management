@@ -93,7 +93,8 @@ class DashboardService {
     hotelId: string,
     period?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    groupBy?: string
   ): Promise<ApiResponse<RevenueData>> {
     try {
       const params = new URLSearchParams();
@@ -101,11 +102,84 @@ class DashboardService {
       if (period) params.append('period', period);
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
+      if (groupBy) params.append('groupBy', groupBy);
 
       const endpoint = `${this.baseUrl}/revenue`;
       return withRateLimit(endpoint, async () => {
         const response = await api.get(`${endpoint}?${params.toString()}`);
-        return response.data;
+        const raw = response.data?.data;
+
+        /** Safely coerce to a finite number (NaN, null, undefined, Infinity → 0) */
+        const n = (v: unknown): number => {
+          const num = Number(v);
+          return Number.isFinite(num) ? num : 0;
+        };
+
+        // Transform backend response shape to match RevenueData type
+        const totalRoomTypeRevenue = (raw?.charts?.revenueByRoomType || [])
+          .reduce((sum: number, t: { revenue?: number }) => sum + n(t.revenue), 0);
+
+        const transformed: RevenueData = {
+          summary: {
+            totalRevenue: n(raw?.overview?.totalRevenue),
+            totalBookings: n(raw?.overview?.totalBookings),
+            averageBookingValue: n(raw?.overview?.averageBookingValue),
+            revenueGrowth: n(raw?.overview?.revenueGrowth),
+            bookingGrowth: n(raw?.overview?.bookingGrowth),
+          },
+          timeSeries: (raw?.charts?.dailyRevenue || []).map(
+            (d: { date: string; revenue: number; bookings: number; averageValue: number }) => ({
+              date: d.date,
+              revenue: n(d.revenue),
+              bookings: n(d.bookings),
+              averageRate: n(d.averageValue),
+            })
+          ),
+          bySource: (raw?.charts?.bySource || []).map(
+            (s: { source: string; amount: number; percentage: number; bookings: number }) => ({
+              source: s.source || 'Unknown',
+              amount: n(s.amount),
+              percentage: n(s.percentage),
+              bookings: n(s.bookings),
+            })
+          ),
+          byRoomType: (raw?.charts?.revenueByRoomType || []).map(
+            (t: { roomType: string; revenue: number; bookings: number; averageRate: number }) => ({
+              roomType: t.roomType || 'Unknown',
+              revenue: n(t.revenue),
+              percentage: totalRoomTypeRevenue > 0
+                ? Math.round((n(t.revenue) / totalRoomTypeRevenue) * 100)
+                : 0,
+              bookings: n(t.bookings),
+              averageRate: n(t.averageRate),
+            })
+          ),
+          byPaymentStatus: (raw?.charts?.paymentMethods || []).map(
+            (m: { method: string; revenue: number; count: number; percentage: number }) => ({
+              status: m.method || 'Not Specified',
+              count: n(m.count),
+              amount: n(m.revenue),
+              percentage: n(m.percentage),
+            })
+          ),
+          periodComparison: {
+            current: n(raw?.insights?.revenueComparison?.current),
+            previous: n(raw?.insights?.revenueComparison?.previous),
+            change: n(raw?.insights?.revenueComparison?.difference),
+            changePercentage: n(raw?.insights?.revenueComparison?.growth),
+          },
+          forecast: (raw?.charts?.forecast || []).map(
+            (f: { month: string; expectedRevenue: number }) => ({
+              date: f.month,
+              projectedRevenue: n(f.expectedRevenue),
+            })
+          ),
+        };
+
+        return {
+          status: response.data?.status || 'success',
+          data: transformed,
+        };
       });
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

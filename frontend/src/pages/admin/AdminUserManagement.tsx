@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Users,
   UserPlus,
@@ -12,15 +12,10 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  MoreHorizontal,
   Eye,
   Edit,
   Trash2,
-  UserCheck,
-  UserX,
-  Shield,
-  Clock,
-  Calendar
+  Clock
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
@@ -69,10 +64,10 @@ interface UserAnalytics {
 }
 
 const AdminUserManagement: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
   const [users, setUsers] = useState<User[]>([]);
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showBulkOperations, setShowBulkOperations] = useState(false);
@@ -114,30 +109,44 @@ const AdminUserManagement: React.FC = () => {
     { value: 'false', label: 'Inactive' }
   ];
 
-  // Early return if no property selected in single mode
-  if (!selectedPropertyId && viewMode === 'single') {
-    return <div className="p-6">Please select a property</div>;
-  }
+  // Track if first load completed to avoid flash of "No users found"
+  const hasLoaded = useRef(false);
+
+  // Debounce search
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
 
   useEffect(() => {
-    if (selectedPropertyId) {
-      fetchUsers();
-      fetchAnalytics();
-    }
-  }, [filters, pagination.current, selectedPropertyId]);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+      setPagination(prev => ({ ...prev, current: 1 }));
+    }, 400);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [filters.search]);
 
-  const fetchUsers = async () => {
+  // Helper to update filters and reset to page 1 in one batch
+  const updateFilter = useCallback((patch: Partial<typeof filters>) => {
+    setFilters(prev => ({ ...prev, ...patch }));
+    setPagination(prev => ({ ...prev, current: 1 }));
+    // If search is being cleared, update debounced value immediately to avoid double-fetch
+    if ('search' in patch) {
+      setDebouncedSearch(patch.search || '');
+    }
+  }, []);
+
+  // Fetch users — depends on all filter/page/search state
+  const fetchUsers = useCallback(async () => {
+    if (!selectedPropertyId) return;
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
 
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', pagination.limit.toString());
+      queryParams.append('propertyId', selectedPropertyId);
 
-      // Add property filter
-      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
-
-      if (filters.search) queryParams.append('search', filters.search);
+      if (debouncedSearch) queryParams.append('search', debouncedSearch);
       if (filters.role !== 'all') queryParams.append('role', filters.role);
       if (filters.isActive !== 'all') queryParams.append('isActive', filters.isActive);
       if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
@@ -146,22 +155,60 @@ const AdminUserManagement: React.FC = () => {
 
       const { data } = await api.get(`/user-management/advanced-list?${queryParams}`);
       setUsers(data.data.users);
-      setPagination(data.pagination);
-    } catch (error) {
+      const apiPages = data.pagination.pages || 1;
+      const apiCurrent = data.pagination.current;
+      // If current page exceeds total pages (e.g. after deletion), go to last page
+      if (apiCurrent > apiPages && apiPages > 0) {
+        setPagination(prev => ({ ...prev, current: apiPages, pages: apiPages, total: data.pagination.total }));
+        return; // will re-fetch with corrected page via useEffect
+      }
+      setPagination(prev => ({
+        ...prev,
+        current: apiCurrent,
+        pages: apiPages,
+        total: data.pagination.total
+      }));
+      hasLoaded.current = true;
+    } catch {
       toast.error('Failed to fetch users');
+      hasLoaded.current = true;
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPropertyId, debouncedSearch, filters.role, filters.isActive, filters.sortBy, filters.sortOrder, filters.dateRange, pagination.current, pagination.limit]);
 
-  const fetchAnalytics = async () => {
+  // Fetch analytics — only depends on property, not filters
+  const fetchAnalytics = useCallback(async () => {
+    if (!selectedPropertyId) return;
     try {
       const { data } = await api.get('/user-management/analytics');
       setAnalytics(data.data);
     } catch {
-      // Error handled silently
+      // Analytics failure is non-blocking
     }
-  };
+  }, [selectedPropertyId]);
+
+  // Users: re-fetch on any filter/page/search change
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  // Analytics: only re-fetch when property changes
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  // Early return if no property selected in single mode (AFTER all hooks)
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Configuration', 'User Management']} />
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-600 text-lg">Please select a property to manage users</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleUserSelect = (userId: string) => {
     setSelectedUsers(prev => 
@@ -171,31 +218,16 @@ const AdminUserManagement: React.FC = () => {
     );
   };
 
+  const currentPageIds = users.map(u => u._id);
+  const allCurrentPageSelected = users.length > 0 && currentPageIds.every(id => selectedUsers.includes(id));
+
   const handleSelectAll = () => {
-    if (selectedUsers.length === users.length) {
-      setSelectedUsers([]);
+    if (allCurrentPageSelected) {
+      // Deselect only current page, keep other pages' selections
+      setSelectedUsers(prev => prev.filter(id => !currentPageIds.includes(id)));
     } else {
-      setSelectedUsers(users.map(user => user._id));
-    }
-  };
-
-  const handleBulkOperation = async (operation: string, data?: Record<string, unknown>) => {
-    if (selectedUsers.length === 0) {
-      toast.error('Please select users first');
-      return;
-    }
-
-    try {
-      const { data: result } = await api.post('/user-management/bulk-operations', {
-        operation,
-        userIds: selectedUsers,
-        data
-      });
-      toast.success(`Operation completed: ${result.data.modifiedCount} users updated`);
-      setSelectedUsers([]);
-      fetchUsers();
-    } catch (error) {
-      toast.error('Failed to perform bulk operation');
+      // Add current page to selections (dedup)
+      setSelectedUsers(prev => [...new Set([...prev, ...currentPageIds])]);
     }
   };
 
@@ -226,16 +258,34 @@ const AdminUserManagement: React.FC = () => {
 
   const handleImport = async (file: File) => {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        toast.error('CSV file must have a header row and at least one data row');
+        return;
+      }
 
-      const { data } = await api.post('/user-management/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const usersData = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.trim());
+        const user: Record<string, string> = {};
+        headers.forEach((header, i) => {
+          if (values[i]) user[header] = values[i];
+        });
+        return user;
+      }).filter(u => u.email && u.name);
+
+      if (usersData.length === 0) {
+        toast.error('No valid user rows found. Ensure CSV has name and email columns.');
+        return;
+      }
+
+      const { data } = await api.post('/user-management/import', { usersData });
       toast.success(`Imported ${data.data.created} users, updated ${data.data.updated} users`);
       fetchUsers();
-    } catch (error) {
-      toast.error('Failed to import users');
+      fetchAnalytics();
+    } catch {
+      toast.error('Failed to import users. Check CSV format.');
     }
   };
 
@@ -398,7 +448,7 @@ const AdminUserManagement: React.FC = () => {
                 <Activity className="w-8 h-8 text-purple-600" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Engagement</p>
-                  <p className="text-2xl font-bold text-gray-900">{analytics.engagementRate.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-gray-900">{(analytics.engagementRate ?? 0).toFixed(1)}%</p>
                 </div>
               </div>
             </div>
@@ -407,7 +457,7 @@ const AdminUserManagement: React.FC = () => {
                 <TrendingUp className="w-8 h-8 text-orange-600" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Loyalty</p>
-                  <p className="text-2xl font-bold text-gray-900">{analytics.loyaltyRate.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-gray-900">{(analytics.loyaltyRate ?? 0).toFixed(1)}%</p>
                 </div>
               </div>
             </div>
@@ -415,9 +465,9 @@ const AdminUserManagement: React.FC = () => {
               <div className="flex items-center">
                 <AlertTriangle className="w-8 h-8 text-yellow-600" />
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">Health Issues</p>
+                  <p className="text-sm font-medium text-gray-600">Needs Attention</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {analytics.totalUsers - analytics.activeUsers}
+                    {analytics.inactiveUsers ?? 0}
                   </p>
                 </div>
               </div>
@@ -449,7 +499,7 @@ const AdminUserManagement: React.FC = () => {
               </label>
               <select
                 value={filters.role}
-                onChange={(e) => setFilters({ ...filters, role: e.target.value })}
+                onChange={(e) => updateFilter({ role: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {roleOptions.map(role => (
@@ -463,7 +513,7 @@ const AdminUserManagement: React.FC = () => {
               </label>
               <select
                 value={filters.isActive}
-                onChange={(e) => setFilters({ ...filters, isActive: e.target.value })}
+                onChange={(e) => updateFilter({ isActive: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {statusOptions.map(status => (
@@ -477,7 +527,7 @@ const AdminUserManagement: React.FC = () => {
               </label>
               <select
                 value={filters.sortBy}
-                onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
+                onChange={(e) => updateFilter({ sortBy: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="createdAt">Created Date</option>
@@ -493,7 +543,7 @@ const AdminUserManagement: React.FC = () => {
               </label>
               <select
                 value={filters.sortOrder}
-                onChange={(e) => setFilters({ ...filters, sortOrder: e.target.value })}
+                onChange={(e) => updateFilter({ sortOrder: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="desc">Descending</option>
@@ -502,9 +552,9 @@ const AdminUserManagement: React.FC = () => {
             </div>
             <div className="flex items-end">
               <button
-                onClick={() => setFilters({ 
-                  search: '', 
-                  role: 'all', 
+                onClick={() => updateFilter({
+                  search: '',
+                  role: 'all',
                   isActive: 'all',
                   sortBy: 'createdAt',
                   sortOrder: 'desc',
@@ -535,7 +585,7 @@ const AdminUserManagement: React.FC = () => {
                   <th className="px-6 py-3 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedUsers.length === users.length && users.length > 0}
+                      checked={allCurrentPageSelected}
                       onChange={handleSelectAll}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
@@ -674,7 +724,7 @@ const AdminUserManagement: React.FC = () => {
           </div>
         )}
 
-        {!loading && users.length === 0 && (
+        {!loading && users.length === 0 && hasLoaded.current && (
           <div className="p-8 text-center">
             <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No users found</p>
@@ -686,14 +736,14 @@ const AdminUserManagement: React.FC = () => {
           <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
             <div className="flex-1 flex justify-between sm:hidden">
               <button
-                onClick={() => setPagination({ ...pagination, current: pagination.current - 1 })}
+                onClick={() => setPagination(prev => ({ ...prev, current: prev.current - 1 }))}
                 disabled={pagination.current === 1}
                 className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
                 Previous
               </button>
               <button
-                onClick={() => setPagination({ ...pagination, current: pagination.current + 1 })}
+                onClick={() => setPagination(prev => ({ ...prev, current: prev.current + 1 }))}
                 disabled={pagination.current === pagination.pages}
                 className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
@@ -710,14 +760,14 @@ const AdminUserManagement: React.FC = () => {
               <div>
                 <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                   <button
-                    onClick={() => setPagination({ ...pagination, current: pagination.current - 1 })}
+                    onClick={() => setPagination(prev => ({ ...prev, current: prev.current - 1 }))}
                     disabled={pagination.current === 1}
                     className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
                     Previous
                   </button>
                   <button
-                    onClick={() => setPagination({ ...pagination, current: pagination.current + 1 })}
+                    onClick={() => setPagination(prev => ({ ...prev, current: prev.current + 1 }))}
                     disabled={pagination.current === pagination.pages}
                     className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >

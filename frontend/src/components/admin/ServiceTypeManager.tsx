@@ -77,15 +77,20 @@ const ServiceTypeManager: React.FC = () => {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'types' | 'templates'>('types');
 
-  // Default service types are now handled by the serviceTypeService
-
-  // Service categories are now handled by the API enum values
+  // Resolve hotelId to a string — it may be a populated object { _id, name } or a plain string
+  const resolvedHotelId = (() => {
+    const raw = user?.hotelId;
+    if (!raw) return undefined;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object' && raw !== null && '_id' in raw) return String((raw as { _id: string })._id);
+    return String(raw);
+  })();
 
   useEffect(() => {
-    if (user?.hotelId) {
+    if (resolvedHotelId) {
       fetchServiceTypes();
     }
-  }, [user?.hotelId]);
+  }, [resolvedHotelId]);
 
   // Fetch templates when service types change
   useEffect(() => {
@@ -98,7 +103,7 @@ const ServiceTypeManager: React.FC = () => {
     try {
       setLoading(true);
       const response = await serviceTypeService.getServiceTypes({
-        hotelId: user?.hotelId,
+        hotelId: resolvedHotelId,
         activeOnly: false
       });
 
@@ -108,7 +113,7 @@ const ServiceTypeManager: React.FC = () => {
           'No service types found. Would you like to create default service types for your hotel?'
         );
 
-        if (shouldCreateDefaults && user?.hotelId) {
+        if (shouldCreateDefaults && resolvedHotelId) {
           await createDefaultServiceTypes();
           return; // fetchServiceTypes will be called again after creation
         }
@@ -124,13 +129,13 @@ const ServiceTypeManager: React.FC = () => {
 
   const createDefaultServiceTypes = async () => {
     try {
-      if (!user?.hotelId) {
+      if (!resolvedHotelId) {
         toast.error('Hotel ID not found');
         return;
       }
 
       setLoading(true);
-      await serviceTypeService.createDefaultServiceTypes(user.hotelId);
+      await serviceTypeService.createDefaultServiceTypes(resolvedHotelId);
       toast.success('Default service types created successfully');
 
       // Fetch the newly created service types
@@ -177,7 +182,7 @@ const ServiceTypeManager: React.FC = () => {
         // Create new service type
         await serviceTypeService.createServiceType({
           ...serviceType,
-          hotelId: user?.hotelId || '',
+          hotelId: resolvedHotelId || '',
           variations: serviceType.variations || [],
           templates: serviceType.templates || []
         });

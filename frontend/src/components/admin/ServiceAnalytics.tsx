@@ -90,21 +90,32 @@ const ServiceAnalytics: React.FC = () => {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'];
 
+  // Resolve hotelId to string — it may be a populated object { _id, name }
+  const resolvedHotelId = (() => {
+    const raw = user?.hotelId;
+    if (!raw) return undefined;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object' && raw !== null && '_id' in raw) return String((raw as { _id: string })._id);
+    return String(raw);
+  })();
+
   useEffect(() => {
-    if (user?.hotelId) {
+    if (resolvedHotelId) {
       fetchAnalyticsData();
     }
-  }, [user?.hotelId, selectedTimeFilter]);
+  }, [resolvedHotelId, selectedTimeFilter]);
 
   const fetchAnalyticsData = async () => {
     try {
       setLoading(true);
 
       // Get service type statistics from real API
-      const stats = await serviceTypeService.getServiceTypeStats(user?.hotelId);
+      const stats = await serviceTypeService.getServiceTypeStats(resolvedHotelId);
 
       // Also fetch real stats from guest-services endpoint
-      const statsResponse = await api.get('/guest-services/stats').catch(() => null);
+      const statsResponse = await api.get('/guest-services/stats', {
+        params: { hotelId: resolvedHotelId }
+      }).catch(() => null);
       const overall = statsResponse?.data?.data?.overall || {};
 
       const totalRequests = overall.totalRequests || stats.totalRequests || 0;
@@ -295,6 +306,11 @@ const ServiceAnalytics: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {analyticsData.serviceTypeBreakdown.length === 0 || analyticsData.serviceTypeBreakdown.every(s => s.requests === 0) ? (
+              <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
+                No service request data available yet
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -314,6 +330,7 @@ const ServiceAnalytics: React.FC = () => {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -326,15 +343,21 @@ const ServiceAnalytics: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analyticsData.responseTimeDistribution}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="timeRange" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3B82F6" />
-              </BarChart>
-            </ResponsiveContainer>
+            {analyticsData.responseTimeDistribution.length === 0 ? (
+              <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
+                No response time data available yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analyticsData.responseTimeDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="timeRange" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#3B82F6" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -348,6 +371,11 @@ const ServiceAnalytics: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {analyticsData.dailyTrends.length === 0 ? (
+            <div className="flex items-center justify-center h-[400px] text-gray-400 text-sm">
+              No daily trend data available yet. Trends will appear as service requests are created.
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={400}>
             <AreaChart data={analyticsData.dailyTrends}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -380,6 +408,7 @@ const ServiceAnalytics: React.FC = () => {
               />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 

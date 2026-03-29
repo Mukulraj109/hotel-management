@@ -4,10 +4,8 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Area, AreaChart, ScatterChart, Scatter
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, IndianRupee, Globe, Users, Calendar,
-  Filter, Download, Refresh, Settings, AlertTriangle, CheckCircle,
-  Target, Zap, BarChart3, PieChart as PieChartIcon, Activity,
-  Languages, MapPin, Clock, ArrowUpRight, ArrowDownRight
+  IndianRupee, Globe, Users, Download, RefreshCw, AlertTriangle, CheckCircle,
+  Target, Zap, BarChart3, Activity, Languages, Clock, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -16,6 +14,26 @@ import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Progress } from '../ui/progress';
 import { api } from '../../services/api';
+
+/** Coerce any value to a finite number, defaulting to 0 */
+function safeNum(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Sanitize an array of chart data objects: coerce specified keys to safe numbers */
+function sanitizeChartData<T extends Record<string, unknown>>(
+  data: T[],
+  numericKeys: string[]
+): T[] {
+  return data.map(item => {
+    const row = { ...item };
+    for (const key of numericKeys) {
+      (row as Record<string, unknown>)[key] = safeNum(row[key]);
+    }
+    return row;
+  });
+}
 
 interface RevenueData {
   period: string;
@@ -93,7 +111,7 @@ interface RevenueApiResponse {
 
 export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, className = '' }) => {
   const [timeRange, setTimeRange] = useState('30d');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('INR');
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -114,7 +132,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
     setError(null);
     try {
       const response = await api.get('/analytics/reports/revenue-analysis', {
-        params: { timeRange, currency }
+        params: { timeRange, currency, hotelId }
       });
       if (!isMountedRef.current) return;
       const data = response.data?.data || response.data || {};
@@ -135,7 +153,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [timeRange, currency]);
+  }, [timeRange, currency, hotelId]);
 
   useEffect(() => {
     fetchRevenueData();
@@ -199,14 +217,16 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
   };
 
   const formatCurrency = (value: number, currencyCode: string = currency) => {
-    return new Intl.NumberFormat('en-US', {
+    const v = safeNum(value);
+    return new Intl.NumberFormat(currencyCode === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',
       currency: currencyCode
-    }).format(value);
+    }).format(v);
   };
 
   const formatPercentage = (value: number) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+    const v = safeNum(value);
+    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
   };
 
   const CustomTooltip = ({ active, payload, label }: Record<string, unknown>) => {
@@ -214,11 +234,15 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
       return (
         <div className="bg-white p-3 border rounded-lg shadow-lg">
           <p className="font-medium">{`${label}`}</p>
-          {payload.map((entry: Record<string, unknown>, index: number) => (
-            <p key={`tooltip-${entry.dataKey || index}`} style={{ color: entry.color }}>
-              {`${entry.dataKey}: ${entry.dataKey.includes('revenue') ? formatCurrency(entry.value) : entry.value}`}
-            </p>
-          ))}
+          {payload.map((entry: Record<string, unknown>, index: number) => {
+            const key = String(entry.dataKey ?? '');
+            const val = safeNum(entry.value);
+            return (
+              <p key={`tooltip-${key || index}`} style={{ color: entry.color }}>
+                {`${key}: ${key.includes('revenue') ? formatCurrency(val) : val.toLocaleString()}`}
+              </p>
+            );
+          })}
         </div>
       );
     }
@@ -275,7 +299,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
             onClick={handleRefresh}
             disabled={isLoading}
           >
-            <Refresh className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           
@@ -362,42 +386,46 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               <CardDescription>Monthly revenue, occupancy, and key metrics</CardDescription>
             </CardHeader>
             <CardContent>
+              {revenueData.length === 0 ? (
+                <div className="flex items-center justify-center h-[400px] text-gray-500">No revenue data available</div>
+              ) : (
               <ResponsiveContainer width="100%" height={400}>
-                <AreaChart data={revenueData}>
+                <AreaChart data={sanitizeChartData(revenueData, ['revenue', 'occupancy', 'adr', 'revpar', 'previousRevenue'])}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="period" />
                   <YAxis yAxisId="left" />
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
-                  <Area 
+                  <Area
                     yAxisId="left"
-                    type="monotone" 
-                    dataKey="revenue" 
+                    type="monotone"
+                    dataKey="revenue"
                     stackId="1"
-                    stroke="#3B82F6" 
-                    fill="#3B82F6" 
+                    stroke="#3B82F6"
+                    fill="#3B82F6"
                     fillOpacity={0.6}
                     name="Revenue"
                   />
-                  <Line 
+                  <Line
                     yAxisId="right"
-                    type="monotone" 
-                    dataKey="occupancy" 
-                    stroke="#10B981" 
+                    type="monotone"
+                    dataKey="occupancy"
+                    stroke="#10B981"
                     strokeWidth={3}
                     name="Occupancy (%)"
                   />
-                  <Line 
+                  <Line
                     yAxisId="right"
-                    type="monotone" 
-                    dataKey="adr" 
-                    stroke="#F59E0B" 
+                    type="monotone"
+                    dataKey="adr"
+                    stroke="#F59E0B"
                     strokeWidth={2}
                     name="ADR"
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -409,8 +437,11 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                 <CardDescription>Current vs previous period</CardDescription>
               </CardHeader>
               <CardContent>
+                {revenueData.length === 0 ? (
+                  <div className="flex items-center justify-center h-[300px] text-gray-500">No comparison data available</div>
+                ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={revenueData}>
+                  <BarChart data={sanitizeChartData(revenueData, ['revenue', 'previousRevenue'])}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="period" />
                     <YAxis />
@@ -420,6 +451,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                     <Bar dataKey="previousRevenue" fill="#94A3B8" name="Previous Revenue" />
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -429,43 +461,38 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                 <CardDescription>Real-time performance metrics</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">Revenue Target Achievement</span>
-                    <span className="text-sm text-gray-500">87%</span>
-                  </div>
-                  <Progress value={87} className="h-2" />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">Occupancy vs Capacity</span>
-                    <span className="text-sm text-gray-500">78%</span>
-                  </div>
-                  <Progress value={78} className="h-2" />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">Profit Margin</span>
-                    <span className="text-sm text-gray-500">32%</span>
-                  </div>
-                  <Progress value={32} className="h-2" />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">Guest Satisfaction</span>
-                    <span className="text-sm text-gray-500">92%</span>
-                  </div>
-                  <Progress value={92} className="h-2" />
-                </div>
+                {(() => {
+                  const occupancyPct = apiKpis?.occupancyRate ?? 0;
+                  const revenueChange = apiKpis?.revenueChange ?? 0;
+                  const revpar = apiKpis?.revpar ?? 0;
+                  const adr = apiKpis?.adr ?? 0;
+                  const revparTarget = adr > 0 ? Math.min(Math.round((revpar / adr) * 100), 100) : 0;
+                  const kpiItems = [
+                    { label: 'Occupancy vs Capacity', value: Math.round(occupancyPct) },
+                    { label: 'RevPAR Efficiency', value: revparTarget },
+                    { label: 'Revenue Growth', value: Math.min(Math.max(Math.round(revenueChange + 50), 0), 100) },
+                  ];
+                  return kpiItems.map((item) => (
+                    <div key={item.label} className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium">{item.label}</span>
+                        <span className="text-sm text-gray-500">{item.value}%</span>
+                      </div>
+                      <Progress value={item.value} className="h-2" />
+                    </div>
+                  ));
+                })()}
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
         <TabsContent value="regional" className="space-y-6 mt-6">
+          {regionalData.length === 0 && !isLoading ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+              No regional data available for the selected period.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Regional Revenue Distribution */}
             <Card>
@@ -477,15 +504,15 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={regionalData}
+                      data={sanitizeChartData(regionalData, ['revenue', 'growth', 'marketShare'])}
                       cx="50%"
                       cy="50%"
                       outerRadius={100}
                       fill="#8884d8"
                       dataKey="revenue"
-                      label={({ regionName, revenue }) => `${regionName}: ${formatCurrency(revenue)}`}
+                      label={({ regionName, revenue }) => `${regionName}: ${formatCurrency(safeNum(revenue))}`}
                     >
-                      {regionalData.map((entry, index) => (
+                      {regionalData.map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -513,10 +540,10 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium">{formatCurrency(region.revenue, region.currency)}</p>
+                        <p className="font-medium">{formatCurrency(safeNum(region.revenue), region.currency)}</p>
                         <div className="flex items-center gap-1">
-                          <Badge variant={region.growth >= 15 ? "default" : region.growth >= 10 ? "secondary" : "outline"}>
-                            {formatPercentage(region.growth)}
+                          <Badge variant={safeNum(region.growth) >= 15 ? "default" : safeNum(region.growth) >= 10 ? "secondary" : "outline"}>
+                            {formatPercentage(safeNum(region.growth))}
                           </Badge>
                           <Badge variant={region.performance === 'high' ? "default" : region.performance === 'medium' ? "secondary" : "outline"}>
                             {region.performance}
@@ -529,9 +556,15 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="languages" className="space-y-6 mt-6">
+          {languageData.length === 0 && !isLoading ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+              No language data available for the selected period.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Language Revenue Chart */}
             <Card>
@@ -541,7 +574,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={languageData} layout="horizontal">
+                  <BarChart data={sanitizeChartData(languageData, ['revenue', 'bookings', 'conversionRate', 'satisfaction', 'translationQuality'])} layout="horizontal">
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis dataKey="languageName" type="category" width={80} />
@@ -560,7 +593,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ScatterChart data={languageData}>
+                  <ScatterChart data={sanitizeChartData(languageData, ['revenue', 'translationQuality', 'conversionRate'])}>
                     <CartesianGrid />
                     <XAxis dataKey="translationQuality" name="Translation Quality" unit="%" />
                     <YAxis dataKey="revenue" name="Revenue" unit="$" />
@@ -614,10 +647,10 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
                           <div className="font-medium">{lang.languageName}</div>
                           <div className="text-sm text-gray-500">{lang.language.toUpperCase()}</div>
                         </td>
-                        <td className="text-right p-2 font-medium">{formatCurrency(lang.revenue)}</td>
-                        <td className="text-right p-2">{lang.bookings.toLocaleString()}</td>
-                        <td className="text-right p-2">{lang.conversionRate}%</td>
-                        <td className="text-right p-2">{lang.satisfaction}/5.0</td>
+                        <td className="text-right p-2 font-medium">{formatCurrency(safeNum(lang.revenue))}</td>
+                        <td className="text-right p-2">{safeNum(lang.bookings).toLocaleString()}</td>
+                        <td className="text-right p-2">{safeNum(lang.conversionRate)}%</td>
+                        <td className="text-right p-2">{safeNum(lang.satisfaction)}/5.0</td>
                         <td className="text-right p-2">
                           <div className="flex items-center justify-end gap-2">
                             <Progress value={lang.translationQuality} className="w-16 h-2" />
@@ -631,9 +664,15 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </div>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="channels" className="space-y-6 mt-6">
+          {channelData.length === 0 && !isLoading ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+              No channel data available for the selected period.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Channel Performance Chart */}
             <Card>
@@ -643,7 +682,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={channelData}>
+                  <BarChart data={sanitizeChartData(channelData, ['revenue', 'bookings', 'commission', 'profitability', 'growth'])}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="channel" />
                     <YAxis />
@@ -663,7 +702,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ScatterChart data={channelData}>
+                  <ScatterChart data={sanitizeChartData(channelData, ['profitability', 'growth', 'revenue', 'commission'])}>
                     <CartesianGrid />
                     <XAxis dataKey="profitability" name="Profitability" unit="%" />
                     <YAxis dataKey="growth" name="Growth" unit="%" />
@@ -689,6 +728,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="optimization" className="space-y-6 mt-6">
@@ -697,90 +737,91 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
             <Card>
               <CardHeader>
                 <CardTitle>Revenue Optimization Opportunities</CardTitle>
-                <CardDescription>AI-powered recommendations</CardDescription>
+                <CardDescription>Data-driven recommendations</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 rounded-lg border border-green-200 bg-green-50">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-green-900">Dynamic Pricing Opportunity</h4>
-                      <p className="text-sm text-green-700 mt-1">
-                        Implement dynamic pricing for German market to increase RevPAR by 12-15%
-                      </p>
-                      <Badge className="mt-2">High Impact</Badge>
-                    </div>
-                  </div>
-                </div>
+                {(() => {
+                  const occupancy = apiKpis?.occupancyRate ?? 0;
+                  const revenueChange = apiKpis?.revenueChange ?? 0;
+                  const recommendations: { icon: typeof CheckCircle; color: string; bg: string; textColor: string; title: string; description: string; badge: string; badgeVariant?: 'secondary' | 'outline' }[] = [];
 
-                <div className="p-4 rounded-lg border border-blue-200 bg-blue-50">
-                  <div className="flex items-start gap-3">
-                    <Target className="w-5 h-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-blue-900">Channel Mix Optimization</h4>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Increase direct booking share from 25% to 35% to reduce commission costs
-                      </p>
-                      <Badge variant="secondary" className="mt-2">Medium Impact</Badge>
-                    </div>
-                  </div>
-                </div>
+                  if (occupancy < 60) {
+                    recommendations.push({
+                      icon: Target, color: 'text-blue-600', bg: 'bg-blue-50', textColor: 'text-blue-700',
+                      title: 'Improve Occupancy Rate',
+                      description: `Current occupancy is ${occupancy.toFixed(1)}%. Consider promotional pricing or channel marketing to increase bookings.`,
+                      badge: 'High Impact',
+                    });
+                  }
+                  if (revenueChange < 0) {
+                    recommendations.push({
+                      icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', textColor: 'text-orange-700',
+                      title: 'Revenue Decline Detected',
+                      description: `Revenue has declined ${Math.abs(revenueChange).toFixed(1)}% compared to the previous period. Review pricing strategy and demand patterns.`,
+                      badge: 'Action Required', badgeVariant: 'outline',
+                    });
+                  }
+                  if (occupancy > 85) {
+                    recommendations.push({
+                      icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', textColor: 'text-green-700',
+                      title: 'Dynamic Pricing Opportunity',
+                      description: `High occupancy (${occupancy.toFixed(1)}%) suggests room for rate increases. Consider implementing dynamic pricing to maximize RevPAR.`,
+                      badge: 'High Impact',
+                    });
+                  }
+                  if (recommendations.length === 0) {
+                    recommendations.push({
+                      icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', textColor: 'text-green-700',
+                      title: 'Performance On Track',
+                      description: 'Key metrics are within healthy ranges. Continue monitoring for optimization opportunities.',
+                      badge: 'Good', badgeVariant: 'secondary',
+                    });
+                  }
 
-                <div className="p-4 rounded-lg border border-orange-200 bg-orange-50">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-orange-900">Translation Quality Alert</h4>
-                      <p className="text-sm text-orange-700 mt-1">
-                        Chinese translation quality (82%) affecting conversion rates
-                      </p>
-                      <Badge variant="outline" className="mt-2">Action Required</Badge>
+                  return recommendations.map((rec, idx) => (
+                    <div key={idx} className={`p-4 rounded-lg border ${rec.bg}`}>
+                      <div className="flex items-start gap-3">
+                        <rec.icon className={`w-5 h-5 ${rec.color} mt-0.5`} />
+                        <div>
+                          <h4 className="font-medium">{rec.title}</h4>
+                          <p className={`text-sm ${rec.textColor} mt-1`}>{rec.description}</p>
+                          <Badge variant={rec.badgeVariant} className="mt-2">{rec.badge}</Badge>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  ));
+                })()}
               </CardContent>
             </Card>
 
-            {/* Optimization Impact Projection */}
+            {/* Performance Summary */}
             <Card>
               <CardHeader>
-                <CardTitle>Projected Impact</CardTitle>
-                <CardDescription>Expected improvements from optimization</CardDescription>
+                <CardTitle>Performance Summary</CardTitle>
+                <CardDescription>Current period metrics overview</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-medium">Revenue Increase</span>
-                    <span className="text-sm text-gray-500">+18.5%</span>
-                  </div>
-                  <Progress value={75} className="h-2" />
-                  <p className="text-xs text-gray-500 mt-1">Potential: {formatCurrency(65000)} additional revenue</p>
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-medium">Profit Margin</span>
-                    <span className="text-sm text-gray-500">+12.3%</span>
-                  </div>
-                  <Progress value={62} className="h-2" />
-                  <p className="text-xs text-gray-500 mt-1">Current: 32% → Target: 44%</p>
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-medium">Market Penetration</span>
-                    <span className="text-sm text-gray-500">+8.7%</span>
-                  </div>
-                  <Progress value={45} className="h-2" />
-                  <p className="text-xs text-gray-500 mt-1">Expand to 3 new regional markets</p>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <Button className="w-full">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Implement Optimization Strategy
-                  </Button>
-                </div>
+                {(() => {
+                  const occupancy = apiKpis?.occupancyRate ?? 0;
+                  const revenueChange = apiKpis?.revenueChange ?? 0;
+                  const adr = apiKpis?.adr ?? 0;
+                  const revpar = apiKpis?.revpar ?? 0;
+                  const revparEfficiency = adr > 0 ? Math.round((revpar / adr) * 100) : 0;
+                  const metrics = [
+                    { label: 'Occupancy Rate', value: Math.round(occupancy), suffix: '%' },
+                    { label: 'RevPAR Efficiency', value: revparEfficiency, suffix: '%' },
+                    { label: 'Revenue Trend', value: Math.min(Math.max(Math.round(revenueChange + 50), 0), 100), suffix: `% (${revenueChange >= 0 ? '+' : ''}${revenueChange.toFixed(1)}%)` },
+                  ];
+                  return metrics.map((metric) => (
+                    <div key={metric.label}>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-medium">{metric.label}</span>
+                        <span className="text-sm text-gray-500">{metric.value}{metric.suffix}</span>
+                      </div>
+                      <Progress value={metric.value} className="h-2" />
+                    </div>
+                  ));
+                })()}
               </CardContent>
             </Card>
           </div>

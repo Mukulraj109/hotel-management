@@ -143,7 +143,7 @@ function AdminCheckoutInventoryManagement() {
       const paidChecks = checks.filter(c => c.paymentStatus === 'paid').length;
       const totalRevenue = checks.reduce((sum, c) => sum + (c.paymentStatus === 'paid' ? c.totalAmount : 0), 0);
       const pendingPayments = checks.filter(c => c.status === 'completed' && c.paymentStatus === 'pending').length;
-      const averageCheckValue = totalChecks > 0 ? totalRevenue / paidChecks || 0 : 0;
+      const averageCheckValue = paidChecks > 0 ? totalRevenue / paidChecks : 0;
       
       const today = new Date().toDateString();
       const checksToday = checks.filter(c => new Date(c.checkedAt).toDateString() === today).length;

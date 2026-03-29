@@ -72,45 +72,45 @@ router.get('/kpis/realtime', authorize(['admin', 'manager', 'staff']), getRealti
 router.get('/staff/operational', authorize(['staff']), getStaffOperationalMetrics);
 
 // Advanced analytics endpoints
-router.get('/reports/executive-summary', authorize(['admin']), (req, res, next) => {
+router.get('/reports/executive-summary', authorize(['admin']), catchAsync(async (req, res, next) => {
   req.reportType = 'executive_summary';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/revenue-analysis', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/revenue-analysis', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'revenue_analysis';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/occupancy-analysis', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/occupancy-analysis', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'occupancy_analysis';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/guest-segmentation', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/guest-segmentation', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'guest_segmentation';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/booking-trends', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/booking-trends', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'booking_trends';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/performance-comparison', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/performance-comparison', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'performance_comparison';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/channel-analysis', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/channel-analysis', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'channel_analysis';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
-router.get('/reports/seasonal-analysis', authorize(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/seasonal-analysis', authorize(['admin', 'manager']), catchAsync(async (req, res, next) => {
   req.reportType = 'seasonal_analysis';
-  generateReport(req, res, next);
-});
+  await generateReport(req, res, next);
+}));
 
 // ETL management endpoints
 router.post('/etl/run', authorize(['admin']), validate(mutationBaselineSchema), async (req, res) => {

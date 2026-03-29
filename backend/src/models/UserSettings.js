@@ -515,13 +515,15 @@ userSettingsSchema.statics.createDefaultSettings = async function(userId, role) 
   try {
     const defaultSettings = this.getDefaultSettings(role);
 
-    const userSettings = new this({
-      userId,
-      role,
-      ...defaultSettings
-    });
+    // Use findOneAndUpdate with upsert to avoid E11000 duplicate key errors
+    // when multiple requests try to create settings for the same user concurrently
+    const userSettings = await this.findOneAndUpdate(
+      { userId },
+      { $setOnInsert: { userId, role, ...defaultSettings } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    return await userSettings.save();
+    return userSettings;
   } catch (error) {
     throw new Error(`${error.message}`);
   }

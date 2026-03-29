@@ -91,6 +91,15 @@ class AdminService {
     }
   }
 
+  async getInventoryStats(): Promise<ApiResponse<{ stats: { total: number; lowStock: number; outOfStock: number; totalValue: number; categories: Record<string, number> } }>> {
+    try {
+      const response = await api.get('/inventory/stats');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
   async createInventoryItem(itemData: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
     try {
       const response = await api.post('/inventory', itemData);

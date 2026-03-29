@@ -4,27 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { 
-  Code,
+import {
   Key,
   Globe,
   Shield,
-  Zap,
-  Database,
-  Cloud,
-  Settings,
-  Users,
   BarChart3,
   Activity,
-  Lock,
-  Unlock,
   Copy,
   Eye,
   EyeOff,
   RefreshCw,
   Plus,
   Trash2,
-  Edit,
   Play,
   Pause,
   AlertTriangle,
@@ -34,16 +25,12 @@ import {
   TrendingUp,
   TrendingDown,
   Download,
-  Upload,
-  Server,
   Webhook,
-  Terminal,
   FileText,
   Filter,
   Search
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { apiManagementApi } from '../../services/api';
 import { APIKeyCreationForm } from './APIKeyCreationForm';
@@ -51,7 +38,8 @@ import { WebhookCreationForm } from './WebhookCreationForm';
 import { withErrorBoundary } from '../ErrorBoundary';
 
 interface APIEndpoint {
-  id: string;
+  _id?: string;
+  id?: string;
   name: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
@@ -61,44 +49,44 @@ interface APIEndpoint {
   status: 'active' | 'deprecated' | 'beta' | 'maintenance';
   authRequired: boolean;
   rateLimit: number;
-  usage: {
+  usage?: {
     requests: number;
     errors: number;
     avgResponseTime: number;
   };
-  lastUsed: string;
+  lastUsed?: string;
 }
 
 interface APIKey {
-  id: string;
+  _id: string;
   name: string;
-  key: string;
+  keyId?: string;
   type: 'read' | 'write' | 'admin';
-  permissions: string[];
+  permissions: Array<string | { resource: string; actions: string[] }>;
   expiresAt?: string;
   isActive: boolean;
-  usage: {
-    requests: number;
+  usage?: {
+    totalRequests?: number;
+    requests?: number;
     lastUsed?: string;
-    rateLimit: number;
-    rateLimitUsed: number;
   };
-  createdBy: string;
+  createdBy?: { name?: string; email?: string } | string;
   createdAt: string;
 }
 
 interface WebhookEndpoint {
-  id: string;
+  _id: string;
   name: string;
   url: string;
   events: string[];
   isActive: boolean;
-  secret: string;
-  retryPolicy: {
+  secret?: string;
+  createdAt?: string;
+  retryPolicy?: {
     maxRetries: number;
     backoffMultiplier: number;
   };
-  stats: {
+  stats?: {
     totalDeliveries: number;
     successfulDeliveries: number;
     failedDeliveries: number;
@@ -131,7 +119,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   const [showKeyCreator, setShowKeyCreator] = useState(false);
   const [showWebhookCreator, setShowWebhookCreator] = useState(false);
   const [showDocumentation, setShowDocumentation] = useState(false);
-  const [documentation, setDocumentation] = useState<unknown>(null);
+  const [documentation, setDocumentation] = useState<Record<string, unknown> | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -141,7 +129,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showSecrets, setShowSecrets] = useState<{ [key: string]: boolean }>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -164,10 +152,10 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       // Optimize API calls for better performance
       const [keysResponse, webhooksResponse, metricsResponse, endpointsResponse] = await Promise.allSettled([
-        apiManagementApi.getAPIKeys({ includeUsage: 'false' }), // Skip usage data for faster loading
-        apiManagementApi.getWebhooks(),
+        apiManagementApi.getAPIKeys({ includeUsage: 'false', limit: 100 }),
+        apiManagementApi.getWebhooks({ limit: 100 }),
         apiManagementApi.getMetrics(),
-        apiManagementApi.getAllEndpoints({ includeUsage: 'false' }) // Skip usage data for faster loading
+        apiManagementApi.getAllEndpoints({ includeUsage: 'false' })
       ]);
 
       if (keysResponse.status === 'fulfilled') {
@@ -329,7 +317,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       await apiManagementApi.toggleAPIKeyStatus(keyId);
 
-      setApiKeys((apiKeys || []).map(k =>
+      setApiKeys(prev => (prev || []).map(k =>
         k._id === keyId ? { ...k, isActive: !k.isActive } : k
       ));
 
@@ -337,7 +325,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
         title: "API Key Updated",
         description: `${key.name} has been ${!key.isActive ? 'activated' : 'deactivated'}`
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to update API key status. Please try again."
@@ -350,11 +338,9 @@ export const ComprehensiveAPIAccess: React.FC = () => {
       const webhook = (webhooks || []).find(w => w._id === webhookId);
       if (!webhook) return;
 
-      // Note: We'll need to add a toggle endpoint for webhooks, for now update directly
-      const updatedWebhook = { ...webhook, isActive: !webhook.isActive };
-      await apiManagementApi.updateWebhook(webhookId, updatedWebhook);
+      await apiManagementApi.updateWebhook(webhookId, { isActive: !webhook.isActive });
 
-      setWebhooks((webhooks || []).map(w =>
+      setWebhooks(prev => (prev || []).map(w =>
         w._id === webhookId ? { ...w, isActive: !w.isActive } : w
       ));
 
@@ -362,7 +348,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
         title: "Webhook Updated",
         description: `${webhook.name} has been ${!webhook.isActive ? 'activated' : 'deactivated'}`
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to update webhook status. Please try again."
@@ -371,11 +357,59 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   };
 
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied",
-      description: `${label} copied to clipboard`
+    navigator.clipboard.writeText(text).then(() => {
+      toast({ title: "Copied", description: `${label} copied to clipboard` });
+    }).catch(() => {
+      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
     });
+  };
+
+  const deleteAPIKey = async (keyId: string) => {
+    try {
+      const key = (apiKeys || []).find(k => k._id === keyId);
+      if (!key) return;
+      await apiManagementApi.deleteAPIKey(keyId);
+      setApiKeys(prev => (prev || []).filter(k => k._id !== keyId));
+      toast({ title: "API Key Deleted", description: `${key.name} has been deleted` });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete API key", variant: "destructive" });
+    }
+  };
+
+  const deleteWebhook = async (webhookId: string) => {
+    try {
+      const webhook = (webhooks || []).find(w => w._id === webhookId);
+      if (!webhook) return;
+      await apiManagementApi.deleteWebhook(webhookId);
+      setWebhooks(prev => (prev || []).filter(w => w._id !== webhookId));
+      toast({ title: "Webhook Deleted", description: `${webhook.name} has been deleted` });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete webhook", variant: "destructive" });
+    }
+  };
+
+  const handleExportLogs = async () => {
+    try {
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const response = await apiManagementApi.exportLogs({
+        startDate: thirtyDaysAgo.toISOString(),
+        endDate: now.toISOString(),
+        format: 'json'
+      });
+      const blob = new Blob([response.data], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `api-logs-${now.toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast({ title: "Logs exported successfully" });
+    } catch {
+      toast({ title: "Failed to export logs", variant: "destructive" });
+    }
   };
 
   const toggleSecretVisibility = (id: string) => {
@@ -436,7 +470,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Response Time</p>
-                <p className="text-2xl font-bold">{apiMetrics?.avgResponseTime}ms</p>
+                <p className="text-2xl font-bold">{apiMetrics?.avgResponseTime ?? 0}ms</p>
               </div>
               <Clock className="h-8 w-8 text-yellow-500" />
             </div>
@@ -448,7 +482,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Error Rate</p>
-                <p className="text-2xl font-bold">{apiMetrics?.errorRate}%</p>
+                <p className="text-2xl font-bold">{apiMetrics?.errorRate ?? 0}%</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-red-500" />
             </div>
@@ -463,7 +497,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {(apiMetrics?.topEndpoints || []).map((endpoint, index) => (
+            {(apiMetrics?.topEndpoints || []).length > 0 ? (apiMetrics?.topEndpoints || []).map((endpoint, index) => (
               <div key={endpoint.endpoint} className="flex items-center justify-between p-3 border rounded-lg">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">
@@ -481,7 +515,9 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                   <div className="text-sm text-red-500">{endpoint.errors || 0} errors</div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-center py-6 text-muted-foreground">No endpoint data available yet</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -493,7 +529,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {Object.entries(apiMetrics?.statusCodes || {}).map(([code, count]) => (
+            {Object.entries(apiMetrics?.statusCodes || {}).length > 0 ? Object.entries(apiMetrics?.statusCodes || {}).map(([code, count]) => (
               <div key={code} className="text-center p-4 border rounded-lg">
                 <div className={`text-2xl font-bold ${
                   code.startsWith('2') ? 'text-green-600' :
@@ -504,7 +540,9 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                 </div>
                 <div className="text-sm text-muted-foreground">{code}</div>
               </div>
-            ))}
+            )) : (
+              <div className="col-span-full text-center py-6 text-muted-foreground">No status code data available yet</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -515,29 +553,40 @@ export const ComprehensiveAPIAccess: React.FC = () => {
           <CardTitle>API Health Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center space-x-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-              <div>
-                <div className="font-medium">All Systems Operational</div>
-                <div className="text-sm text-muted-foreground">All endpoints responding normally</div>
+          {(() => {
+            const errorRate = apiMetrics?.errorRate ?? 0;
+            const isHealthy = errorRate < 5;
+            const isWarning = errorRate >= 5 && errorRate < 15;
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`flex items-center space-x-3 p-4 border rounded-lg ${
+                  isHealthy ? 'bg-green-50 border-green-200' : isWarning ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'
+                }`}>
+                  {isHealthy ? <CheckCircle className="h-8 w-8 text-green-600" /> :
+                   isWarning ? <AlertTriangle className="h-8 w-8 text-yellow-600" /> :
+                   <XCircle className="h-8 w-8 text-red-600" />}
+                  <div>
+                    <div className="font-medium">{isHealthy ? 'Systems Operational' : isWarning ? 'Degraded Performance' : 'Issues Detected'}</div>
+                    <div className="text-sm text-muted-foreground">Error rate: {errorRate}%</div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Shield className="h-8 w-8 text-blue-600" />
+                  <div>
+                    <div className="font-medium">Active API Keys</div>
+                    <div className="text-sm text-muted-foreground">{(apiKeys || []).filter(k => k.isActive).length} of {(apiKeys || []).length} keys active</div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                  <Webhook className="h-8 w-8 text-purple-600" />
+                  <div>
+                    <div className="font-medium">Active Webhooks</div>
+                    <div className="text-sm text-muted-foreground">{(webhooks || []).filter(w => w.isActive).length} of {(webhooks || []).length} webhooks active</div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center space-x-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <Shield className="h-8 w-8 text-blue-600" />
-              <div>
-                <div className="font-medium">Security Status: Good</div>
-                <div className="text-sm text-muted-foreground">No security incidents detected</div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <TrendingUp className="h-8 w-8 text-yellow-600" />
-              <div>
-                <div className="font-medium">Rate Limits: Normal</div>
-                <div className="text-sm text-muted-foreground">No rate limit violations</div>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>
@@ -560,10 +609,9 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                   className="pl-10"
                 />
               </div>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                New Endpoint
-              </Button>
+              <Badge variant="secondary" className="text-sm">
+                Auto-scanned from routes
+              </Badge>
             </div>
 
             {/* Advanced Filters Row */}
@@ -683,8 +731,16 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       {/* Endpoints List */}
       <div className="space-y-4">
-        {filteredEndpoints.map(endpoint => (
-          <Card key={endpoint.id} className="cursor-pointer hover:shadow-lg transition-shadow"
+        {filteredEndpoints.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              {searchTerm || categoryFilter !== 'all' || methodFilter !== 'all' || statusFilter !== 'all'
+                ? 'No endpoints match your filters'
+                : 'No API endpoints registered yet'}
+            </CardContent>
+          </Card>
+        ) : filteredEndpoints.map((endpoint, index) => (
+          <Card key={`${endpoint.method}-${endpoint.path}-${index}`} className="cursor-pointer hover:shadow-lg transition-shadow"
                 onClick={() => setSelectedEndpoint(endpoint)}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -693,7 +749,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                     <div className={`px-2 py-1 text-xs font-bold text-white rounded ${getMethodColor(endpoint.method)}`}>
                       {endpoint.method}
                     </div>
-                    <Badge variant={getStatusColor(endpoint.status) as unknown}>
+                    <Badge variant={getStatusColor(endpoint.status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
                       {endpoint.status}
                     </Badge>
                   </div>
@@ -757,7 +813,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium">Key:</span>
                       <code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-                        {showSecrets[apiKey._id] ? apiKey.keyId : '•'.repeat(apiKey.keyId?.length || 20)}
+                        {showSecrets[apiKey._id] ? (apiKey.keyId || '••••••••') : '•'.repeat(20)}
                       </code>
                       <Button
                         variant="ghost"
@@ -766,17 +822,19 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                       >
                         {showSecrets[apiKey._id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(apiKey.keyId, 'API Key')}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                      {apiKey.keyId && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(apiKey.keyId!, 'API Key')}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
 
                     <div className="text-sm text-muted-foreground">
-                      <div>Created by {apiKey.createdBy?.name || 'Unknown'} on {new Date(apiKey.createdAt).toLocaleDateString()}</div>
+                      <div>Created by {typeof apiKey.createdBy === 'object' ? apiKey.createdBy?.name || 'Unknown' : 'Unknown'} on {new Date(apiKey.createdAt).toLocaleDateString()}</div>
                       {apiKey.expiresAt && (
                         <div>Expires: {new Date(apiKey.expiresAt).toLocaleDateString()}</div>
                       )}
@@ -802,14 +860,8 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
                 <div className="text-right space-y-2">
                   <div>
-                    <div className="text-lg font-bold">{(apiKey.usage?.totalRequests || 0).toLocaleString()}</div>
+                    <div className="text-lg font-bold">{(apiKey.usage?.totalRequests || apiKey.usage?.requests || 0).toLocaleString()}</div>
                     <div className="text-xs text-muted-foreground">Total Requests</div>
-                  </div>
-                  <div>
-                    <div className="text-sm">
-                      {(apiKey.rateLimitUsage?.today?.requests || 0).toLocaleString()} / {(apiKey.rateLimit?.requestsPerDay || 0).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Rate Limit (Today)</div>
                   </div>
                   <div className="flex space-x-2">
                     <Button
@@ -819,10 +871,12 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                     >
                       {apiKey.isActive ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteAPIKey(apiKey._id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -850,7 +904,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {Array.isArray(webhooks) ? webhooks.map(webhook =>
+        {Array.isArray(webhooks) && webhooks.length > 0 ? webhooks.map(webhook =>
           <Card key={webhook._id}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
@@ -877,12 +931,14 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                       </Button>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium">Created:</span>
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(webhook.createdAt).toLocaleDateString()}
+                    {webhook.createdAt && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium">Created:</span>
+                        <div className="text-sm text-muted-foreground">
+                          {new Date(webhook.createdAt).toLocaleDateString()}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="flex flex-wrap gap-1 mt-2">
                       {(webhook.events || []).map(event => (
@@ -915,10 +971,12 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                     >
                       {webhook.isActive ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteWebhook(webhook._id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -964,7 +1022,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Error Loading Data</h3>
               <p className="text-muted-foreground mb-4">{error}</p>
-              <Button onClick={loadData}>
+              <Button onClick={() => loadData()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Retry
               </Button>
@@ -990,7 +1048,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <FileText className="mr-2 h-4 w-4" />
             API Documentation
           </Button>
-          <Button variant="outline" onClick={() => apiManagementApi.exportLogs().then(() => toast({ title: "Logs exported successfully" })).catch(() => toast({ title: "Failed to export logs" }))}>
+          <Button variant="outline" onClick={handleExportLogs}>
             <Download className="mr-2 h-4 w-4" />
             Export Logs
           </Button>
@@ -1004,7 +1062,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             {tabs.map(tab => {
               const Icon = tab.icon;
               return (
-                <button aria-label="Close"
+                <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
@@ -1030,7 +1088,14 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       {/* Endpoint Details Modal */}
       {selectedEndpoint && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedEndpoint(null); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setSelectedEndpoint(null); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+        >
           <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1049,19 +1114,24 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Endpoint Path</label>
-                  <code className="block bg-muted p-2 rounded font-mono text-sm mt-1">
-                    {selectedEndpoint.path}
-                  </code>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 bg-muted p-2 rounded font-mono text-sm">
+                      {selectedEndpoint.path}
+                    </code>
+                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(selectedEndpoint.path, 'Endpoint path')}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Rate Limit</label>
-                  <div className="text-lg font-semibold">{selectedEndpoint.rateLimit} requests/hour</div>
+                  <div className="text-lg font-semibold">{selectedEndpoint.rateLimit || 'N/A'} requests/hour</div>
                 </div>
               </div>
 
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Description</label>
-                <p className="text-sm mt-1">{selectedEndpoint.description}</p>
+                <p className="text-sm mt-1">{selectedEndpoint.description || 'No description available'}</p>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -1080,28 +1150,17 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-2">
-                <Badge variant={getStatusColor(selectedEndpoint.status) as unknown}>
+                <Badge variant={getStatusColor(selectedEndpoint.status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
                   {selectedEndpoint.status}
                 </Badge>
-                <Badge variant="outline">{selectedEndpoint.version}</Badge>
-                <Badge variant="outline">{selectedEndpoint.category}</Badge>
+                {selectedEndpoint.version && <Badge variant="outline">{selectedEndpoint.version}</Badge>}
+                {selectedEndpoint.category && <Badge variant="outline">{selectedEndpoint.category}</Badge>}
                 {selectedEndpoint.authRequired && (
                   <Badge variant="secondary">
                     <Shield className="mr-1 h-3 w-3" />
                     Auth Required
                   </Badge>
                 )}
-              </div>
-
-              <div className="flex space-x-2">
-                <Button className="flex-1">
-                  <Terminal className="mr-2 h-4 w-4" />
-                  Test Endpoint
-                </Button>
-                <Button variant="outline" className="flex-1">
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  View Analytics
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1110,7 +1169,14 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       {/* API Key Creation Modal */}
       {showKeyCreator && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowKeyCreator(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowKeyCreator(false); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+        >
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1126,7 +1192,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <CardContent className="space-y-6">
               <APIKeyCreationForm onClose={() => setShowKeyCreator(false)} onSuccess={() => {
                 setShowKeyCreator(false);
-                loadAPIKeys();
+                loadData();
               }} />
             </CardContent>
           </Card>
@@ -1135,7 +1201,14 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       {/* Webhook Creation Modal */}
       {showWebhookCreator && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowWebhookCreator(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowWebhookCreator(false); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+        >
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1151,7 +1224,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <CardContent className="space-y-6">
               <WebhookCreationForm onClose={() => setShowWebhookCreator(false)} onSuccess={() => {
                 setShowWebhookCreator(false);
-                loadWebhooks();
+                loadData();
               }} />
             </CardContent>
           </Card>
@@ -1160,13 +1233,20 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
       {/* API Documentation Modal */}
       {showDocumentation && documentation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDocumentation(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowDocumentation(false); }}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+        >
           <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center">
                   <FileText className="mr-3 h-5 w-5" />
-                  {documentation.info?.title || 'API Documentation'}
+                  {(documentation?.info as Record<string, unknown>)?.title as string || 'API Documentation'}
                 </CardTitle>
                 <Button variant="outline" onClick={() => setShowDocumentation(false)}>
                   <XCircle className="h-4 w-4" />
@@ -1180,16 +1260,16 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label>Version</Label>
-                    <div className="text-sm text-muted-foreground">{documentation.info?.version}</div>
+                    <div className="text-sm text-muted-foreground">{(documentation?.info as Record<string, unknown>)?.version as string}</div>
                   </div>
                   <div>
                     <Label>Contact</Label>
-                    <div className="text-sm text-muted-foreground">{documentation.info?.contact?.email}</div>
+                    <div className="text-sm text-muted-foreground">{((documentation?.info as Record<string, unknown>)?.contact as Record<string, unknown>)?.email as string}</div>
                   </div>
                 </div>
                 <div>
                   <Label>Description</Label>
-                  <div className="text-sm text-muted-foreground">{documentation.info?.description}</div>
+                  <div className="text-sm text-muted-foreground">{(documentation?.info as Record<string, unknown>)?.description as string}</div>
                 </div>
               </div>
 
@@ -1197,16 +1277,16 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Servers</h3>
                 <div className="space-y-2">
-                  {documentation.servers?.map((server: Record<string, unknown>, index: number) => (
+                  {(documentation?.servers as Array<Record<string, unknown>> || []).map((server, index) => (
                     <div key={`item-${index}`} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
-                        <code className="font-mono text-sm">{server.url}</code>
-                        <div className="text-xs text-muted-foreground">{server.description}</div>
+                        <code className="font-mono text-sm">{server.url as string}</code>
+                        <div className="text-xs text-muted-foreground">{server.description as string}</div>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => copyToClipboard(server.url, 'Server URL')}
+                        onClick={() => copyToClipboard(String(server.url), 'Server URL')}
                       >
                         <Copy className="h-3 w-3" />
                       </Button>
@@ -1254,7 +1334,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Rate Limits</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {Object.entries(documentation.rateLimit?.limits || {}).map(([type, limit]) => (
+                  {Object.entries(((documentation?.rateLimit as Record<string, unknown>)?.limits as Record<string, unknown>) || {}).map(([type, limit]) => (
                     <Card key={type}>
                       <CardContent className="p-4 text-center">
                         <div className="font-medium capitalize">{type}</div>
@@ -1270,34 +1350,34 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">API Endpoints</h3>
                 <div className="space-y-6">
-                  {documentation.endpoints?.map((categoryGroup: Record<string, unknown>, index: number) => (
+                  {(documentation?.endpoints as Array<Record<string, unknown>> || []).map((categoryGroup, index) => (
                     <div key={`item-${index}`}>
-                      <h4 className="font-medium text-lg mb-3">{categoryGroup.category}</h4>
+                      <h4 className="font-medium text-lg mb-3">{categoryGroup.category as string}</h4>
                       <div className="space-y-3">
-                        {categoryGroup.endpoints?.map((endpoint: Record<string, unknown>, endpointIndex: number) => (
+                        {(categoryGroup.endpoints as Array<Record<string, unknown>> || []).map((endpoint, endpointIndex) => (
                           <Card key={endpointIndex}>
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                  <Badge className={`${getMethodColor(endpoint.method)} text-white`}>
-                                    {endpoint.method}
+                                  <Badge className={`${getMethodColor(String(endpoint.method))} text-white`}>
+                                    {endpoint.method as string}
                                   </Badge>
-                                  <code className="font-mono text-sm">{endpoint.path}</code>
+                                  <code className="font-mono text-sm">{endpoint.path as string}</code>
                                 </div>
                               </div>
-                              <div className="text-sm font-medium mb-1">{endpoint.summary}</div>
-                              <div className="text-sm text-muted-foreground">{endpoint.description}</div>
+                              <div className="text-sm font-medium mb-1">{endpoint.summary as string}</div>
+                              <div className="text-sm text-muted-foreground">{endpoint.description as string}</div>
 
-                              {endpoint.parameters && endpoint.parameters.length > 0 && (
+                              {endpoint.parameters && (endpoint.parameters as Array<Record<string, unknown>>).length > 0 && (
                                 <div className="mt-3">
                                   <div className="text-sm font-medium mb-2">Parameters:</div>
                                   <div className="grid grid-cols-1 gap-2">
-                                    {endpoint.parameters.map((param: Record<string, unknown>, paramIndex: number) => (
+                                    {(endpoint.parameters as Array<Record<string, unknown>>).map((param, paramIndex) => (
                                       <div key={paramIndex} className="flex items-center gap-2 text-xs">
-                                        <code className="bg-muted px-1 rounded">{param.name}</code>
-                                        <span className="text-muted-foreground">({param.in})</span>
+                                        <code className="bg-muted px-1 rounded">{param.name as string}</code>
+                                        <span className="text-muted-foreground">({param.in as string})</span>
                                         {param.required && <Badge variant="destructive" className="text-xs">required</Badge>}
-                                        <span className="text-muted-foreground">- {param.description}</span>
+                                        <span className="text-muted-foreground">- {param.description as string}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -1316,13 +1396,13 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Code Examples</h3>
                 <div className="space-y-4">
-                  {Object.entries(documentation.examples || {}).map(([key, example]: [string, unknown]) => (
+                  {Object.entries((documentation?.examples as Record<string, Record<string, unknown>>) || {}).map(([key, example]) => (
                     <Card key={key}>
                       <CardContent className="p-4">
                         <div className="font-medium mb-2 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</div>
-                        <div className="text-sm text-muted-foreground mb-3">{example.description}</div>
+                        <div className="text-sm text-muted-foreground mb-3">{example.description as string}</div>
                         <pre className="bg-muted p-3 rounded text-xs overflow-x-auto">
-                          <code>{example.code}</code>
+                          <code>{example.code as string}</code>
                         </pre>
                       </CardContent>
                     </Card>
@@ -1334,7 +1414,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Error Codes</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Object.entries(documentation.errorCodes || {}).map(([code, description]) => (
+                  {Object.entries((documentation?.errorCodes as Record<string, string>) || {}).map(([code, description]) => (
                     <div key={code} className="flex items-start gap-3 p-3 border rounded-lg">
                       <Badge variant={code.startsWith('2') ? 'default' : code.startsWith('4') ? 'secondary' : 'destructive'}>
                         {code}

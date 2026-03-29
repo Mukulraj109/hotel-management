@@ -171,15 +171,13 @@ userPreferenceSchema.index({ hotelId: 1 });
 // Static methods
 userPreferenceSchema.statics.getOrCreateForUser = async function(userId, hotelId = null) {
   try {
-    let preference = await this.findOne({ userId }).lean();
-
-    if (!preference) {
-      preference = await this.create({
-        userId,
-        hotelId,
-        // Use default values from schema
-      });
-    }
+    // Use findOneAndUpdate with upsert to avoid E11000 duplicate key errors
+    // from concurrent requests both trying to create for the same user
+    const preference = await this.findOneAndUpdate(
+      { userId },
+      { $setOnInsert: { userId, hotelId } },
+      { upsert: true, new: true, setDefaultsOnInsert: true, lean: true }
+    );
 
     return preference;
   } catch (error) {
@@ -192,7 +190,7 @@ userPreferenceSchema.statics.updatePreferences = async function(userId, updates)
     return await this.findOneAndUpdate(
       { userId },
       { $set: updates },
-      { new: true, upsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     );
   } catch (error) {
     throw new Error(`${error.message}`);

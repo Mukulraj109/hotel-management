@@ -285,11 +285,9 @@ class BypassSecurityService {
   /**
    * Export security report
    */
-  async exportSecurityReport(timeRange: '24h' | '7d' | '30d' = '7d', format: 'pdf' | 'excel' = 'pdf') {
+  async exportSecurityReport(timeRange: '24h' | '7d' | '30d' = '7d') {
     try {
-      const response = await api.get(`/admin-bypass-management/security/export?timeRange=${timeRange}&format=${format}`, {
-        responseType: 'blob'
-      });
+      const response = await api.get(`/admin-bypass-management/security/export?timeRange=${timeRange}`);
       return response;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -395,7 +393,7 @@ class BypassSecurityService {
       screen.colorDepth,
       new Date().getTimezoneOffset(),
       navigator.hardwareConcurrency || 'unknown',
-      navigator.deviceMemory || 'unknown'
+      (navigator as Record<string, unknown>).deviceMemory || 'unknown'
     ];
 
     // Simple hash function
@@ -514,8 +512,8 @@ class BypassSecurityService {
   /**
    * Format financial impact for display
    */
-  formatFinancialImpact(amount: number, currency: string = 'USD'): string {
-    return new Intl.NumberFormat('en-US', {
+  formatFinancialImpact(amount: number, currency: string = 'INR'): string {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 0,
@@ -535,17 +533,6 @@ class BypassSecurityService {
     }
   }
 
-  /**
-   * Test security controls (for development/testing)
-   */
-  async testSecurityControls() {
-    try {
-      const response = await api.post('/admin-bypass-management/security/test');
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
-  }
 }
 
 export const bypassSecurityService = new BypassSecurityService();

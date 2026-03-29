@@ -106,11 +106,51 @@ export const getUserEngagementMetrics = catchAsync(async (req, res) => {
   });
 });
 
+// Export analytics as CSV
+export const exportAnalytics = catchAsync(async (req, res) => {
+  const { dateRange, format = 'csv' } = req.query;
+
+  const options = {};
+  if (dateRange) {
+    try {
+      options.dateRange = JSON.parse(dateRange);
+    } catch (error) {
+      throw new ApplicationError('Invalid date range format', 400);
+    }
+  }
+
+  const analytics = await userAnalyticsService.getUserAnalytics(req.user.hotelId, options);
+
+  if (format === 'csv') {
+    const csvHeader = 'Metric,Value\n';
+    const csvRows = [
+      `Total Users,${analytics.totalUsers || 0}`,
+      `Active Users,${analytics.activeUsers || 0}`,
+      `Inactive Users,${analytics.inactiveUsers || 0}`,
+      `Guests,${analytics.guests || 0}`,
+      `Staff,${analytics.staff || 0}`,
+      `Admins,${analytics.admins || 0}`,
+      `Managers,${analytics.managers || 0}`,
+      `Engagement Rate,${analytics.engagementRate || 0}%`,
+      `Loyalty Rate,${analytics.loyaltyRate || 0}%`
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="user-analytics.csv"');
+    return res.send(csvHeader + csvRows);
+  }
+
+  res.json({
+    status: 'success',
+    data: analytics
+  });
+});
+
 // Get advanced user list with analytics
 export const getAdvancedUserList = catchAsync(async (req, res) => {
   const {
-    page = 1,
-    limit = 20,
+    page: rawPage = '1',
+    limit: rawLimit = '20',
     search,
     role,
     isActive,
@@ -119,6 +159,9 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
     dateRange,
     segmentBy
   } = req.query;
+
+  const parsedPage = Math.max(1, parseInt(rawPage) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
   const query = {
     $or: [
@@ -129,16 +172,17 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
 
   // Apply filters
   if (role && role !== 'all') query.role = role;
-  if (isActive !== undefined) query.isActive = isActive === 'true';
-  
+  if (isActive !== undefined && isActive !== 'all') query.isActive = isActive === 'true';
+
   if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$and = [
       { $or: query.$or },
       {
         $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } }
+          { name: { $regex: escapedSearch, $options: 'i' } },
+          { email: { $regex: escapedSearch, $options: 'i' } },
+          { phone: { $regex: escapedSearch, $options: 'i' } }
         ]
       }
     ];
@@ -158,17 +202,21 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
     }
   }
 
-  const skip = (page - 1) * limit;
+  const skip = (parsedPage - 1) * parsedLimit;
   const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-  // Get users with activity data
+  // Get users with activity data (limit $lookup to recent 100 activities for performance)
   const pipeline = [
     { $match: query },
     {
       $lookup: {
         from: 'auditlogs',
-        localField: '_id',
-        foreignField: 'user._id',
+        let: { userId: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $eq: ['$user._id', '$$userId'] } } },
+          { $sort: { timestamp: -1 } },
+          { $limit: 100 }
+        ],
         as: 'activities'
       }
     },
@@ -200,7 +248,7 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
     },
     { $sort: sort },
     { $skip: skip },
-    { $limit: parseInt(limit) },
+    { $limit: parsedLimit },
     {
       $project: {
         password: 0,
@@ -219,10 +267,10 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
     status: 'success',
     results: users.length,
     pagination: {
-      current: parseInt(page),
-      pages: Math.ceil(total / limit),
+      current: parsedPage,
+      pages: Math.ceil(total / parsedLimit),
       total,
-      limit: parseInt(limit)
+      limit: parsedLimit
     },
     data: { users }
   });
@@ -269,16 +317,17 @@ export const bulkUserOperations = catchAsync(async (req, res) => {
         throw new ApplicationError('Hotel ID is required for updateHotel operation', 400);
       }
       result = await User.updateMany(
-        { _id: { $in: validUserIds } },
+        { _id: { $in: validUserIds }, hotelId: req.user.hotelId },
         { $set: { hotelId: new mongoose.Types.ObjectId(data.hotelId) } }
       );
       break;
 
     case 'delete':
-      result = await User.deleteMany({
-        _id: { $in: validUserIds },
-        hotelId: req.user.hotelId
-      });
+      // Soft delete to be consistent with single-user delete
+      result = await User.updateMany(
+        { _id: { $in: validUserIds }, hotelId: req.user.hotelId },
+        { $set: { isActive: false } }
+      );
       break;
 
     default:
@@ -355,7 +404,7 @@ export const importUsers = catchAsync(async (req, res) => {
           name: userData.name,
           email: userData.email,
           phone: userData.phone,
-          password: userData.password || 'defaultPassword123',
+          password: userData.password || require('crypto').randomBytes(12).toString('base64url'),
           role: userData.role || 'guest',
           isActive: userData.isActive !== undefined ? userData.isActive : true
         };
@@ -473,10 +522,18 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
     }
   }
 
-  const [user, performanceMetrics, activityTimeline] = await Promise.all([
+  const matchStage = { 'user._id': new mongoose.Types.ObjectId(userId) };
+  if (options.dateRange) {
+    matchStage.timestamp = {
+      $gte: new Date(options.dateRange.start),
+      $lte: new Date(options.dateRange.end)
+    };
+  }
+
+  const [user, performanceMetrics, activities] = await Promise.all([
     User.findById(userId).select('-password'),
     userAnalyticsService.getUserPerformanceMetrics(req.user.hotelId, { ...options, userId }),
-    getUserActivityTimeline(req, res)
+    AuditLog.find(matchStage).sort({ timestamp: -1 }).limit(50).lean()
   ]);
 
   if (!user) {
@@ -488,7 +545,7 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
     data: {
       user,
       performanceMetrics,
-      activityTimeline: activityTimeline.data.activities
+      activityTimeline: activities
     }
   });
 });
@@ -608,7 +665,7 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
   }
 
   if (req.user.role === 'guest') {
-    user = await User.findById(userId).lean();
+    user = await User.findById(userId);
   } else {
     // Staff/admin can update guests or users in their hotel
     user = await User.findOne({
@@ -617,7 +674,7 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    }).lean();
+    });
   }
 
   if (!user) {
@@ -625,12 +682,16 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
   }
 
   // Validate GST number if provided
-  if (billingData.gstNumber && !user.validateGSTNumber(billingData.gstNumber)) {
+  if (billingData.gstNumber && user.validateGSTNumber && !user.validateGSTNumber(billingData.gstNumber)) {
     throw new ApplicationError('Invalid GST number format', 400);
   }
 
   // Update billing details
-  user.updateBillingDetails(billingData);
+  if (user.updateBillingDetails) {
+    user.updateBillingDetails(billingData);
+  } else {
+    if (billingData) user.billingDetails = { ...user.billingDetails, ...billingData };
+  }
   await user.save();
 
   res.json({
@@ -654,7 +715,7 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId).select('name email billingDetails guestType').lean();
+    user = await User.findById(userId).select('name email billingDetails guestType');
   } else {
     user = await User.findOne({
       _id: userId,
@@ -662,7 +723,7 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    }).select('name email billingDetails guestType role').lean();
+    }).select('name email billingDetails guestType role');
   }
 
   if (!user) {
@@ -679,8 +740,8 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
         role: user.role,
         guestType: user.guestType,
         billingDetails: user.billingDetails,
-        hasCompleteBillingInfo: user.hasCompleteBillingInfo(),
-        formattedBillingAddress: user.getFormattedBillingAddress()
+        hasCompleteBillingInfo: user.hasCompleteBillingInfo ? user.hasCompleteBillingInfo() : false,
+        formattedBillingAddress: user.getFormattedBillingAddress ? user.getFormattedBillingAddress() : ''
       }
     }
   });
@@ -698,7 +759,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId).lean();
+    user = await User.findById(userId);
   } else {
     user = await User.findOne({
       _id: userId,
@@ -706,7 +767,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    }).lean();
+    });
   }
 
   if (!user) {
@@ -717,7 +778,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
   if (name) user.name = name;
   if (email && email !== user.email) {
     // Check if email already exists
-    const existingUser = await User.findOne({ email, _id: { $ne: userId } }).lean();
+    const existingUser = await User.findOne({ email, _id: { $ne: userId } });
     if (existingUser) {
       throw new ApplicationError('Email already exists', 400);
     }
@@ -804,6 +865,7 @@ export default {
   getUserPerformanceMetrics,
   getUserSegmentation,
   getUserEngagementMetrics,
+  exportAnalytics,
   getAdvancedUserList,
   bulkUserOperations,
   importUsers,

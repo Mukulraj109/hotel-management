@@ -616,8 +616,8 @@ router.post('/:id/approve', authorizePolicy('supplyRequests', 'managerAccess'), 
 router.post('/:id/reject', authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
   
-  const supplyRequest = await SupplyRequest.findById(req.params.id).lean();
-  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);
   }

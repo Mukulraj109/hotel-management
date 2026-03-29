@@ -81,22 +81,31 @@ const SLATracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
 
+  // Resolve hotelId to string — it may be a populated object { _id, name }
+  const resolvedHotelId = (() => {
+    const raw = user?.hotelId;
+    if (!raw) return undefined;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object' && raw !== null && '_id' in raw) return String((raw as { _id: string })._id);
+    return String(raw);
+  })();
+
   useEffect(() => {
-    if (user?.hotelId) {
+    if (resolvedHotelId) {
       fetchSLAData();
-      // Set up real-time monitoring
-      const interval = setInterval(fetchSLAData, 30000); // Update every 30 seconds
+      // Set up real-time monitoring — don't show loading spinner on polls
+      const interval = setInterval(() => fetchSLAData(false), 30000);
       return () => clearInterval(interval);
     }
-  }, [user?.hotelId]);
+  }, [resolvedHotelId]);
 
-  const fetchSLAData = async () => {
+  const fetchSLAData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
 
       // Fetch service types to get SLA settings
       const serviceTypesResponse = await serviceTypeService.getServiceTypes({
-        hotelId: user?.hotelId,
+        hotelId: resolvedHotelId,
         activeOnly: true
       });
       setServiceTypes(serviceTypesResponse.serviceTypes);
@@ -104,14 +113,16 @@ const SLATracker: React.FC = () => {
       // Fetch real active service requests from the guest-services API
       const [activeResponse, statsResponse] = await Promise.all([
         api.get('/guest-services', {
-          params: { status: 'pending', limit: 20 }
+          params: { status: 'pending', limit: 20, hotelId: resolvedHotelId }
         }).catch(() => null),
-        api.get('/guest-services/stats').catch(() => null)
+        api.get('/guest-services/stats', {
+          params: { hotelId: resolvedHotelId }
+        }).catch(() => null)
       ]);
 
       // Also fetch in-progress requests
       const inProgressResponse = await api.get('/guest-services', {
-        params: { status: 'in_progress', limit: 20 }
+        params: { status: 'in_progress', limit: 20, hotelId: resolvedHotelId }
       }).catch(() => null);
 
       const pendingRequests = activeResponse?.data?.data?.serviceRequests || [];
@@ -317,7 +328,7 @@ const SLATracker: React.FC = () => {
 
         <div className="flex items-center gap-3">
           <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
-            toast.info('SLA configuration is managed via Service Types. Go to Service Management tab to set response and completion times per service type.');
+            toast('SLA configuration is managed via Service Types. Go to Service Management tab to set response and completion times per service type.', { icon: 'ℹ️' });
           }}>
             <Settings className="w-4 h-4 mr-2" />
             Configure SLAs
@@ -493,6 +504,13 @@ const SLATracker: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
+                {activeRequests.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      <p className="text-sm">No active service requests at this time</p>
+                    </td>
+                  </tr>
+                )}
                 {activeRequests.map((request) => {
                   const timeElapsed = Math.floor((Date.now() - request.createdAt.getTime()) / (1000 * 60));
                   const responseProgress = Math.min((timeElapsed / request.slaSettings.responseTime) * 100, 100);

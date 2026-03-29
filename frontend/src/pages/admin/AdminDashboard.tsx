@@ -58,7 +58,7 @@ export default function AdminDashboard() {
   const occupancyQuery = useOccupancyData(selectedHotelId, undefined, undefined, {
     enabled: !!selectedHotelId
   });
-  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, {
+  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, undefined, {
     enabled: !!selectedHotelId
   });
 

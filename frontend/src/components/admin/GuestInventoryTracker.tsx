@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Search, Star, Crown, DollarSign, Gift, TrendingUp, Users, Package } from 'lucide-react';
+import { Search, Star, Crown, IndianRupee, Gift, TrendingUp, Users, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import { formatCurrency } from '../../utils/currencyUtils';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 interface GuestAnalytics {
@@ -72,6 +73,16 @@ interface DashboardData {
 }
 
 const GuestInventoryTracker: React.FC = () => {
+  const { user } = useAuth();
+  // Resolve hotelId to string
+  const resolvedHotelId = (() => {
+    const raw = user?.hotelId;
+    if (!raw) return undefined;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object' && raw !== null && '_id' in raw) return String((raw as { _id: string })._id);
+    return String(raw);
+  })();
+
   const [data, setData] = useState<DashboardData | null>(null);
   const [recommendations, setRecommendations] = useState<GuestRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +113,7 @@ const GuestInventoryTracker: React.FC = () => {
         endDate: dateRange.endDate,
         vipOnly: vipOnly.toString()
       });
+      if (resolvedHotelId) params.append('hotelId', resolvedHotelId);
 
       const { data: result } = await api.get(`/inventory/consumption/guest/analytics?${params}`);
 
@@ -124,6 +136,7 @@ const GuestInventoryTracker: React.FC = () => {
       const roomId = guest?.roomNumber || '';
       const params = new URLSearchParams({ guestId: selectedGuest, serviceType: 'room_service' });
       if (roomId) params.append('roomId', roomId);
+      if (resolvedHotelId) params.append('hotelId', resolvedHotelId);
 
       const { data: result } = await api.get(`/inventory/consumption/guest/recommendations?${params}`);
 
@@ -232,7 +245,7 @@ const GuestInventoryTracker: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Total Revenue</p>
                 <p className="text-2xl font-bold">{formatCurrency(data.summary.totalRevenue)}</p>
               </div>
-              <DollarSign className="h-8 w-8 text-green-500" />
+              <IndianRupee className="h-8 w-8 text-green-500" />
             </div>
           </CardContent>
         </Card>

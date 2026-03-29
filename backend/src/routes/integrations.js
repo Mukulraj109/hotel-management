@@ -11,7 +11,44 @@ import logger from '../utils/logger.js';
 import crypto from 'crypto';
 
 const router = express.Router();
-const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+// Validation schema for integration settings updates
+const integrationSettingsSchema = Joi.object({
+  payment: Joi.object({
+    stripe: Joi.object({
+      enabled: Joi.boolean(),
+      publicKey: Joi.string().allow(''),
+      secretKey: Joi.string().allow('')
+    }),
+    razorpay: Joi.object({
+      enabled: Joi.boolean(),
+      keyId: Joi.string().allow(''),
+      keySecret: Joi.string().allow('')
+    })
+  }),
+  ota: Joi.object({
+    booking: Joi.object({
+      enabled: Joi.boolean(),
+      apiKey: Joi.string().allow(''),
+      hotelId: Joi.string().allow('')
+    }),
+    expedia: Joi.object({
+      enabled: Joi.boolean(),
+      apiKey: Joi.string().allow(''),
+      hotelId: Joi.string().allow('')
+    })
+  }),
+  analytics: Joi.object({
+    googleAnalytics: Joi.object({
+      enabled: Joi.boolean(),
+      trackingId: Joi.string().allow('')
+    }),
+    mixpanel: Joi.object({
+      enabled: Joi.boolean(),
+      token: Joi.string().allow('')
+    })
+  })
+});
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -19,18 +56,30 @@ router.use(ensurePropertyAccess);
 router.use(authorizePolicy('integrations', 'baseAccess'));
 router.use(authorize('admin', 'manager'));
 
-// Encryption key for sensitive data (in production, this should be in environment variables)
-const ENCRYPTION_KEY = process.env.INTEGRATION_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+// Encryption key for sensitive data - MUST be set in environment variables for production
+// Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+const ENCRYPTION_KEY_HEX = process.env.INTEGRATION_ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY_HEX) {
+  logger.warn('INTEGRATION_ENCRYPTION_KEY not set - using fallback key. Set this env var in production!');
+}
+// Use env var or a stable fallback for development (NOT random per restart)
+const ENCRYPTION_KEY = Buffer.from(
+  (ENCRYPTION_KEY_HEX || 'a'.repeat(64)).slice(0, 64).padEnd(64, '0'),
+  'hex'
+);
 
 /**
- * Encrypt sensitive data like API keys and secrets
+ * Encrypt sensitive data like API keys and secrets using AES-256-GCM
  */
 function encryptSensitiveData(text) {
   if (!text) return text;
-  const cipher = crypto.createCipher('aes-256-cbc', ENCRYPTION_KEY);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  return encrypted;
+  const authTag = cipher.getAuthTag().toString('hex');
+  // Format: iv:encrypted:authTag
+  return `${iv.toString('hex')}:${encrypted}:${authTag}`;
 }
 
 /**
@@ -39,10 +88,20 @@ function encryptSensitiveData(text) {
 function decryptSensitiveData(text) {
   if (!text) return text;
   try {
-    const decipher = crypto.createDecipher('aes-256-cbc', ENCRYPTION_KEY);
-    let decrypted = decipher.update(text, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    const parts = text.split(':');
+    if (parts.length === 3) {
+      // New format: iv:encrypted:authTag
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      const authTag = Buffer.from(parts[2], 'hex');
+      const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+      decipher.setAuthTag(authTag);
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    }
+    // Return as-is if format is unrecognized (legacy unencrypted data)
+    return text;
   } catch (error) {
     logger.warn('Failed to decrypt sensitive data', { error: error.message });
     return text; // Return as-is if decryption fails (might be unencrypted legacy data)
@@ -56,46 +115,31 @@ function decryptSensitiveData(text) {
 router.get('/settings', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
-  // Get user settings
-  let settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role');
+  const defaultIntegrations = {
+    payment: {
+      stripe: { enabled: false, publicKey: '', secretKey: '' },
+      razorpay: { enabled: false, keyId: '', keySecret: '' }
+    },
+    ota: {
+      booking: { enabled: false, apiKey: '', hotelId: '' },
+      expedia: { enabled: false, apiKey: '', hotelId: '' }
+    },
+    analytics: {
+      googleAnalytics: { enabled: false, trackingId: '' },
+      mixpanel: { enabled: false, token: '' }
+    }
+  };
 
-  // Create default settings if none exist
-  if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, req.user.role);
-    // Ensure integrations field exists
-    settings.integrations = {
-      payment: {
-        stripe: { enabled: false, publicKey: '', secretKey: '' },
-        razorpay: { enabled: false, keyId: '', keySecret: '' }
-      },
-      ota: {
-        booking: { enabled: false, apiKey: '', hotelId: '' },
-        expedia: { enabled: false, apiKey: '', hotelId: '' }
-      },
-      analytics: {
-        googleAnalytics: { enabled: false, trackingId: '' },
-        mixpanel: { enabled: false, token: '' }
-      }
-    };
-    await settings.save();
-  }
+  // Get or create user settings using upsert to avoid duplicate key errors
+  let settings = await UserSettings.findOneAndUpdate(
+    { userId },
+    { $setOnInsert: { userId, role: req.user.role, integrations: defaultIntegrations } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
   // Initialize integrations field if it doesn't exist
-  if (!settings.integrations) {
-    settings.integrations = {
-      payment: {
-        stripe: { enabled: false, publicKey: '', secretKey: '' },
-        razorpay: { enabled: false, keyId: '', keySecret: '' }
-      },
-      ota: {
-        booking: { enabled: false, apiKey: '', hotelId: '' },
-        expedia: { enabled: false, apiKey: '', hotelId: '' }
-      },
-      analytics: {
-        googleAnalytics: { enabled: false, trackingId: '' },
-        mixpanel: { enabled: false, token: '' }
-      }
-    };
+  if (!settings.integrations || !settings.integrations.payment) {
+    settings.integrations = defaultIntegrations;
     await settings.save();
   }
 
@@ -162,7 +206,7 @@ router.get('/settings', catchAsync(async (req, res, next) => {
  * PUT /api/v1/integrations/settings
  * Update integration settings
  */
-router.put('/settings', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.put('/settings', validate(integrationSettingsSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const integrationData = req.body;
 
@@ -171,29 +215,27 @@ router.put('/settings', validate(mutationBaselineSchema), catchAsync(async (req,
     return next(new ApplicationError('Invalid integration data provided', 400));
   }
 
-  // Get existing settings
-  let settings = await UserSettings.findOne({ userId });
+  const defaultIntegrations = {
+    payment: {
+      stripe: { enabled: false, publicKey: '', secretKey: '' },
+      razorpay: { enabled: false, keyId: '', keySecret: '' }
+    },
+    ota: {
+      booking: { enabled: false, apiKey: '', hotelId: '' },
+      expedia: { enabled: false, apiKey: '', hotelId: '' }
+    },
+    analytics: {
+      googleAnalytics: { enabled: false, trackingId: '' },
+      mixpanel: { enabled: false, token: '' }
+    }
+  };
 
-  // Create default settings if none exist
-  if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, req.user.role);
-    // Ensure integrations field exists
-    settings.integrations = {
-      payment: {
-        stripe: { enabled: false, publicKey: '', secretKey: '' },
-        razorpay: { enabled: false, keyId: '', keySecret: '' }
-      },
-      ota: {
-        booking: { enabled: false, apiKey: '', hotelId: '' },
-        expedia: { enabled: false, apiKey: '', hotelId: '' }
-      },
-      analytics: {
-        googleAnalytics: { enabled: false, trackingId: '' },
-        mixpanel: { enabled: false, token: '' }
-      }
-    };
-    await settings.save();
-  }
+  // Get or create settings using upsert to avoid duplicate key errors
+  let settings = await UserSettings.findOneAndUpdate(
+    { userId },
+    { $setOnInsert: { userId, role: req.user.role, integrations: defaultIntegrations } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 
   // Validate role permissions (only admin/manager can update integrations)
   if (!['admin', 'manager'].includes(req.user.role)) {
@@ -201,21 +243,8 @@ router.put('/settings', validate(mutationBaselineSchema), catchAsync(async (req,
   }
 
   // Initialize integrations object if it doesn't exist
-  if (!settings.integrations) {
-    settings.integrations = {
-      payment: {
-        stripe: { enabled: false, publicKey: '', secretKey: '' },
-        razorpay: { enabled: false, keyId: '', keySecret: '' }
-      },
-      ota: {
-        booking: { enabled: false, apiKey: '', hotelId: '' },
-        expedia: { enabled: false, apiKey: '', hotelId: '' }
-      },
-      analytics: {
-        googleAnalytics: { enabled: false, trackingId: '' },
-        mixpanel: { enabled: false, token: '' }
-      }
-    };
+  if (!settings.integrations || !settings.integrations.payment) {
+    settings.integrations = defaultIntegrations;
   }
 
   // Process payment integrations

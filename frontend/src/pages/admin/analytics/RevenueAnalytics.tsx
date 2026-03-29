@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { cn } from '../../../utils/cn';
 import {
   MetricCard,
@@ -13,9 +13,12 @@ import {
 } from '../../../components/dashboard';
 import { Button } from '@/components/ui/button';
 import { useRevenueData } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatCurrency, formatPercentage, getDateRange } from '../../../utils/dashboardUtils';
 
 export default function RevenueAnalytics() {
+  const { selectedPropertyId, properties } = useProperty();
+
   const [filters, setFilters] = useState({
     hotelId: '',
     period: 'month',
@@ -26,15 +29,30 @@ export default function RevenueAnalytics() {
     source: '',
   });
 
+  // Use selected property from context, allow override via filter
+  const activeHotelId = filters.hotelId || selectedPropertyId || '';
+
+  const hotelOptions = useMemo(() =>
+    properties.map((p) => ({ value: p._id, label: p.name })),
+  [properties]);
+
   const revenueQuery = useRevenueData(
-    filters.hotelId,
+    activeHotelId,
     filters.period,
     filters.startDate,
-    filters.endDate
+    filters.endDate,
+    filters.groupBy
   );
 
   const handleFilterChange = (key: string, value: unknown) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters(prev => {
+      const updated = { ...prev, [key]: value };
+      // When dates are changed manually, switch to custom period so backend uses them
+      if (key === 'startDate' || key === 'endDate') {
+        updated.period = 'custom';
+      }
+      return updated;
+    });
   };
 
   const handleQuickPeriod = (period: 'today' | 'week' | 'month' | 'quarter' | 'year') => {
@@ -47,7 +65,23 @@ export default function RevenueAnalytics() {
     }));
   };
 
-  const data = revenueQuery.data?.data;
+  const rawData = revenueQuery.data?.data;
+
+  // Client-side filtering for roomType and source filters
+  const data = useMemo(() => {
+    if (!rawData) return undefined;
+    return {
+      ...rawData,
+      byRoomType: filters.roomType
+        ? rawData.byRoomType.filter(rt => rt.roomType === filters.roomType)
+        : rawData.byRoomType,
+      bySource: filters.source
+        ? rawData.bySource.filter(s => s.source === filters.source)
+        : rawData.bySource,
+    };
+  }, [rawData, filters.roomType, filters.source]);
+
+  const noHotelSelected = !activeHotelId;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -58,16 +92,18 @@ export default function RevenueAnalytics() {
           <p className="text-gray-600 mt-1">Detailed financial performance analysis</p>
         </div>
         <div className="flex items-center space-x-3">
-          <ExportButton
-            endpoint="revenue"
-            params={{
-              hotelId: filters.hotelId,
-              startDate: filters.startDate,
-              endDate: filters.endDate,
-              groupBy: filters.groupBy,
-            }}
-            filename="revenue-analytics"
-          />
+          {!noHotelSelected && (
+            <ExportButton
+              endpoint="revenue"
+              params={{
+                hotelId: activeHotelId,
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+                groupBy: filters.groupBy,
+              }}
+              filename="revenue-analytics"
+            />
+          )}
           <Button
             onClick={() => revenueQuery.refetch()}
             loading={revenueQuery.isLoading}
@@ -99,11 +135,8 @@ export default function RevenueAnalytics() {
             key: 'hotelId',
             label: 'Hotel',
             type: 'select',
-            options: [
-              { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
-            ],
+            placeholder: 'All Hotels',
+            options: hotelOptions,
           },
           {
             key: 'startDate',
@@ -129,79 +162,84 @@ export default function RevenueAnalytics() {
             key: 'roomType',
             label: 'Room Type',
             type: 'select',
-            options: [
-              { value: '', label: 'All Types' },
-              { value: 'standard', label: 'Standard' },
-              { value: 'deluxe', label: 'Deluxe' },
-              { value: 'suite', label: 'Suite' },
-            ],
+            placeholder: 'All Types',
+            options: (rawData?.byRoomType || []).map(rt => ({
+              value: rt.roomType,
+              label: rt.roomType,
+            })),
           },
           {
             key: 'source',
             label: 'Booking Source',
             type: 'select',
-            options: [
-              { value: '', label: 'All Sources' },
-              { value: 'direct', label: 'Direct' },
-              { value: 'booking.com', label: 'Booking.com' },
-              { value: 'expedia', label: 'Expedia' },
-            ],
+            placeholder: 'All Sources',
+            options: (rawData?.bySource || []).map(s => ({
+              value: s.source,
+              label: s.source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            })),
           },
         ]}
         values={filters}
         onChange={handleFilterChange}
       />
 
+      {noHotelSelected && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
+          <p className="text-blue-800 font-medium">Select a hotel to view revenue analytics</p>
+          <p className="text-blue-600 text-sm mt-1">Choose a property from the Hotel filter above to load data.</p>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Total Revenue"
-          value={data?.summary.totalRevenue || 0}
+          value={data?.summary?.totalRevenue || 0}
           type="currency"
           trend={{
-            value: data?.periodComparison.changePercentage || 0,
-            direction: (data?.periodComparison.changePercentage || 0) > 0 ? 'up' : 'down',
+            value: data?.periodComparison?.changePercentage || 0,
+            direction: (data?.periodComparison?.changePercentage || 0) > 0 ? 'up' : (data?.periodComparison?.changePercentage || 0) < 0 ? 'down' : 'neutral',
             label: 'vs previous period'
           }}
           color="green"
           loading={revenueQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Total Bookings"
-          value={data?.summary.totalBookings || 0}
+          value={data?.summary?.totalBookings || 0}
           trend={{
-            value: data?.summary.bookingGrowth || 0,
-            direction: (data?.summary.bookingGrowth || 0) > 0 ? 'up' : 'down',
+            value: data?.summary?.bookingGrowth || 0,
+            direction: (data?.summary?.bookingGrowth || 0) > 0 ? 'up' : (data?.summary?.bookingGrowth || 0) < 0 ? 'down' : 'neutral',
             label: 'booking growth'
           }}
           color="blue"
           loading={revenueQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Average Booking Value"
-          value={data?.summary.averageBookingValue || 0}
+          value={data?.summary?.averageBookingValue || 0}
           type="currency"
           trend={{
-            value: 5.2,
-            direction: 'up',
+            value: Math.abs(data?.periodComparison?.changePercentage || 0),
+            direction: (data?.periodComparison?.changePercentage || 0) > 0 ? 'up' : (data?.periodComparison?.changePercentage || 0) < 0 ? 'down' : 'neutral',
             label: 'vs last period'
           }}
           color="purple"
           loading={revenueQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Revenue Growth"
-          value={data?.summary.revenueGrowth || 0}
+          value={data?.summary?.revenueGrowth || 0}
           type="percentage"
           trend={{
-            value: Math.abs(data?.summary.revenueGrowth || 0),
-            direction: (data?.summary.revenueGrowth || 0) > 0 ? 'up' : 'down',
+            value: Math.abs(data?.summary?.revenueGrowth || 0),
+            direction: (data?.summary?.revenueGrowth || 0) > 0 ? 'up' : (data?.summary?.revenueGrowth || 0) < 0 ? 'down' : 'neutral',
             label: 'growth rate'
           }}
-          color={data?.summary.revenueGrowth && data.summary.revenueGrowth > 0 ? 'green' : 'red'}
+          color={(data?.summary?.revenueGrowth || 0) >= 0 ? 'green' : 'red'}
           loading={revenueQuery.isLoading}
         />
       </div>
@@ -228,16 +266,20 @@ export default function RevenueAnalytics() {
               <div className="flex items-center justify-center space-x-2">
                 <p className={cn(
                   "text-2xl font-bold",
-                  data.periodComparison.change > 0 ? "text-green-600" : "text-red-600"
+                  data.periodComparison.change > 0 ? "text-green-600" : data.periodComparison.change < 0 ? "text-red-600" : "text-gray-600"
                 )}>
                   {data.periodComparison.change > 0 ? '+' : ''}{formatCurrency(data.periodComparison.change)}
                 </p>
-                <p className={cn(
-                  "text-sm",
-                  data.periodComparison.changePercentage > 0 ? "text-green-600" : "text-red-600"
-                )}>
-                  ({data.periodComparison.changePercentage > 0 ? '+' : ''}{formatPercentage(data.periodComparison.changePercentage)})
-                </p>
+                {data.periodComparison.previous > 0 ? (
+                  <p className={cn(
+                    "text-sm",
+                    data.periodComparison.changePercentage > 0 ? "text-green-600" : data.periodComparison.changePercentage < 0 ? "text-red-600" : "text-gray-600"
+                  )}>
+                    ({data.periodComparison.changePercentage > 0 ? '+' : ''}{formatPercentage(data.periodComparison.changePercentage)})
+                  </p>
+                ) : data.periodComparison.current > 0 ? (
+                  <p className="text-sm text-green-600">(New)</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -343,10 +385,10 @@ export default function RevenueAnalytics() {
         </ChartCard>
       </div>
 
-      {/* Payment Status Analysis */}
+      {/* Payment Method Analysis */}
       <ChartCard
-        title="Payment Status Analysis"
-        subtitle="Revenue breakdown by payment status"
+        title="Payment Method Analysis"
+        subtitle="Revenue breakdown by payment method"
         loading={revenueQuery.isLoading}
         height="300px"
       >
@@ -372,7 +414,12 @@ export default function RevenueAnalytics() {
           {
             key: 'date',
             header: 'Date',
-            render: (value) => new Date(value).toLocaleDateString(),
+            render: (value: string) => {
+              // Handle week format "2026-W13" and month format "2026-03"
+              if (typeof value === 'string' && value.includes('-W')) return value;
+              const parsed = new Date(value);
+              return isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
+            },
             width: '120px',
           },
           {
@@ -401,17 +448,18 @@ export default function RevenueAnalytics() {
         pagination={true}
         pageSize={15}
         actions={
-          <ExportButton
-            endpoint="revenue"
-            params={{
-              hotelId: filters.hotelId,
-              startDate: filters.startDate,
-              endDate: filters.endDate,
-              format: 'detailed',
-            }}
-            formats={['csv', 'excel']}
-            size="sm"
-          />
+          !noHotelSelected ? (
+            <ExportButton
+              endpoint="revenue"
+              params={{
+                hotelId: activeHotelId,
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+              }}
+              formats={['csv', 'excel']}
+              size="sm"
+            />
+          ) : undefined
         }
       />
 

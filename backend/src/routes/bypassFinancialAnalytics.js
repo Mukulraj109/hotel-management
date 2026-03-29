@@ -21,6 +21,15 @@ import logger from '../utils/logger.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+/**
+ * Safely parse an integer from query params with a default and min/max bounds.
+ */
+function safeParseInt(value, defaultVal, min = 1, max = 10000) {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) return defaultVal;
+    return Math.max(min, Math.min(parsed, max));
+}
+
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
@@ -37,7 +46,7 @@ router.get('/summary', catchAsync(async (req, res) => {
 
     logger.debug('Financial summary route called', { hotelId, timeRange });
 
-    const summary = await bypassFinancialService.getHotelFinancialSummary(hotelId, parseInt(timeRange));
+    const summary = await bypassFinancialService.getHotelFinancialSummary(hotelId, safeParseInt(timeRange, 30, 1, 365));
 
     logger.debug('Financial summary result generated');
 
@@ -60,7 +69,7 @@ router.get('/trends', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
-    const trends = await bypassFinancialService.getCostTrends(hotelId, parseInt(months));
+    const trends = await bypassFinancialService.getCostTrends(hotelId, safeParseInt(months, 12, 1, 60));
 
     res.status(200).json({
         status: 'success',
@@ -77,7 +86,7 @@ router.get('/cost-drivers', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
-    const costDrivers = await bypassFinancialService.getTopCostDrivers(hotelId, parseInt(limit));
+    const costDrivers = await bypassFinancialService.getTopCostDrivers(hotelId, safeParseInt(limit, 10, 1, 100));
 
     res.status(200).json({
         status: 'success',
@@ -129,18 +138,22 @@ router.get('/impacts', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
-    // Build query
-    const query = {};
-    
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        query.hotelId = new mongoose.Types.ObjectId(hotelId);
+    // Build query - hotelId is REQUIRED for tenant isolation
+    if (!hotelId) {
+        return res.status(400).json({ status: 'error', message: 'Hotel context required' });
     }
+    const query = {
+        hotelId: new mongoose.Types.ObjectId(hotelId)
+    };
+
+    // Validate pagination params
+    const parsedLimit = safeParseInt(limit, 50, 1, 1000);
+    const parsedOffset = safeParseInt(offset, 0, 0, 100000);
 
     // Time range filter
     if (timeRange) {
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - parseInt(timeRange));
+        startDate.setDate(startDate.getDate() - safeParseInt(timeRange, 30, 1, 365));
         query.createdAt = {
             $gte: startDate
         };
@@ -198,10 +211,10 @@ router.get('/impacts', catchAsync(async (req, res) => {
                     }
                 },
                 {
-                    $skip: parseInt(offset)
+                    $skip: parsedOffset
                 },
                 {
-                    $limit: parseInt(limit)
+                    $limit: parsedLimit
                 },
                 {
                     $lookup: {
@@ -265,9 +278,9 @@ router.get('/impacts', catchAsync(async (req, res) => {
                 data: impacts,
                 pagination: {
                     total: total[0]?.total || 0,
-                    limit: parseInt(limit),
-                    offset: parseInt(offset),
-                    hasMore: (total[0]?.total || 0) > parseInt(offset) + parseInt(limit)
+                    limit: parsedLimit,
+                    offset: parsedOffset,
+                    hasMore: (total[0]?.total || 0) > parsedOffset + parsedLimit
                 }
             });
         }
@@ -289,8 +302,8 @@ router.get('/impacts', catchAsync(async (req, res) => {
         .sort({
             [sortBy]: sortOrder === 'desc' ? -1 : 1
         })
-        .limit(parseInt(limit))
-        .skip(parseInt(offset)).lean();
+        .limit(parsedLimit)
+        .skip(parsedOffset).lean();
 
     const total = await BypassFinancialImpact.countDocuments(query);
 
@@ -299,9 +312,9 @@ router.get('/impacts', catchAsync(async (req, res) => {
         data: impacts,
         pagination: {
             total,
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            hasMore: total > parseInt(offset) + parseInt(limit)
+            limit: parsedLimit,
+            offset: parsedOffset,
+            hasMore: total > parsedOffset + parsedLimit
         }
     });
 }));
@@ -317,12 +330,12 @@ router.get('/budget-impact', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
-    const matchQuery = {};
-    
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+    if (!hotelId) {
+        return res.status(400).json({ status: 'error', message: 'Hotel context required' });
     }
+    const matchQuery = {
+        hotelId: new mongoose.Types.ObjectId(hotelId)
+    };
 
     const pipeline = [{
         $match: matchQuery
@@ -332,7 +345,7 @@ router.get('/budget-impact', catchAsync(async (req, res) => {
     if (fiscalYear) {
         pipeline.push({
             $match: {
-                'budgetImpact.fiscalImpact.fiscalYear': parseInt(fiscalYear)
+                'budgetImpact.fiscalImpact.fiscalYear': safeParseInt(fiscalYear, new Date().getFullYear(), 2000, 2100)
             }
         });
     }
@@ -341,7 +354,7 @@ router.get('/budget-impact', catchAsync(async (req, res) => {
     if (fiscalQuarter) {
         pipeline.push({
             $match: {
-                'budgetImpact.fiscalImpact.fiscalQuarter': parseInt(fiscalQuarter)
+                'budgetImpact.fiscalImpact.fiscalQuarter': safeParseInt(fiscalQuarter, 1, 1, 4)
             }
         });
     }
@@ -424,19 +437,19 @@ router.get('/recovery', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
+    const parsedRecoveryTimeRange = safeParseInt(timeRange, 90, 1, 365);
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(timeRange));
+    startDate.setDate(startDate.getDate() - parsedRecoveryTimeRange);
 
+    if (!hotelId) {
+        return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
     const recoveryMatchQuery = {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         createdAt: {
             $gte: startDate
         }
     };
-    
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        recoveryMatchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-    }
 
     const recoveryData = await BypassFinancialImpact.aggregate([{
             $match: recoveryMatchQuery
@@ -554,9 +567,10 @@ router.get('/predictive', catchAsync(async (req, res) => {
         months = 6
     } = req.query;
     const hotelId = req.user.hotelId;
+    const parsedMonths = safeParseInt(months, 6, 1, 60);
 
     const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - parseInt(months));
+    startDate.setMonth(startDate.getMonth() - parsedMonths);
 
     const pipeline = [{
             $match: {
@@ -667,11 +681,11 @@ router.get('/predictive', catchAsync(async (req, res) => {
                 ]
             },
             averageMonthlyCost: {
-                $divide: ['$totalCost', parseInt(months)]
+                $divide: ['$totalCost', parsedMonths]
             },
             projectedMonthlyCost: {
                 $multiply: [{
-                        $divide: ['$totalCost', parseInt(months)]
+                        $divide: ['$totalCost', parsedMonths]
                     },
                     1.1 // 10% increase projection
                 ]
@@ -700,8 +714,9 @@ router.get('/executive-report', catchAsync(async (req, res) => {
     } = req.query;
     const hotelId = req.user.hotelId;
 
+    const parsedTimeRange = safeParseInt(timeRange, 90, 1, 365);
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(timeRange));
+    startDate.setDate(startDate.getDate() - parsedTimeRange);
 
     // Get comprehensive data for executive report
     const [
@@ -712,8 +727,8 @@ router.get('/executive-report', catchAsync(async (req, res) => {
         recovery,
         predictive
     ] = await Promise.all([
-        bypassFinancialService.getHotelFinancialSummary(hotelId, parseInt(timeRange)),
-        bypassFinancialService.getCostTrends(hotelId, Math.ceil(parseInt(timeRange) / 30)),
+        bypassFinancialService.getHotelFinancialSummary(hotelId, parsedTimeRange),
+        bypassFinancialService.getCostTrends(hotelId, Math.max(1, Math.ceil(parsedTimeRange / 30))),
         bypassFinancialService.getTopCostDrivers(hotelId, 5),
         BypassFinancialImpact.aggregate([{
                 $match: {
@@ -861,7 +876,7 @@ router.put('/impact/:impactId', validate(mutationBaselineSchema), catchAsync(asy
         throw new ApplicationError('Financial impact record not found', 404);
     }
 
-    const updatedImpact = await bypassFinancialService.updateFinancialImpact(impactId, updateData);
+    const updatedImpact = await bypassFinancialService.updateFinancialImpact(impactId, updateData, hotelId);
 
     res.status(200).json({
         status: 'success',
@@ -953,7 +968,7 @@ function generateExecutiveRecommendations(summary, trends, costDrivers, budgetIm
             category: 'cost_reduction',
             priority: 'high',
             title: 'High Average Impact Cost',
-            description: 'Average bypass cost exceeds $500. Consider implementing preventive measures.',
+            description: 'Average bypass cost exceeds ₹500. Consider implementing preventive measures.',
             action: 'Review top cost drivers and implement targeted prevention strategies'
         });
     }
@@ -990,7 +1005,7 @@ function generateExecutiveRecommendations(summary, trends, costDrivers, budgetIm
             category: 'cost_optimization',
             priority: 'medium',
             title: 'Top Cost Driver Identified',
-            description: `${costDrivers[0]._id} accounts for $${costDrivers[0].totalCost.toLocaleString()} in bypass costs.`,
+            description: `${costDrivers[0]._id} accounts for ₹${costDrivers[0].totalCost.toLocaleString('en-IN')} in bypass costs.`,
             action: 'Focus prevention efforts on the highest impact items'
         });
     }

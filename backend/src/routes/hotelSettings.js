@@ -224,12 +224,7 @@ router.get('/:section', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/basic-info - Update basic hotel information
-router.put('/basic-info', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
-  const { error } = hotelSettingsSchemas.basicInfo.validate(req.body);
-  if (error) {
-    return next(new ApplicationError(error.details[0].message, 400));
-  }
-
+router.put('/basic-info', validate(hotelSettingsSchemas.basicInfo), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -257,12 +252,7 @@ router.put('/basic-info', validate(mutationBaselineSchema), catchAsync(async (re
 }));
 
 // PUT /api/v1/hotel-settings/operations - Update operational settings
-router.put('/operations', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
-  const { error } = hotelSettingsSchemas.operations.validate(req.body);
-  if (error) {
-    return next(new ApplicationError(error.details[0].message, 400));
-  }
-
+router.put('/operations', validate(hotelSettingsSchemas.operations), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -279,12 +269,7 @@ router.put('/operations', validate(mutationBaselineSchema), catchAsync(async (re
 }));
 
 // PUT /api/v1/hotel-settings/policies - Update hotel policies
-router.put('/policies', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
-  const { error } = hotelSettingsSchemas.policies.validate(req.body);
-  if (error) {
-    return next(new ApplicationError(error.details[0].message, 400));
-  }
-
+router.put('/policies', validate(hotelSettingsSchemas.policies), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -301,12 +286,7 @@ router.put('/policies', validate(mutationBaselineSchema), catchAsync(async (req,
 }));
 
 // PUT /api/v1/hotel-settings/taxes - Update tax settings
-router.put('/taxes', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
-  const { error } = hotelSettingsSchemas.taxes.validate(req.body);
-  if (error) {
-    return next(new ApplicationError(error.details[0].message, 400));
-  }
-
+router.put('/taxes', validate(hotelSettingsSchemas.taxes), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -323,19 +303,31 @@ router.put('/taxes', validate(mutationBaselineSchema), catchAsync(async (req, re
 }));
 
 // PUT /api/v1/hotel-settings/integrations - Update integration settings
-router.put('/integrations', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
-  const { error } = hotelSettingsSchemas.integrations.validate(req.body);
-  if (error) {
-    return next(new ApplicationError(error.details[0].message, 400));
-  }
-
+router.put('/integrations', validate(hotelSettingsSchemas.integrations), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
   }
 
-  // TODO: Encrypt sensitive keys before storing
-  const updates = { 'integrations': req.body };
+  // Mask sensitive keys - don't store masked placeholders, keep existing values
+  const integrationData = JSON.parse(JSON.stringify(req.body));
+  const currentSettings = await HotelSettings.findOne({ hotelId }).lean();
+
+  // If masked values are sent back, preserve the existing stored values
+  if (integrationData.payment?.stripe?.secretKey === '***masked***' && currentSettings?.integrations?.payment?.stripe?.secretKey) {
+    integrationData.payment.stripe.secretKey = currentSettings.integrations.payment.stripe.secretKey;
+  }
+  if (integrationData.payment?.razorpay?.keySecret === '***masked***' && currentSettings?.integrations?.payment?.razorpay?.keySecret) {
+    integrationData.payment.razorpay.keySecret = currentSettings.integrations.payment.razorpay.keySecret;
+  }
+  if (integrationData.ota?.booking?.apiKey === '***masked***' && currentSettings?.integrations?.ota?.booking?.apiKey) {
+    integrationData.ota.booking.apiKey = currentSettings.integrations.ota.booking.apiKey;
+  }
+  if (integrationData.ota?.expedia?.apiKey === '***masked***' && currentSettings?.integrations?.ota?.expedia?.apiKey) {
+    integrationData.ota.expedia.apiKey = currentSettings.integrations.ota.expedia.apiKey;
+  }
+
+  const updates = { 'integrations': integrationData };
   const settings = await HotelSettings.updateHotelSettings(hotelId, updates);
 
   res.status(200).json({
@@ -345,8 +337,38 @@ router.put('/integrations', validate(mutationBaselineSchema), catchAsync(async (
   });
 }));
 
+// Validation schemas for security and maintenance
+const securitySchema = Joi.object({
+  requireTwoFactor: Joi.boolean(),
+  sessionSettings: Joi.object({
+    timeout: Joi.number().min(5).max(480),
+    maxConcurrentSessions: Joi.number().min(1).max(20)
+  }),
+  passwordPolicy: Joi.object({
+    minLength: Joi.number().min(6).max(32),
+    requireUppercase: Joi.boolean(),
+    requireNumbers: Joi.boolean(),
+    requireSymbols: Joi.boolean(),
+    expireDays: Joi.number().min(0).max(365)
+  }),
+  auditLog: Joi.boolean(),
+  ipRestrictions: Joi.array().items(Joi.string()),
+  maxLoginAttempts: Joi.number().min(1).max(20)
+});
+
+const maintenanceSchema = Joi.object({
+  autoBackup: Joi.boolean(),
+  backupSchedule: Joi.string().valid('hourly', 'daily', 'weekly'),
+  backupRetention: Joi.number().min(1).max(365),
+  maintenanceWindow: Joi.object({
+    start: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
+    end: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
+    timezone: Joi.string()
+  })
+});
+
 // PUT /api/v1/hotel-settings/security - Update security settings
-router.put('/security', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.put('/security', validate(securitySchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -358,7 +380,7 @@ router.put('/security', validate(mutationBaselineSchema), catchAsync(async (req,
     passwordPolicy: req.body.passwordPolicy,
     auditLog: req.body.auditLog !== undefined ? req.body.auditLog : true,
     ipRestrictions: req.body.ipRestrictions || [],
-    maxLoginAttempts: req.body.maxLoginAttempts || 5 // Add max login attempts field
+    maxLoginAttempts: req.body.maxLoginAttempts || 5
   };
 
   const settings = await HotelSettings.updateHotelSettings(hotelId, { security: securityData });
@@ -371,7 +393,7 @@ router.put('/security', validate(mutationBaselineSchema), catchAsync(async (req,
 }));
 
 // PUT /api/v1/hotel-settings/maintenance - Update maintenance settings
-router.put('/maintenance', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.put('/maintenance', validate(maintenanceSchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -570,12 +592,20 @@ router.post('/restore', validate(mutationBaselineSchema), catchAsync(async (req,
     return next(new ApplicationError('User not associated with any hotel', 400));
   }
 
-  // Remove potentially harmful fields
-  delete backup._id;
-  delete backup.__v;
-  delete backup.hotelId; // Don't allow changing hotel association
+  // Only allow known settings fields to prevent arbitrary data injection
+  const allowedFields = ['basicInfo', 'operations', 'policies', 'taxes', 'amenities', 'roomDefaults', 'notifications', 'security', 'maintenance'];
+  const sanitizedBackup = {};
+  for (const field of allowedFields) {
+    if (backup[field] !== undefined) {
+      sanitizedBackup[field] = backup[field];
+    }
+  }
 
-  const settings = await HotelSettings.updateHotelSettings(hotelId, backup);
+  if (Object.keys(sanitizedBackup).length === 0) {
+    return next(new ApplicationError('Backup data contains no valid settings fields', 400));
+  }
+
+  const settings = await HotelSettings.updateHotelSettings(hotelId, sanitizedBackup);
 
   res.status(200).json({
     status: 'success',
@@ -611,7 +641,7 @@ router.get('/booking-rules', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/booking-rules - Update booking rules
-router.put('/booking-rules', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.put('/booking-rules', validate(hotelSettingsSchemas.bookingRules), catchAsync(async (req, res, next) => {
   const { propertyId, ...bookingRulesData } = req.body;
 
   const targetPropertyId = propertyId || req.user.hotelId;

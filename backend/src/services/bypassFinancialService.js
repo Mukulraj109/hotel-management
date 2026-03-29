@@ -975,6 +975,7 @@ class BypassFinancialService {
         const firstAvg = firstHalf.reduce((sum, val) => sum + val, 0) / firstHalf.length;
         const secondAvg = secondHalf.reduce((sum, val) => sum + val, 0) / secondHalf.length;
 
+        if (firstAvg === 0) return secondAvg > 0 ? 'increasing' : 'stable';
         const change = (secondAvg - firstAvg) / firstAvg;
 
         if (change > 0.1) return 'increasing';
@@ -1290,11 +1291,11 @@ Please review the financial impact and take appropriate action.`,
     /**
      * Update financial impact with actual costs
      */
-    async updateFinancialImpact(impactId, updateData) {
+    async updateFinancialImpact(impactId, updateData, hotelId) {
       try {
-          const financialImpact = await BypassFinancialImpact.findOne({
-              impactId
-          });
+          const query = { impactId };
+          if (hotelId) query.hotelId = hotelId;
+          const financialImpact = await BypassFinancialImpact.findOne(query);
           if (!financialImpact) {
               throw new Error('Financial impact record not found');
           }

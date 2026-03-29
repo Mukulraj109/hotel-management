@@ -432,7 +432,14 @@ class EndpointRegistryService {
    * Get all endpoints
    */
   getAllEndpoints() {
-    return this.endpoints;
+    // Deduplicate endpoints by method+path
+    const seen = new Set();
+    return this.endpoints.filter(endpoint => {
+      const key = `${endpoint.method}:${endpoint.path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   /**

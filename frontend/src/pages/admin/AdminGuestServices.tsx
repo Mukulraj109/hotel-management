@@ -119,6 +119,10 @@ export default function AdminGuestServices() {
       const backendData = response.data;
       const overall = backendData.overall || {};
       
+      // Convert avg times from milliseconds to minutes for display
+      const avgResponseMs = overall.totalResponseTime || 0;
+      const avgCompletionMs = overall.totalCompletionTime || 0;
+
       const mappedStats = {
         total: overall.totalRequests || 0,
         pending: overall.pendingCount || 0,
@@ -126,9 +130,9 @@ export default function AdminGuestServices() {
         inProgress: overall.inProgressCount || 0,
         completed: overall.completedCount || 0,
         cancelled: overall.cancelledCount || 0,
-        avgResponseTime: overall.avgResponseTime || 0,
-        avgCompletionTime: overall.avgCompletionTime || 0,
-        satisfactionScore: overall.avgRating || 0
+        avgResponseTime: avgResponseMs > 0 ? Math.round(avgResponseMs / 60000) : 0,
+        avgCompletionTime: avgCompletionMs > 0 ? Math.round(avgCompletionMs / 60000) : 0,
+        satisfactionScore: overall.avgRating ? Math.round(overall.avgRating * 10) / 10 : 0
       };
       
       setStats(mappedStats);

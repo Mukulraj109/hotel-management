@@ -11,9 +11,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Key,
   Shield,
-  Clock,
-  Globe,
-  AlertTriangle,
   CheckCircle,
   Copy,
   Eye,
@@ -82,7 +79,12 @@ export const APIKeyCreationForm: React.FC<APIKeyCreationFormProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [ipInput, setIpInput] = useState('');
   const [domainInput, setDomainInput] = useState('');
-  const [createdKey, setCreatedKey] = useState<unknown>(null);
+  const [createdKey, setCreatedKey] = useState<{
+    name: string;
+    key: string;
+    type: string;
+    permissions: string[];
+  } | null>(null);
   const [showKey, setShowKey] = useState(false);
 
   const handleTypeChange = (type: 'read' | 'write' | 'admin') => {
@@ -176,15 +178,18 @@ export const APIKeyCreationForm: React.FC<APIKeyCreationFormProps> = ({
         expiresAt: formData.expiresAt ? new Date(formData.expiresAt) : undefined
       });
 
-      setCreatedKey(response.data);
+      setCreatedKey(response.data?.data);
       toast({
         title: "API Key Created",
         description: "Your API key has been created successfully. Make sure to copy it now as it won't be shown again.",
       });
-    } catch (error: unknown) {
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined;
       toast({
         title: "Error Creating API Key",
-        description: error.response?.data?.message || "Failed to create API key",
+        description: message || "Failed to create API key",
         variant: "destructive"
       });
     } finally {
@@ -443,7 +448,7 @@ export const APIKeyCreationForm: React.FC<APIKeyCreationFormProps> = ({
               value={ipInput}
               onChange={(e) => setIpInput(e.target.value)}
               placeholder="192.168.1.1 or 192.168.1.0/24"
-              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addIpRestriction())}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addIpRestriction(); } }}
             />
             <Button type="button" onClick={addIpRestriction} variant="outline">
               Add
@@ -473,7 +478,7 @@ export const APIKeyCreationForm: React.FC<APIKeyCreationFormProps> = ({
               value={domainInput}
               onChange={(e) => setDomainInput(e.target.value)}
               placeholder="example.com or *.example.com"
-              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addDomainRestriction())}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDomainRestriction(); } }}
             />
             <Button type="button" onClick={addDomainRestriction} variant="outline">
               Add

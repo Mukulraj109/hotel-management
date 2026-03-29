@@ -120,7 +120,12 @@ class ServiceTypeService {
     try {
       const params = new URLSearchParams();
 
-      if (filters?.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters?.hotelId) {
+        const hid = typeof filters.hotelId === 'object' && filters.hotelId !== null
+          ? String((filters.hotelId as { _id?: string })._id || filters.hotelId)
+          : String(filters.hotelId);
+        params.append('hotelId', hid);
+      }
       if (filters?.type) params.append('type', filters.type);
       if (filters?.activeOnly !== undefined) params.append('activeOnly', filters.activeOnly.toString());
 
@@ -212,9 +217,19 @@ class ServiceTypeService {
   }
 
   // Get service type statistics
-  async getServiceTypeStats(hotelId?: string): Promise<ServiceTypeStats> {
+  async getServiceTypeStats(hotelId?: string | unknown): Promise<ServiceTypeStats> {
     try {
-      const params = hotelId ? `?hotelId=${hotelId}` : '';
+      let hid: string | undefined;
+      if (hotelId) {
+        if (typeof hotelId === 'string') {
+          hid = hotelId;
+        } else if (typeof hotelId === 'object' && hotelId !== null && '_id' in hotelId) {
+          hid = String((hotelId as { _id: string })._id);
+        } else {
+          hid = String(hotelId);
+        }
+      }
+      const params = hid ? `?hotelId=${hid}` : '';
       const response = await api.get(`${this.baseUrl}/stats${params}`);
       return response.data.data.stats;
     } catch (error: unknown) {

@@ -42,8 +42,11 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 export const getServiceTypes = asyncHandler(async (req, res) => {
   const { hotelId, type, activeOnly = 'true' } = req.query;
 
-  // Use provided hotelId or user's hotel
-  const targetHotelId = hotelId || req.user.hotelId;
+  // Use provided hotelId or user's hotel — resolve objects to string IDs
+  const rawHotelId = hotelId || req.user.hotelId;
+  const targetHotelId = (typeof rawHotelId === 'object' && rawHotelId !== null && rawHotelId._id)
+    ? String(rawHotelId._id)
+    : String(rawHotelId || '');
 
   if (!targetHotelId) {
     throw new ApiError(400, 'Hotel ID is required');
@@ -600,16 +603,22 @@ export const calculatePrice = asyncHandler(async (req, res) => {
 export const getServiceTypeStats = asyncHandler(async (req, res) => {
   const { hotelId } = req.query;
 
-  // Use provided hotelId or user's hotel
-  const targetHotelId = hotelId || req.user.hotelId;
+  // Resolve hotelId — may be an object from req.user.hotelId
+  const rawHotelId = hotelId || req.user.hotelId;
+  const targetHotelId = (typeof rawHotelId === 'object' && rawHotelId !== null && rawHotelId._id)
+    ? String(rawHotelId._id)
+    : String(rawHotelId || '');
 
   if (!targetHotelId) {
     throw new ApiError(400, 'Hotel ID is required');
   }
 
   // Check permissions
+  const userHid = typeof req.user.hotelId === 'object' && req.user.hotelId?._id
+    ? String(req.user.hotelId._id)
+    : String(req.user.hotelId || '');
   if (req.user.role === 'guest' ||
-      (req.user.role !== 'admin' && req.user.hotelId?.toString() !== targetHotelId.toString())) {
+      (req.user.role !== 'admin' && userHid !== targetHotelId)) {
     throw new ApiError(403, 'Access denied');
   }
 
@@ -617,26 +626,32 @@ export const getServiceTypeStats = asyncHandler(async (req, res) => {
 
   const stats = {
     totalServiceTypes: serviceTypes.length,
-    totalRequests: serviceTypes.reduce((sum, st) => sum + st.stats.totalRequests, 0),
-    totalCompletedRequests: serviceTypes.reduce((sum, st) => sum + st.stats.completedRequests, 0),
+    totalRequests: serviceTypes.reduce((sum, st) => sum + (st.stats?.totalRequests || 0), 0),
+    totalCompletedRequests: serviceTypes.reduce((sum, st) => sum + (st.stats?.completedRequests || 0), 0),
     averageRating: serviceTypes.length > 0
-      ? serviceTypes.reduce((sum, st) => sum + st.stats.averageRating, 0) / serviceTypes.length
+      ? serviceTypes.reduce((sum, st) => sum + (st.stats?.averageRating || 0), 0) / serviceTypes.length
       : 0,
     averageResponseTime: serviceTypes.length > 0
-      ? serviceTypes.reduce((sum, st) => sum + st.stats.averageResponseTime, 0) / serviceTypes.length
+      ? serviceTypes.reduce((sum, st) => sum + (st.stats?.averageResponseTime || 0), 0) / serviceTypes.length
       : 0,
     averageCompletionTime: serviceTypes.length > 0
-      ? serviceTypes.reduce((sum, st) => sum + st.stats.averageCompletionTime, 0) / serviceTypes.length
+      ? serviceTypes.reduce((sum, st) => sum + (st.stats?.averageCompletionTime || 0), 0) / serviceTypes.length
       : 0,
-    serviceTypeBreakdown: serviceTypes.map(st => ({
-      type: st.type,
-      name: st.name,
-      totalRequests: st.stats.totalRequests,
-      completedRequests: st.stats.completedRequests,
-      completionRate: st.completionRate,
-      averageRating: st.stats.averageRating,
-      basePrice: st.basePrice
-    }))
+    serviceTypeBreakdown: serviceTypes.map(st => {
+      const total = st.stats?.totalRequests || 0;
+      const completed = st.stats?.completedRequests || 0;
+      // Compute completionRate inline since .lean() strips virtuals
+      const completionRate = total > 0 ? Math.round((completed / total) * 100 * 10) / 10 : 0;
+      return {
+        type: st.type,
+        name: st.name,
+        totalRequests: total,
+        completedRequests: completed,
+        completionRate,
+        averageRating: st.stats?.averageRating || 0,
+        basePrice: st.basePrice
+      };
+    })
   };
 
   res.status(200).json(

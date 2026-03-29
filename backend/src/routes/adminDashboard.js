@@ -1345,7 +1345,7 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
  *         description: Revenue dashboard data
  */
 router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
-  const { hotelId, period = 'month', startDate, endDate } = req.query;
+  const { hotelId, period = 'month', startDate, endDate, groupBy = 'day' } = req.query;
   
   if (!hotelId) {
     return next(new ApplicationError('Hotel ID is required', 400));
@@ -1385,10 +1385,21 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
       }
       periodStartDate = new Date(startDate);
       periodEndDate = new Date(endDate);
+      if (isNaN(periodStartDate.getTime()) || isNaN(periodEndDate.getTime())) {
+        return next(new ApplicationError('Invalid date format for startDate or endDate', 400));
+      }
+      if (periodStartDate >= periodEndDate) {
+        return next(new ApplicationError('startDate must be before endDate', 400));
+      }
       break;
     default:
       periodStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
       periodEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  // Validate groupBy parameter
+  if (!['day', 'week', 'month'].includes(groupBy)) {
+    return next(new ApplicationError('groupBy must be one of: day, week, month', 400));
   }
 
   // Get revenue from bookings
@@ -1429,7 +1440,29 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
     }
   ]);
 
-  // Daily revenue trend
+  // Revenue trend grouped by day/week/month
+  const groupByConfig = {
+    day: {
+      _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+      dateFormat: '%Y-%m-%d',
+      sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 },
+      limit: 366
+    },
+    week: {
+      _id: { year: { $year: '$createdAt' }, week: { $isoWeek: '$createdAt' } },
+      dateFormat: '%Y-W%V',
+      sort: { '_id.year': 1, '_id.week': 1 },
+      limit: 53
+    },
+    month: {
+      _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+      dateFormat: '%Y-%m',
+      sort: { '_id.year': 1, '_id.month': 1 },
+      limit: 24
+    }
+  };
+  const grp = groupByConfig[groupBy] || groupByConfig.day;
+
   const dailyRevenue = await Booking.aggregate([
     {
       $match: {
@@ -1440,22 +1473,18 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
     },
     {
       $group: {
-        _id: {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' },
-          day: { $dayOfMonth: '$createdAt' }
-        },
-        date: { $first: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } } },
+        _id: grp._id,
+        date: { $first: { $dateToString: { format: grp.dateFormat, date: '$createdAt' } } },
         revenue: { $sum: '$totalAmount' },
         bookings: { $sum: 1 },
         averageValue: { $avg: '$totalAmount' }
       }
     },
     {
-      $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+      $sort: grp.sort
     },
     {
-      $limit: 30
+      $limit: grp.limit
     }
   ]);
 
@@ -1543,6 +1572,27 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
   paymentMethods.forEach(method => {
     method.percentage = totalPayments > 0 ? Math.round((method.count / totalPayments) * 100) : 0;
   });
+
+  // Revenue by booking source
+  const revenueBySource = await Booking.aggregate([
+    {
+      $match: {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: periodStartDate, $lt: periodEndDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      }
+    },
+    {
+      $group: {
+        _id: '$bookingSource',
+        revenue: { $sum: '$totalAmount' },
+        bookings: { $sum: 1 }
+      }
+    },
+    { $sort: { revenue: -1 } }
+  ]);
+
+  const totalSourceRevenue = revenueBySource.reduce((sum, s) => sum + s.revenue, 0);
 
   // Monthly revenue comparison (current vs previous period)
   const previousPeriodStart = new Date(periodStartDate);
@@ -1666,22 +1716,25 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
     : 0;
 
   // Additional services revenue
-  const servicesRevenue = additionalRevenue.reduce((sum, service) => sum + service.revenue, 0);
-  const totalRevenue = currentRevenue.totalRevenue + servicesRevenue;
+  const servicesRevenue = additionalRevenue.reduce((sum, service) => sum + (service.revenue || 0), 0);
+  const totalRevenue = (currentRevenue.totalRevenue || 0) + servicesRevenue;
+
+  // Helper: coerce to finite number (guards against NaN from $avg returning null)
+  const safeNum = (v) => { const num = Number(v); return Number.isFinite(num) ? num : 0; };
 
   res.status(200).json({
     status: 'success',
     data: {
       overview: {
-        totalRevenue,
-        roomRevenue: currentRevenue.totalRevenue,
-        servicesRevenue,
-        totalBookings: currentRevenue.totalBookings,
-        averageBookingValue: Math.round(currentRevenue.averageBookingValue || 0),
-        paidAmount: currentRevenue.paidAmount,
-        pendingAmount: currentRevenue.pendingAmount,
-        revenueGrowth,
-        bookingGrowth,
+        totalRevenue: safeNum(totalRevenue),
+        roomRevenue: safeNum(currentRevenue.totalRevenue),
+        servicesRevenue: safeNum(servicesRevenue),
+        totalBookings: safeNum(currentRevenue.totalBookings),
+        averageBookingValue: safeNum(Math.round(currentRevenue.averageBookingValue || 0)),
+        paidAmount: safeNum(currentRevenue.paidAmount),
+        pendingAmount: safeNum(currentRevenue.pendingAmount),
+        revenueGrowth: safeNum(revenueGrowth),
+        bookingGrowth: safeNum(bookingGrowth),
         period: {
           start: periodStartDate,
           end: periodEndDate,
@@ -1691,51 +1744,121 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
       charts: {
         dailyRevenue: dailyRevenue.map(day => ({
           date: day.date,
-          revenue: day.revenue,
-          bookings: day.bookings,
-          averageValue: Math.round(day.averageValue)
+          revenue: safeNum(day.revenue),
+          bookings: safeNum(day.bookings),
+          averageValue: safeNum(Math.round(day.averageValue || 0))
         })),
         revenueByRoomType: revenueByRoomType.map(type => ({
-          roomType: type._id,
-          revenue: type.revenue,
-          bookings: type.bookings,
-          averageRate: Math.round(type.averageRate),
-          totalNights: type.totalNights
+          roomType: type._id || 'Unknown',
+          revenue: safeNum(type.revenue),
+          bookings: safeNum(type.bookings),
+          averageRate: safeNum(Math.round(type.averageRate || 0)),
+          totalNights: safeNum(type.totalNights)
         })),
         additionalServices: additionalRevenue.map(service => ({
-          serviceType: service._id,
-          revenue: service.revenue,
-          count: service.count,
-          averageCost: Math.round(service.averageCost)
+          serviceType: service._id || 'Unknown',
+          revenue: safeNum(service.revenue),
+          count: safeNum(service.count),
+          averageCost: safeNum(Math.round(service.averageCost || 0))
         })),
         paymentMethods: paymentMethods.map(method => ({
           method: method._id || 'Unknown',
-          revenue: method.revenue,
-          count: method.count,
-          percentage: method.percentage
+          revenue: safeNum(method.revenue),
+          count: safeNum(method.count),
+          percentage: safeNum(method.percentage)
         })),
         forecast: futureBookings.map(forecast => ({
           month: `${forecast._id.year}-${String(forecast._id.month).padStart(2, '0')}`,
-          expectedRevenue: forecast.revenue,
-          confirmedBookings: forecast.bookings
+          expectedRevenue: safeNum(forecast.revenue),
+          confirmedBookings: safeNum(forecast.bookings)
+        })),
+        bySource: revenueBySource.map(source => ({
+          source: source._id || 'direct',
+          amount: safeNum(source.revenue),
+          bookings: safeNum(source.bookings),
+          percentage: totalSourceRevenue > 0 ? Math.round((safeNum(source.revenue) / totalSourceRevenue) * 100) : 0
         }))
       },
       insights: {
         topSpendingGuests: topGuests,
         revenueComparison: {
-          current: currentRevenue.totalRevenue,
-          previous: previousRevenue.totalRevenue,
-          growth: revenueGrowth,
-          difference: currentRevenue.totalRevenue - previousRevenue.totalRevenue
+          current: safeNum(currentRevenue.totalRevenue),
+          previous: safeNum(previousRevenue.totalRevenue),
+          growth: safeNum(revenueGrowth),
+          difference: safeNum(currentRevenue.totalRevenue - previousRevenue.totalRevenue)
         },
         paymentInsights: {
-          collectionRate: totalRevenue > 0 ? Math.round((currentRevenue.paidAmount / totalRevenue) * 100) : 0,
-          outstandingAmount: currentRevenue.pendingAmount,
-          averageDaysToPayment: 0 // Could be calculated with payment date tracking
+          collectionRate: totalRevenue > 0 ? Math.round((safeNum(currentRevenue.paidAmount) / totalRevenue) * 100) : 0,
+          outstandingAmount: safeNum(currentRevenue.pendingAmount),
+          averageDaysToPayment: 0
         }
       },
       lastUpdated: new Date()
     }
+  });
+}));
+
+// Revenue data export endpoint
+router.get('/revenue/export', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+  const { hotelId, startDate, endDate, format = 'csv' } = req.query;
+
+  if (!hotelId) {
+    return next(new ApplicationError('Hotel ID is required', 400));
+  }
+
+  const now = new Date();
+  const periodStartDate = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodEndDate = endDate ? new Date(endDate) : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Fetch bookings for export
+  const bookings = await Booking.aggregate([
+    {
+      $match: {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: periodStartDate, $lt: periodEndDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+          day: { $dayOfMonth: '$createdAt' }
+        },
+        date: { $first: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } } },
+        revenue: { $sum: '$totalAmount' },
+        bookings: { $sum: 1 },
+        averageRate: { $avg: '$totalAmount' }
+      }
+    },
+    { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+    { $limit: 1000 }
+  ]);
+
+  if (format === 'csv') {
+    const header = 'Date,Revenue,Bookings,Average Rate\n';
+    const rows = bookings.map(b =>
+      `${b.date},${(b.revenue || 0).toFixed(2)},${b.bookings || 0},${Math.round(b.averageRate || 0)}`
+    ).join('\n');
+    const csv = header + rows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=revenue-export-${periodStartDate.toISOString().split('T')[0]}.csv`);
+    return res.send(csv);
+  }
+
+  // JSON / Excel fallback — return JSON data for frontend to handle
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename=revenue-export-${periodStartDate.toISOString().split('T')[0]}.json`);
+  res.json({
+    status: 'success',
+    data: bookings.map(b => ({
+      date: b.date,
+      revenue: b.revenue,
+      bookings: b.bookings,
+      averageRate: Math.round(b.averageRate || 0)
+    }))
   });
 }));
 

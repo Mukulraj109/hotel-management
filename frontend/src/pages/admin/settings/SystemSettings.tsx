@@ -118,7 +118,7 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
   // Get affected properties count
   const affectedCount = useAffectedPropertiesCount(
     applyToScope,
-    inheritanceStatus?.hasGroup ? 5 : 0
+    inheritanceStatus?.groupPropertyCount || 0
   );
 
   const {
@@ -212,9 +212,9 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
 
       // Calculate statistics
       const total = users.length;
-      const active = users.filter((u: unknown) => u.isActive).length;
-      const admins = users.filter((u: unknown) => u.role === 'admin').length;
-      const staff = users.filter((u: unknown) => u.role === 'staff' || u.role === 'manager').length;
+      const active = users.filter((u: Record<string, unknown>) => u.isActive).length;
+      const admins = users.filter((u: Record<string, unknown>) => u.role === 'admin').length;
+      const staff = users.filter((u: Record<string, unknown>) => u.role === 'staff' || u.role === 'manager').length;
 
       return {
         total,
@@ -319,7 +319,8 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
         const { data } = await api.delete(`/api-management/api-keys/${keyId}`);
         return data;
       } catch (error: unknown) {
-        if (error.response?.status === 404) {
+        const axiosError = error as { response?: { status?: number } };
+        if (axiosError.response?.status === 404) {
           return { success: true, alreadyDeleted: true };
         }
         throw error;
@@ -576,20 +577,20 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
               <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Recent Users</h4>
               <div className="space-y-2">
                 {userStats.recentUsers.map((user: Record<string, unknown>) => (
-                  <div key={user._id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <div key={String(user._id)} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
                     <div className="flex items-center space-x-3">
                       <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                         <span className="text-sm font-medium text-blue-600 dark:text-blue-300">
-                          {user.name.charAt(0).toUpperCase()}
+                          {String(user.name || '?').charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{user.email}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{String(user.name || '')}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{String(user.email || '')}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{user.role}</p>
+                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{String(user.role || '')}</p>
                       <p className={`text-xs ${user.isActive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {user.isActive ? 'Active' : 'Inactive'}
                       </p>
@@ -878,7 +879,7 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
               onChange={setApplyToScope}
               isInGroup={inheritanceStatus?.hasGroup || false}
               groupName={inheritanceStatus?.groupName}
-              totalProperties={5}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
               showWarning={true}
               warningMessage="These system settings (security policies, backup schedules) will be applied to all selected properties. Ensure these settings are appropriate for all properties."
             />

@@ -525,12 +525,13 @@ class CentralizedRateService {
       // Apply seasonal adjustments if available
       if (seasonalPricingService) {
         try {
-          const seasonalAdjustment = await seasonalPricingService.calculateAdjustment(
-            new Date(checkIn),
+          const seasonalData = await seasonalPricingService.calculateSeasonalAdjustment(
+            propertyId,
             roomType,
-            calculatedRate.baseRate
+            new Date(checkIn)
           );
-          
+          const seasonalAdjustment = seasonalData.totalAdjustment || 0;
+
           calculatedRate.seasonalAdjustment = seasonalAdjustment;
           calculatedRate.finalRate = calculatedRate.baseRate + seasonalAdjustment;
         } catch (seasonalError) {

@@ -35,6 +35,25 @@ export function LineChart({
 }: LineChartProps) {
   const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('flex items-center justify-center', className)} style={{ height }}>
+        <p className="text-gray-500">No data available</p>
+      </div>
+    );
+  }
+
+  // Sanitize data: replace NaN/undefined/null/Infinity with 0 for all line dataKeys
+  const lineKeys = lines.map(l => l.dataKey);
+  const sanitizedData = (data || []).map(item => {
+    const row = { ...item } as Record<string, unknown>;
+    for (const key of lineKeys) {
+      const v = Number(row[key]);
+      row[key] = Number.isFinite(v) ? v : 0;
+    }
+    return row;
+  }) as TimeSeriesData[];
+
   const CustomTooltip = ({ active, payload, label }: Record<string, unknown>) => {
     if (active && payload && payload.length) {
       return (
@@ -61,7 +80,7 @@ export function LineChart({
   return (
     <div className={cn('w-full', className)}>
       <ResponsiveContainer width="100%" height={height}>
-        <RechartsLineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+        <RechartsLineChart data={sanitizedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           {showGrid && (
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
           )}

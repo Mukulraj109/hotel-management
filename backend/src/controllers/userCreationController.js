@@ -309,11 +309,14 @@ export const getUsers = catchAsync(async (req, res) => {
     isActive,
     hotelId,
     search,
-    page = 1,
-    limit = 20,
+    page: rawPage = '1',
+    limit: rawLimit = '20',
     sortBy = 'createdAt',
     sortOrder = 'desc'
   } = req.query;
+
+  const page = Math.max(1, parseInt(rawPage) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
   // Build query - admins can see all users, non-admins can only see users from their properties
   let query = {};
@@ -350,10 +353,11 @@ export const getUsers = catchAsync(async (req, res) => {
     logger.debug('Guest role - no hotelId filter');
   }
   if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } }
+      { name: { $regex: escapedSearch, $options: 'i' } },
+      { email: { $regex: escapedSearch, $options: 'i' } },
+      { phone: { $regex: escapedSearch, $options: 'i' } }
     ];
     logger.debug('Search filter applied', { search });
   }
@@ -361,7 +365,7 @@ export const getUsers = catchAsync(async (req, res) => {
   logger.debug('Staff query filter', { query });
 
   // Pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (page - 1) * limit;
   const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
   // Execute query
@@ -372,7 +376,8 @@ export const getUsers = catchAsync(async (req, res) => {
       .populate('properties', 'name address.city')
       .sort(sort)
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limit)
+      .lean(),
     User.countDocuments(query)
   ]);
 
@@ -382,10 +387,10 @@ export const getUsers = catchAsync(async (req, res) => {
     success: true,
     data: { users },
     pagination: {
-      current: parseInt(page),
-      pages: Math.ceil(total / parseInt(limit)),
+      current: page,
+      pages: Math.ceil(total / limit),
       total,
-      limit: parseInt(limit)
+      limit
     }
   });
 });

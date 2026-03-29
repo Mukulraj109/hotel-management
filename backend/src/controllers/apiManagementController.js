@@ -8,7 +8,6 @@ import endpointRegistryService from '../services/endpointRegistryService.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 const apiManagementController = {
   
@@ -18,8 +17,11 @@ const apiManagementController = {
    * Get all API keys for a hotel (optimized)
    */
   getAPIKeys: catchAsync(async (req, res) => {
-    const { page = 1, limit = 10, status, type, search, includeUsage = 'false' } = req.query;
+    const { page: rawPage = '1', limit: rawLimit = '10', status, type, search, includeUsage = 'false' } = req.query;
     const { hotelId } = req.user;
+
+    const parsedPage = Math.max(1, parseInt(rawPage) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 10));
 
     // Set cache headers for 2 minutes
     res.set({
@@ -33,60 +35,66 @@ const apiManagementController = {
     if (status === 'inactive') filter.isActive = false;
     if (type && ['read', 'write', 'admin'].includes(type)) filter.type = type;
     if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } }
       ];
     }
 
-    const skip = (page - 1) * limit;
+    const skip = (parsedPage - 1) * parsedLimit;
 
     const [apiKeys, total] = await Promise.all([
       APIKey.find(filter)
         .populate('createdBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit))
-        .lean(), // Use lean for better performance
+        .limit(parsedLimit)
+        .lean(),
       APIKey.countDocuments(filter)
     ]);
 
-    // Only add usage statistics if requested
-    let keysWithUsage = apiKeys.map(key => {
+    const keysWithUsage = apiKeys.map(key => {
       const keyObj = { ...key };
-      delete keyObj.keyHash; // Never send the hash
+      delete keyObj.keyHash;
       return keyObj;
     });
-
-    if (includeUsage === 'true') {
-      keysWithUsage = await Promise.all(
-        keysWithUsage.map(async (key) => {
-          try {
-            const usage = await apiMetricsService.getAPIKeyUsage(hotelId, key.keyId);
-            return {
-              ...key,
-              usage
-            };
-        
-          } catch (error) {
-            console.error('Operation failed:', error.message);
-            throw error;
-          }
-        })
-      );
-    }
 
     res.json({
       success: true,
       data: {
         apiKeys: keysWithUsage,
         pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
+          current: parsedPage,
+          pages: Math.ceil(total / parsedLimit),
           total,
-          limit: parseInt(limit)
+          limit: parsedLimit
         }
       }
+    });
+  }),
+
+  /**
+   * Get a single API key by ID
+   */
+  getAPIKeyById: catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { hotelId } = req.user;
+
+    const apiKey = await APIKey.findOne({ _id: id, hotelId })
+      .populate('createdBy', 'name email')
+      .lean();
+
+    if (!apiKey) {
+      throw new ApplicationError('API key not found', 404);
+    }
+
+    const keyObj = { ...apiKey };
+    delete keyObj.keyHash;
+
+    res.json({
+      success: true,
+      data: keyObj
     });
   }),
 
@@ -237,28 +245,32 @@ const apiManagementController = {
    * Get all webhook endpoints for a hotel
    */
   getWebhooks: catchAsync(async (req, res) => {
-    const { page = 1, limit = 10, status, search } = req.query;
+    const { page: rawPage = '1', limit: rawLimit = '10', status, search } = req.query;
     const { hotelId } = req.user;
 
+    const parsedPage = Math.max(1, parseInt(rawPage) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 10));
+
     const filter = { hotelId };
-    
+
     if (status === 'active') filter.isActive = true;
     if (status === 'inactive') filter.isActive = false;
     if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { url: { $regex: search, $options: 'i' } }
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { url: { $regex: escapedSearch, $options: 'i' } }
       ];
     }
 
-    const skip = (page - 1) * limit;
-    
+    const skip = (parsedPage - 1) * parsedLimit;
+
     const [webhooks, total] = await Promise.all([
       WebhookEndpoint.find(filter)
         .populate('createdBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parsedLimit),
       WebhookEndpoint.countDocuments(filter)
     ]);
 
@@ -267,12 +279,32 @@ const apiManagementController = {
       data: {
         webhooks,
         pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / limit),
+          current: parsedPage,
+          pages: Math.ceil(total / parsedLimit),
           total,
-          limit: parseInt(limit)
+          limit: parsedLimit
         }
       }
+    });
+  }),
+
+  /**
+   * Get a single webhook by ID
+   */
+  getWebhookById: catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { hotelId } = req.user;
+
+    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId })
+      .populate('createdBy', 'name email');
+
+    if (!webhook) {
+      throw new ApplicationError('Webhook endpoint not found', 404);
+    }
+
+    res.json({
+      success: true,
+      data: webhook
     });
   }),
 
@@ -387,8 +419,8 @@ const apiManagementController = {
     const { id } = req.params;
     const { hotelId } = req.user;
 
-    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId }).lean();
-    
+    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId });
+
     if (!webhook) {
       throw new ApplicationError('Webhook endpoint not found', 404);
     }
@@ -427,9 +459,10 @@ const apiManagementController = {
       hotelId
     });
 
+    // Return the new secret directly since select: false hides it from the returned doc
     res.json({
       success: true,
-      data: { secret: webhook.secret },
+      data: { secret: newSecret },
       message: 'Webhook secret regenerated successfully'
     });
   }),
@@ -455,18 +488,47 @@ const apiManagementController = {
       APIMetrics.getTopEndpoints(hotelId, timeRange, 10)
     ]);
 
+    // Get real status code distribution from the database
+    let statusCodes = {};
+    try {
+      const statusCodeAgg = await APIMetrics.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            timestamp: { $gte: new Date(Date.now() - (timeRange === '7d' ? 7 * 86400000 : timeRange === '30d' ? 30 * 86400000 : 86400000)) }
+          }
+        },
+        {
+          $project: {
+            statusEntries: { $objectToArray: '$requests.byStatusCode' }
+          }
+        },
+        { $unwind: { path: '$statusEntries', preserveNullAndEmptyArrays: false } },
+        {
+          $group: {
+            _id: '$statusEntries.k',
+            count: { $sum: '$statusEntries.v' }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+      for (const entry of statusCodeAgg) {
+        statusCodes[entry._id] = entry.count;
+      }
+    } catch (err) {
+      logger.warn('Could not aggregate status codes, using fallback:', err.message);
+      statusCodes = {
+        '200': dashboardMetrics.successfulRequests || 0,
+        '400': Math.floor((dashboardMetrics.failedRequests || 0) * 0.5),
+        '500': Math.floor((dashboardMetrics.failedRequests || 0) * 0.5)
+      };
+    }
+
     // Combine all metrics data
     const completeMetrics = {
       ...dashboardMetrics,
       topEndpoints: topEndpoints || [],
-      statusCodes: {
-        '200': Math.floor(dashboardMetrics.successfulRequests * 0.85) || 0,
-        '201': Math.floor(dashboardMetrics.successfulRequests * 0.10) || 0,
-        '400': Math.floor(dashboardMetrics.failedRequests * 0.30) || 0,
-        '401': Math.floor(dashboardMetrics.failedRequests * 0.25) || 0,
-        '404': Math.floor(dashboardMetrics.failedRequests * 0.25) || 0,
-        '500': Math.floor(dashboardMetrics.failedRequests * 0.20) || 0
-      }
+      statusCodes
     };
 
     res.json({
@@ -489,14 +551,14 @@ const apiManagementController = {
         'ETag': `"endpoints-${Math.floor(Date.now() / 300000)}"`
       });
 
-      // Use cached endpoints if available
+      // Use cached endpoints if available, with deduplication
       let endpoints = endpointRegistryService.getCachedEndpoints();
 
       if (!endpoints || endpoints.length === 0) {
-        // Only scan routes if cache is empty
         await endpointRegistryService.scanRoutes();
-        endpoints = endpointRegistryService.getAllEndpoints();
       }
+      // getAllEndpoints() applies deduplication
+      endpoints = endpointRegistryService.getAllEndpoints();
 
       // Apply filters efficiently
       if (category && category !== 'all') {
@@ -641,7 +703,7 @@ const apiManagementController = {
       APIMetrics.aggregate([
         {
           $match: {
-            hotelId,
+            hotelId: new mongoose.Types.ObjectId(hotelId),
             timestamp: { $gte: startTime, $lte: endTime },
             'apiKeyUsage.keyRequests': { $exists: true }
           }
@@ -740,11 +802,20 @@ const apiManagementController = {
     const { startDate, endDate, format = 'json', endpoints } = req.query;
     const { hotelId } = req.user;
 
+    // Default to last 30 days if dates not provided
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? new Date(startDate) : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new ApplicationError('Invalid date format for startDate or endDate', 400);
+    }
+
     const filter = {
       hotelId,
       timestamp: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: start,
+        $lte: end
       }
     };
 
@@ -758,10 +829,18 @@ const apiManagementController = {
       .limit(10000).lean(); // Limit to prevent memory issues
 
     if (format === 'csv') {
-      // Convert to CSV format
+      // Escape CSV values to prevent injection
+      const escapeCSV = (val) => {
+        const str = String(val ?? '');
+        if (str.match(/[,"\n\r]/) || str.match(/^[=+\-@\t\r]/)) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
       const csvHeader = 'Timestamp,Method,Path,Requests,Errors,Avg Response Time\n';
-      const csvData = logs.map(log => 
-        `${log.timestamp},${log.endpoint.method},${log.endpoint.path},${log.requests.total},${log.errors.total},${log.performance.averageResponseTime}`
+      const csvData = logs.map(log =>
+        [log.timestamp, log.endpoint?.method, log.endpoint?.path, log.requests?.total, log.errors?.total, log.performance?.averageResponseTime]
+          .map(escapeCSV).join(',')
       ).join('\n');
       
       res.setHeader('Content-Type', 'text/csv');

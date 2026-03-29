@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
 import {
   Globe,
   CreditCard,
   BarChart,
-  Zap,
   Key,
   Eye,
   EyeOff,
@@ -86,7 +84,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
   // Get affected properties count
   const affectedCount = useAffectedPropertiesCount(
     applyToScope,
-    inheritanceStatus?.hasGroup ? 5 : 0
+    inheritanceStatus?.groupPropertyCount || 0
   );
 
   const {
@@ -169,25 +167,6 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     }
   }, [isDirty, onSettingsChange]);
 
-  // Save integration settings mutation
-  const saveIntegrationMutation = useMutation({
-    mutationFn: async (data: IntegrationFormData) => {
-      // Mock API call
-      const response = await api.put('/integrations/settings', data);
-
-      return response.json();
-    },
-    onSuccess: () => {
-      toast.success('Integration settings updated successfully');
-      if (onSettingsChange) {
-        onSettingsChange(false);
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update integration settings');
-    }
-  });
-
   const onSubmit = async (data: IntegrationFormData) => {
     try {
       // Use multi-property settings inheritance for integrations
@@ -255,7 +234,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
       </label>
       <div className="relative">
         <input
-          {...register(name as unknown)}
+          {...register(name as keyof IntegrationFormData | `payment.${string}` | `ota.${string}` | `analytics.${string}`)}
           type={showSecrets[secretKey] ? 'text' : 'password'}
           placeholder={placeholder}
           className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -457,7 +436,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
               onChange={setApplyToScope}
               isInGroup={inheritanceStatus?.hasGroup || false}
               groupName={inheritanceStatus?.groupName}
-              totalProperties={5}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
               showWarning={true}
               warningMessage="These integration settings (payment gateways, analytics, APIs) will be applied to all selected properties. Make sure API keys and credentials are suitable for multi-property use."
             />
@@ -490,15 +469,15 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveIntegrationMutation.isLoading || isUpdating}
+              disabled={!isDirty || isUpdating}
               className="flex items-center space-x-2"
             >
-              {(saveIntegrationMutation.isLoading || isUpdating) ? (
+              {isUpdating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              <span>{(saveIntegrationMutation.isLoading || isUpdating) ? 'Saving...' : 'Save Changes'}</span>
+              <span>{isUpdating ? 'Saving...' : 'Save Changes'}</span>
             </Button>
           </div>
         </form>

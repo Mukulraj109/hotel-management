@@ -12,6 +12,62 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+// Get inventory stats (aggregated across ALL items, not just current page)
+router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+  const query = { isActive: true };
+
+  if (req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
+
+  const [statsResult] = await Inventory.aggregate([
+    { $match: query },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        lowStock: {
+          $sum: { $cond: [{ $lte: ['$quantity', '$minimumThreshold'] }, 1, 0] }
+        },
+        outOfStock: {
+          $sum: { $cond: [{ $eq: ['$quantity', 0] }, 1, 0] }
+        },
+        totalValue: {
+          $sum: { $multiply: [{ $ifNull: ['$costPerUnit', 0] }, '$quantity'] }
+        }
+      }
+    }
+  ]);
+
+  const categoryAgg = await Inventory.aggregate([
+    { $match: query },
+    {
+      $group: {
+        _id: '$category',
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const categories = {};
+  for (const cat of categoryAgg) {
+    categories[cat._id] = cat.count;
+  }
+
+  res.json({
+    status: 'success',
+    data: {
+      stats: {
+        total: statsResult?.total || 0,
+        lowStock: statsResult?.lowStock || 0,
+        outOfStock: statsResult?.outOfStock || 0,
+        totalValue: statsResult?.totalValue || 0,
+        categories
+      }
+    }
+  });
+}));
+
 // Get inventory items
 router.get('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {

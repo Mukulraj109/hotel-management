@@ -333,7 +333,7 @@ class WebhookDeliveryService extends EventEmitter {
 
       // Batch: fetch all endpoints in a single query
       const endpointIds = toRetry.map(r => r.entry.endpointId);
-      const endpoints = await WebhookEndpoint.find({ _id: { $in: endpointIds } }).lean();
+      const endpoints = await WebhookEndpoint.find({ _id: { $in: endpointIds } });
       const endpointMap = new Map(endpoints.map(e => [e._id.toString(), e]));
 
       for (const { key, entry } of toRetry) {
@@ -443,7 +443,7 @@ class WebhookDeliveryService extends EventEmitter {
    */
   async testEndpoint(endpointId) {
     try {
-      const endpoint = await WebhookEndpoint.findById(endpointId).lean();
+      const endpoint = await WebhookEndpoint.findById(endpointId);
       if (!endpoint) {
         throw new Error('Webhook endpoint not found');
       }

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
-  Plus,
   Search,
   Filter,
   Eye,
@@ -10,7 +9,6 @@ import {
   Clock,
   BarChart3,
   Download,
-  Calendar,
   MapPin,
   Building,
   User,
@@ -19,11 +17,7 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  Coffee,
-  MessageCircle,
-  Shield,
   TrendingUp,
-  TrendingDown,
   Activity,
   FileText
 } from 'lucide-react';
@@ -116,7 +110,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       toast.success('Meet-up request cancelled successfully!');
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to cancel meet-up request');
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to cancel meet-up request');
     }
   });
 
@@ -139,10 +134,6 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
     setCurrentPage(1);
   };
 
-  if (!selectedPropertyId && viewMode === 'single') {
-    return <div className="p-6">Please select a property</div>;
-  }
-
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -156,6 +147,10 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
 
   const exportToCSV = async () => {
     if (!meetUpsData || meetUpsData.meetUps.length === 0) {
@@ -330,17 +325,17 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
     setIsExporting(true);
     try {
       // Generate summary statistics
-      const statusCounts = meetUpsData.meetUps.reduce((acc: Record<string, unknown>, meetUp) => {
+      const statusCounts = meetUpsData.meetUps.reduce((acc: Record<string, number>, meetUp) => {
         acc[meetUp.status] = (acc[meetUp.status] || 0) + 1;
         return acc;
       }, {});
 
-      const typeCounts = meetUpsData.meetUps.reduce((acc: Record<string, unknown>, meetUp) => {
+      const typeCounts = meetUpsData.meetUps.reduce((acc: Record<string, number>, meetUp) => {
         acc[meetUp.type] = (acc[meetUp.type] || 0) + 1;
         return acc;
       }, {});
 
-      const hotelCounts = meetUpsData.meetUps.reduce((acc: Record<string, unknown>, meetUp) => {
+      const hotelCounts = meetUpsData.meetUps.reduce((acc: Record<string, number>, meetUp) => {
         acc[meetUp.hotelId.name] = (acc[meetUp.hotelId.name] || 0) + 1;
         return acc;
       }, {});
@@ -497,7 +492,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as unknown)}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
               className={`flex-1 py-2 px-4 rounded-md font-medium text-sm transition-colors duration-200 ${
                 activeTab === tab.id
                   ? 'bg-white text-blue-600 shadow-sm'
@@ -681,31 +676,31 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 <StatsCard
                   title="Total Requests"
-                  value={analytics.summary.totalRequests}
+                  value={analytics.summary?.totalRequests ?? 0}
                   icon={Users}
                   color="bg-blue-100 text-blue-600"
                 />
                 <StatsCard
                   title="Acceptance Rate"
-                  value={`${analytics.summary.acceptanceRate}%`}
+                  value={`${analytics.summary?.acceptanceRate ?? 0}%`}
                   icon={CheckCircle}
                   color="bg-green-100 text-green-600"
                 />
                 <StatsCard
                   title="Decline Rate"
-                  value={`${analytics.summary.declineRate}%`}
+                  value={`${analytics.summary?.declineRate ?? 0}%`}
                   icon={XCircle}
                   color="bg-red-100 text-red-600"
                 />
                 <StatsCard
                   title="Completion Rate"
-                  value={`${analytics.summary.completionRate}%`}
+                  value={`${analytics.summary?.completionRate ?? 0}%`}
                   icon={Activity}
                   color="bg-purple-100 text-purple-600"
                 />
                 <StatsCard
                   title="Avg Response Time"
-                  value={`${analytics.summary.avgResponseTime.toFixed(1)}h`}
+                  value={`${(analytics.summary.avgResponseTime ?? 0).toFixed(1)}h`}
                   icon={Clock}
                   color="bg-orange-100 text-orange-600"
                 />
@@ -717,21 +712,25 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
                   <div className="space-y-3">
-                    {analytics.breakdown.status.map((status, index) => (
-                      <div key={status._id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded ${
-                            status._id === 'pending' ? 'bg-yellow-500' :
-                            status._id === 'accepted' ? 'bg-green-500' :
-                            status._id === 'declined' ? 'bg-red-500' :
-                            status._id === 'cancelled' ? 'bg-gray-500' :
-                            status._id === 'completed' ? 'bg-blue-500' : 'bg-gray-300'
-                          }`} />
-                          <span className="capitalize font-medium">{status._id}</span>
+                    {(analytics.breakdown.status?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No status data available for the selected period</p>
+                    ) : (
+                      analytics.breakdown.status.map((status) => (
+                        <div key={status._id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded ${
+                              status._id === 'pending' ? 'bg-yellow-500' :
+                              status._id === 'accepted' ? 'bg-green-500' :
+                              status._id === 'declined' ? 'bg-red-500' :
+                              status._id === 'cancelled' ? 'bg-gray-500' :
+                              status._id === 'completed' ? 'bg-blue-500' : 'bg-gray-300'
+                            }`} />
+                            <span className="capitalize font-medium">{status._id}</span>
+                          </div>
+                          <span className="text-gray-600">{status.count}</span>
                         </div>
-                        <span className="text-gray-600">{status.count}</span>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </Card>
 
@@ -739,20 +738,24 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Type Breakdown</h3>
                   <div className="space-y-3">
-                    {analytics.breakdown.type.map((type, index) => (
-                      <div key={type._id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded ${
-                            index % 5 === 0 ? 'bg-blue-500' :
-                            index % 5 === 1 ? 'bg-green-500' :
-                            index % 5 === 2 ? 'bg-purple-500' :
-                            index % 5 === 3 ? 'bg-orange-500' : 'bg-pink-500'
-                          }`} />
-                          <span className="capitalize font-medium">{type._id}</span>
+                    {(analytics.breakdown.type?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No type data available for the selected period</p>
+                    ) : (
+                      analytics.breakdown.type.map((type, index) => (
+                        <div key={type._id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded ${
+                              index % 5 === 0 ? 'bg-blue-500' :
+                              index % 5 === 1 ? 'bg-green-500' :
+                              index % 5 === 2 ? 'bg-purple-500' :
+                              index % 5 === 3 ? 'bg-orange-500' : 'bg-pink-500'
+                            }`} />
+                            <span className="capitalize font-medium">{type._id}</span>
+                          </div>
+                          <span className="text-gray-600">{type.count}</span>
                         </div>
-                        <span className="text-gray-600">{type.count}</span>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </Card>
 
@@ -760,15 +763,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Hotel Performance</h3>
                   <div className="space-y-3">
-                    {analytics.breakdown.hotels.map((hotel, index) => (
-                      <div key={`analytics-breakdown-hotels-${index}`} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Building className="w-4 h-4 text-gray-400" />
-                          <span className="font-medium">{hotel.hotelName || 'Unknown Hotel'}</span>
+                    {(analytics.breakdown.hotels?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No hotel performance data available for the selected period</p>
+                    ) : (
+                      analytics.breakdown.hotels.map((hotel, index) => (
+                        <div key={`analytics-breakdown-hotels-${index}`} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Building className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{hotel.hotelName || 'Unknown Hotel'}</span>
+                          </div>
+                          <span className="text-gray-600">{hotel.count}</span>
                         </div>
-                        <span className="text-gray-600">{hotel.count}</span>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </Card>
 
@@ -776,15 +783,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Popular Locations</h3>
                   <div className="space-y-3">
-                    {analytics.breakdown.locations.map((location, index) => (
-                      <div key={location._id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <MapPin className="w-4 h-4 text-gray-400" />
-                          <span className="capitalize font-medium">{location._id.replace('_', ' ')}</span>
+                    {(analytics.breakdown.locations?.length ?? 0) === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No location data available for the selected period</p>
+                    ) : (
+                      analytics.breakdown.locations.map((location) => (
+                        <div key={location._id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <MapPin className="w-4 h-4 text-gray-400" />
+                            <span className="capitalize font-medium">{location._id.replace('_', ' ')}</span>
+                          </div>
+                          <span className="text-gray-600">{location.count}</span>
                         </div>
-                        <span className="text-gray-600">{location.count}</span>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </Card>
               </div>
@@ -793,27 +804,37 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
               <Card className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Requesters</h3>
                 <div className="space-y-3">
-                  {analytics.users.topRequesters.map((user, index) => (
-                    <div key={`analytics-users-topRequesters-${index}-${user}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <User className="w-4 h-4 text-blue-600" />
+                  {(analytics.users.topRequesters?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No requester data available for the selected period</p>
+                  ) : (
+                    analytics.users.topRequesters.map((user, index) => (
+                      <div key={`analytics-users-topRequesters-${index}-${user._id}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{user.userName || 'Unknown User'}</p>
+                            <p className="text-xs text-gray-600">Top requester #{index + 1}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{user.userName || 'Unknown User'}</p>
-                          <p className="text-xs text-gray-600">Top requester #{index + 1}</p>
+                        <div className="text-right">
+                          <p className="font-semibold text-gray-900">{user.requestsSent}</p>
+                          <p className="text-xs text-gray-600">requests</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900">{user.requestsSent}</p>
-                        <p className="text-xs text-gray-600">requests</p>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </Card>
             </>
-          ) : null}
+          ) : (
+            <Card className="p-12 text-center">
+              <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No analytics data available</h3>
+              <p className="text-gray-600">Analytics data will appear here once meet-up requests are created.</p>
+            </Card>
+          )}
         </div>
       )}
 
@@ -835,19 +856,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatsCard
                   title="Total Users"
-                  value={insights.userEngagement.totalUsers}
+                  value={insights.userEngagement?.totalUsers ?? 0}
                   icon={Users}
                   color="bg-blue-100 text-blue-600"
                 />
                 <StatsCard
                   title="Active Users"
-                  value={insights.userEngagement.activeUsers}
+                  value={insights.userEngagement?.activeUsers ?? 0}
                   icon={TrendingUp}
                   color="bg-green-100 text-green-600"
                 />
                 <StatsCard
                   title="Engagement Rate"
-                  value={`${insights.userEngagement.engagementRate.toFixed(1)}%`}
+                  value={`${(insights.userEngagement.engagementRate ?? 0).toFixed(1)}%`}
                   icon={Activity}
                   color="bg-purple-100 text-purple-600"
                 />
@@ -860,19 +881,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Potentially Risky Meet-ups</span>
-                      <span className="font-semibold text-red-600">{insights.riskAssessment.potentiallyRiskyMeetUps}</span>
+                      <span className="font-semibold text-red-600">{insights.riskAssessment?.potentiallyRiskyMeetUps ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Frequent Requesters (&gt;10 requests)</span>
-                      <span className="font-semibold text-orange-600">{insights.riskAssessment.frequentRequesters}</span>
+                      <span className="font-semibold text-orange-600">{insights.riskAssessment?.frequentRequesters ?? 0}</span>
                     </div>
                   </div>
                   
-                  {insights.riskAssessment.riskyMeetUpDetails.length > 0 && (
+                  {(insights.riskAssessment?.riskyMeetUpDetails?.length ?? 0) > 0 && (
                     <div className="mt-4">
                       <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Risk Alerts</h4>
                       <div className="space-y-2">
-                        {insights.riskAssessment.riskyMeetUpDetails.slice(0, 3).map((meetup, index) => (
+                        {insights.riskAssessment.riskyMeetUpDetails?.slice(0, 3).map((meetup, index) => (
                           <div key={`-${index}-${meetup.title}`} className="p-2 bg-red-50 border border-red-200 rounded text-xs">
                             <p className="font-medium text-red-800">{meetup.title}</p>
                             <p className="text-red-600">
@@ -892,8 +913,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Public Location Preference</span>
                         <span className="font-semibold">
-                          {insights.safetyInsights.totalRequests > 0 
-                            ? Math.round((insights.safetyInsights.publicLocation / insights.safetyInsights.totalRequests) * 100)
+                          {(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                            ? Math.round(((insights.safetyInsights?.publicLocation ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100)
                             : 0}%
                         </span>
                       </div>
@@ -901,8 +922,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                         <div 
                           className="bg-green-500 h-2 rounded-full" 
                           style={{ 
-                            width: `${insights.safetyInsights.totalRequests > 0 
-                              ? (insights.safetyInsights.publicLocation / insights.safetyInsights.totalRequests) * 100
+                            width: `${(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                              ? ((insights.safetyInsights?.publicLocation ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100
                               : 0}%` 
                           }}
                         />
@@ -913,8 +934,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Hotel Staff Present</span>
                         <span className="font-semibold">
-                          {insights.safetyInsights.totalRequests > 0 
-                            ? Math.round((insights.safetyInsights.hotelStaffPresent / insights.safetyInsights.totalRequests) * 100)
+                          {(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                            ? Math.round(((insights.safetyInsights?.hotelStaffPresent ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100)
                             : 0}%
                         </span>
                       </div>
@@ -922,8 +943,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                         <div 
                           className="bg-blue-500 h-2 rounded-full" 
                           style={{ 
-                            width: `${insights.safetyInsights.totalRequests > 0 
-                              ? (insights.safetyInsights.hotelStaffPresent / insights.safetyInsights.totalRequests) * 100
+                            width: `${(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                              ? ((insights.safetyInsights?.hotelStaffPresent ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100
                               : 0}%` 
                           }}
                         />
@@ -934,8 +955,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Verified Users Only</span>
                         <span className="font-semibold">
-                          {insights.safetyInsights.totalRequests > 0 
-                            ? Math.round((insights.safetyInsights.verifiedOnly / insights.safetyInsights.totalRequests) * 100)
+                          {(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                            ? Math.round(((insights.safetyInsights?.verifiedOnly ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100)
                             : 0}%
                         </span>
                       </div>
@@ -943,8 +964,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                         <div 
                           className="bg-purple-500 h-2 rounded-full" 
                           style={{ 
-                            width: `${insights.safetyInsights.totalRequests > 0 
-                              ? (insights.safetyInsights.verifiedOnly / insights.safetyInsights.totalRequests) * 100
+                            width: `${(insights.safetyInsights?.totalRequests ?? 0) > 0 
+                              ? ((insights.safetyInsights?.verifiedOnly ?? 0) / (insights.safetyInsights?.totalRequests ?? 0)) * 100
                               : 0}%` 
                           }}
                         />
@@ -955,7 +976,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
               </div>
 
               {/* Hotel Performance Issues */}
-              {insights.hotelPerformance.underperformingHotels.length > 0 && (
+              {(insights.hotelPerformance?.underperformingHotels?.length ?? 0) > 0 && (
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Hotels Needing Attention</h3>
                   <div className="space-y-3">
@@ -978,7 +999,13 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 </Card>
               )}
             </>
-          ) : null}
+          ) : (
+            <Card className="p-12 text-center">
+              <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No insights data available</h3>
+              <p className="text-gray-600">Insights will appear here once there is sufficient meet-up activity.</p>
+            </Card>
+          )}
         </div>
       )}
       </div>

@@ -11,8 +11,7 @@ import {
   FileText,
   DollarSign,
   Save,
-  Loader2,
-  RefreshCw
+  Loader2
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
@@ -67,7 +66,6 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
   const { selectedProperty, selectedPropertyId } = useProperty();
 
   // Multi-property state
-  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
   const [showSuccess, setShowSuccess] = useState(false);
   const [operationsScope, setOperationsScope] = useState<ApplyToScope>('single');
   const [policiesScope, setPoliciesScope] = useState<ApplyToScope>('single');
@@ -151,16 +149,17 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
       const { data } = await api.get('/hotel-settings');
       return data.data.settings;
     },
-    onSuccess: (data) => {
-      if (data) {
-        // Update form values with fetched data
-        setValue('basicInfo', data.basicInfo || {}, { shouldDirty: false });
-        setValue('operations', data.operations || {}, { shouldDirty: false });
-        setValue('policies', data.policies || {}, { shouldDirty: false });
-        setValue('taxes', data.taxes || {}, { shouldDirty: false });
-      }
-    }
   });
+
+  // Populate form when data loads (onSuccess removed in TanStack Query v5)
+  useEffect(() => {
+    if (hotelSettings) {
+      setValue('basicInfo', hotelSettings.basicInfo || {}, { shouldDirty: false });
+      setValue('operations', hotelSettings.operations || {}, { shouldDirty: false });
+      setValue('policies', hotelSettings.policies || {}, { shouldDirty: false });
+      setValue('taxes', hotelSettings.taxes || {}, { shouldDirty: false });
+    }
+  }, [hotelSettings, setValue]);
 
   // Watch for form changes
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -184,22 +183,6 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
   const saveBasicInfoMutation = useMutation({
     mutationFn: async (data: HotelFormData['basicInfo']) => {
       const response = await api.put('/hotel-settings/basic-info', data);
-      return response.data;
-    }
-  });
-
-  // Save operations mutation
-  const saveOperationsMutation = useMutation({
-    mutationFn: async (data: HotelFormData['operations']) => {
-      const response = await api.put('/hotel-settings/operations', data);
-      return response.data;
-    }
-  });
-
-  // Save policies mutation
-  const savePoliciesMutation = useMutation({
-    mutationFn: async (data: HotelFormData['policies']) => {
-      const response = await api.put('/hotel-settings/policies', data);
       return response.data;
     }
   });
@@ -322,8 +305,6 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
   };
 
   const isAnyLoading = saveBasicInfoMutation.isLoading ||
-                     saveOperationsMutation.isLoading ||
-                     savePoliciesMutation.isLoading ||
                      saveTaxesMutation.isLoading;
 
   if (isLoading) {
@@ -552,7 +533,7 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
                 onChange={setOperationsScope}
                 isInGroup={inheritanceStatus?.hasGroup || false}
                 groupName={inheritanceStatus?.groupName}
-                totalProperties={5}
+                totalProperties={inheritanceStatus?.groupPropertyCount || 0}
                 showWarning={true}
                 warningMessage="These operational settings (check-in/out times, currency, timezone) will be applied to all selected properties. This affects booking availability, pricing display, and guest communications."
               />

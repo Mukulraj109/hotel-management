@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import AdminBypassAudit from '../models/AdminBypassAudit.js';
 import AuditLog from '../models/AuditLog.js';
+import User from '../models/User.js';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
 
@@ -770,12 +772,15 @@ class BypassSecurityService {
    */
   async verifyAdminPassword(adminId, password) {
     try {
-      // This should integrate with your existing auth system
-      // For now, returning true as placeholder
-      // In production, this should verify the password against the user model
-      return true;
+      const user = await User.findById(adminId).select('+password');
+      if (!user) {
+        return false;
+      }
+      const isMatch = await user.comparePassword(password);
+      return isMatch;
     } catch (error) {
-      throw new Error(`${error.message}`);
+      logger.error('Password verification failed', { adminId, error: error.message });
+      return false;
     }
   }
 }

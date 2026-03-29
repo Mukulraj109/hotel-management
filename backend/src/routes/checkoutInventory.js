@@ -105,6 +105,7 @@ router.post('/', authorizePolicy('checkoutInventory', 'staffAccess'), validate(m
   logger.debug('Creating CheckoutInventory record', { bookingId, roomId, itemsCount: processedItems.length });
 
   const checkoutInventory = await CheckoutInventory.create({
+    hotelId: req.user.hotelId,
     bookingId,
     roomId,
     checkedBy,
@@ -160,10 +161,12 @@ router.post('/', authorizePolicy('checkoutInventory', 'staffAccess'), validate(m
  *         description: List of checkout inventory checks
  */
 router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
-  const { status, paymentStatus, bookingId, page = 1, limit = 10 } = req.query;
+  const { status, paymentStatus, bookingId } = req.query;
   const { hotelId } = req.user;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 10), 1000);
 
-  const filter = {};
+  const filter = { hotelId };
   if (status) filter.status = status;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (bookingId) filter.bookingId = bookingId;
@@ -183,7 +186,7 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
       ])
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limit),
     CheckoutInventory.countDocuments(filter)
   ]);
 
@@ -232,6 +235,12 @@ router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsy
 
   if (!checkoutInventory) {
     throw new ApplicationError('Checkout inventory check not found', 404);
+  }
+
+  // Tenant isolation: verify user has access to this hotel's data
+  const userHotelId = req.user.hotelId?.toString();
+  if (checkoutInventory.hotelId && userHotelId && checkoutInventory.hotelId.toString() !== userHotelId) {
+    throw new ApplicationError('Access denied to this checkout inventory', 403);
   }
 
   res.status(200).json({
@@ -287,14 +296,14 @@ router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), valida
   if (status) updateFields.status = status;
   if (notes) updateFields.notes = notes;
 
-  const checkoutInventory = await CheckoutInventory.findByIdAndUpdate(
-    req.params.id,
+  const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
+    { _id: req.params.id, hotelId: req.user.hotelId },
     { $set: updateFields },
     { new: true, runValidators: true }
   );
 
   if (!checkoutInventory) {
-    throw new ApplicationError('Checkout inventory check not found', 404);
+    throw new ApplicationError('Checkout inventory check not found or access denied', 404);
   }
 
   await checkoutInventory.populate([
@@ -331,7 +340,7 @@ router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), valida
 router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // Atomic update: only update if status is 'pending'
   const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
-    { _id: req.params.id, status: 'pending' },
+    { _id: req.params.id, hotelId: req.user.hotelId, status: 'pending' },
     { $set: { status: 'completed' } },
     { new: true, runValidators: true }
   );
@@ -413,7 +422,7 @@ router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'),
   if (notes) updateFields.notes = notes;
 
   const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
-    { _id: req.params.id, paymentStatus: { $ne: 'paid' } },
+    { _id: req.params.id, hotelId: req.user.hotelId, paymentStatus: { $ne: 'paid' } },
     { $set: updateFields },
     { new: true, runValidators: true }
   );

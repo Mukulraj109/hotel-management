@@ -85,7 +85,16 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
   const saveProfileMutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
 
-      const { data: responseData } = await api.put('/users/profile', data);
+      const { data: responseData } = await api.patch('/auth/profile', {
+        name: data.name,
+        phone: data.phone,
+      });
+      // Also update timezone/language in user preferences
+      await api.put('/user-preferences/profile', {
+        timezone: data.timezone,
+        language: data.language,
+        avatar: data.avatar,
+      });
       return responseData;
     },
     onSuccess: () => {
@@ -177,7 +186,7 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
               <div className="h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                 {avatarPreview || user?.avatar ? (
                   <img
-                    src={avatarPreview || (user?.avatar?.startsWith('/') ? `${window.location.origin}${user.avatar}` : user?.avatar)}
+                    src={avatarPreview || (user?.avatar?.startsWith('/') ? `${window.location.origin}${user?.avatar}` : user?.avatar)}
                     alt="Avatar"
                     className="h-full w-full object-cover"
                   />

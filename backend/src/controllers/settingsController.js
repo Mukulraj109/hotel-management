@@ -12,13 +12,14 @@ export const getSettings = catchAsync(async (req, res, next) => {
 
   let settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role').lean();
 
-  // Create default settings if none exist
+  // Create default settings if none exist (uses upsert internally to avoid duplicate key errors)
   if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, req.user.role);
+    const created = await UserSettings.createDefaultSettings(userId, req.user.role);
+    settings = created.toObject ? created.toObject() : created;
   }
 
   // Return specific category or all settings
-  const responseData = category ? settings.getSettingsByCategory(category) : settings;
+  const responseData = category && settings.getSettingsByCategory ? settings.getSettingsByCategory(category) : settings;
 
   res.status(200).json({
     status: 'success',
@@ -174,21 +175,19 @@ export const importSettings = catchAsync(async (req, res, next) => {
     return next(new AppError('Invalid import data', 400));
   }
 
+  // Use upsert to avoid race conditions with concurrent requests
   let settings = await UserSettings.findOne({ userId });
 
   if (!settings) {
-    settings = new UserSettings({
-      userId,
-      role: req.user.role,
-      ...importData
-    });
-  } else {
-    // Merge imported settings with existing ones
-    Object.keys(importData).forEach(key => {
-      if (settings.schema.paths[key] && validateRolePermissions(req.user.role, key, importData[key])) {
-        settings[key] = { ...settings[key]?.toObject?.() || settings[key], ...importData[key] };
-      }
-    });
+    settings = await UserSettings.createDefaultSettings(userId, req.user.role);
+  }
+
+  // Merge imported settings with existing ones
+  const validKeys = Object.keys(importData).filter(key =>
+    settings.schema.paths[key] && validateRolePermissions(req.user.role, key, importData[key])
+  );
+  for (const key of validKeys) {
+    settings[key] = { ...settings[key]?.toObject?.() || settings[key], ...importData[key] };
   }
 
   settings.lastModified = new Date();

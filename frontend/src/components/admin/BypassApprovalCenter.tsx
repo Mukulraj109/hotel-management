@@ -15,10 +15,8 @@ import {
   MessageSquare,
   ArrowUp,
   RefreshCw,
-  Filter,
   Calendar,
   TrendingUp,
-  Users,
   Shield
 } from 'lucide-react';
 import { bypassApprovalService } from '../../services/bypassApprovalService';
@@ -103,16 +101,16 @@ const BypassApprovalCenter: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchData();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
+    fetchData(true);
+
+    // Auto-refresh every 30 seconds (silent, no loading spinner)
+    const interval = setInterval(() => fetchData(false), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       setError(null);
 
       const [approvalsData, statsData] = await Promise.all([
@@ -120,19 +118,30 @@ const BypassApprovalCenter: React.FC = () => {
         bypassApprovalService.getApprovalStatistics()
       ]);
 
-      setPendingApprovals(approvalsData.data);
-      setStatistics(statsData.data);
+      setPendingApprovals(approvalsData.data || []);
+      setStatistics(statsData.data || null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch approval data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch approval data');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchData();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      setError(null);
+      const [approvalsData, statsData] = await Promise.all([
+        bypassApprovalService.getPendingApprovals(),
+        bypassApprovalService.getApprovalStatistics()
+      ]);
+      setPendingApprovals(approvalsData.data || []);
+      setStatistics(statsData.data || null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh data');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const openApprovalModal = (approval: PendingApproval, action: 'approved' | 'rejected') => {
@@ -150,8 +159,8 @@ const BypassApprovalCenter: React.FC = () => {
   };
 
   const processApproval = async () => {
-    if (!selectedApproval || !approvalAction || !approvalNotes.trim()) {
-      setError('Please provide approval notes');
+    if (!selectedApproval || !approvalAction || approvalNotes.trim().length < 5) {
+      setError('Please provide approval notes (minimum 5 characters)');
       return;
     }
 
@@ -165,7 +174,7 @@ const BypassApprovalCenter: React.FC = () => {
         approvalNotes.trim()
       );
 
-      setSuccess(`✅ Approval ₹{approvalAction} successfully`);
+      setSuccess(`✅ Approval ${approvalAction} successfully`);
       closeApprovalModal();
       fetchData(); // Refresh data
       
@@ -174,7 +183,7 @@ const BypassApprovalCenter: React.FC = () => {
       successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
       
     } catch (err: unknown) {
-      setError('Failed to process approval: ' + err.message);
+      setError('Failed to process approval: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setProcessing(null);
     }
@@ -189,7 +198,7 @@ const BypassApprovalCenter: React.FC = () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
     } catch (err: unknown) {
-      setError('Failed to escalate approval: ' + err.message);
+      setError('Failed to escalate approval: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setProcessing(null);
     }
@@ -198,8 +207,9 @@ const BypassApprovalCenter: React.FC = () => {
   const getUrgencyColor = (urgency: string) => {
     switch (urgency) {
       case 'critical': return 'bg-red-100 text-red-800 border-red-200';
-      case 'urgent': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'normal': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low': return 'bg-blue-100 text-blue-800 border-blue-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -219,9 +229,9 @@ const BypassApprovalCenter: React.FC = () => {
     const minutes = Math.floor((timeRemaining % (60 * 60 * 1000)) / (60 * 1000));
     
     if (hours > 0) {
-      return `₹{hours}h ₹{minutes}m`;
+      return `${hours}h ${minutes}m`;
     }
-    return `₹{minutes}m`;
+    return `${minutes}m`;
   };
 
   const filteredApprovals = pendingApprovals.filter(approval => {
@@ -259,12 +269,13 @@ const BypassApprovalCenter: React.FC = () => {
           >
             <option value="all">All Urgency Levels</option>
             <option value="critical">Critical</option>
-            <option value="urgent">Urgent</option>
-            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </select>
 
           <Button onClick={handleRefresh} disabled={refreshing} size="sm" variant="outline">
-            <RefreshCw className={`h-4 w-4 mr-2 ₹{refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -396,7 +407,7 @@ const BypassApprovalCenter: React.FC = () => {
                           </p>
                           <p className="text-sm text-gray-600 mb-2">
                             <FileText className="h-4 w-4 inline mr-1" />
-                            Category: {approval.bypassAuditId.reason.category.replace('_', ' ')}
+                            Category: {approval.bypassAuditId.reason.category.replace(/_/g, ' ')}
                           </p>
                           <p className="text-sm text-gray-600">
                             {approval.bypassAuditId.reason.description.substring(0, 150)}
@@ -407,7 +418,7 @@ const BypassApprovalCenter: React.FC = () => {
                         <div className="space-y-2">
                           <div className="flex items-center text-sm text-gray-600">
                             <DollarSign className="h-4 w-4 mr-2" />
-                            Financial Impact: ₹{approval.bypassAuditId.financialImpact.estimatedLoss?.toLocaleString() || '0'}
+                            Financial Impact: ₹{approval.bypassAuditId.financialImpact.estimatedLoss?.toLocaleString('en-IN') || '0'}
                           </div>
 
                           <div className="flex items-center text-sm text-gray-600">
@@ -431,7 +442,7 @@ const BypassApprovalCenter: React.FC = () => {
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `₹{approval.completionPercentage}%` }}
+                            style={{ width: `${approval.completionPercentage}%` }}
                           ></div>
                         </div>
                       </div>
@@ -471,7 +482,8 @@ const BypassApprovalCenter: React.FC = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {/* TODO: View details */}}
+                        onClick={() => openApprovalModal(approval, 'approved')}
+                        title="View approval details"
                       >
                         <Eye className="h-4 w-4 mr-2" />
                         Details
@@ -503,7 +515,7 @@ const BypassApprovalCenter: React.FC = () => {
                 <p><strong>Bypass ID:</strong> {selectedApproval.bypassAuditId.bypassId}</p>
                 <p><strong>Requested by:</strong> {selectedApproval.initiatedBy.name}</p>
                 <p><strong>Risk Score:</strong> {selectedApproval.bypassAuditId.securityMetadata.riskScore}</p>
-                <p><strong>Financial Impact:</strong> ₹{selectedApproval.bypassAuditId.financialImpact.estimatedLoss?.toLocaleString() || '0'}</p>
+                <p><strong>Financial Impact:</strong> ₹{selectedApproval.bypassAuditId.financialImpact.estimatedLoss?.toLocaleString('en-IN') || '0'}</p>
               </div>
 
               <div>
@@ -514,7 +526,7 @@ const BypassApprovalCenter: React.FC = () => {
                 <textarea
                   value={approvalNotes}
                   onChange={(e) => setApprovalNotes(e.target.value)}
-                  placeholder={`Enter detailed notes explaining your ₹{approvalAction} decision...`}
+                  placeholder={`Enter detailed notes explaining your ${approvalAction} decision...`}
                   className="w-full p-3 border border-gray-300 rounded-md resize-none h-24"
                   required
                 />
@@ -532,11 +544,11 @@ const BypassApprovalCenter: React.FC = () => {
               <div className="flex space-x-3">
                 <Button
                   onClick={processApproval}
-                  disabled={!approvalNotes.trim() || processing === selectedApproval.workflowId}
+                  disabled={approvalNotes.trim().length < 5 || processing === selectedApproval.workflowId}
                   className={approvalAction === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
                   variant={approvalAction === 'approved' ? 'default' : 'destructive'}
                 >
-                  {processing === selectedApproval.workflowId ? 'Processing...' : `Confirm ₹{approvalAction === 'approved' ? 'Approval' : 'Rejection'}`}
+                  {processing === selectedApproval.workflowId ? 'Processing...' : `Confirm ${approvalAction === 'approved' ? 'Approval' : 'Rejection'}`}
                 </Button>
                 <Button
                   onClick={closeApprovalModal}

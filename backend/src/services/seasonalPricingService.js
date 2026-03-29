@@ -7,27 +7,27 @@ class SeasonalPricingService {
   /**
    * Calculate seasonal and special period adjustments for a given date and room type
    */
-  async calculateSeasonalAdjustment(roomType, date, ratePlanId = null) {
+  async calculateSeasonalAdjustment(hotelId, roomType, date, ratePlanId = null) {
     try {
       const checkDate = new Date(date);
-      
-      // Get active seasons for the date
-      const seasons = await this.getActiveSeasonsForDate(checkDate, ratePlanId);
-      
+
+      // Get active seasons for the date (no .lean() — we need instance methods)
+      const seasons = await this.getActiveSeasonsForDate(hotelId, checkDate, ratePlanId);
+
       // Get active special periods for the date
-      const specialPeriods = await this.getActiveSpecialPeriodsForDate(checkDate, ratePlanId);
-      
+      const specialPeriods = await this.getActiveSpecialPeriodsForDate(hotelId, checkDate, ratePlanId);
+
       // Calculate adjustments with priority order: Special Periods > Seasons
       let totalAdjustment = 0;
       let appliedAdjustments = [];
-      
+
       // Apply seasonal adjustments first (lower priority)
       for (const season of seasons) {
         const adjustment = season.getAdjustmentForRoomType(roomType);
         if (adjustment) {
           const adjustmentAmount = this.calculateAdjustmentAmount(adjustment);
           totalAdjustment += adjustmentAmount;
-          
+
           appliedAdjustments.push({
             type: 'season',
             name: season.name,
@@ -38,13 +38,13 @@ class SeasonalPricingService {
           });
         }
       }
-      
+
       // Apply special period overrides (higher priority)
       for (const period of specialPeriods) {
         const override = period.getOverrideForRoomType(roomType);
         if (override) {
           const overrideAmount = this.calculateOverrideAmount(override);
-          
+
           // Special periods can override seasonal adjustments based on type
           if (override.overrideType === 'absolute') {
             totalAdjustment = overrideAmount;
@@ -52,7 +52,7 @@ class SeasonalPricingService {
           } else {
             totalAdjustment += overrideAmount;
           }
-          
+
           appliedAdjustments.push({
             type: 'special_period',
             name: period.name,
@@ -64,15 +64,15 @@ class SeasonalPricingService {
           });
         }
       }
-      
+
       return {
         totalAdjustment,
-        appliedAdjustments: appliedAdjustments.sort((a, b) => b.priority - a.priority),
+        appliedAdjustments: [...appliedAdjustments].sort((a, b) => b.priority - a.priority),
         hasSeasonalPricing: seasons.length > 0,
         hasSpecialPeriodPricing: specialPeriods.length > 0,
         date: checkDate
       };
-      
+
     } catch (error) {
       logger.error('Error calculating seasonal adjustment:', error);
       return {
@@ -81,75 +81,77 @@ class SeasonalPricingService {
         hasSeasonalPricing: false,
         hasSpecialPeriodPricing: false,
         date: new Date(date),
-        error: error.message
+        error: 'Failed to calculate adjustment'
       };
     }
   }
-  
+
   /**
-   * Get active seasons for a specific date
+   * Get active seasons for a specific date (returns Mongoose documents with methods)
    */
-  async getActiveSeasonsForDate(date, ratePlanId = null) {
+  async getActiveSeasonsForDate(hotelId, date, ratePlanId = null) {
     try {
       const query = {
         isActive: true,
         startDate: { $lte: date },
         endDate: { $gte: date }
       };
-    
+      if (hotelId) query.hotelId = hotelId;
+
       if (ratePlanId) {
         query.$or = [
           { applicableRatePlans: { $size: 0 } },
           { applicableRatePlans: ratePlanId }
         ];
       }
-    
-      return await Season.find(query).sort({ priority: -1 }).lean().limit(1000);
+
+      return await Season.find(query).sort({ priority: -1 }).limit(100);
     } catch (error) {
       throw new Error(`${error.message}`);
     }
   }
-  
+
   /**
-   * Get active special periods for a specific date
+   * Get active special periods for a specific date (returns Mongoose documents with methods)
    */
-  async getActiveSpecialPeriodsForDate(date, ratePlanId = null) {
+  async getActiveSpecialPeriodsForDate(hotelId, date, ratePlanId = null) {
     try {
       const query = {
         isActive: true,
         startDate: { $lte: date },
         endDate: { $gte: date }
       };
-    
+      if (hotelId) query.hotelId = hotelId;
+
       if (ratePlanId) {
         query.$or = [
           { applicableRatePlans: { $size: 0 } },
           { applicableRatePlans: ratePlanId }
         ];
       }
-    
-      return await SpecialPeriod.find(query).sort({ priority: -1 }).lean().limit(1000);
+
+      return await SpecialPeriod.find(query).sort({ priority: -1 }).limit(100);
     } catch (error) {
       throw new Error(`${error.message}`);
     }
   }
-  
+
   /**
    * Calculate adjustment amount based on adjustment type
    */
   calculateAdjustmentAmount(adjustment) {
     switch (adjustment.adjustmentType) {
       case 'percentage':
-        return adjustment.adjustmentValue; // Return percentage for later application
+        return adjustment.adjustmentValue;
       case 'fixed':
-        return adjustment.adjustmentValue; // Fixed amount
+        return adjustment.adjustmentValue;
       case 'absolute':
-        return adjustment.adjustmentValue; // Absolute rate
+        return adjustment.adjustmentValue;
       default:
         return 0;
     }
   }
-  
+
   /**
    * Calculate override amount based on override type
    */
@@ -162,22 +164,22 @@ class SeasonalPricingService {
       case 'absolute':
         return override.overrideValue;
       case 'block':
-        return -999999; // Indicates room is blocked
+        return -999999;
       default:
         return 0;
     }
   }
-  
+
   /**
    * Check if booking is allowed for date range
    */
-  async isBookingAllowed(arrivalDate, departureDate, roomType) {
+  async isBookingAllowed(hotelId, arrivalDate, departureDate, roomType) {
     try {
       const arrival = new Date(arrivalDate);
       const departure = new Date(departureDate);
-      
-      // Check for blocking special periods
-      const blockingPeriods = await SpecialPeriod.find({
+
+      // Check for blocking special periods (need instance methods, no .lean())
+      const blockingFilter = {
         isActive: true,
         $or: [
           {
@@ -186,8 +188,11 @@ class SeasonalPricingService {
           }
         ],
         'restrictions.bookingRestriction': { $in: ['blocked', 'closed_to_arrival', 'closed_to_departure', 'closed_to_both'] }
-      }).lean().limit(1000);
-      
+      };
+      if (hotelId) blockingFilter.hotelId = hotelId;
+
+      const blockingPeriods = await SpecialPeriod.find(blockingFilter).limit(100);
+
       for (const period of blockingPeriods) {
         if (!period.isBookingAllowed(arrival, departure)) {
           return {
@@ -203,18 +208,18 @@ class SeasonalPricingService {
           };
         }
       }
-      
+
       return { allowed: true };
-      
+
     } catch (error) {
       logger.error('Error checking booking availability:', error);
       return {
-        allowed: true,
+        allowed: false,
         warning: 'Could not verify seasonal restrictions'
       };
     }
   }
-  
+
   /**
    * Create a new season
    */
@@ -224,39 +229,39 @@ class SeasonalPricingService {
         ...seasonData,
         seasonId: seasonData.seasonId || uuidv4()
       });
-      
+
       await season.save();
       return season;
-      
+
     } catch (error) {
       logger.error('Error creating season:', error);
       throw error;
     }
   }
-  
+
   /**
    * Update an existing season
    */
-  async updateSeason(seasonId, updateData) {
+  async updateSeason(hotelId, seasonId, updateData) {
     try {
       const season = await Season.findOneAndUpdate(
-        { seasonId },
+        { seasonId, hotelId },
         updateData,
         { new: true, runValidators: true }
       );
-      
+
       if (!season) {
         throw new Error('Season not found');
       }
-      
+
       return season;
-      
+
     } catch (error) {
       logger.error('Error updating season:', error);
       throw error;
     }
   }
-  
+
   /**
    * Create a new special period
    */
@@ -266,49 +271,49 @@ class SeasonalPricingService {
         ...periodData,
         periodId: periodData.periodId || uuidv4()
       });
-      
+
       await period.save();
-      
+
       // If recurring, create future occurrences
       if (period.isRecurring) {
         await this.createRecurringOccurrences(period);
       }
-      
+
       return period;
-      
+
     } catch (error) {
       logger.error('Error creating special period:', error);
       throw error;
     }
   }
-  
+
   /**
    * Update an existing special period
    */
-  async updateSpecialPeriod(periodId, updateData) {
+  async updateSpecialPeriod(hotelId, periodId, updateData) {
     try {
       const period = await SpecialPeriod.findOneAndUpdate(
-        { periodId },
+        { periodId, hotelId },
         updateData,
         { new: true, runValidators: true }
       );
-      
+
       if (!period) {
         throw new Error('Special period not found');
       }
-      
+
       return period;
-      
+
     } catch (error) {
       logger.error('Error updating special period:', error);
       throw error;
     }
   }
-  
+
   /**
    * Get seasons by date range
    */
-  async getSeasonsByDateRange(startDate, endDate, includeInactive = false) {
+  async getSeasonsByDateRange(hotelId, startDate, endDate, includeInactive = false) {
     try {
       const query = {
         $or: [
@@ -317,21 +322,22 @@ class SeasonalPricingService {
           { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
         ]
       };
-    
+
+      if (hotelId) query.hotelId = hotelId;
       if (!includeInactive) {
         query.isActive = true;
       }
-    
-      return await Season.find(query).sort({ startDate: 1 }).lean().limit(1000);
+
+      return await Season.find(query).sort({ startDate: 1 }).lean().limit(100);
     } catch (error) {
       throw new Error(`${error.message}`);
     }
   }
-  
+
   /**
    * Get special periods by date range
    */
-  async getSpecialPeriodsByDateRange(startDate, endDate, includeInactive = false) {
+  async getSpecialPeriodsByDateRange(hotelId, startDate, endDate, includeInactive = false) {
     try {
       const query = {
         $or: [
@@ -340,17 +346,18 @@ class SeasonalPricingService {
           { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
         ]
       };
-    
+
+      if (hotelId) query.hotelId = hotelId;
       if (!includeInactive) {
         query.isActive = true;
       }
-    
-      return await SpecialPeriod.find(query).sort({ startDate: 1 }).lean().limit(1000);
+
+      return await SpecialPeriod.find(query).sort({ startDate: 1 }).lean().limit(100);
     } catch (error) {
       throw new Error(`${error.message}`);
     }
   }
-  
+
   /**
    * Create recurring occurrences for a special period
    */
@@ -358,12 +365,12 @@ class SeasonalPricingService {
     try {
       const occurrences = [];
       let current = period;
-      
+
       for (let i = 0; i < maxOccurrences; i++) {
         const nextOccurrence = current.generateNextOccurrence();
-        
+
         if (!nextOccurrence) break;
-        
+
         const newPeriod = new SpecialPeriod({
           ...period.toObject(),
           _id: undefined,
@@ -373,33 +380,33 @@ class SeasonalPricingService {
           createdAt: undefined,
           updatedAt: undefined
         });
-        
+
         await newPeriod.save();
         occurrences.push(newPeriod);
         current = newPeriod;
       }
-      
+
       return occurrences;
-      
+
     } catch (error) {
       logger.error('Error creating recurring occurrences:', error);
       throw error;
     }
   }
-  
+
   /**
    * Get pricing calendar for a date range
    */
-  async getPricingCalendar(startDate, endDate, roomType = 'all') {
+  async getPricingCalendar(hotelId, startDate, endDate, roomType = 'all') {
     try {
       const start = new Date(startDate);
       const end = new Date(endDate);
       const calendar = [];
-      
+
       for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-        const adjustmentData = await this.calculateSeasonalAdjustment(roomType, new Date(date));
-        const bookingAllowed = await this.isBookingAllowed(new Date(date), new Date(date.getTime() + 24 * 60 * 60 * 1000), roomType);
-        
+        const adjustmentData = await this.calculateSeasonalAdjustment(hotelId, roomType, new Date(date));
+        const bookingAllowed = await this.isBookingAllowed(hotelId, new Date(date), new Date(date.getTime() + 24 * 60 * 60 * 1000), roomType);
+
         calendar.push({
           date: new Date(date),
           adjustment: adjustmentData,
@@ -407,23 +414,23 @@ class SeasonalPricingService {
           restrictions: bookingAllowed.blockingPeriod || null
         });
       }
-      
+
       return calendar;
-      
+
     } catch (error) {
       logger.error('Error getting pricing calendar:', error);
       throw error;
     }
   }
-  
+
   /**
    * Get seasonal analytics for a period
    */
-  async getSeasonalAnalytics(startDate, endDate) {
+  async getSeasonalAnalytics(hotelId, startDate, endDate) {
     try {
-      const seasons = await this.getSeasonsByDateRange(startDate, endDate);
-      const specialPeriods = await this.getSpecialPeriodsByDateRange(startDate, endDate);
-      
+      const seasons = await this.getSeasonsByDateRange(hotelId, startDate, endDate);
+      const specialPeriods = await this.getSpecialPeriodsByDateRange(hotelId, startDate, endDate);
+
       const analytics = {
         totalSeasons: seasons.length,
         totalSpecialPeriods: specialPeriods.length,
@@ -433,17 +440,17 @@ class SeasonalPricingService {
         peakDates: [],
         blackoutDates: []
       };
-      
+
       // Analyze seasons
       seasons.forEach(season => {
         analytics.seasonsByType[season.type] = (analytics.seasonsByType[season.type] || 0) + 1;
       });
-      
+
       // Analyze special periods
       specialPeriods.forEach(period => {
         analytics.specialPeriodsByType[period.type] = (analytics.specialPeriodsByType[period.type] || 0) + 1;
-        
-        if (period.isBlackoutPeriod) {
+
+        if (period.type === 'blackout' || (period.restrictions && period.restrictions.bookingRestriction === 'blocked')) {
           analytics.blackoutDates.push({
             name: period.name,
             startDate: period.startDate,
@@ -451,9 +458,9 @@ class SeasonalPricingService {
           });
         }
       });
-      
+
       return analytics;
-      
+
     } catch (error) {
       logger.error('Error getting seasonal analytics:', error);
       throw error;

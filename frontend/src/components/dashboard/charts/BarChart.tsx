@@ -29,19 +29,11 @@ export function BarChart({
   showGrid = true,
   showLegend = true,
   showTooltip = true,
-  layout = 'vertical',
+  layout = 'horizontal',
   className,
   onBarClick,
 }: BarChartProps) {
   const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-  
-
-  // Calculate dynamic Y-axis domain based on data
-  const maxValue = data ? Math.max(...data.map(item => {
-    const values = bars.map(bar => item[bar.dataKey] || 0);
-    return Math.max(...values);
-  })) : 0;
-  const yAxisDomain = [0, Math.max(maxValue + 2, 10)]; // Add some padding
 
   if (!data || data.length === 0) {
     return (
@@ -50,6 +42,28 @@ export function BarChart({
       </div>
     );
   }
+
+  // Sanitize data: replace NaN/undefined/null/Infinity with 0 for all bar dataKeys
+  const barKeys = bars.map(b => b.dataKey);
+  const sanitizedData = data.map(item => {
+    const row = { ...(item as Record<string, unknown>) };
+    for (const key of barKeys) {
+      const v = Number(row[key]);
+      row[key] = Number.isFinite(v) ? v : 0;
+    }
+    return row;
+  });
+
+  // Calculate dynamic Y-axis domain based on sanitized data
+  let maxValue = 0;
+  for (const item of sanitizedData) {
+    for (const bar of bars) {
+      const v = Number(item[bar.dataKey]) || 0;
+      if (Number.isFinite(v) && v > maxValue) maxValue = v;
+    }
+  }
+  const yAxisMax = Number.isFinite(maxValue) ? Math.max(maxValue + 2, 10) : 10;
+  const yAxisDomain: [number, number] = [0, yAxisMax];
 
   const CustomTooltip = ({ active, payload, label }: Record<string, unknown>) => {
     if (active && payload && payload.length) {
@@ -78,8 +92,8 @@ export function BarChart({
     <div className={cn('w-full', className)} style={{ height: height || '300px' }}>
       <ResponsiveContainer width="100%" height="100%">
         <RechartsBarChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: layout === 'vertical' ? 60 : 5 }}
+          data={sanitizedData}
+          margin={{ top: 20, right: 30, left: 20, bottom: layout === 'horizontal' ? 60 : 5 }}
           layout={layout}
           barCategoryGap="20%"
         >
@@ -87,17 +101,17 @@ export function BarChart({
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
           )}
           <XAxis
-            type={layout === 'horizontal' ? 'number' : 'category'}
-            dataKey={layout === 'horizontal' ? undefined : xDataKey}
+            type={layout === 'horizontal' ? 'category' : 'number'}
+            dataKey={layout === 'horizontal' ? xDataKey : undefined}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 10, fill: '#6b7280' }}
-            dy={layout === 'vertical' ? 10 : 0}
-            angle={layout === 'vertical' ? -45 : 0}
-            textAnchor={layout === 'vertical' ? 'end' : 'middle'}
-            height={layout === 'vertical' ? 60 : undefined}
+            dy={layout === 'horizontal' ? 10 : 0}
+            angle={layout === 'horizontal' ? -45 : 0}
+            textAnchor={layout === 'horizontal' ? 'end' : 'middle'}
+            height={layout === 'horizontal' ? 60 : undefined}
             interval={0}
-            tickFormatter={layout === 'horizontal' ? (value) =>
+            tickFormatter={layout === 'vertical' ? (value) =>
               typeof value === 'number' && value >= 1000
                 ? `${(value / 1000).toFixed(0)}k`
                 : value
@@ -105,19 +119,19 @@ export function BarChart({
             }
           />
           <YAxis
-            type={layout === 'horizontal' ? 'category' : 'number'}
-            dataKey={layout === 'horizontal' ? xDataKey : undefined}
+            type={layout === 'horizontal' ? 'number' : 'category'}
+            dataKey={layout === 'horizontal' ? undefined : xDataKey}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 12, fill: '#6b7280' }}
-            domain={layout === 'vertical' ? yAxisDomain : undefined}
-            tickFormatter={layout === 'vertical' ? (value) =>
+            domain={layout === 'horizontal' ? yAxisDomain : undefined}
+            tickFormatter={layout === 'horizontal' ? (value) =>
               typeof value === 'number' && value >= 1000
                 ? `${(value / 1000).toFixed(0)}k`
                 : value
               : undefined
             }
-            width={layout === 'horizontal' ? 80 : undefined}
+            width={layout === 'vertical' ? 80 : undefined}
           />
           {showTooltip && <Tooltip content={<CustomTooltip />} />}
           {showLegend && (

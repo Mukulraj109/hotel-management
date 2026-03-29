@@ -383,16 +383,6 @@ class BypassApprovalService {
   }
 
   /**
-   * Get real-time approval updates (for WebSocket integration)
-   */
-  async subscribeToApprovalUpdates(callback: (update: unknown) => void) {
-    // Placeholder for WebSocket implementation
-    // In production, this would establish a WebSocket connection
-    return () => {
-    };
-  }
-
-  /**
    * Format approval workflow data for display
    */
   formatWorkflowForDisplay(workflow: ApprovalWorkflow) {
@@ -478,5 +468,4 @@ class BypassApprovalService {
 }
 
 export const bypassApprovalService = new BypassApprovalService();
-export default bypassApprovalService;
 

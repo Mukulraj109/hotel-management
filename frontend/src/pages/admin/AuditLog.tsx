@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -13,8 +13,8 @@ import { Badge } from '../../components/ui/badge';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { useProperty } from '../../context/PropertyContext';
-import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { queryKeys } from '../../config/reactQuery';
 import {
   Download,
   RefreshCw,
@@ -27,41 +27,43 @@ import {
   Settings,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  Calendar
+  AlertCircle
 } from 'lucide-react';
 
 interface AuditLog {
   _id: string;
   timestamp: string;
-  user: {
+  userId?: {
     _id: string;
     name: string;
     email: string;
+    role?: string;
   };
+  userName?: string;
+  userEmail?: string;
   action: string;
   scope: 'single' | 'group' | 'all';
   settingType: string;
+  settingName?: string;
   propertyId?: {
     _id: string;
     name: string;
+    code?: string;
   };
   groupId?: {
     _id: string;
     name: string;
   };
-  propertiesAffected: string[];
+  propertiesAffected: number;
+  affectedPropertyIds?: string[];
   status: 'success' | 'failed' | 'partial';
   duration?: number;
-  changes?: {
-    before: unknown;
-    after: unknown;
-  };
+  previousValues?: unknown;
+  newValues?: unknown;
+  changesSummary?: unknown;
+  ipAddress?: string;
+  userAgent?: string;
   errorMessage?: string;
-  metadata?: {
-    ipAddress?: string;
-    userAgent?: string;
-  };
 }
 
 interface AuditLogFilters {
@@ -81,7 +83,6 @@ interface AuditLogFilters {
 
 export default function AuditLog() {
   const { selectedPropertyId } = useProperty();
-  const { user } = useAuth();
 
   const [filters, setFilters] = useState<AuditLogFilters>({
     page: 1,
@@ -90,28 +91,49 @@ export default function AuditLog() {
   const [showFilters, setShowFilters] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Debounce search input — wait 400ms after typing stops before hitting API
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setFilters(prev => ({ ...prev, search: searchInput || undefined, page: 1 }));
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
 
   // Fetch audit logs
   const {
     data: auditLogsData,
     isLoading,
+    isError,
     refetch
   } = useQuery({
-    queryKey: ['audit-logs', filters],
+    queryKey: queryKeys.auditLogs.list({ ...filters, selectedPropertyId }),
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value.toString());
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
       });
+      if (selectedPropertyId) {
+        params.append('propertyId', selectedPropertyId);
+      }
 
       const response = await api.get(`/audit-log?${params.toString()}`);
       return response.data.data;
     },
-    refetchInterval: autoRefresh ? 30000 : false // Auto-refresh every 30 seconds
+    refetchInterval: autoRefresh ? 30000 : false
   });
 
   const logs = auditLogsData?.logs || [];
-  const pagination = auditLogsData?.pagination || { current: 1, pages: 1, total: 0 };
+  const rawPagination = auditLogsData?.pagination || {};
+  const pagination = {
+    current: rawPagination.page || 1,
+    pages: rawPagination.totalPages || 1,
+    total: rawPagination.totalCount ?? 0
+  };
 
   // Toggle row expansion
   const toggleRowExpansion = (logId: string) => {
@@ -139,7 +161,7 @@ export default function AuditLog() {
         responseType: 'blob'
       });
 
-      // Create download link
+      // Create download link and clean up
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -147,6 +169,7 @@ export default function AuditLog() {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch {
       // Error handled silently
     }
@@ -177,7 +200,7 @@ export default function AuditLog() {
           </Badge>
         );
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="outline">{status || '-'}</Badge>;
     }
   };
 
@@ -191,7 +214,7 @@ export default function AuditLog() {
       case 'all':
         return <Badge variant="outline" className="text-orange-700 border-orange-300">All Properties</Badge>;
       default:
-        return <Badge variant="outline">{scope}</Badge>;
+        return <Badge variant="outline">{scope || '-'}</Badge>;
     }
   };
 
@@ -219,21 +242,26 @@ export default function AuditLog() {
     {
       key: 'timestamp',
       header: 'Timestamp',
-      render: (value: string) => (
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">
-            {format(new Date(value), 'MMM dd, yyyy')}
-          </span>
-          <span className="text-xs text-gray-500">
-            {format(new Date(value), 'HH:mm:ss')}
-          </span>
-        </div>
-      )
+      render: (value: string) => {
+        if (!value) return <span className="text-sm text-gray-400">-</span>;
+        const date = new Date(value);
+        if (isNaN(date.getTime())) return <span className="text-sm text-gray-400">Invalid date</span>;
+        return (
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">
+              {format(date, 'MMM dd, yyyy')}
+            </span>
+            <span className="text-xs text-gray-500">
+              {format(date, 'HH:mm:ss')}
+            </span>
+          </div>
+        );
+      }
     },
     {
-      key: 'user',
+      key: 'userId',
       header: 'User',
-      render: (value: unknown) => (
+      render: (value: any) => (
         <div className="flex items-center space-x-2">
           <User className="h-4 w-4 text-gray-400" />
           <div className="flex flex-col">
@@ -247,7 +275,7 @@ export default function AuditLog() {
       key: 'action',
       header: 'Action',
       render: (value: string) => (
-        <span className="text-sm capitalize">{value.replace(/_/g, ' ')}</span>
+        <span className="text-sm capitalize">{value?.replace(/_/g, ' ') || '-'}</span>
       )
     },
     {
@@ -261,16 +289,16 @@ export default function AuditLog() {
       render: (value: string) => (
         <div className="flex items-center space-x-2">
           <Settings className="h-4 w-4 text-gray-400" />
-          <span className="text-sm capitalize">{value.replace(/_/g, ' ')}</span>
+          <span className="text-sm capitalize">{value?.replace(/[-_]/g, ' ') || '-'}</span>
         </div>
       )
     },
     {
       key: 'propertiesAffected',
       header: 'Properties',
-      render: (value: string[]) => (
+      render: (value: number) => (
         <Badge variant="secondary">
-          {value?.length || 0} {value?.length === 1 ? 'property' : 'properties'}
+          {value || 0} {value === 1 ? 'property' : 'properties'}
         </Badge>
       ),
       align: 'center' as const
@@ -361,8 +389,8 @@ export default function AuditLog() {
                   <Input
                     type="text"
                     placeholder="Search logs..."
-                    value={filters.search || ''}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value, page: 1 })}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-10"
                   />
                 </div>
@@ -379,10 +407,12 @@ export default function AuditLog() {
                   onChange={(e) => setFilters({ ...filters, action: e.target.value || undefined, page: 1 })}
                 >
                   <option value="">All Actions</option>
-                  <option value="settings_update">Settings Update</option>
-                  <option value="scheduled_update">Scheduled Update</option>
+                  <option value="create">Create</option>
+                  <option value="update">Update</option>
+                  <option value="delete">Delete</option>
                   <option value="rollback">Rollback</option>
-                  <option value="preview">Preview</option>
+                  <option value="schedule">Schedule</option>
+                  <option value="cancel">Cancel</option>
                 </select>
               </div>
 
@@ -431,12 +461,14 @@ export default function AuditLog() {
                   onChange={(e) => setFilters({ ...filters, settingType: e.target.value || undefined, page: 1 })}
                 >
                   <option value="">All Types</option>
-                  <option value="booking_rules">Booking Rules</option>
-                  <option value="check_in_out">Check-in/out</option>
+                  <option value="check-in-out">Check-in/out</option>
                   <option value="currency">Currency</option>
                   <option value="timezone">Timezone</option>
-                  <option value="payment_settings">Payment Settings</option>
-                  <option value="tax_settings">Tax Settings</option>
+                  <option value="payment-gateway">Payment Gateway</option>
+                  <option value="taxes">Taxes</option>
+                  <option value="room-types">Room Types</option>
+                  <option value="cancellation-policy">Cancellation Policy</option>
+                  <option value="security">Security</option>
                 </select>
               </div>
 
@@ -468,7 +500,7 @@ export default function AuditLog() {
               <div className="flex items-end">
                 <Button
                   variant="outline"
-                  onClick={() => setFilters({ page: 1, limit: 50 })}
+                  onClick={() => { setSearchInput(''); setFilters({ page: 1, limit: 50 }); }}
                   className="w-full"
                 >
                   Clear Filters
@@ -479,10 +511,19 @@ export default function AuditLog() {
         )}
       </Card>
 
+      {/* Error State */}
+      {isError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 text-sm">
+          Failed to load audit logs. Please try refreshing.
+        </div>
+      )}
+
       {/* Results Info */}
       <div className="flex items-center justify-between text-sm text-gray-600">
         <span>
-          Showing {((filters.page - 1) * filters.limit) + 1} to {Math.min(filters.page * filters.limit, pagination.total)} of {pagination.total} logs
+          {pagination.total > 0
+            ? `Showing ${((filters.page - 1) * filters.limit) + 1} to ${Math.min(filters.page * filters.limit, pagination.total)} of ${pagination.total} logs`
+            : 'No logs found'}
         </span>
         <span>
           Page {pagination.current} of {pagination.pages}
@@ -523,17 +564,17 @@ export default function AuditLog() {
                           <span className="font-medium">{log.groupId.name}</span>
                         </div>
                       )}
-                      {log.metadata?.ipAddress && (
+                      {log.ipAddress && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">IP Address:</span>
-                          <span className="font-mono text-xs">{log.metadata.ipAddress}</span>
+                          <span className="font-mono text-xs">{log.ipAddress}</span>
                         </div>
                       )}
-                      {log.metadata?.userAgent && (
+                      {log.userAgent && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">User Agent:</span>
                           <span className="font-mono text-xs truncate max-w-xs">
-                            {log.metadata.userAgent}
+                            {log.userAgent}
                           </span>
                         </div>
                       )}
@@ -551,20 +592,20 @@ export default function AuditLog() {
                 </div>
 
                 {/* Right Column - Changes */}
-                {log.changes && (
+                {(log.previousValues || log.newValues) && (
                   <div>
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">Changes</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-xs text-gray-600 uppercase tracking-wide">Before</span>
                         <pre className="mt-1 bg-white border border-gray-200 rounded p-3 text-xs overflow-x-auto">
-                          {JSON.stringify(log.changes.before, null, 2)}
+                          {JSON.stringify(log.previousValues, null, 2)}
                         </pre>
                       </div>
                       <div>
                         <span className="text-xs text-gray-600 uppercase tracking-wide">After</span>
                         <pre className="mt-1 bg-white border border-gray-200 rounded p-3 text-xs overflow-x-auto">
-                          {JSON.stringify(log.changes.after, null, 2)}
+                          {JSON.stringify(log.newValues, null, 2)}
                         </pre>
                       </div>
                     </div>
@@ -587,7 +628,7 @@ export default function AuditLog() {
           Previous
         </Button>
 
-        {[...Array(Math.min(5, pagination.pages))].map((_, i) => {
+        {[...Array(Math.max(0, Math.min(5, pagination.pages || 0)))].map((_, i) => {
           const pageNum = Math.max(1, pagination.current - 2) + i;
           if (pageNum > pagination.pages) return null;
 
