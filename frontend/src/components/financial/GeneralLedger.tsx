@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Search, Filter, RotateCcw, Calendar } from 'lucide-react';
+import { Plus, Search, RotateCcw } from 'lucide-react';
 import financialService, { JournalEntry, ChartOfAccount } from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
@@ -34,7 +34,11 @@ interface EntryFormData {
   }>;
 }
 
-const GeneralLedger: React.FC = () => {
+interface GeneralLedgerProps {
+  readOnly?: boolean;
+}
+
+const GeneralLedger: React.FC<GeneralLedgerProps> = ({ readOnly = false }) => {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +48,8 @@ const GeneralLedger: React.FC = () => {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showDialog, setShowDialog] = useState(false);
   const [reverseEntry, setReverseEntry] = useState<JournalEntry | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [formData, setFormData] = useState<EntryFormData>({
     date: new Date().toISOString().split('T')[0],
     reference: '',
@@ -186,10 +192,21 @@ const GeneralLedger: React.FC = () => {
     });
   };
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterJournal, filterStatus, dateRange]);
+
   const filteredEntries = (Array.isArray(journalEntries) ? journalEntries : []).filter(entry =>
     entry.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (entry.referenceNumber || entry.reference)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (entry.entryNumber || entry.entryId)?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredEntries.length / ITEMS_PER_PAGE));
+  const paginatedEntries = filteredEntries.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
   );
 
   const getTotalDebits = () => {
@@ -226,12 +243,14 @@ const GeneralLedger: React.FC = () => {
           <p className="text-gray-600">Manage journal entries and transactions</p>
         </div>
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          {!readOnly && (
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
               <Plus className="w-4 h-4 mr-2" />
               New Entry
             </Button>
           </DialogTrigger>
+          )}
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Journal Entry</DialogTitle>
@@ -495,10 +514,17 @@ const GeneralLedger: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-                             {filteredEntries.map((entry) => (
+              {paginatedEntries.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    No journal entries found. Create your first entry or adjust your filters.
+                  </TableCell>
+                </TableRow>
+              )}
+                             {paginatedEntries.map((entry) => (
                  <TableRow key={entry._id}>
                    <TableCell className="font-mono">{entry.entryNumber || entry.entryId}</TableCell>
-                   <TableCell>{entry.entryDate ? new Date(entry.entryDate).toLocaleDateString() : 'N/A'}</TableCell>
+                   <TableCell>{entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
                    <TableCell>{entry.referenceNumber || entry.reference || 'N/A'}</TableCell>
                    <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
                    <TableCell>
@@ -520,11 +546,11 @@ const GeneralLedger: React.FC = () => {
                    </TableCell>
                    <TableCell>
                      <div className="flex space-x-2">
-                       <Button 
-                         size="sm" 
-                         variant="outline" 
+                       <Button
+                         size="sm"
+                         variant="outline"
                          onClick={() => setReverseEntry(entry)}
-                         disabled={entry.status !== 'Posted'}
+                         disabled={readOnly || entry.status !== 'Posted'}
                        >
                          <RotateCcw className="w-4 h-4" />
                        </Button>
@@ -534,6 +560,37 @@ const GeneralLedger: React.FC = () => {
                ))}
             </TableBody>
           </Table>
+          {/* Pagination Controls */}
+          {filteredEntries.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-gray-600">
+                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+                {Math.min(currentPage * ITEMS_PER_PAGE, filteredEntries.length)} of{' '}
+                {filteredEntries.length} entries
+              </p>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="flex items-center px-3 text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

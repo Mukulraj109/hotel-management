@@ -121,14 +121,16 @@ class BookingEngineService {
   /**
    * Validate promo code
    */
-  async validatePromoCode(code, bookingValue, checkInDate, checkOutDate) {
+  async validatePromoCode(code, bookingValue, checkInDate, checkOutDate, hotelId = null) {
     try {
-      const promoCode = await PromoCode.findOne({
+      const promoFilter = {
         code: code.toUpperCase(),
         isActive: true,
         'validity.startDate': { $lte: new Date() },
         'validity.endDate': { $gte: new Date() }
-      }).lean();
+      };
+      if (hotelId) promoFilter.hotelId = hotelId;
+      const promoCode = await PromoCode.findOne(promoFilter).lean();
 
       if (!promoCode) {
         return { valid: false, message: 'Invalid or expired promo code' };

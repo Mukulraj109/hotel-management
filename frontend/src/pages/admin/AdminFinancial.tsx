@@ -13,9 +13,20 @@ import FinancialReports from '../../components/financial/FinancialReports';
 import AccountingIntegrationDashboard from '../../components/financial/AccountingIntegrationDashboard';
 
 const AdminFinancial: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const { user } = useAuth();
   const readOnly = user?.role === 'frontdesk';
+
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view financial management.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

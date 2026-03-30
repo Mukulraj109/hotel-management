@@ -254,7 +254,8 @@ const AdminMeasurementUnits: React.FC = () => {
       setIsCreateModalOpen(false);
       resetForm();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to create unit');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to create unit');
     }
   };
 
@@ -291,7 +292,8 @@ const AdminMeasurementUnits: React.FC = () => {
       setSelectedUnit(null);
       resetForm();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update unit');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to update unit');
     }
   };
 
@@ -327,7 +329,8 @@ const AdminMeasurementUnits: React.FC = () => {
 
       fetchUnits();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to delete unit');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to delete unit');
     }
   };
 
@@ -353,7 +356,8 @@ const AdminMeasurementUnits: React.FC = () => {
         setIsConversionModalOpen(true);
       }
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to convert units');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to convert units');
     }
   };
 

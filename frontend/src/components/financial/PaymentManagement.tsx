@@ -76,7 +76,11 @@ interface PaymentStats {
   pendingAmount: number;
 }
 
-const PaymentManagement: React.FC = () => {
+interface PaymentManagementProps {
+  readOnly?: boolean;
+}
+
+const PaymentManagementInner: React.FC<PaymentManagementProps> = ({ readOnly = false }) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<PaymentStats>({
     totalPayments: 0,
@@ -291,6 +295,12 @@ const PaymentManagement: React.FC = () => {
     try {
       const parsedAmount = parseFloat(paymentForm.amount);
 
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        toast.error('Please enter a valid payment amount greater than zero');
+        setSubmitting(false);
+        return;
+      }
+
       if (parsedAmount > 100000) {
         toast.info('Large payment amount detected. Please double-check before proceeding.');
       }
@@ -453,10 +463,12 @@ const PaymentManagement: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {!readOnly && (
               <Button size="sm" onClick={() => setShowAddPaymentDialog(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Payment
               </Button>
+              )}
               <Button size="sm" onClick={fetchPayments} disabled={loading}>
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
@@ -1148,4 +1160,5 @@ const PaymentManagement: React.FC = () => {
   );
 };
 
-export default withErrorBoundary(PaymentManagement, { level: 'component' });
+const PaymentManagement = withErrorBoundary(PaymentManagementInner, { level: 'component' });
+export default PaymentManagement;

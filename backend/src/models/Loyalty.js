@@ -121,7 +121,10 @@ const loyaltySchema = new mongoose.Schema({
 loyaltySchema.index({ userId: 1, createdAt: -1 });
 loyaltySchema.index({ userId: 1, type: 1 });
 loyaltySchema.index({ hotelId: 1, type: 1 });
-loyaltySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// FIX: Removed TTL index on expiresAt - loyalty transactions are financial records
+// that must be retained for audit trails. Point expiry should be handled by
+// filtering in queries (getUserActivePoints already does this), not by auto-deletion.
+loyaltySchema.index({ expiresAt: 1 });
 
 // Virtual for checking if points are expired
 loyaltySchema.virtual('isExpired').get(function() {

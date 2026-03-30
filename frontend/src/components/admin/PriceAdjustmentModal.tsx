@@ -118,7 +118,8 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
       onSuccess();
       onClose();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to apply price adjustment');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to apply price adjustment');
     } finally {
       setLoading(false);
     }
@@ -137,7 +138,8 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
       fetchPriceHistory();
       onSuccess();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to reverse adjustment');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to reverse adjustment');
     }
   };
 

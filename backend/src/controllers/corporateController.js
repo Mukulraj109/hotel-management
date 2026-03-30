@@ -609,10 +609,10 @@ export const getCorporateDashboardMetrics = catchAsync(async (req, res, next) =>
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const recentTransactions = await CorporateCredit.find({
+  const recentTransactions = await CorporateCredit.countDocuments({
     hotelId,
     createdAt: { $gte: thirtyDaysAgo }
-  }).countDocuments().lean().limit(1000);
+  });
 
   // Monthly credit usage trend (last 6 months)
   const sixMonthsAgo = new Date();

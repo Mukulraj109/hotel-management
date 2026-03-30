@@ -62,7 +62,11 @@ interface BudgetCategory {
   };
 }
 
-const BudgetManagement: React.FC = () => {
+interface BudgetManagementProps {
+  readOnly?: boolean;
+}
+
+const BudgetManagement: React.FC<BudgetManagementProps> = ({ readOnly = false }) => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
@@ -216,10 +220,12 @@ const BudgetManagement: React.FC = () => {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
+          {!readOnly && (
           <Button onClick={handleCreateBudget}>
             <Plus className="w-4 h-4 mr-2" />
             Create Budget
           </Button>
+          )}
         </div>
       </div>
 

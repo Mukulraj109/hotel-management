@@ -52,6 +52,12 @@ import mongoose from 'mongoose';
  */
 
 const checkoutAutomationLogSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Hotel',
+    index: true,
+    description: 'Hotel ID for tenant-scoped queries (denormalized from Booking)'
+  },
   bookingId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Booking',
@@ -175,6 +181,8 @@ checkoutAutomationLogSchema.index({ bookingId: 1, processedAt: -1 });
 checkoutAutomationLogSchema.index({ automationType: 1, status: 1 });
 checkoutAutomationLogSchema.index({ processedAt: -1 });
 checkoutAutomationLogSchema.index({ status: 1, processedAt: -1 });
+checkoutAutomationLogSchema.index({ hotelId: 1, processedAt: -1 });
+checkoutAutomationLogSchema.index({ hotelId: 1, status: 1, processedAt: -1 });
 
 // Virtual for formatted processing time
 checkoutAutomationLogSchema.virtual('formattedProcessingTime').get(function() {
@@ -269,82 +277,115 @@ checkoutAutomationLogSchema.statics.getFailedAutomations = function(hours = 24, 
 
 // Static method to get automation statistics
 checkoutAutomationLogSchema.statics.getStatistics = function(hotelId, dateRange = {}) {
-  const matchQuery = {};
-  
-  if (hotelId) {
-    matchQuery['bookingId.hotelId'] = hotelId;
-  }
-  
+  const pipeline = [];
+
+  // Pre-filter by date range before the $lookup for efficiency
+  const preMatch = {};
   if (dateRange.start && dateRange.end) {
-    matchQuery.processedAt = {
+    preMatch.processedAt = {
       $gte: new Date(dateRange.start),
       $lte: new Date(dateRange.end)
     };
   }
+  if (Object.keys(preMatch).length > 0) {
+    pipeline.push({ $match: preMatch });
+  }
 
-  return this.aggregate([
-    { $match: matchQuery },
-    {
-      $lookup: {
-        from: 'bookings',
-        localField: 'bookingId',
-        foreignField: '_id',
-        as: 'booking'
-      }
-    },
-    { $unwind: '$booking' },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 },
-        avgProcessingTime: { $avg: '$processingTime' },
-        totalProcessingTime: { $sum: '$processingTime' }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        statusBreakdown: {
-          $push: {
-            status: '$_id',
-            count: '$count',
-            avgProcessingTime: '$avgProcessingTime',
-            totalProcessingTime: '$totalProcessingTime'
-          }
-        },
-        totalAutomations: { $sum: '$count' },
-        totalProcessingTime: { $sum: '$totalProcessingTime' }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalAutomations: 1,
-        totalProcessingTime: 1,
-        avgProcessingTime: { $divide: ['$totalProcessingTime', '$totalAutomations'] },
-        statusBreakdown: 1,
-        successRate: {
-          $multiply: [
-            {
-              $divide: [
-                {
-                  $sum: {
-                    $cond: [
-                      { $eq: ['$statusBreakdown.status', 'completed'] },
-                      '$statusBreakdown.count',
-                      0
-                    ]
-                  }
-                },
-                '$totalAutomations'
-              ]
-            },
-            100
-          ]
+  // Join with bookings to get hotelId for tenant filtering
+  pipeline.push({
+    $lookup: {
+      from: 'bookings',
+      localField: 'bookingId',
+      foreignField: '_id',
+      as: 'booking'
+    }
+  });
+  pipeline.push({ $unwind: '$booking' });
+
+  // Filter by hotelId on the joined booking
+  if (hotelId) {
+    pipeline.push({
+      $match: { 'booking.hotelId': hotelId }
+    });
+  }
+
+  pipeline.push({
+    $group: {
+      _id: '$status',
+      count: { $sum: 1 },
+      avgProcessingTime: { $avg: '$processingTime' },
+      totalProcessingTime: { $sum: '$processingTime' }
+    }
+  });
+
+  pipeline.push({
+    $group: {
+      _id: null,
+      statusBreakdown: {
+        $push: {
+          status: '$_id',
+          count: '$count',
+          avgProcessingTime: '$avgProcessingTime',
+          totalProcessingTime: '$totalProcessingTime'
         }
+      },
+      totalAutomations: { $sum: '$count' },
+      totalProcessingTime: { $sum: '$totalProcessingTime' }
+    }
+  });
+
+  pipeline.push({
+    $addFields: {
+      avgProcessingTime: {
+        $cond: [
+          { $gt: ['$totalAutomations', 0] },
+          { $divide: ['$totalProcessingTime', '$totalAutomations'] },
+          0
+        ]
+      },
+      successRate: {
+        $cond: [
+          { $gt: ['$totalAutomations', 0] },
+          {
+            $multiply: [
+              {
+                $divide: [
+                  {
+                    $reduce: {
+                      input: '$statusBreakdown',
+                      initialValue: 0,
+                      in: {
+                        $add: [
+                          '$$value',
+                          { $cond: [{ $eq: ['$$this.status', 'completed'] }, '$$this.count', 0] }
+                        ]
+                      }
+                    }
+                  },
+                  '$totalAutomations'
+                ]
+              },
+              100
+            ]
+          },
+          0
+        ]
       }
     }
-  ]);
+  });
+
+  pipeline.push({
+    $project: {
+      _id: 0,
+      totalAutomations: 1,
+      totalProcessingTime: 1,
+      avgProcessingTime: 1,
+      statusBreakdown: 1,
+      successRate: 1
+    }
+  });
+
+  return this.aggregate(pipeline);
 };
 
 // Data retention TTL: auto-delete checkout automation logs after 180 days

@@ -52,12 +52,10 @@ export default function AdminReports() {
   }, [autoRefresh, reportsQuery.refetchAll]);
 
   // Real-time connection setup
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   React.useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
+    connect().catch(() => { /* WebSocket unavailable */ });
+  }, [connect]);
 
   // Set up real-time event listeners
   React.useEffect(() => {

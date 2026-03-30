@@ -356,10 +356,10 @@ router.get('/stats/:hotelId',
         monthBookings,
         totalRoomsUpdated
       ] = await Promise.all([
-        SyncHistory.countDocuments({ hotelId }),
-        SyncHistory.countDocuments({ hotelId, status: 'completed' }),
-        SyncHistory.countDocuments({ hotelId, status: 'failed' }),
-        SyncHistory.findOne({ hotelId }).sort({ startedAt: -1 }).select('startedAt'),
+        SyncHistory.countDocuments({ hotelId: hotel._id }),
+        SyncHistory.countDocuments({ hotelId: hotel._id, status: 'completed' }),
+        SyncHistory.countDocuments({ hotelId: hotel._id, status: 'failed' }),
+        SyncHistory.findOne({ hotelId: hotel._id }).sort({ startedAt: -1 }).select('startedAt'),
         SyncHistory.aggregate([
           { $match: { hotelId: hotel._id, status: 'completed', 'metadata.duration': { $exists: true } } },
           { $group: { _id: null, avgDuration: { $avg: '$metadata.duration' } } }

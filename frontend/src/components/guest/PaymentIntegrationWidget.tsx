@@ -20,11 +20,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency } from '../../utils/formatters';
 import { api } from '../../services/api';
 
+interface OrderItem {
+  name: string;
+  price: number;
+  quantity: number;
+}
+
 interface PaymentIntegrationWidgetProps {
   orderId?: string;
   amount: number;
   currency?: string;
-  items: unknown[];
+  items: OrderItem[];
   onPaymentSuccess?: (paymentResult: Record<string, unknown>) => void;
   onPaymentError?: (error: Record<string, unknown>) => void;
   guestDetails?: unknown;

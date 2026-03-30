@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  Users, 
-  ClipboardCheck, 
-  AlertTriangle, 
+import {
+  Users,
+  ClipboardCheck,
+  AlertTriangle,
   Wrench,
   Calendar,
   CheckCircle,
-  Clock,
   Package,
   TrendingUp,
   RefreshCw,
@@ -37,28 +36,26 @@ interface StaffDashboardData {
   assignedRooms: DailyCheckData[];
 }
 
+type TabId = 'overview' | 'rooms' | 'inventory' | 'checkout' | 'assignments';
+
 function StaffDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<StaffDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'rooms' | 'inventory' | 'checkout' | 'assignments'>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const isFirstLoad = useRef(true);
 
-  useEffect(() => {
-    fetchDashboardData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      fetchDashboardData();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
-      setLoading(true);
-      
-      
+      // On first load show full spinner; on refresh show subtle indicator
+      if (isFirstLoad.current) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+
       // Fetch real data from the backend API using the service
       const [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes] = await Promise.all([
         staffDashboardService.getTodayOverview(),
@@ -72,13 +69,14 @@ function StaffDashboard() {
         today: todayRes.data.today,
         roomStatus: roomsRes.data,
         inventory: inventoryRes.data,
-        checkoutInventories: checkoutRes.data.checkoutInventories,
+        checkoutInventories: checkoutRes.data.checkoutInventories || [],
         assignedRooms: assignmentsRes.data.rooms || []
       };
 
       setData(realData);
-    } catch (error) {
-      // Keep previous data if available — don't reset to zeros
+      setError(null);
+    } catch (_err) {
+      // Keep previous data if available -- don't reset to zeros
       setData(prev => {
         if (prev && prev.today.checkIns > 0) return prev;
         // Only use empty fallback on first load
@@ -93,8 +91,19 @@ function StaffDashboard() {
       setError('Unable to load dashboard data. Will retry automatically.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      isFirstLoad.current = false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchDashboardData]);
 
   if (loading) {
     return (

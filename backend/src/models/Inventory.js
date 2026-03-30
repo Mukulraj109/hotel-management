@@ -4,7 +4,8 @@ const inventorySchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: true
+    required: true,
+    index: true
   },
   name: {
     type: String,
@@ -13,8 +14,9 @@ const inventorySchema = new mongoose.Schema({
   },
   sku: {
     type: String,
-    required: true,
-    unique: true
+    required: true
+    // NOTE: unique constraint is handled by the compound index { hotelId: 1, sku: 1 } below
+    // to allow different hotels to use the same SKU codes
   },
   category: {
     type: String,
@@ -88,10 +90,13 @@ const inventorySchema = new mongoose.Schema({
     default: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Indexes - sku already has unique constraint in schema
+// Indexes - compound unique index on hotelId+sku so each hotel has unique SKUs
+inventorySchema.index({ hotelId: 1, sku: 1 }, { unique: true });
 inventorySchema.index({ hotelId: 1, category: 1 });
 inventorySchema.index({ hotelId: 1, quantity: 1 });
 

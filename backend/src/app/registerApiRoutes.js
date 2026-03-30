@@ -185,9 +185,13 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/webhooks', webhookRoutes);
   app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
   app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
+  app.use('/api/v1/admin/service-types', serviceTypesRoutes);
+  app.use('/api/v1/admin/loyalty', adminLoyaltyRoutes);
   app.use('/api/v1/admin-bypass-management', adminBypassManagementRoutes);
   app.use('/api/v1/admin-bypass-management/analytics', bypassFinancialAnalyticsRoutes);
   app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
+  // IMPORTANT: generic /admin mount MUST come after all specific /admin/* sub-routes
+  // because admin.js has router.use(authorize('admin')) that blocks non-admin roles
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/system-integration', systemIntegrationRoutes);
   app.use('/api/v1/staff-dashboard', staffDashboardRoutes);
@@ -196,7 +200,6 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/daily-inventory-checks', dailyInventoryCheckRoutes);
   app.use('/api/v1/inventory-notifications', inventoryNotificationRoutes);
   app.use('/api/v1/guest-services', guestServiceRoutes);
-  app.use('/api/v1/admin/service-types', serviceTypesRoutes);
   app.use('/api/v1/reviews', reviewRoutes);
   app.use('/api/v1/maintenance', maintenanceRoutes);
   app.use('/api/v1/incidents', incidentRoutes);
@@ -208,7 +211,6 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/contact', contactRoutes);
   app.use('/api/v1/billing-history', billingHistoryRoutes);
   app.use('/api/v1/loyalty', loyaltyRoutes);
-  app.use('/api/v1/admin/loyalty', adminLoyaltyRoutes);
   app.use('/api/v1/loyalty/favorites', offerFavoriteRoutes);
   app.use('/api/v1/hotel-services', hotelServicesRoutes);
   app.use('/api/v1/staff/services', staffServicesRoutes);

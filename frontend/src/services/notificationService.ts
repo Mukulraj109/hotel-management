@@ -1,11 +1,12 @@
 import { api } from './api';
+import { API_CONFIG } from '../config/api';
 
 // Interfaces
 export interface Notification {
   _id: string;
   userId: string;
   hotelId: string;
-  type: NotificationType;
+  type: NotificationTypeValue;
   title: string;
   message: string;
   channels: NotificationChannel[];
@@ -165,6 +166,14 @@ export interface NotificationsResponse {
     itemsPerPage: number;
   };
   unreadCount: number;
+  totalCount: number;
+  totalPages: number;
+  todayCount?: number;
+  urgentCount?: number;
+  weeklyCount?: number;
+  highPriorityCount?: number;
+  bookingCount?: number;
+  commissionCount?: number;
 }
 
 export interface UnreadCountResponse {
@@ -220,17 +229,25 @@ class NotificationService {
     limit?: number;
     status?: string;
     type?: string;
+    priority?: string;
+    search?: string;
     unreadOnly?: boolean;
+    readOnly?: boolean;
+    propertyId?: string;
   }): Promise<NotificationsResponse> {
     try {
       const searchParams = new URLSearchParams();
-    
+
       if (params?.page) searchParams.append('page', params.page.toString());
       if (params?.limit) searchParams.append('limit', params.limit.toString());
       if (params?.status) searchParams.append('status', params.status);
       if (params?.type) searchParams.append('type', params.type);
+      if (params?.priority) searchParams.append('priority', params.priority);
+      if (params?.search) searchParams.append('search', params.search);
       if (params?.unreadOnly) searchParams.append('unreadOnly', params.unreadOnly.toString());
-    
+      if (params?.readOnly) searchParams.append('readOnly', params.readOnly.toString());
+      if (params?.propertyId) searchParams.append('propertyId', params.propertyId);
+
       const response = await api.get(`/notifications?${searchParams.toString()}`);
       return response.data.data;
     } catch (error: unknown) {
@@ -239,9 +256,10 @@ class NotificationService {
   }
 
   // Get unread notification count
-  async getUnreadCount(): Promise<number> {
+  async getUnreadCount(propertyId?: string): Promise<number> {
     try {
-      const response = await api.get('/notifications/unread-count');
+      const params = propertyId ? `?propertyId=${propertyId}` : '';
+      const response = await api.get(`/notifications/unread-count${params}`);
       return response.data.data.unreadCount;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -603,7 +621,7 @@ class NotificationService {
       this.eventSource.close();
     }
 
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
+    const baseUrl = API_CONFIG.BASE_URL;
     const url = `${baseUrl}/notifications/stream`;
 
     this.eventSource = new EventSource(url, {

@@ -89,11 +89,12 @@ export const useWorkflowActions = (filters?: {
 };
 
 // Hook for floor analytics
-export const useFloorAnalytics = (floorId: number) => {
+export const useFloorAnalytics = (floorId: number, options?: { enabled?: boolean }) => {
+  const { enabled = true } = options || {};
   return useQuery({
     queryKey: ['floor-analytics', floorId],
     queryFn: () => workflowService.getFloorAnalytics(floorId),
-    enabled: !!floorId,
+    enabled: enabled && !!floorId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };

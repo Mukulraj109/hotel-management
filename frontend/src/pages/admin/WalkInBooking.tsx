@@ -119,6 +119,17 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Sync prefilledData into bookingForm when modal opens or prefilledData changes
+  useEffect(() => {
+    if (isOpen && prefilledData) {
+      setBookingForm(prev => ({
+        ...prev,
+        ...(prefilledData.checkIn ? { checkIn: prefilledData.checkIn } : {}),
+        ...(prefilledData.checkOut ? { checkOut: prefilledData.checkOut } : {}),
+      }));
+    }
+  }, [isOpen, prefilledData?.checkIn, prefilledData?.checkOut]);
+
   // Fetch hotels on component mount
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -219,10 +230,10 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
       const rooms = response.data.rooms || [];
       setAvailableRooms(rooms);
     } catch (error: unknown) {
-
-      if (error.response?.status === 404) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr.response?.status === 404) {
         toast.error('No rooms found for the selected hotel.');
-      } else if (error.response?.status === 401) {
+      } else if (axiosErr.response?.status === 401) {
         toast.error('Please log in again to access room information.');
       } else {
         toast.error('Failed to fetch room availability. Please try again.');
@@ -313,6 +324,14 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
     if (bookingForm.checkIn && bookingForm.checkOut) {
       const checkInDate = new Date(bookingForm.checkIn);
       const checkOutDate = new Date(bookingForm.checkOut);
+
+      // Walk-in bookings must be for today or future
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (checkInDate < today) {
+        newErrors.checkIn = 'Check-in date cannot be in the past';
+      }
+
       if (checkInDate >= checkOutDate) {
         newErrors.checkOut = 'Check-out date must be after check-in date';
       }
@@ -329,12 +348,12 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
 
     const checkInDate = new Date(bookingForm.checkIn);
     const checkOutDate = new Date(bookingForm.checkOut);
-    const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+    const nights = Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const selectedRooms = availableRooms.filter(room => bookingForm.roomIds.includes(room._id) && room.isAvailable);
-    const roomsTotal = selectedRooms.reduce((total, room) => total + (room.currentRate || 0), 0);
+    const selectedRooms = availableRooms.filter((room: any) => bookingForm.roomIds.includes(room._id) && room.isAvailable);
+    const roomsTotal = selectedRooms.reduce((total: number, room: any) => total + (room.currentRate || 0), 0);
 
-    return roomsTotal * nights;
+    return Math.round(roomsTotal * nights * 100) / 100;
   };
 
   const handleNext = () => {
@@ -410,12 +429,12 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
           guestPhone = guestForm.phone;
           toast.success('Guest account created successfully');
         } catch (userError: unknown) {
-
+          const uerr = userError as { response?: { status?: number; data?: { message?: string } } };
           // Check if user already exists
-          if (userError.response?.status === 409 && userError.response?.data?.message?.includes('already exists')) {
+          if (uerr.response?.status === 409 && uerr.response?.data?.message?.includes('already exists')) {
             try {
               const existingUsersResponse = await adminService.getUsers({ search: guestForm.email });
-              const existingUser = existingUsersResponse.data.users.find((u: unknown) => u.email === guestForm.email);
+              const existingUser = existingUsersResponse.data.users.find((u: Record<string, unknown>) => u.email === guestForm.email);
               if (existingUser) {
                 userId = existingUser._id;
                 guestName = existingUser.name;
@@ -431,7 +450,7 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
               return;
             }
           } else {
-            toast.error(`User creation failed: ${userError.response?.data?.message || 'Invalid user data'}`);
+            toast.error(`User creation failed: ${uerr.response?.data?.message || 'Invalid user data'}`);
             return;
           }
         }
@@ -469,7 +488,7 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
           // Include guest contact info for reference
           name: guestName,
           email: guestEmail,
-          phone: guestPhone
+          phone: guestPhone || 'N/A'
         },
         totalAmount: totalAmount,
         currency: bookingForm.currency,
@@ -523,10 +542,10 @@ function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBook
           handleClose();
         }, 1500);
       } catch (bookingError: unknown) {
-
-        if (bookingError.response?.status === 400) {
-          toast.error(`Booking failed: ${bookingError.response?.data?.message || 'Invalid booking data'}`);
-        } else if (bookingError.response?.status === 409) {
+        const berr = bookingError as { response?: { status?: number; data?: { message?: string } } };
+        if (berr.response?.status === 400) {
+          toast.error(`Booking failed: ${berr.response?.data?.message || 'Invalid booking data'}`);
+        } else if (berr.response?.status === 409) {
           toast.error('Selected rooms are no longer available. Please select different rooms.');
         } else {
           toast.error('Failed to create booking. Please try again.');

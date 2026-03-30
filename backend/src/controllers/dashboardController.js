@@ -1,4 +1,4 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import GuestService from '../models/GuestService.js';
@@ -8,40 +8,61 @@ class DashboardController {
   // Get real-time dashboard counts
   async getDashboardCounts(req, res) {
     try {
+      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
+          success: false,
+          message: 'hotelId is required'
+        });
+      }
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Front Desk Counts
+      // Front Desk Counts — all queries scoped to hotelId
       const checkInsToday = await Booking.countDocuments({
+        hotelId,
         checkIn: { $gte: today, $lt: tomorrow },
         status: { $in: ['confirmed', 'checked_in'] }
       });
 
       const checkOutsToday = await Booking.countDocuments({
+        hotelId,
         checkOut: { $gte: today, $lt: tomorrow },
         status: 'checked_in'
       });
 
       // Total reservations (active bookings)
       const totalReservations = await Booking.countDocuments({
+        hotelId,
         status: { $in: ['confirmed', 'checked_in', 'pending'] },
         checkOut: { $gte: today }
       });
 
+      // Available rooms (clean + vacant)
+      const totalRooms = await Room.countDocuments({ hotelId, isActive: true });
+      const occupiedRooms = await Room.countDocuments({ hotelId, status: 'occupied' });
+      const dirtyRooms = await Room.countDocuments({ hotelId, status: 'dirty' });
+      const maintenanceRooms = await Room.countDocuments({ hotelId, status: { $in: ['maintenance', 'out_of_order'] } });
+      const availableRooms = Math.max(0, totalRooms - occupiedRooms - dirtyRooms - maintenanceRooms);
+
       // Housekeeping tasks
       const housekeepingTasks = await Room.countDocuments({
+        hotelId,
         status: { $in: ['dirty', 'maintenance', 'out_of_order'] }
       });
 
       // Guest services pending
       const pendingGuestServices = await GuestService.countDocuments({
+        hotelId,
         status: { $in: ['pending', 'in_progress'] }
       });
 
       // VIP guests currently in house
       const vipGuests = await Booking.countDocuments({
+        hotelId,
         status: 'checked_in',
         checkOut: { $gte: today },
         totalAmount: { $gte: 15000 } // VIP threshold
@@ -49,6 +70,7 @@ class DashboardController {
 
       // Corporate bookings
       const corporateBookings = await Booking.countDocuments({
+        hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true, $ne: null },
         status: { $in: ['confirmed', 'checked_in'] },
         checkOut: { $gte: today }
@@ -56,11 +78,13 @@ class DashboardController {
 
       // Maintenance requests
       const maintenanceRequests = await Room.countDocuments({
+        hotelId,
         status: { $in: ['maintenance', 'out_of_order'] }
       });
 
       // Low stock items
       const lowStockItems = await InventoryItem.countDocuments({
+        hotelId,
         $expr: { $lte: ['$quantity', '$minStockLevel'] }
       });
 
@@ -68,47 +92,54 @@ class DashboardController {
         frontDesk: {
           total: checkInsToday + checkOutsToday,
           checkIn: checkInsToday,
-          checkOut: checkOutsToday
+          checkOut: checkOutsToday,
+          availableRooms
         },
         reservations: {
           total: totalReservations,
           confirmed: await Booking.countDocuments({
+            hotelId,
             status: 'confirmed',
             checkOut: { $gte: today }
           }),
           pending: await Booking.countDocuments({
+            hotelId,
             status: 'pending',
             checkOut: { $gte: today }
           }),
           checkedIn: await Booking.countDocuments({
+            hotelId,
             status: 'checked_in'
           })
         },
         housekeeping: {
           total: housekeepingTasks,
-          dirty: await Room.countDocuments({ status: 'dirty' }),
+          dirty: await Room.countDocuments({ hotelId, status: 'dirty' }),
           maintenance: maintenanceRequests,
-          outOfOrder: await Room.countDocuments({ status: 'out_of_order' })
+          outOfOrder: await Room.countDocuments({ hotelId, status: 'out_of_order' })
         },
         guestServices: {
           total: pendingGuestServices,
-          pending: await GuestService.countDocuments({ status: 'pending' }),
-          inProgress: await GuestService.countDocuments({ status: 'in_progress' }),
+          pending: await GuestService.countDocuments({ hotelId, status: 'pending' }),
+          inProgress: await GuestService.countDocuments({ hotelId, status: 'in_progress' }),
           vipGuests,
           corporate: corporateBookings
         },
         maintenance: {
           total: maintenanceRequests,
           urgent: await Room.countDocuments({
+            hotelId,
             status: 'out_of_order'
           }),
           scheduled: await Room.countDocuments({
+            hotelId,
             status: 'maintenance'
           })
         },
         inventory: {
           total: lowStockItems,
           critical: await InventoryItem.countDocuments({
+            hotelId,
             quantity: { $eq: 0 }
           }),
           lowStock: lowStockItems
@@ -134,12 +165,17 @@ class DashboardController {
   // Get room status summary
   async getRoomStatusSummary(req, res) {
     try {
-      // Consider caching this aggregation result for 5 minutes
+      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
+          success: false,
+          message: 'hotelId is required'
+        });
+      }
 
-      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
-
-      const hotelId = req.user?.hotelId;
-      const roomMatchStage = hotelId ? { $match: { hotelId } } : { $match: { isActive: true } };
+      // Aggregation pipeline requires ObjectId for hotelId match
+      const hotelOid = typeof hotelId === 'string' ? new mongoose.Types.ObjectId(hotelId) : hotelId;
+      const roomMatchStage = { $match: { hotelId: hotelOid, isActive: true } };
       const roomSummary = await Room.aggregate([
         roomMatchStage,
         {
@@ -150,8 +186,10 @@ class DashboardController {
         }
       ]);
 
+      const totalRooms = await Room.countDocuments({ hotelId, isActive: true });
+
       const summary = {
-        total: await Room.countDocuments({ isActive: true }),
+        total: totalRooms,
         byStatus: roomSummary.reduce((acc, curr) => {
           acc[curr._id] = curr.count;
           return acc;
@@ -159,10 +197,9 @@ class DashboardController {
         occupancyRate: 0
       };
 
-      // Calculate occupancy rate
+      // Calculate occupancy rate — guard against division by zero
       const occupiedRooms = (summary.byStatus.occupied || 0);
-      const totalRooms = summary.total;
-      
+
       if (totalRooms > 0) {
         summary.occupancyRate = Math.round((occupiedRooms / totalRooms) * 100);
       }
@@ -185,40 +222,51 @@ class DashboardController {
   // Get recent activities for dashboard
   async getRecentActivities(req, res) {
     try {
-      const limit = parseInt(req.query.limit) || 10;
-      
-      // Get recent bookings
+      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({
+          success: false,
+          message: 'hotelId is required'
+        });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+      const halfLimit = Math.max(1, Math.ceil(limit / 2));
+
+      // Get recent bookings — scoped to hotelId
       const recentBookings = await Booking.find({
+        hotelId,
         createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
       })
       .populate('userId', 'name email')
       .populate('rooms.roomId', 'roomNumber')
       .sort({ createdAt: -1 })
-      .limit(limit / 2).lean();
+      .limit(halfLimit).lean();
 
-      // Get recent guest services
+      // Get recent guest services — scoped to hotelId
       const recentServices = await GuestService.find({
+        hotelId,
         updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
       })
       .populate('guestId', 'name')
       .populate('roomId', 'roomNumber')
       .sort({ updatedAt: -1 })
-      .limit(limit / 2).lean();
+      .limit(halfLimit).lean();
 
       const activities = [
         ...recentBookings.map(booking => ({
           id: booking._id,
           type: 'booking',
-          title: `New booking: ${booking.userId?.name}`,
-          description: `Room ${booking.rooms[0]?.roomId?.roomNumber} - ${booking.status}`,
+          title: `New booking: ${booking.userId?.name || 'Guest'}`,
+          description: `Room ${booking.rooms?.[0]?.roomId?.roomNumber || '—'} - ${booking.status}`,
           timestamp: booking.createdAt,
           status: booking.status
         })),
         ...recentServices.map(service => ({
           id: service._id,
           type: 'service',
-          title: `${service.serviceType}: ${service.guestId?.name}`,
-          description: `Room ${service.roomId?.roomNumber} - ${service.status}`,
+          title: `${service.serviceType || 'Service'}: ${service.guestId?.name || 'Guest'}`,
+          description: `Room ${service.roomId?.roomNumber || '—'} - ${service.status}`,
           timestamp: service.updatedAt,
           status: service.status
         }))

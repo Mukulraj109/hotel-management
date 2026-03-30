@@ -83,12 +83,14 @@ const bookingSchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: [true, 'Hotel ID is required']
+    required: [true, 'Hotel ID is required'],
+    index: true
   },
   userId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',
-    required: [true, 'User ID is required']
+    required: [true, 'User ID is required'],
+    index: true
   },
   bookingNumber: {
     type: String,
@@ -158,7 +160,7 @@ const bookingSchema = new mongoose.Schema({
     changedBy: {
       source: {
         type: String,
-        enum: ['direct', 'ota', 'admin', 'guest', 'system', 'api'],
+        enum: ['direct', 'ota', 'admin', 'guest', 'system', 'api', 'walk_in', 'manual', 'frontdesk'],
         required: true
       },
       userId: String,
@@ -278,7 +280,7 @@ const bookingSchema = new mongoose.Schema({
         userName: String,
         userRole: {
           type: String,
-          enum: ['admin', 'staff']
+          enum: ['admin', 'staff', 'manager', 'frontdesk']
         }
       },
       invoiceGenerated: {
@@ -322,7 +324,7 @@ const bookingSchema = new mongoose.Schema({
         userName: String,
         userRole: {
           type: String,
-          enum: ['admin', 'staff']
+          enum: ['admin', 'staff', 'manager', 'frontdesk']
         }
       },
       paymentMethod: {
@@ -659,7 +661,7 @@ const bookingSchema = new mongoose.Schema({
   checkOutTime: Date,
   source: {
     type: String,
-    enum: ['direct', 'booking_com', 'expedia', 'airbnb'],
+    enum: ['direct', 'walk_in', 'booking_com', 'expedia', 'airbnb'],
     default: 'direct'
   },
   // OTA Integration fields for channel management
@@ -951,7 +953,7 @@ const bookingSchema = new mongoose.Schema({
       },
       userRole: {
         type: String,
-        enum: ['admin', 'manager', 'staff'],
+        enum: ['admin', 'manager', 'staff', 'frontdesk'],
         required: true
       }
     },
@@ -1061,7 +1063,7 @@ const bookingSchema = new mongoose.Schema({
       userId: { type: mongoose.Schema.ObjectId, ref: 'User' },
       userName: String,
       userRole: String,
-      source: { type: String, enum: ['direct', 'ota', 'admin', 'guest', 'system', 'api'] }
+      source: { type: String, enum: ['direct', 'ota', 'admin', 'guest', 'system', 'api', 'walk_in', 'manual', 'frontdesk'] }
     },
     fieldChanges: [{
       field: { type: String, required: true },
@@ -1155,23 +1157,47 @@ bookingSchema.pre('save', function(next) {
     this.nights = Math.ceil(timeDiff / (1000 * 3600 * 24));
   }
 
-  // Calculate payment details
-  if (this.paymentDetails && this.paymentDetails.paymentMethods) {
+  // Calculate payment details and sync paymentStatus with actual amounts
+  if (this.paymentDetails && this.paymentDetails.paymentMethods && this.paymentDetails.paymentMethods.length > 0) {
     this.paymentDetails.totalPaid = this.paymentDetails.paymentMethods.reduce((total, payment) => total + payment.amount, 0);
     this.paymentDetails.remainingAmount = Math.max(0, this.totalAmount - this.paymentDetails.totalPaid);
-    
-    // Auto-update payment status based on payment amount
+
+    // Auto-update payment status based on actual payment amount
     if (this.paymentDetails.totalPaid >= this.totalAmount) {
       this.paymentStatus = 'paid';
     } else if (this.paymentDetails.totalPaid > 0) {
-      this.paymentStatus = 'partially_paid'; // Partial payment
+      this.paymentStatus = 'partially_paid';
+    }
+  } else if (this.paymentDetails) {
+    // paymentDetails exists but no paymentMethods array (or empty array)
+    // Ensure totalPaid/remainingAmount are consistent
+    if (!this.paymentDetails.totalPaid || this.paymentDetails.totalPaid === 0) {
+      this.paymentDetails.remainingAmount = this.totalAmount || 0;
+    }
+  }
+
+  // Safety: ensure paymentStatus is consistent with paymentDetails.totalPaid
+  // This prevents the scenario where paymentStatus is 'paid' but totalPaid is 0
+  if (this.paymentDetails && typeof this.paymentDetails.totalPaid === 'number' && this.totalAmount > 0) {
+    if (this.paymentStatus === 'paid' && this.paymentDetails.totalPaid < this.totalAmount) {
+      // paymentStatus says paid but totalPaid disagrees -- fix the status
+      if (this.paymentDetails.totalPaid > 0) {
+        this.paymentStatus = 'partially_paid';
+      } else {
+        this.paymentStatus = 'pending';
+      }
+    } else if (this.paymentStatus !== 'refunded' && this.paymentStatus !== 'failed' &&
+               this.paymentDetails.totalPaid >= this.totalAmount && this.paymentStatus !== 'paid') {
+      // totalPaid covers full amount but paymentStatus is not 'paid' -- fix
+      this.paymentStatus = 'paid';
     }
   }
 
   // Generate booking number if not exists
   if (!this.bookingNumber) {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    // Use 7 random digits (10M possibilities per day) to avoid collisions under high volume
+    const random = Math.floor(Math.random() * 10000000).toString().padStart(7, '0');
     this.bookingNumber = `BK${date}${random}`;
   }
   
@@ -1257,8 +1283,8 @@ bookingSchema.methods.calculateTotalAmount = function() {
 // Instance method to add extra person
 bookingSchema.methods.addExtraPerson = async function(personData, userContext) {
   try {
-    if (!['admin', 'staff'].includes(userContext.userRole)) {
-      throw new Error('Only admin and staff can add extra persons');
+    if (!['admin', 'staff', 'manager', 'frontdesk'].includes(userContext.userRole)) {
+      throw new Error('Only authorized staff can add extra persons');
     }
 
     // Validate person data
@@ -1304,8 +1330,8 @@ bookingSchema.methods.addExtraPerson = async function(personData, userContext) {
 // Instance method to remove extra person
 bookingSchema.methods.removeExtraPerson = async function(personId, userContext) {
   try {
-    if (!['admin', 'staff'].includes(userContext.userRole)) {
-      throw new Error('Only admin and staff can remove extra persons');
+    if (!['admin', 'staff', 'manager', 'frontdesk'].includes(userContext.userRole)) {
+      throw new Error('Only authorized staff can remove extra persons');
     }
 
     const personIndex = this.extraPersons.findIndex(p => p.personId === personId);
@@ -1460,8 +1486,8 @@ bookingSchema.methods.calculateSettlement = function() {
 
 // Instance method to add settlement adjustment
 bookingSchema.methods.addSettlementAdjustment = function(adjustmentData, userContext) {
-  if (!['admin', 'staff'].includes(userContext.userRole)) {
-    throw new Error('Only admin and staff can add settlement adjustments');
+  if (!['admin', 'staff', 'manager', 'frontdesk'].includes(userContext.userRole)) {
+    throw new Error('Only authorized staff can add settlement adjustments');
   }
 
   const adjustment = {
@@ -1510,8 +1536,8 @@ bookingSchema.methods.addSettlementAdjustment = function(adjustmentData, userCon
 
 // Instance method to process settlement payment
 bookingSchema.methods.processSettlementPayment = function(paymentData, userContext) {
-  if (!['admin', 'staff'].includes(userContext.userRole)) {
-    throw new Error('Only admin and staff can process settlement payments');
+  if (!['admin', 'staff', 'manager', 'frontdesk'].includes(userContext.userRole)) {
+    throw new Error('Only authorized staff can process settlement payments');
   }
 
   if (!this.settlementTracking || this.settlementTracking.status === 'not_required') {
@@ -1541,6 +1567,13 @@ bookingSchema.methods.processSettlementPayment = function(paymentData, userConte
   // Update payment totals
   this.paymentDetails.totalPaid = this.paymentDetails.paymentMethods.reduce((total, payment) => total + payment.amount, 0);
   this.paymentDetails.remainingAmount = Math.max(0, this.totalAmount - this.paymentDetails.totalPaid);
+
+  // Sync paymentStatus with actual payment totals
+  if (this.paymentDetails.totalPaid >= this.totalAmount) {
+    this.paymentStatus = 'paid';
+  } else if (this.paymentDetails.totalPaid > 0) {
+    this.paymentStatus = 'partially_paid';
+  }
 
   // Add to settlement history
   this.settlementTracking.settlementHistory.push({
@@ -1954,6 +1987,7 @@ bookingSchema.methods.getTotalAdjustments = function() {
 bookingSchema.methods.canAdjustPrice = function(userRole, adjustmentAmount) {
   const adjustmentLimits = {
     staff: { maxDiscount: 500, maxSurcharge: 200 },
+    frontdesk: { maxDiscount: 1000, maxSurcharge: 500 },
     manager: { maxDiscount: 2000, maxSurcharge: 1000 },
     admin: { maxDiscount: Infinity, maxSurcharge: Infinity }
   };

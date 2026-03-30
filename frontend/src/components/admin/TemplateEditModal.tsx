@@ -6,7 +6,7 @@ import { InventoryItemForm } from './InventoryItemForm';
 interface TemplateEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  roomType: 'single' | 'double' | 'deluxe' | 'suite';
+  roomType: 'single' | 'double' | 'deluxe' | 'suite' | null;
   onSave: () => void;
 }
 
@@ -37,12 +37,13 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
   }, [isOpen, roomType]);
 
   const loadTemplate = async () => {
+    if (!roomType) return;
     try {
       setLoading(true);
       setError(null);
 
       const response = await dailyRoutineCheckService.getInventoryTemplates();
-      const existingTemplate = response.data.templates.find(t => t.roomType === roomType);
+      const existingTemplate = response.data?.templates?.find(t => t.roomType === roomType);
 
       if (existingTemplate) {
         setTemplate(existingTemplate);
@@ -58,14 +59,14 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
         setEstimatedDuration(15);
       }
     } catch (err: unknown) {
-      setError(err.message || 'Failed to load template');
+      setError(err instanceof Error ? err.message : 'Failed to load template');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveTemplate = async () => {
-    if (!template) return;
+    if (!template || !roomType) return;
 
     try {
       setSaving(true);
@@ -78,7 +79,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
 
       // Check if this is an existing template by looking for templates with the same roomType
       const existingTemplates = await dailyRoutineCheckService.getInventoryTemplates();
-      const existingTemplate = existingTemplates.data.templates.find(t => t.roomType === roomType);
+      const existingTemplate = existingTemplates.data?.templates?.find(t => t.roomType === roomType);
 
       if (existingTemplate) {
         // Update existing template
@@ -95,7 +96,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
       onSave();
       onClose();
     } catch (err: unknown) {
-      setError(err.message || 'Failed to save template');
+      setError(err instanceof Error ? err.message : 'Failed to save template');
     } finally {
       setSaving(false);
     }
@@ -115,31 +116,41 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
     const confirmDelete = window.confirm('Are you sure you want to delete this item?');
     if (!confirmDelete) return;
 
-    const updatedTemplate = { ...template };
-    if (type === 'fixed') {
-      updatedTemplate.fixedInventory.splice(index, 1);
-    } else {
-      updatedTemplate.dailyInventory.splice(index, 1);
-    }
-    setTemplate(updatedTemplate);
+    setTemplate({
+      ...template,
+      fixedInventory: type === 'fixed'
+        ? template.fixedInventory.filter((_, i) => i !== index)
+        : [...template.fixedInventory],
+      dailyInventory: type === 'daily'
+        ? template.dailyInventory.filter((_, i) => i !== index)
+        : [...template.dailyInventory],
+    });
   };
 
   const handleSaveItem = (item: TemplateInventoryItem) => {
     if (!template || !activeForm) return;
 
-    const updatedTemplate = { ...template };
+    const updatedTemplate = {
+      ...template,
+      fixedInventory: [...template.fixedInventory],
+      dailyInventory: [...template.dailyInventory],
+    };
 
     if (activeForm.mode === 'add') {
       if (activeForm.type === 'fixed') {
-        updatedTemplate.fixedInventory.push(item);
+        updatedTemplate.fixedInventory = [...updatedTemplate.fixedInventory, item];
       } else {
-        updatedTemplate.dailyInventory.push(item);
+        updatedTemplate.dailyInventory = [...updatedTemplate.dailyInventory, item];
       }
     } else if (activeForm.mode === 'edit' && activeForm.index !== undefined) {
       if (activeForm.type === 'fixed') {
-        updatedTemplate.fixedInventory[activeForm.index] = item;
+        updatedTemplate.fixedInventory = updatedTemplate.fixedInventory.map((existing, i) =>
+          i === activeForm.index ? item : existing
+        );
       } else {
-        updatedTemplate.dailyInventory[activeForm.index] = item;
+        updatedTemplate.dailyInventory = updatedTemplate.dailyInventory.map((existing, i) =>
+          i === activeForm.index ? item : existing
+        );
       }
     }
 
@@ -222,7 +233,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
     </div>
   );
 
-  if (!isOpen) return null;
+  if (!isOpen || !roomType) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">

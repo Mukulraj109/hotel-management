@@ -71,7 +71,11 @@ interface TimeFilter {
   days: number;
 }
 
-const ServiceAnalytics: React.FC = () => {
+interface ServiceAnalyticsProps {
+  hotelId?: string;
+}
+
+const ServiceAnalytics: React.FC<ServiceAnalyticsProps> = ({ hotelId: propHotelId }) => {
   const { user } = useAuth();
   const [analyticsData, setAnalyticsData] = useState<ServiceAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,8 +94,9 @@ const ServiceAnalytics: React.FC = () => {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'];
 
-  // Resolve hotelId to string — it may be a populated object { _id, name }
+  // Use prop hotelId (from property context) or fall back to user's hotelId
   const resolvedHotelId = (() => {
+    if (propHotelId) return propHotelId;
     const raw = user?.hotelId;
     if (!raw) return undefined;
     if (typeof raw === 'string') return raw;

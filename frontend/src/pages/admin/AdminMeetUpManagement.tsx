@@ -61,10 +61,11 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
   const queryClient = useQueryClient();
 
   // Fetch all meet-up requests (admin view)
-  const { data: meetUpsData, isLoading: meetUpsLoading } = useQuery({
+  const { data: meetUpsData, isLoading: meetUpsLoading, isError: meetUpsError } = useQuery({
     queryKey: ['admin-meetups', selectedPropertyId, currentPage, statusFilter, typeFilter, searchTerm, dateFromFilter, dateToFilter],
     queryFn: () => meetUpRequestService.getAdminAllMeetUps({
       page: currentPage,
+      limit: 20,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
       hotelId: selectedPropertyId || undefined,
@@ -197,19 +198,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       const csvData = meetUpsData.meetUps.map(meetUp => [
         meetUp._id,
         meetUp.title,
-        meetUp.description.replace(/"/g, '""'), // Escape quotes
+        (meetUp.description || '').replace(/"/g, '""'), // Escape quotes
         meetUp.type,
         meetUp.status,
-        meetUp.requesterId.name,
-        meetUp.requesterId.email,
-        meetUp.targetUserId.name,
-        meetUp.targetUserId.email,
-        meetUp.hotelId.name,
+        meetUp.requesterId?.name || 'Unknown',
+        meetUp.requesterId?.email || '',
+        meetUp.targetUserId?.name || 'Unknown',
+        meetUp.targetUserId?.email || '',
+        meetUp.hotelId?.name || 'Unknown Hotel',
         formatDate(meetUp.proposedDate),
-        `${meetUp.proposedTime.start} - ${meetUp.proposedTime.end}`,
-        meetUp.location.type,
-        meetUp.location.name,
-        meetUp.location.details || '',
+        `${meetUp.proposedTime?.start || ''} - ${meetUp.proposedTime?.end || ''}`,
+        meetUp.location?.type || '',
+        meetUp.location?.name || '',
+        meetUp.location?.details || '',
         meetUp.activity?.type || 'N/A',
         meetUp.activity?.duration || 0,
         meetUp.activity?.cost || 0,
@@ -336,7 +337,8 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       }, {});
 
       const hotelCounts = meetUpsData.meetUps.reduce((acc: Record<string, number>, meetUp) => {
-        acc[meetUp.hotelId.name] = (acc[meetUp.hotelId.name] || 0) + 1;
+        const hotelName = meetUp.hotelId?.name || 'Unknown Hotel';
+        acc[hotelName] = (acc[hotelName] || 0) + 1;
         return acc;
       }, {});
 
@@ -466,12 +468,17 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
               )}
             </div>
             <Button
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-meetups', 'admin-meetup-analytics', 'admin-meetup-insights'] })}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['admin-meetups'] });
+                queryClient.invalidateQueries({ queryKey: ['admin-meetup-analytics'] });
+                queryClient.invalidateQueries({ queryKey: ['admin-meetup-insights'] });
+              }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
             >
               <RefreshCw className="w-4 h-4" />
               Refresh
             </Button>
+          </div>
         </div>
       </div>
 
@@ -597,6 +604,15 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
             <div className="flex justify-center py-12">
               <LoadingSpinner />
             </div>
+          ) : meetUpsError ? (
+            <Card className="p-12 text-center">
+              <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Failed to load meet-up requests</h3>
+              <p className="text-gray-600 mb-4">Something went wrong. Please try again.</p>
+              <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-meetups'] })}>
+                Retry
+              </Button>
+            </Card>
           ) : (
             <div className="space-y-4">
               {meetUpsData?.meetUps.length === 0 ? (
@@ -700,7 +716,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 />
                 <StatsCard
                   title="Avg Response Time"
-                  value={`${(analytics.summary.avgResponseTime ?? 0).toFixed(1)}h`}
+                  value={`${(analytics.summary?.avgResponseTime ?? 0).toFixed(1)}h`}
                   icon={Clock}
                   color="bg-orange-100 text-orange-600"
                 />
@@ -868,7 +884,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 />
                 <StatsCard
                   title="Engagement Rate"
-                  value={`${(insights.userEngagement.engagementRate ?? 0).toFixed(1)}%`}
+                  value={`${(insights.userEngagement?.engagementRate ?? 0).toFixed(1)}%`}
                   icon={Activity}
                   color="bg-purple-100 text-purple-600"
                 />
@@ -897,7 +913,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                           <div key={`-${index}-${meetup.title}`} className="p-2 bg-red-50 border border-red-200 rounded text-xs">
                             <p className="font-medium text-red-800">{meetup.title}</p>
                             <p className="text-red-600">
-                              {meetup.requesterId.name} → {meetup.targetUserId.name}
+                              {meetup.requesterId?.name || 'Unknown'} → {meetup.targetUserId?.name || 'Unknown'}
                             </p>
                           </div>
                         ))}
@@ -1008,7 +1024,6 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
           )}
         </div>
       )}
-      </div>
 
       {/* Details Modal */}
       {showDetailsModal && selectedMeetUp && (
@@ -1073,20 +1088,20 @@ const AdminMeetUpCard = React.memo(function AdminMeetUpCard({ meetUp, onViewDeta
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 text-sm">
               <div>
                 <span className="text-gray-500">From:</span>
-                <p className="font-medium">{meetUp.requesterId.name}</p>
+                <p className="font-medium">{meetUp.requesterId?.name || 'Unknown'}</p>
               </div>
               <div>
                 <span className="text-gray-500">To:</span>
-                <p className="font-medium">{meetUp.targetUserId.name}</p>
+                <p className="font-medium">{meetUp.targetUserId?.name || 'Unknown'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Hotel:</span>
-                <p className="font-medium">{meetUp.hotelId.name}</p>
+                <p className="font-medium">{meetUp.hotelId?.name || 'Unknown Hotel'}</p>
               </div>
               <div>
                 <span className="text-gray-500">Date:</span>
                 <p className="font-medium">
-                  {formatDate(meetUp.proposedDate)} at {meetUp.proposedTime.start}
+                  {formatDate(meetUp.proposedDate)} at {meetUp.proposedTime?.start || ''}
                 </p>
               </div>
               <div>
@@ -1096,7 +1111,7 @@ const AdminMeetUpCard = React.memo(function AdminMeetUpCard({ meetUp, onViewDeta
               <div>
                 <span className="text-gray-500">Participants:</span>
                 <p className="font-medium">
-                  {meetUp.participantCount}/{meetUp.participants.maxParticipants}
+                  {meetUp.participantCount ?? meetUp.participants?.confirmedParticipants?.length ?? 0}/{meetUp.participants?.maxParticipants ?? 0}
                 </p>
               </div>
               <div>
@@ -1228,16 +1243,16 @@ function MeetUpDetailsModal({ meetUp, onClose }: MeetUpDetailsModalProps) {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <User className="w-8 h-8 text-blue-600" />
                   <div>
-                    <p className="font-medium text-gray-900">{meetUp.requesterId.name}</p>
-                    <p className="text-sm text-gray-600">{meetUp.requesterId.email}</p>
+                    <p className="font-medium text-gray-900">{meetUp.requesterId?.name || 'Unknown'}</p>
+                    <p className="text-sm text-gray-600">{meetUp.requesterId?.email || ''}</p>
                     <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Requester</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <User className="w-8 h-8 text-green-600" />
                   <div>
-                    <p className="font-medium text-gray-900">{meetUp.targetUserId.name}</p>
-                    <p className="text-sm text-gray-600">{meetUp.targetUserId.email}</p>
+                    <p className="font-medium text-gray-900">{meetUp.targetUserId?.name || 'Unknown'}</p>
+                    <p className="text-sm text-gray-600">{meetUp.targetUserId?.email || ''}</p>
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Target</span>
                   </div>
                 </div>
@@ -1271,7 +1286,7 @@ function MeetUpDetailsModal({ meetUp, onClose }: MeetUpDetailsModalProps) {
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Hotel</label>
-                  <p className="font-medium text-gray-900">{meetUp.hotelId.name}</p>
+                  <p className="font-medium text-gray-900">{meetUp.hotelId?.name || 'Unknown Hotel'}</p>
                 </div>
               </div>
             </div>
@@ -1404,7 +1419,7 @@ function ForceCancelModal({ meetUp, onClose, onConfirm, isLoading }: ForceCancel
 
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-yellow-800 text-sm">
-            You are about to forcefully cancel the meet-up request "{meetUp.title}" between {meetUp.requesterId.name} and {meetUp.targetUserId.name}.
+            You are about to forcefully cancel the meet-up request "{meetUp.title}" between {meetUp.requesterId?.name || 'Unknown'} and {meetUp.targetUserId?.name || 'Unknown'}.
           </p>
         </div>
 

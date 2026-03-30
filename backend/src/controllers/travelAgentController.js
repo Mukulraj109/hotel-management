@@ -364,8 +364,14 @@ export const updateTravelAgentStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status, reason } = req.body;
 
-  const travelAgent = await TravelAgent.findByIdAndUpdate(
-    id,
+  // Build query with tenant isolation
+  const query = { _id: id };
+  if (req.user.role !== 'super_admin' && req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
+
+  const travelAgent = await TravelAgent.findOneAndUpdate(
+    query,
     { status },
     { new: true, runValidators: true }
   );

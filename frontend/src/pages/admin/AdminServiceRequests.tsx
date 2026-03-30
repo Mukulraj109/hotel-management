@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import '../../styles/admin-service-requests-animations.css';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
@@ -10,24 +10,19 @@ import {
   XCircle,
   AlertCircle,
   Calendar,
-  MapPin,
   Users,
   Filter,
   Search,
   Eye,
   UserPlus,
   Package,
-  FileText,
   Bell,
   BarChart3,
   Activity,
   Target,
-  TrendingUp,
-  Zap,
   RefreshCw,
-  Settings,
-  Star,
-  MessageSquare
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -127,10 +122,12 @@ const ServiceRequestCardInfo = React.memo(({ request, getServiceTypeIcon, getSta
               <span>Booking #{request.bookingId.bookingNumber}</span>
             </div>
           )}
-          <div className="flex items-center space-x-1">
-            <Users className="w-4 h-4" />
-            <span>{request.userId.name} ({request.userId.email})</span>
-          </div>
+          {request.userId?.name && (
+            <div className="flex items-center space-x-1">
+              <Users className="w-4 h-4" />
+              <span>{request.userId.name} ({request.userId?.email || 'N/A'})</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -208,16 +205,17 @@ export default function AdminServiceRequests() {
   const [stats, setStats] = useState<ServiceStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [filters, setFilters] = useState<GuestServiceFilters>({ 
-    page: 1, 
-    limit: 20 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<GuestServiceFilters>({
+    page: 1,
+    limit: 20
   });
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [availableStaff, setAvailableStaff] = useState<Array<{ _id: string; name: string; email: string; department: string }>>([]);
-  
+
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
-  
+  const { on, off, isConnected } = useRealTime();
+
   // Modal states
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
@@ -228,32 +226,41 @@ export default function AdminServiceRequests() {
     scheduledTime: ''
   });
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await adminGuestServicesService.getServices(filters);
-      
+      // Pass hotelId from selected property and server-side serviceType filter
+      // to exclude inventory/supply at the API level where possible
+      const filtersWithHotel = {
+        ...filters,
+        hotelId: selectedPropertyId || undefined
+      } as GuestServiceFilters & { hotelId?: string };
+      const response = await adminGuestServicesService.getServices(filtersWithHotel);
+
       // Filter for general service requests (exclude inventory and supply requests)
-      const serviceRequests = (response.data.serviceRequests || []).filter(service => {
+      // This client-side filter is a safety net; server already filters by serviceType
+      const serviceRequests = (response.data?.serviceRequests || []).filter((service: ServiceRequest) => {
         // Exclude inventory requests
-        const isNotInventory = !(service.serviceType === 'other' && 
-          (service.serviceVariation === 'inventory_request' || 
+        const isNotInventory = !(service.serviceType === 'other' &&
+          (service.serviceVariation === 'inventory_request' ||
            service.serviceVariations?.includes('inventory_request') ||
            service.title?.toLowerCase().includes('inventory')));
-        
+
         // Exclude supply requests (if they have specific identifiers)
         const isNotSupply = !service.title?.toLowerCase().includes('supply');
-        
+
         // Include general service types
         const isGeneralService = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry'].includes(service.serviceType) ||
           (service.serviceType === 'other' && service.serviceVariation === 'multiple_services');
-        
+
         return isGeneralService && isNotInventory && isNotSupply;
       });
-      
+
       setRequests(serviceRequests);
-      setPagination({ 
-        total: serviceRequests.length, 
+      // Since we do client-side filtering (exclude inventory/supply), use the
+      // filtered count for pagination so the total reflects what admin actually sees.
+      setPagination({
+        total: serviceRequests.length,
         pages: Math.ceil(serviceRequests.length / (filters.limit || 20))
       });
     } catch (error) {
@@ -261,19 +268,21 @@ export default function AdminServiceRequests() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, selectedPropertyId]);
 
-  const fetchAvailableStaff = async () => {
+  const fetchAvailableStaff = useCallback(async () => {
     try {
-      const response = await adminGuestServicesService.getAvailableStaff();
-      setAvailableStaff(response.data.staff || []);
+      const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId || undefined);
+      // Backend returns { data: { staff: [...] } }
+      const staffData = response.data;
+      setAvailableStaff(Array.isArray(staffData) ? staffData : staffData?.staff || []);
     } catch {
       // Error handled silently
     }
-  };
+  }, [selectedPropertyId]);
 
   const calculateStats = (requestList: ServiceRequest[]) => {
-    const stats = {
+    const calculatedStats = {
       total: requestList.length,
       pending: requestList.filter(r => r.status === 'pending').length,
       assigned: requestList.filter(r => r.status === 'assigned').length,
@@ -281,18 +290,18 @@ export default function AdminServiceRequests() {
       completed: requestList.filter(r => r.status === 'completed').length,
       cancelled: requestList.filter(r => r.status === 'cancelled').length,
       urgent: requestList.filter(r => ['now', 'urgent'].includes(r.priority)).length,
-      avgCompletionTime: 0 // Would need completion times to calculate
+      avgCompletionTime: 0
     };
-    
-    setStats(stats);
+
+    setStats(calculatedStats);
   };
 
   useEffect(() => {
-    if (user && ['admin', 'manager'].includes(user.role) && selectedPropertyId) {
+    if (user && ['admin', 'manager', 'frontdesk', 'staff'].includes(user.role) && selectedPropertyId) {
       fetchRequests();
       fetchAvailableStaff();
     }
-  }, [user, selectedPropertyId, filters]);
+  }, [user, selectedPropertyId, filters, fetchRequests, fetchAvailableStaff]);
 
   useEffect(() => {
     calculateStats(requests);
@@ -320,11 +329,12 @@ export default function AdminServiceRequests() {
   const handleUpdateStatus = async (requestId: string, status: string, notes?: string) => {
     try {
       setUpdating(true);
-      await adminGuestServicesService.updateServiceStatus(requestId, { status, notes });
+      await adminGuestServicesService.updateStatus(requestId, status, notes);
       toast.success(`Request ${status.replace('_', ' ')}`);
       fetchRequests();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update status');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -346,7 +356,8 @@ export default function AdminServiceRequests() {
       setAssignData({ assignedTo: '', notes: '', scheduledTime: '' });
       fetchRequests();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to assign request');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Failed to assign request');
     } finally {
       setUpdating(false);
     }
@@ -547,6 +558,8 @@ export default function AdminServiceRequests() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search requests..."
                   className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 text-sm"
                 />
@@ -607,7 +620,7 @@ export default function AdminServiceRequests() {
 
           <div className="mt-4 flex justify-end">
             <Button
-              onClick={() => setFilters({ page: 1, limit: 20 })}
+              onClick={() => { setFilters({ page: 1, limit: 20 }); setSearchQuery(''); }}
               variant="outline"
               className="text-sm px-4 py-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
             >
@@ -618,17 +631,39 @@ export default function AdminServiceRequests() {
       </Card>
 
       {/* Service Requests List */}
-      {requests.length === 0 ? (
-        <Card className="bg-white border-0 shadow-xl rounded-2xl overflow-hidden p-12 text-center">
-          <div className="p-4 bg-gray-100 rounded-2xl inline-block mb-6">
-            <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-800 mb-3">No service requests found</h3>
-          <p className="text-gray-600 font-medium">No service requests match your current filters. Try adjusting your search criteria.</p>
-        </Card>
-      ) : (
+      {(() => {
+        // Apply client-side search filter
+        const filteredRequests = searchQuery.trim()
+          ? requests.filter(r => {
+              const q = searchQuery.toLowerCase();
+              return (
+                r.title?.toLowerCase().includes(q) ||
+                r.description?.toLowerCase().includes(q) ||
+                r.serviceType?.toLowerCase().includes(q) ||
+                r.serviceVariation?.toLowerCase().includes(q) ||
+                r.userId?.name?.toLowerCase().includes(q) ||
+                r.userId?.email?.toLowerCase().includes(q) ||
+                r.bookingId?.bookingNumber?.toLowerCase().includes(q) ||
+                r.assignedTo?.name?.toLowerCase().includes(q)
+              );
+            })
+          : requests;
+
+        if (filteredRequests.length === 0) {
+          return (
+            <Card className="bg-white border-0 shadow-xl rounded-2xl overflow-hidden p-12 text-center">
+              <div className="p-4 bg-gray-100 rounded-2xl inline-block mb-6">
+                <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-3">No service requests found</h3>
+              <p className="text-gray-600 font-medium">No service requests match your current filters. Try adjusting your search criteria.</p>
+            </Card>
+          );
+        }
+
+        return (
         <div className="space-y-4">
-          {requests.map((request, index) => (
+          {filteredRequests.map((request) => (
             <Card key={request._id} className={`bg-white border-0 shadow-lg rounded-lg overflow-hidden p-4 hover:shadow-xl transition-all duration-300 ${request.priority === 'urgent' || request.priority === 'now' ? 'border-l-4 border-red-500' : ''}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -651,10 +686,12 @@ export default function AdminServiceRequests() {
                             <span>Booking #{request.bookingId.bookingNumber}</span>
                           </div>
                         )}
-                        <div className="flex items-center space-x-1">
-                          <Users className="w-4 h-4" />
-                          <span>{request.userId.name} ({request.userId.email})</span>
-                        </div>
+                        {request.userId?.name && (
+                          <div className="flex items-center space-x-1">
+                            <Users className="w-4 h-4" />
+                            <span>{request.userId.name} ({request.userId?.email || 'N/A'})</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -835,7 +872,171 @@ export default function AdminServiceRequests() {
               )}
             </Card>
           ))}
+
+          {/* Pagination Controls */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between bg-white rounded-xl shadow-md p-4">
+              <p className="text-sm text-gray-600">
+                Showing page {filters.page || 1} of {pagination.pages} ({pagination.total} total)
+              </p>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={(filters.page || 1) <= 1}
+                  onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) - 1 }))}
+                  className="text-xs border-gray-300"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={(filters.page || 1) >= pagination.pages}
+                  onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) + 1 }))}
+                  className="text-xs border-gray-300"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
+        );
+      })()}
+
+      {/* View Detail Modal */}
+      {showViewModal && selectedRequest && (
+        <Modal
+          isOpen={showViewModal}
+          onClose={() => {
+            setShowViewModal(false);
+            setSelectedRequest(null);
+          }}
+          title="Service Request Details"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Service Type</p>
+                <p className="text-sm font-medium text-gray-900 capitalize">{selectedRequest.serviceType.replace('_', ' ')}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Status</p>
+                <p className="text-sm font-medium text-gray-900 capitalize">{selectedRequest.status.replace('_', ' ')}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Priority</p>
+                <p className="text-sm font-medium text-gray-900 capitalize">{selectedRequest.priority}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Guest</p>
+                <p className="text-sm font-medium text-gray-900">{selectedRequest.userId?.name || 'N/A'}</p>
+                <p className="text-xs text-gray-500">{selectedRequest.userId?.email || ''}</p>
+              </div>
+              {selectedRequest.bookingId?.bookingNumber && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Booking</p>
+                  <p className="text-sm font-medium text-gray-900">#{selectedRequest.bookingId.bookingNumber}</p>
+                </div>
+              )}
+              {selectedRequest.assignedTo && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Assigned To</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.assignedTo.name}</p>
+                </div>
+              )}
+            </div>
+
+            {selectedRequest.description && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Description</p>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{selectedRequest.description}</p>
+              </div>
+            )}
+
+            {selectedRequest.specialInstructions && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Special Instructions</p>
+                <p className="text-sm text-blue-800 bg-blue-50 rounded-lg p-3">{selectedRequest.specialInstructions}</p>
+              </div>
+            )}
+
+            {selectedRequest.notes && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Notes</p>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{selectedRequest.notes}</p>
+              </div>
+            )}
+
+            {selectedRequest.serviceVariations && selectedRequest.serviceVariations.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Selected Services</p>
+                <div className="flex flex-wrap gap-1">
+                  {selectedRequest.serviceVariations.map((v, i) => (
+                    <span key={`modal-variation-${i}-${v}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedRequest.items && selectedRequest.items.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Items</p>
+                <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                  {selectedRequest.items.map((item, i) => (
+                    <div key={`item-${i}`} className="flex justify-between text-sm">
+                      <span>{item.name} x{item.quantity}</span>
+                      <span className="font-medium">{formatCurrency(item.price * item.quantity, 'INR')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4">
+              {selectedRequest.estimatedCost != null && selectedRequest.estimatedCost > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Estimated Cost</p>
+                  <p className="text-sm font-medium text-gray-900">{formatCurrency(selectedRequest.estimatedCost, 'INR')}</p>
+                </div>
+              )}
+              {selectedRequest.actualCost != null && selectedRequest.actualCost > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Actual Cost</p>
+                  <p className="text-sm font-medium text-gray-900">{formatCurrency(selectedRequest.actualCost, 'INR')}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Created</p>
+                <p className="text-sm font-medium text-gray-900">{formatDate(selectedRequest.createdAt)}</p>
+              </div>
+              {selectedRequest.completedTime && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Completed</p>
+                  <p className="text-sm font-medium text-gray-900">{formatDate(selectedRequest.completedTime)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowViewModal(false);
+                setSelectedRequest(null);
+              }}
+              className="text-sm px-4 py-2 border-gray-300 hover:bg-gray-50"
+            >
+              Close
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {/* Assignment Modal */}

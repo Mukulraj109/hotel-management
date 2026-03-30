@@ -1,21 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { bookingService } from '../../services/bookingService';
-import { 
-  Plus, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Plus,
+  Clock,
+  CheckCircle,
+  XCircle,
   AlertCircle,
   Calendar,
-  MapPin,
   Users,
-  Filter,
   Search,
-  Eye,
-  Edit,
-  Trash2
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -32,6 +31,13 @@ interface Booking {
   checkIn: string;
   checkOut: string;
   status: string;
+}
+
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
 
 const getStatusColor = (status: string) => {
@@ -82,15 +88,25 @@ function isSameUserId(
   return String(requestUserField) === mine;
 }
 
+const PAGE_SIZE = 20;
+
 function GuestRequests() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  const [feedbackRequestId, setFeedbackRequestId] = useState<string | null>(null);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [confirmCancelRequestId, setConfirmCancelRequestId] = useState<string | null>(null);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const { connectionState, connect, disconnect, on, off } = useRealTime();
 
   // Form state
@@ -103,79 +119,113 @@ function GuestRequests() {
     specialInstructions: ''
   });
 
+  const fetchRequests = useCallback(async (targetPage = page) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await guestServiceService.getServiceRequests({
+        status: filter === 'all' ? undefined : filter,
+        page: targetPage,
+        limit: PAGE_SIZE
+      });
+      setRequests(response.data.serviceRequests || []);
+      if (response.data.pagination) {
+        setPagination(response.data.pagination);
+      } else if (response.pagination) {
+        setPagination(response.pagination);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load service requests';
+      setError(message);
+      toast.error('Failed to load service requests');
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, page]);
+
+  const fetchBookings = useCallback(async () => {
+    try {
+      const response = await bookingService.getUserBookings({ limit: 100 });
+      const bookingsData = Array.isArray(response.data) ? response.data : [];
+      setBookings(bookingsData.filter((b: Booking) => ['confirmed', 'checked_in'].includes(b.status)));
+    } catch {
+      // Bookings fetch error handled silently - user can still view existing requests
+    }
+  }, []);
+
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   useEffect(() => {
     if (user) {
-      fetchRequests();
+      fetchRequests(1);
       fetchBookings();
-      connect();
+      connect().catch(() => { /* WebSocket unavailable */ });
     }
+  }, [user, filter, connect, fetchBookings]);
 
-    return () => {
-      disconnect();
-    };
-  }, [user, filter, connect, disconnect]);
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  // Fetch when page changes (but not on initial render, which is handled above)
+  useEffect(() => {
+    if (user && page > 0) {
+      fetchRequests(page);
+    }
+  }, [page, user, fetchRequests]);
 
   // Real-time event listeners for guest service request updates
   useEffect(() => {
     if (connectionState !== 'connected' || !user) return;
 
     const handleGuestServiceUpdated = (data: Record<string, unknown>) => {
-      const updatedRequest = data.serviceRequest;
-      
+      const updatedRequest = data.serviceRequest as GuestServiceRequest;
+
       // Only update if this request belongs to the current user
       if (isSameUserId(user?._id, updatedRequest.userId)) {
-        setRequests(prev => prev.map(request => 
+        setRequests(prev => prev.map(request =>
           request._id === updatedRequest._id ? updatedRequest : request
         ));
 
         // Show toast notification for status changes
         if (data.previousStatus && data.previousStatus !== updatedRequest.status) {
-          const statusMessages = {
+          const statusMessages: Record<string, string> = {
             'assigned': `Your ${updatedRequest.serviceType.replace('_', ' ')} request has been assigned to ${updatedRequest.assignedTo?.name || 'staff'}`,
             'in_progress': `Your ${updatedRequest.serviceType.replace('_', ' ')} request is now in progress`,
             'completed': `Your ${updatedRequest.serviceType.replace('_', ' ')} request has been completed`,
             'cancelled': 'Your service request has been cancelled'
           };
-          
-          const message = statusMessages[updatedRequest.status as keyof typeof statusMessages];
+
+          const message = statusMessages[updatedRequest.status];
           if (message) {
-            toast.success(message, {
-              duration: 5000,
-              icon: updatedRequest.status === 'completed' ? '✅' : 
-                    updatedRequest.status === 'cancelled' ? '❌' : '🔔'
-            });
+            toast.success(message, { duration: 5000 });
           }
         }
 
         // Show notification for staff notes
         if (updatedRequest.notes && (!data.previousNotes || data.previousNotes !== updatedRequest.notes)) {
-          toast.info('Staff added a note to your request', {
-            duration: 4000,
-            icon: '📝'
-          });
+          toast('Staff added a note to your request', { duration: 4000 });
         }
       }
     };
 
     const handleGuestServiceCreated = (data: Record<string, unknown>) => {
-      const newRequest = data.serviceRequest;
-      
+      const newRequest = data.serviceRequest as GuestServiceRequest;
+
       // Only add if this request belongs to the current user
-      if (newRequest.userId?._id === user.id || newRequest.userId === user.id) {
+      const newUserId = typeof newRequest.userId === 'object' ? newRequest.userId?._id : newRequest.userId;
+      if (newUserId === user._id || newUserId === (user as Record<string, unknown>).id) {
         setRequests(prev => [newRequest, ...prev]);
-        toast.success('Your service request has been created successfully', {
-          duration: 4000,
-          icon: '✨'
-        });
+        toast.success('Your service request has been created successfully', { duration: 4000 });
       }
     };
 
     const handleGuestServiceCancelled = (data: Record<string, unknown>) => {
-      const cancelledRequest = data.serviceRequest;
-      
+      const cancelledRequest = data.serviceRequest as GuestServiceRequest;
+
       // Only update if this request belongs to the current user
       if (isSameUserId(user?._id, cancelledRequest.userId)) {
-        setRequests(prev => prev.map(request => 
+        setRequests(prev => prev.map(request =>
           request._id === cancelledRequest._id ? cancelledRequest : request
         ));
       }
@@ -193,32 +243,9 @@ function GuestRequests() {
     };
   }, [connectionState, on, off, user]);
 
-  const fetchRequests = async () => {
-    try {
-      setLoading(true);
-      const response = await guestServiceService.getServiceRequests({
-        status: filter === 'all' ? undefined : filter,
-        limit: 50
-      });
-      setRequests(response.data.serviceRequests || []);
-    } catch (error) {
-      toast.error('Failed to load service requests');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchBookings = async () => {
-    try {
-      const response = await bookingService.getUserBookings();
-      const bookingsData = Array.isArray(response.data) ? response.data : [];
-      setBookings(bookingsData.filter(b => ['confirmed', 'checked_in'].includes(b.status)));
-    } catch {
-      // Error handled silently
-    }
-  };
-
   const handleCreateRequest = async () => {
+    if (creating) return; // Prevent double-submit
+
     if (!formData.bookingId || !formData.serviceType || formData.serviceVariations.length === 0) {
       toast.error('Please fill in all required fields and select at least one service option');
       return;
@@ -250,7 +277,7 @@ function GuestRequests() {
       }
 
       await guestServiceService.createServiceRequest(requestData);
-      
+
       toast.success('Service request created successfully');
       setShowCreateForm(false);
       setFormData({
@@ -261,23 +288,57 @@ function GuestRequests() {
         scheduledTime: '',
         specialInstructions: ''
       });
-      fetchRequests();
+      setPage(1);
+      fetchRequests(1);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to create service request');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Failed to create service request');
     } finally {
       setCreating(false);
     }
   };
 
-  const handleCancelRequest = async (requestId: string) => {
-    if (!confirm('Are you sure you want to cancel this request?')) return;
+  const handleCancelRequest = (requestId: string) => {
+    setConfirmCancelRequestId(requestId);
+  };
+
+  const confirmCancelRequest = async () => {
+    if (!confirmCancelRequestId) return;
+    const requestId = confirmCancelRequestId;
+    setConfirmCancelRequestId(null);
 
     try {
       await guestServiceService.cancelServiceRequest(requestId, 'Cancelled by guest');
       toast.success('Request cancelled successfully');
-      fetchRequests();
+      fetchRequests(page);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to cancel request');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Failed to cancel request');
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackRequestId || feedbackRating === 0) {
+      toast.error('Please select a rating');
+      return;
+    }
+
+    try {
+      setSubmittingFeedback(true);
+      await guestServiceService.updateServiceRequest(feedbackRequestId, {
+        rating: feedbackRating,
+        feedback: feedbackText
+      } as Partial<GuestServiceRequest>);
+      toast.success('Thank you for your feedback!');
+      setFeedbackRequestId(null);
+      setFeedbackRating(0);
+      setFeedbackText('');
+      fetchRequests(page);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Failed to submit feedback');
+    } finally {
+      setSubmittingFeedback(false);
     }
   };
 
@@ -290,10 +351,32 @@ function GuestRequests() {
     request.serviceType.replace('_', ' ').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) {
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= pagination.pages) {
+      setPage(newPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  if (loading && requests.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error && requests.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load service requests</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={() => fetchRequests(1)} variant="primary">
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -307,11 +390,11 @@ function GuestRequests() {
           <p className="text-sm sm:text-base text-gray-600">Manage your hotel service requests and track their status</p>
           <div className="flex items-center space-x-2">
             <div className={`w-2 h-2 rounded-full ${
-              connectionState === 'connected' ? 'bg-green-500' : 
+              connectionState === 'connected' ? 'bg-green-500' :
               connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
             }`} />
             <span className="text-xs text-gray-500">
-              {connectionState === 'connected' ? 'Live Updates' : 
+              {connectionState === 'connected' ? 'Live Updates' :
                connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
             </span>
           </div>
@@ -344,7 +427,7 @@ function GuestRequests() {
             </div>
           </div>
         </div>
-        
+
         {bookings.length === 0 && (
           <p className="text-sm text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             You need an active booking to create service requests
@@ -358,11 +441,12 @@ function GuestRequests() {
           <nav className="-mb-px flex overflow-x-auto scrollbar-hide">
             <div className="flex space-x-4 sm:space-x-8 min-w-max">
               {[
-                { id: 'all', label: 'All', count: requests.length, fullLabel: 'All Requests' },
-                { id: 'pending', label: 'Pending', count: requests.filter(r => r.status === 'pending').length, fullLabel: 'Pending' },
-                { id: 'assigned', label: 'Assigned', count: requests.filter(r => r.status === 'assigned').length, fullLabel: 'Assigned' },
-                { id: 'in_progress', label: 'In Progress', count: requests.filter(r => r.status === 'in_progress').length, fullLabel: 'In Progress' },
-                { id: 'completed', label: 'Completed', count: requests.filter(r => r.status === 'completed').length, fullLabel: 'Completed' }
+                { id: 'all', label: 'All', fullLabel: 'All Requests' },
+                { id: 'pending', label: 'Pending', fullLabel: 'Pending' },
+                { id: 'assigned', label: 'Assigned', fullLabel: 'Assigned' },
+                { id: 'in_progress', label: 'In Progress', fullLabel: 'In Progress' },
+                { id: 'completed', label: 'Completed', fullLabel: 'Completed' },
+                { id: 'cancelled', label: 'Cancelled', fullLabel: 'Cancelled' }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -373,8 +457,8 @@ function GuestRequests() {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <span className="hidden sm:inline">{tab.fullLabel} ({tab.count})</span>
-                  <span className="sm:hidden">{tab.label} ({tab.count})</span>
+                  <span className="hidden sm:inline">{tab.fullLabel}</span>
+                  <span className="sm:hidden">{tab.label}</span>
                 </button>
               ))}
             </div>
@@ -412,8 +496,8 @@ function GuestRequests() {
               <select
                 value={formData.serviceType}
                 onChange={(e) => {
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     serviceType: e.target.value,
                     serviceVariations: [] // Reset variations when service type changes
                   }));
@@ -445,7 +529,7 @@ function GuestRequests() {
                         const allVariations = SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS] || [];
                         setFormData(prev => ({
                           ...prev,
-                          serviceVariations: allVariations
+                          serviceVariations: [...allVariations]
                         }));
                       }}
                       className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -467,7 +551,7 @@ function GuestRequests() {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                  {SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS]?.map((variation) => (
+                  {(SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS] || []).map((variation) => (
                     <label key={variation} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
                       <input
                         type="checkbox"
@@ -509,8 +593,8 @@ function GuestRequests() {
                 value={formData.priority}
                 onChange={(e) => {
                   const value = e.target.value;
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     priority: value,
                     // Clear scheduled time if switching to "now"
                     scheduledTime: value === 'now' ? '' : prev.scheduledTime
@@ -548,8 +632,10 @@ function GuestRequests() {
                 onChange={(e) => setFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 rows={3}
+                maxLength={300}
                 placeholder="Any special instructions or preferences..."
               />
+              <p className="text-xs text-gray-400 mt-1">{formData.specialInstructions.length}/300 characters</p>
             </div>
           </div>
 
@@ -573,17 +659,87 @@ function GuestRequests() {
         </Card>
       )}
 
+      {/* Feedback Modal */}
+      {feedbackRequestId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Rate This Service</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Rating *</label>
+              <div className="flex space-x-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setFeedbackRating(star)}
+                    className="focus:outline-none"
+                  >
+                    <Star
+                      className={`w-8 h-8 ${
+                        star <= feedbackRating
+                          ? 'text-yellow-400 fill-yellow-400'
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Feedback (optional)</label>
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+                maxLength={500}
+                placeholder="Tell us about your experience..."
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFeedbackRequestId(null);
+                  setFeedbackRating(0);
+                  setFeedbackText('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleSubmitFeedback}
+                loading={submittingFeedback}
+                disabled={feedbackRating === 0}
+              >
+                Submit Feedback
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Loading overlay for page transitions */}
+      {loading && requests.length > 0 && (
+        <div className="flex justify-center py-4">
+          <LoadingSpinner />
+        </div>
+      )}
+
       {/* Requests List */}
-      {filteredRequests.length === 0 ? (
+      {filteredRequests.length === 0 && !loading ? (
         <Card className="p-8 sm:p-12 text-center">
           <AlertCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No service requests found</h3>
           <p className="text-sm sm:text-base text-gray-500 mb-4">
-            {filter === 'all' 
-              ? "You haven't made any service requests yet." 
-              : `No ${filter} requests found.`}
+            {searchTerm
+              ? `No requests matching "${searchTerm}".`
+              : filter === 'all'
+                ? "You haven't made any service requests yet."
+                : `No ${filter.replace('_', ' ')} requests found.`}
           </p>
-          {bookings.length > 0 && (
+          {bookings.length > 0 && filter === 'all' && !searchTerm && (
             <Button
               variant="primary"
               onClick={() => setShowCreateForm(true)}
@@ -602,7 +758,7 @@ function GuestRequests() {
                   <div className="mb-3">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                       {request.serviceVariations && request.serviceVariations.length > 0
-                        ? request.serviceVariations.length === 1 
+                        ? request.serviceVariations.length === 1
                           ? request.serviceVariations[0]
                           : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
                         : request.serviceVariation || request.title || `${request.serviceType.replace('_', ' ')} Service`}
@@ -617,11 +773,11 @@ function GuestRequests() {
                       </span>
                     </div>
                   </div>
-                  
+
                   <p className="text-sm text-gray-600 mb-2">
-                    {request.bookingId?.bookingNumber ? `Booking #${request.bookingId.bookingNumber} • ` : ''}{request.serviceType.replace('_', ' ').charAt(0).toUpperCase() + request.serviceType.replace('_', ' ').slice(1)}
+                    {request.bookingId?.bookingNumber ? `Booking #${request.bookingId.bookingNumber} - ` : ''}{request.serviceType.replace('_', ' ').charAt(0).toUpperCase() + request.serviceType.replace('_', ' ').slice(1)}
                   </p>
-                  
+
                   {request.description && (
                     <p className="text-sm text-gray-700 mb-3">{request.description}</p>
                   )}
@@ -632,8 +788,8 @@ function GuestRequests() {
                       <p className="text-sm font-medium text-gray-700 mb-2">Selected Services:</p>
                       <div className="flex flex-wrap gap-1">
                         {request.serviceVariations.map((variation, index) => (
-                          <span 
-                            key={`request-serviceVariations-${index}-${variation}`} 
+                          <span
+                            key={`request-serviceVariations-${index}-${variation}`}
                             className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
                           >
                             {variation}
@@ -673,13 +829,34 @@ function GuestRequests() {
                   {request.notes && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-700">
-                        <strong>Notes:</strong> {request.notes}
+                        <strong>Staff Notes:</strong> {request.notes}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Show existing feedback/rating */}
+                  {request.rating && (
+                    <div className="mt-3 p-3 bg-yellow-50 rounded-lg">
+                      <div className="flex items-center space-x-1 mb-1">
+                        <span className="text-sm font-medium text-gray-700">Your Rating:</span>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-4 h-4 ${
+                              star <= (request.rating || 0) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {request.feedback && (
+                        <p className="text-sm text-gray-600">{request.feedback}</p>
+                      )}
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center space-x-2 sm:mt-0">
+                  {/* Cancel button for pending/assigned requests */}
                   {['pending', 'assigned'].includes(request.status) && (
                     <Button
                       variant="ghost"
@@ -688,8 +865,19 @@ function GuestRequests() {
                       className="text-red-600 hover:text-red-700 w-full sm:w-auto"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
-                      <span className="hidden sm:inline">Cancel</span>
-                      <span className="sm:hidden">Cancel</span>
+                      Cancel
+                    </Button>
+                  )}
+                  {/* Feedback button for completed requests without rating */}
+                  {request.status === 'completed' && !request.rating && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFeedbackRequestId(request._id)}
+                      className="text-yellow-600 hover:text-yellow-700 w-full sm:w-auto"
+                    >
+                      <Star className="w-4 h-4 mr-1" />
+                      Rate
                     </Button>
                   )}
                 </div>
@@ -714,6 +902,87 @@ function GuestRequests() {
               )}
             </Card>
           ))}
+
+          {/* Pagination Controls */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between pt-4 pb-2">
+              <p className="text-sm text-gray-600">
+                Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                {pagination.total} requests
+              </p>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">Previous</span>
+                </Button>
+
+                {/* Page numbers */}
+                <div className="hidden sm:flex items-center space-x-1">
+                  {Array.from({ length: Math.min(pagination.pages, 5) }, (_, i) => {
+                    let pageNum: number;
+                    if (pagination.pages <= 5) {
+                      pageNum = i + 1;
+                    } else if (page <= 3) {
+                      pageNum = i + 1;
+                    } else if (page >= pagination.pages - 2) {
+                      pageNum = pagination.pages - 4 + i;
+                    } else {
+                      pageNum = page - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-1 text-sm rounded ${
+                          pageNum === page
+                            ? 'bg-blue-600 text-white'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <span className="sm:hidden text-sm text-gray-600">
+                  Page {page} of {pagination.pages}
+                </span>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page >= pagination.pages}
+                >
+                  <span className="hidden sm:inline mr-1">Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cancel Request Confirmation Dialog */}
+      {confirmCancelRequestId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-request-title">
+          <Card className="max-w-md w-full p-6">
+            <h3 id="cancel-request-title" className="text-lg font-semibold text-gray-900 mb-2">Cancel Service Request</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to cancel this service request?</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setConfirmCancelRequestId(null)}>Keep Request</Button>
+              <Button variant="ghost" className="text-red-600 hover:bg-red-50" onClick={confirmCancelRequest}>
+                <Trash2 className="w-4 h-4 mr-1" /> Cancel Request
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </div>

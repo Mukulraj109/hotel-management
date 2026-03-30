@@ -49,7 +49,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import SlotManager from '../../components/admin/SlotManager';
 import DayUseBookingsTable from '../../components/admin/DayUseBookingsTable';
 import DayUseAnalytics from '../../components/admin/DayUseAnalytics';
-import axios from 'axios';
+import { api } from '../../services/api';
 import { toast } from 'react-toastify';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -115,8 +115,8 @@ const AdminDayUseManagement: React.FC = () => {
     setError(null);
     try {
       const [slotsRes, bookingsRes] = await Promise.all([
-        axios.get('/api/v1/day-use/slots', { params: { propertyId: selectedPropertyId } }),
-        axios.get('/api/v1/day-use/bookings', {
+        api.get('/day-use/slots', { params: { propertyId: selectedPropertyId } }),
+        api.get('/day-use/bookings', {
           params: {
             propertyId: selectedPropertyId,
             startDate: selectedDate.toISOString().split('T')[0],
@@ -128,7 +128,8 @@ const AdminDayUseManagement: React.FC = () => {
       setSlots(slotsRes.data.data);
       setBookings(bookingsRes.data.data.bookings);
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to fetch data');
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(axiosErr.response?.data?.message || 'Failed to fetch data');
       toast.error('Failed to load day use data');
     } finally {
       setLoading(false);
@@ -137,7 +138,7 @@ const AdminDayUseManagement: React.FC = () => {
 
   const fetchTodaySchedule = async () => {
     try {
-      const response = await axios.get('/api/v1/day-use/schedule/today', {
+      const response = await api.get('/day-use/schedule/today', {
         params: { propertyId: selectedPropertyId }
       });
       setTodaySchedule(response.data.data);
@@ -150,10 +151,10 @@ const AdminDayUseManagement: React.FC = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
       const [revenueRes, occupancyRes] = await Promise.all([
-        axios.get('/api/v1/day-use/analytics/revenue', {
+        api.get('/day-use/analytics/revenue', {
           params: { propertyId: selectedPropertyId, startDate: today, endDate: today }
         }),
-        axios.get(`/api/v1/day-use/analytics/occupancy/${today}`, {
+        api.get(`/day-use/analytics/occupancy/${today}`, {
           params: { propertyId: selectedPropertyId }
         })
       ]);
@@ -162,9 +163,12 @@ const AdminDayUseManagement: React.FC = () => {
         (sum: number, item: Record<string, unknown>) => sum + item.totalRevenue, 0
       );
       
-      const avgOccupancy = occupancyRes.data.data.occupancy.reduce(
-        (sum: number, item: Record<string, unknown>) => sum + item.occupancyRate, 0
-      ) / occupancyRes.data.data.occupancy.length || 0;
+      const occupancyItems = occupancyRes.data.data.occupancy;
+      const avgOccupancy = occupancyItems.length > 0
+        ? occupancyItems.reduce(
+            (sum: number, item: Record<string, unknown>) => sum + (item.occupancyRate as number), 0
+          ) / occupancyItems.length
+        : 0;
 
       setQuickStats({
         totalSlots: slots.length,
@@ -341,7 +345,7 @@ const AdminDayUseManagement: React.FC = () => {
           <Grid item xs={12} sm={6} md={3}>
             <QuickStatsCard
               title="Today's Revenue"
-              value={`$${quickStats.todayRevenue.toFixed(0)}`}
+              value={`₹${quickStats.todayRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
               icon={<AttachMoneyIcon />}
               color="warning.main"
             />

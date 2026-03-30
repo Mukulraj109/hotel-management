@@ -95,7 +95,11 @@ interface ReconciliationItem {
 
 const ITEMS_PER_PAGE = 20;
 
-const BankAccountManagement: React.FC = () => {
+interface BankAccountManagementProps {
+  readOnly?: boolean;
+}
+
+const BankAccountManagementInner: React.FC<BankAccountManagementProps> = ({ readOnly = false }) => {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -460,6 +464,7 @@ const BankAccountManagement: React.FC = () => {
           <h1 className="text-3xl font-bold">Bank Account Management</h1>
           <p className="text-gray-600">Manage bank accounts and reconciliation</p>
         </div>
+        {!readOnly && (
         <div className="flex space-x-2">
           <Button variant="outline" onClick={() => toast.info('Bank statement import coming soon')}>
             <Upload className="w-4 h-4 mr-2" />
@@ -470,6 +475,7 @@ const BankAccountManagement: React.FC = () => {
             Add Account
           </Button>
         </div>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -1234,4 +1240,5 @@ const BankAccountManagement: React.FC = () => {
   );
 };
 
-export default withErrorBoundary(BankAccountManagement, { level: 'component' });
+const BankAccountManagement = withErrorBoundary(BankAccountManagementInner, { level: 'component' });
+export default BankAccountManagement;

@@ -472,6 +472,8 @@ app.use('/api/v1/guest-lookup', piiResponseFilter);
 app.use('/api/v1/crm', piiResponseFilter);
 app.use('/api/v1/guest-services', piiResponseFilter);
 app.use('/api/v1/guest-import', piiResponseFilter);
+app.use('/api/v1/bookings', piiResponseFilter);
+app.use('/api/v1/travel-agents', piiResponseFilter);
 
 // Maintenance mode middleware (returns 503 for non-health routes when enabled)
 app.use(maintenanceMode);

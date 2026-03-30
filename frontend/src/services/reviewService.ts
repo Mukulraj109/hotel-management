@@ -16,6 +16,7 @@ export interface CreateReviewRequest {
   visitType?: 'business' | 'leisure' | 'family' | 'couple' | 'solo';
   stayDate?: string;
   images?: string[];
+  isAnonymous?: boolean;
 }
 
 export interface Review {
@@ -208,6 +209,26 @@ class ReviewService {
   }> {
     try {
       const response = await api.get('/reviews/pending', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  async getMyReviews(params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    reviews: Review[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> {
+    try {
+      const response = await api.get('/reviews/user/my-reviews', { params });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

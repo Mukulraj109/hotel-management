@@ -24,6 +24,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const MyServiceBookings: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -57,8 +58,9 @@ const MyServiceBookings: React.FC = () => {
       setCancellingBookingId(null);
       setCancelReason('');
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to cancel booking');
+    onError: (error: Error) => {
+      const axiosError = error as Error & { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to cancel booking');
     }
   });
 
@@ -223,7 +225,7 @@ const MyServiceBookings: React.FC = () => {
                 'You haven\'t made any service bookings yet.'
               }
             </p>
-            <Button onClick={() => window.location.href = '/app/services'}>
+            <Button onClick={() => navigate('/app/services')}>
               Browse Services
             </Button>
           </Card>
@@ -498,4 +500,4 @@ const MyServiceBookings: React.FC = () => {
   );
 };
 
-export default MyServiceBookings;
+export default withErrorBoundary(MyServiceBookings, { level: 'page' });

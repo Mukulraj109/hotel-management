@@ -9,7 +9,7 @@ export interface MaintenanceTask {
   category: 'preventive' | 'corrective' | 'emergency' | 'inspection';
   priority: 'low' | 'medium' | 'high' | 'urgent' | 'emergency';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
-  roomId: { _id: string; roomNumber: string; type: string };
+  roomId?: { _id: string; roomNumber: string; type: string };
   assignedToUserId?: { _id: string; name: string; email: string };
   estimatedDuration?: number;
   estimatedCost?: number;
@@ -21,6 +21,9 @@ export interface MaintenanceTask {
   hotelId: string;
   createdAt: string;
   updatedAt: string;
+  materials?: Material[];
+  vendorRequired?: boolean;
+  vendor?: { name: string; contact?: string; cost?: number };
 }
 
 export interface MaintenanceStats {
@@ -284,7 +287,7 @@ class AdminMaintenanceService {
   async assignTask(taskId: string, assignedToUserId: string, notes?: string): Promise<ApiResponse<MaintenanceTask>> {
     return this.apiRequest(`/${taskId}/assign`, {
       method: 'POST',
-      data: { assignedToUserId, notes },
+      data: { assignedTo: assignedToUserId, notes },
     });
   }
 

@@ -281,6 +281,7 @@ class MeetUpRequestService {
     status?: string;
     type?: string;
     filter?: string;
+    search?: string;
   }): Promise<MeetUpRequestsResponse> {
     try {
       const response = await api.get('/meet-up-requests', { params });

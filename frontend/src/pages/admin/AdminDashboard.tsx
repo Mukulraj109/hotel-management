@@ -73,7 +73,7 @@ export default function AdminDashboard() {
 
   const handleFilterChange = (key: string, value: unknown) => {
     if (key === 'dateRange') {
-      setDateRange(value);
+      setDateRange(value as { start: string; end: string });
     }
   };
 
@@ -313,10 +313,10 @@ export default function AdminDashboard() {
           <DonutChart
             data={occupancyQuery.data?.data?.roomTypeDistribution ? Object.entries(occupancyQuery.data.data.roomTypeDistribution).map(([roomType, data]: [string, unknown]) => ({
               name: roomType.charAt(0).toUpperCase() + roomType.slice(1),
-              value: data.total,
-              percentage: ((data.occupied / data.total) * 100),
-              occupied: data.occupied,
-              available: data.available
+              value: data.total || 0,
+              percentage: data.total > 0 ? ((data.occupied / data.total) * 100) : 0,
+              occupied: data.occupied || 0,
+              available: data.available || 0
             })) : []}
             height={300}
             centerContent={

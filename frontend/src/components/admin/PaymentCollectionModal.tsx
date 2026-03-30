@@ -45,7 +45,7 @@ interface PaymentMethod {
 interface PaymentCollectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (paymentDetails: { paymentMethods: PaymentMethod[] } | null) => void;
+  onConfirm: (paymentDetails: { paymentMethods: PaymentMethod[]; isPartialPayment: boolean } | null) => void;
   totalAmount: number;
   currency: string;
   bookingNumber: string;
@@ -127,6 +127,9 @@ export default function PaymentCollectionModal({
   const balanceAmount = totalAmount - paidAmount;
   const remainingAmount = Math.max(0, balanceAmount - totalPaid);
   const progressPercentage = balanceAmount > 0 ? ((paidAmount + totalPaid) / totalAmount) * 100 : 0;
+  const isPartialPayment = mode === 'checkout' && totalPaid > 0 && totalPaid < balanceAmount;
+  const isFullPayment = totalPaid > 0 && totalPaid >= balanceAmount;
+  const isOverpayment = totalPaid > balanceAmount && balanceAmount > 0;
 
   const isMountedRef = useRef(true);
 
@@ -199,10 +202,8 @@ export default function PaymentCollectionModal({
   const handleFinalConfirm = async () => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
-    if (!isMountedRef.current) return;
       localStorage.removeItem(`payment-draft-${bookingNumber}`);
-      onConfirm({ paymentMethods });
+      onConfirm({ paymentMethods, isPartialPayment });
       handleClose();
     } finally {
       setIsLoading(false);
@@ -553,13 +554,40 @@ export default function PaymentCollectionModal({
                 </Card>
               )}
 
+              {/* Overpayment Warning */}
+              {isOverpayment && (
+                <Alert variant="destructive" className="mb-6 border-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  <AlertTitle className="font-bold">Overpayment Warning</AlertTitle>
+                  <AlertDescription>
+                    The amount being collected ({formatCurrency(totalPaid, currency)}) exceeds the balance due ({formatCurrency(balanceAmount, currency)}).
+                    Please adjust the payment amount.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Partial Payment Notice (checkout mode) */}
+              {isPartialPayment && (
+                <Alert variant="default" className="mb-6 border-2 border-orange-300 bg-orange-50">
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  <AlertTitle className="font-bold text-orange-800">Partial Payment</AlertTitle>
+                  <AlertDescription className="text-orange-700">
+                    This will record a partial payment of {formatCurrency(totalPaid, currency)}.
+                    The remaining balance of {formatCurrency(remainingAmount, currency)} will still be outstanding.
+                    The guest will NOT be checked out until full payment is collected.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Information Alert */}
               <Alert variant="info" className="mb-6 border-2">
                 <AlertTriangle className="h-5 w-5" />
                 <AlertTitle className="font-bold">Payment Information</AlertTitle>
                 <AlertDescription>
                   {mode === 'checkout'
-                    ? 'Complete the payment collection to proceed with checkout. You can also bypass checkout if needed.'
+                    ? isPartialPayment
+                      ? 'Collecting partial payment will update the balance but will not check out the guest. Collect the full balance due to proceed with checkout.'
+                      : 'Complete the payment collection to proceed with checkout. You can also bypass checkout if needed.'
                     : 'You can collect partial payment now and the remaining amount later. Use "Skip Payment" to check in without collecting payment.'}
                 </AlertDescription>
               </Alert>
@@ -605,16 +633,22 @@ export default function PaymentCollectionModal({
                 <Button
                   type="button"
                   onClick={handleConfirm}
-                  disabled={totalPaid <= 0}
+                  disabled={totalPaid <= 0 || isOverpayment}
                   className={`flex-1 py-6 text-base font-semibold bg-gradient-to-r ${
-                    mode === 'checkout'
-                      ? 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
-                      : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
+                    isPartialPayment
+                      ? 'from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700'
+                      : mode === 'checkout'
+                        ? 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                        : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
                   } text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50
                   disabled:cursor-not-allowed`}
                 >
                   <CheckCircle2 className="h-5 w-5 mr-2" />
-                  {mode === 'checkout' ? 'Review & Checkout' : 'Review & Check In'}
+                  {mode === 'checkout'
+                    ? isPartialPayment
+                      ? 'Collect Partial Payment'
+                      : 'Review & Checkout'
+                    : 'Review & Check In'}
                   <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
               </div>
@@ -710,12 +744,19 @@ export default function PaymentCollectionModal({
               </Card>
 
               {/* Final Confirmation */}
-              <Alert variant="info" className="border-2">
+              <Alert variant={isPartialPayment ? 'default' : 'info'} className={`border-2 ${isPartialPayment ? 'border-orange-300 bg-orange-50' : ''}`}>
                 <CheckCircle2 className="h-5 w-5" />
-                <AlertTitle className="font-bold">Confirm Payment Collection</AlertTitle>
+                <AlertTitle className="font-bold">
+                  {isPartialPayment ? 'Confirm Partial Payment' : 'Confirm Payment Collection'}
+                </AlertTitle>
                 <AlertDescription>
-                  This payment will be recorded and the {mode === 'checkout' ? 'checkout' : 'check-in'} process will continue.
-                  {mode === 'checkout' && ' The guest will be checked out after payment confirmation.'}
+                  {isPartialPayment
+                    ? `This will record a partial payment of ${formatCurrency(totalPaid, currency)}. The remaining balance of ${formatCurrency(remainingAmount, currency)} will still be outstanding. The guest will NOT be checked out.`
+                    : <>
+                        This payment will be recorded and the {mode === 'checkout' ? 'checkout' : 'check-in'} process will continue.
+                        {mode === 'checkout' && ' The guest will be checked out after payment confirmation.'}
+                      </>
+                  }
                 </AlertDescription>
               </Alert>
 
@@ -736,9 +777,11 @@ export default function PaymentCollectionModal({
                   onClick={handleFinalConfirm}
                   disabled={isLoading}
                   className={`flex-1 py-6 text-base font-semibold bg-gradient-to-r ${
-                    mode === 'checkout'
-                      ? 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
-                      : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
+                    isPartialPayment
+                      ? 'from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700'
+                      : mode === 'checkout'
+                        ? 'from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                        : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
                   } text-white shadow-lg hover:shadow-xl transition-all`}
                 >
                   {isLoading ? (
@@ -749,7 +792,11 @@ export default function PaymentCollectionModal({
                   ) : (
                     <>
                       <CheckCircle2 className="h-5 w-5 mr-2" />
-                      {mode === 'checkout' ? 'Confirm & Checkout' : 'Confirm & Check In'}
+                      {mode === 'checkout'
+                        ? isPartialPayment
+                          ? 'Confirm Partial Payment'
+                          : 'Confirm & Checkout'
+                        : 'Confirm & Check In'}
                     </>
                   )}
                 </Button>

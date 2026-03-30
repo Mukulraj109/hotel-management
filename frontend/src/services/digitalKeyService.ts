@@ -2,7 +2,11 @@ import { api } from './api';
 
 export interface DigitalKey {
   _id: string;
-  userId: string;
+  userId: string | {
+    _id: string;
+    name?: string;
+    email?: string;
+  };
   bookingId: {
     _id: string;
     bookingNumber: string;
@@ -493,7 +497,8 @@ class DigitalKeyService {
   }
 
   canRevokeKey(key: DigitalKey): boolean {
-    return key.status === 'active' && key.userId === key.userId; // User owns the key
+    // Key can be revoked if it is currently active (ownership is verified server-side)
+    return key.status === 'active';
   }
 
   isKeyExpiringSoon(key: DigitalKey): boolean {

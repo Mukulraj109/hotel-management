@@ -5,7 +5,7 @@ import ApprovalBadge from '../../components/approvals/ApprovalBadge';
 import ApprovalReviewModal from '../../components/approvals/ApprovalReviewModal';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
-type RequestTypeFilter = 'all' | 'price_change' | 'booking_modification' | 'refund' | 'discount';
+type RequestTypeFilter = 'all' | 'price_change' | 'rate_adjustment' | 'room_type_add' | 'room_type_delete';
 
 const ApprovalManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -13,15 +13,25 @@ const ApprovalManagement: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<ApprovalRequest | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
-  const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['approvalRequests', statusFilter, requestTypeFilter],
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  const { data: paginatedData, isLoading } = useQuery({
+    queryKey: ['approvalRequests', statusFilter, requestTypeFilter, page],
     queryFn: () => {
-      const filters: Record<string, unknown> = {};
-      if (statusFilter !== 'all') filters.status = statusFilter;
-      if (requestTypeFilter !== 'all') filters.requestType = requestTypeFilter;
-      return approvalService.getAllApprovalRequests(filters);
+      return approvalService.getAllApprovalRequests({
+        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+        ...(requestTypeFilter !== 'all' ? { requestType: requestTypeFilter } : {}),
+        page,
+        limit: PAGE_SIZE,
+      });
     },
+    keepPreviousData: true,
   });
+
+  const requests = paginatedData?.data ?? [];
+  const totalCount = paginatedData?.totalCount ?? 0;
+  const totalPages = paginatedData?.totalPages ?? 1;
 
   const { data: stats } = useQuery({
     queryKey: ['approvalStats'],
@@ -51,20 +61,24 @@ const ApprovalManagement: React.FC = () => {
   const getRequestTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       price_change: 'Price Change',
-      booking_modification: 'Booking Modification',
-      refund: 'Refund Request',
-      discount: 'Discount Request',
+      rate_adjustment: 'Rate Adjustment',
+      room_type_add: 'Room Type Addition',
+      room_type_delete: 'Room Type Deletion',
     };
     return labels[type] || type;
   };
 
-  const filteredRequests = requests.filter((request) => {
-    if (statusFilter !== 'all' && request.status !== statusFilter) return false;
-    if (requestTypeFilter !== 'all' && request.requestType !== requestTypeFilter)
-      return false;
-    return true;
-  });
+  const getTargetResourceLabel = (resource: string) => {
+    const labels: Record<string, string> = {
+      room_type: 'Room Type',
+      booking: 'Booking',
+      room: 'Room',
+    };
+    return labels[resource] || resource;
+  };
 
+  // Backend already filters by status and requestType; no client-side re-filtering needed
+  const filteredRequests = requests;
   const pendingRequests = filteredRequests.filter((r) => r.status === 'pending');
 
   return (
@@ -142,7 +156,7 @@ const ApprovalManagement: React.FC = () => {
                 (status) => (
                   <button aria-label="Filter"
                     key={status}
-                    onClick={() => setStatusFilter(status)}
+                    onClick={() => { setStatusFilter(status); setPage(1); }}
                     className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                       statusFilter === status
                         ? 'bg-blue-600 text-white'
@@ -166,14 +180,14 @@ const ApprovalManagement: React.FC = () => {
                 [
                   'all',
                   'price_change',
-                  'booking_modification',
-                  'refund',
-                  'discount',
+                  'rate_adjustment',
+                  'room_type_add',
+                  'room_type_delete',
                 ] as RequestTypeFilter[]
               ).map((type) => (
                 <button aria-label="Filter"
                   key={type}
-                  onClick={() => setRequestTypeFilter(type)}
+                  onClick={() => { setRequestTypeFilter(type); setPage(1); }}
                   className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                     requestTypeFilter === type
                       ? 'bg-blue-600 text-white'
@@ -266,10 +280,10 @@ const ApprovalManagement: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {request.targetResource.name}
+                        {getTargetResourceLabel(request.targetResource)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {request.targetResource.type}
+                        {request.targetResourceId}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -321,6 +335,31 @@ const ApprovalManagement: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-gray-700">
+            Page {page} of {totalPages} ({totalCount} total)
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}

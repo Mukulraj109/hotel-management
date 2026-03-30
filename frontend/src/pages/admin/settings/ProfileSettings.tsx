@@ -305,10 +305,10 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveProfileMutation.isLoading}
+              disabled={!isDirty || saveProfileMutation.isPending}
               className="flex items-center space-x-2"
             >
-              {saveProfileMutation.isLoading ? (
+              {saveProfileMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

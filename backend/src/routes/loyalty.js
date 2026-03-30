@@ -4,6 +4,7 @@ import Offer from '../models/Offer.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -36,8 +37,9 @@ function canRedeemOffer(offer, userTier, userPoints) {
   return true;
 }
 
-// Apply authentication and property access to all loyalty routes
+// Apply authentication, tenant isolation, and property access to all loyalty routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('loyalty', 'baseAccess'));
 
@@ -264,8 +266,11 @@ router.get('/transactions', catchAsync(async (req, res) => {
   const parsedPage = parseInt(page) || 1;
   const skip = (parsedPage - 1) * parsedLimit;
 
-  // Build query
+  // Build query - FIX: Include hotelId for tenant isolation
   const query = { userId: req.user._id };
+  if (req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
   if (type) {
     query.type = type;
   }
@@ -369,6 +374,47 @@ router.post('/redeem',
       throw new ApplicationError('Cannot redeem this offer. Check tier requirements and available points.', 400);
     }
 
+    // FIX: Use atomic $inc to prevent race conditions on concurrent redemptions.
+    // This ensures two simultaneous requests cannot both deduct points from the same balance.
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        'loyalty.points': { $gte: offer.pointsRequired }
+      },
+      { $inc: { 'loyalty.points': -offer.pointsRequired } },
+      { new: true, select: '+loyalty' }
+    );
+
+    if (!updatedUser) {
+      throw new ApplicationError('Insufficient points or concurrent redemption detected. Please try again.', 400);
+    }
+
+    // Update tier based on new points
+    updatedUser.updateLoyaltyTier();
+    await updatedUser.save();
+
+    // Atomically increment offer redemption count
+    const updatedOffer = await Offer.findOneAndUpdate(
+      {
+        _id: offer._id,
+        $or: [
+          { maxRedemptions: { $exists: false } },
+          { maxRedemptions: null },
+          { $expr: { $lt: ['$currentRedemptions', '$maxRedemptions'] } }
+        ]
+      },
+      { $inc: { currentRedemptions: 1 } },
+      { new: true }
+    );
+
+    if (!updatedOffer) {
+      // Rollback: restore user points since offer couldn't be redeemed
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { 'loyalty.points': offer.pointsRequired }
+      });
+      throw new ApplicationError('This offer has reached its maximum redemption limit.', 400);
+    }
+
     // Create redemption transaction
     const loyaltyTransaction = await Loyalty.create({
       userId: req.user._id,
@@ -379,14 +425,6 @@ router.post('/redeem',
       offerId: offer._id
     });
     logger.debug('Loyalty transaction created', { transactionId: loyaltyTransaction._id });
-
-    // Update user points (now works because user is a Mongoose document)
-    user.loyalty.points -= offer.pointsRequired;
-    user.updateLoyaltyTier();
-    await user.save();
-
-    // Update offer redemption count (now works because offer is a Mongoose document)
-    await offer.incrementRedemption();
 
     // Populate transaction data
     await loyaltyTransaction.populate([
@@ -399,8 +437,8 @@ router.post('/redeem',
       data: {
         message: 'Points redeemed successfully',
         transaction: loyaltyTransaction,
-        remainingPoints: user.loyalty.points,
-        newTier: user.loyalty.tier
+        remainingPoints: updatedUser.loyalty.points,
+        newTier: updatedUser.loyalty.tier
       }
     });
   })
@@ -542,21 +580,29 @@ router.get('/offers/:offerId', catchAsync(async (req, res) => {
   });
 }));
 
+// Tier thresholds - single source of truth matching User.updateLoyaltyTier()
+const TIER_THRESHOLDS = {
+  platinum: 10000,
+  gold: 5000,
+  silver: 1000,
+  bronze: 0
+};
+
 // Helper functions
 function getNextTier(points) {
-  if (points >= 10000) return null;
-  if (points >= 5000) return 'platinum';
-  if (points >= 1000) return 'gold';
-  if (points >= 100) return 'silver';
-  return 'bronze';
+  // FIX: Return the actual next tier, not the current tier.
+  // Previously returned 'bronze' for <100 pts (which IS the current tier, not next).
+  if (points >= TIER_THRESHOLDS.platinum) return null; // already at max
+  if (points >= TIER_THRESHOLDS.gold) return 'platinum';
+  if (points >= TIER_THRESHOLDS.silver) return 'gold';
+  return 'silver'; // bronze users' next tier is silver
 }
 
 function getPointsToNextTier(points) {
-  if (points >= 10000) return 0;
-  if (points >= 5000) return 10000 - points;
-  if (points >= 1000) return 5000 - points;
-  if (points >= 100) return 1000 - points;
-  return 100 - points;
+  if (points >= TIER_THRESHOLDS.platinum) return 0;
+  if (points >= TIER_THRESHOLDS.gold) return TIER_THRESHOLDS.platinum - points;
+  if (points >= TIER_THRESHOLDS.silver) return TIER_THRESHOLDS.gold - points;
+  return TIER_THRESHOLDS.silver - points;
 }
 
 export default router;

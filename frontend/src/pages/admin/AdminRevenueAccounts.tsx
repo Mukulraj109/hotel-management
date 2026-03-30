@@ -90,7 +90,7 @@ const AdminRevenueAccounts: React.FC = () => {
   const [itemsPerPage] = useState(15);
   const [viewMode, setViewMode] = useState<'flat' | 'hierarchical'>('flat');
 
-  const hotelId = localStorage.getItem('hotelId') || '';
+  const hotelId = selectedPropertyId || '';
 
   // Multi-property support
   const { selectedProperty, selectedPropertyId } = useProperty();
@@ -395,7 +395,12 @@ const AdminRevenueAccounts: React.FC = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
   };
 
   const getAccountHierarchyDisplay = (account: RevenueAccount) => {

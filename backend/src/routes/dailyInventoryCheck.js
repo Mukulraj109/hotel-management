@@ -181,15 +181,17 @@ router.get('/', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAcces
     query.checkedBy = req.user._id;
   }
 
-  const skip = (page - 1) * limit;
-  
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(1000, Math.max(1, parseInt(limit) || 20));
+  const skip = (parsedPage - 1) * parsedLimit;
+
   const [dailyChecks, total] = await Promise.all([
     DailyInventoryCheck.find(query)
       .populate('roomId', 'roomNumber type')
       .populate('checkedBy', 'name email')
       .sort('-checkDate')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(parsedLimit),
     DailyInventoryCheck.countDocuments(query)
   ]);
 
@@ -198,10 +200,10 @@ router.get('/', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAcces
     data: {
       dailyChecks,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: parsedLimit > 0 ? Math.ceil(total / parsedLimit) : 0
       }
     }
   });
@@ -497,6 +499,13 @@ router.post('/:id/issues', authenticate, authorizePolicy('dailyInventoryCheck', 
 router.get('/room/:roomId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { startDate, endDate } = req.query;
+  const { hotelId } = req.user;
+
+  // Verify room belongs to user's hotel
+  const room = await Room.findOne({ _id: roomId, hotelId }).lean();
+  if (!room) {
+    throw new ApplicationError('Room not found or access denied', 404);
+  }
 
   const checks = await DailyInventoryCheck.getRoomChecks(roomId, startDate, endDate);
 
@@ -534,6 +543,14 @@ router.get('/guest-charges/:guestId', authorizePolicy('dailyInventoryCheck', 'gu
   const { guestId } = req.params;
   const { bookingId } = req.query;
 
+  // Validate guestId format
+  if (!mongoose.Types.ObjectId.isValid(guestId)) {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Invalid guest ID format'
+    });
+  }
+
   // Check if user can access this data
   if (req.user.role === 'guest' && req.user._id.toString() !== guestId) {
     return res.status(403).json({
@@ -542,29 +559,44 @@ router.get('/guest-charges/:guestId', authorizePolicy('dailyInventoryCheck', 'gu
     });
   }
 
-  const charges = await DailyInventoryCheck.getGuestCharges(guestId, bookingId);
+  // Query InventoryTransaction for actual guest charges (not DailyInventoryCheck
+  // which tracks staff inspections, not guest-facing charges)
+  const chargeQuery = {
+    guestId: new mongoose.Types.ObjectId(guestId),
+    chargedToGuest: true,
+    status: { $in: ['completed', 'approved'] }
+  };
+  if (bookingId && mongoose.Types.ObjectId.isValid(bookingId)) {
+    chargeQuery.bookingId = new mongoose.Types.ObjectId(bookingId);
+  }
 
-  const formattedCharges = charges.map(check => ({
-    date: check.checkDate,
-    roomNumber: check.roomId.roomNumber,
-    items: check.inventoryItems
-      .filter(item => item.chargeGuest)
-      .map(item => ({
-        name: item.itemId.name,
-        category: item.itemId.category,
-        reason: item.replacementReason,
-        cost: item.replacementCost,
-        notes: item.notes
-      })),
-    totalAmount: check.totalCharges
+  const transactions = await InventoryTransaction.find(chargeQuery)
+    .populate('roomId', 'roomNumber type')
+    .populate('items.itemId', 'name category')
+    .sort({ processedAt: -1 })
+    .limit(100)
+    .lean();
+
+  const formattedCharges = transactions.map(txn => ({
+    date: txn.processedAt || txn.createdAt,
+    roomNumber: txn.roomId?.roomNumber || 'Unknown',
+    items: (txn.items || []).map(item => ({
+      name: item.name || item.itemId?.name || 'Unknown',
+      category: item.category || item.itemId?.category || 'other',
+      reason: item.reason || txn.transactionType || 'charge',
+      cost: Number(item.totalCost) || 0
+    })),
+    totalAmount: Number(txn.guestChargeAmount) || Number(txn.totalAmount) || 0
   }));
+
+  const totalCharges = formattedCharges.reduce((sum, charge) => sum + (charge.totalAmount || 0), 0);
 
   res.status(200).json({
     status: 'success',
     results: formattedCharges.length,
     data: {
       charges: formattedCharges,
-      totalCharges: formattedCharges.reduce((sum, charge) => sum + charge.totalAmount, 0)
+      totalCharges
     }
   });
 }));
@@ -575,11 +607,18 @@ router.get('/guest-charges/:guestId', authorizePolicy('dailyInventoryCheck', 'gu
  */
 router.get('/template/:roomId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { roomId } = req.params;
+  const { hotelId } = req.user;
+
+  // Verify room belongs to user's hotel
+  const room = await Room.findOne({ _id: roomId, hotelId }).lean();
+  if (!room) {
+    throw new ApplicationError('Room not found or access denied', 404);
+  }
 
   // Get room inventory template
-  const roomInventory = await RoomInventory.findOne({ 
+  const roomInventory = await RoomInventory.findOne({
     roomId: new mongoose.Types.ObjectId(roomId),
-    isActive: true 
+    isActive: true
   }).populate('items.itemId').lean();
 
   if (!roomInventory) {
@@ -614,34 +653,42 @@ router.get('/template/:roomId', authorizePolicy('dailyInventoryCheck', 'staffAcc
 }));
 
 /**
- * Update daily check (for corrections)
+ * Update daily check corrections
+ * Note: This uses PUT to avoid conflict with PATCH /:id above
  */
-router.patch('/:checkId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.put('/:checkId/corrections', authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { checkId } = req.params;
-  const updates = req.body;
+  const { hotelId } = req.user;
+  const { items, notes, status } = req.body;
+
+  // Verify check belongs to user's hotel
+  const existingCheck = await DailyInventoryCheck.findOne({ _id: checkId, hotelId }).lean();
+  if (!existingCheck) {
+    throw new ApplicationError('Daily check not found', 404);
+  }
+
+  // Check staff permission
+  if (req.user.role === 'staff' && existingCheck.checkedBy.toString() !== req.user._id.toString()) {
+    throw new ApplicationError('You can only update your own inventory checks', 403);
+  }
+
+  const updateFields = {};
+  if (items) updateFields.items = items;
+  if (notes !== undefined) updateFields.notes = notes;
+  if (status) updateFields.status = status;
 
   const dailyCheck = await DailyInventoryCheck.findByIdAndUpdate(
     checkId,
-    updates,
+    { $set: updateFields },
     { new: true, runValidators: true }
   ).populate([
-    { path: 'housekeeperId', select: 'name' },
-    { path: 'guestId', select: 'name email' },
-    { path: 'inventoryItems.itemId', select: 'name category' }
+    { path: 'roomId', select: 'roomNumber type' },
+    { path: 'checkedBy', select: 'name email' }
   ]);
-
-  if (!dailyCheck) {
-    return res.status(404).json({
-      status: 'fail',
-      message: 'Daily check not found'
-    });
-  }
 
   res.status(200).json({
     status: 'success',
-    data: {
-      check: dailyCheck
-    }
+    data: { dailyCheck }
   });
 }));
 

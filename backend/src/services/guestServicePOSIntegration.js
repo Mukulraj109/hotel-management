@@ -139,8 +139,14 @@ class GuestServicePOSIntegrationService {
    */
   async prepareOrderData(serviceRequest, outlet, options = {}) {
     try {
+      // Derive hotelId from service request, booking, or outlet
+      const hotelId = serviceRequest.hotelId
+        || serviceRequest.bookingId?.hotelId
+        || outlet.hotelId;
+
       const orderData = {
         orderId: uuidv4(),
+        hotelId,
         outlet: outlet._id,
         type: 'room_service',
         status: 'pending',
@@ -335,21 +341,18 @@ class GuestServicePOSIntegrationService {
       // Send to outlet staff
       if (outlet.staff && outlet.staff.length > 0) {
         for (const staffMember of outlet.staff) {
-          await websocketService.sendToUser(staffMember._id || staffMember, notification);
+          await websocketService.sendToUser(staffMember._id || staffMember, 'food_order:created', notification);
         }
       }
 
       // Send to outlet manager
       if (outlet.manager) {
-        await websocketService.sendToUser(outlet.manager._id || outlet.manager, notification);
+        await websocketService.sendToUser(outlet.manager._id || outlet.manager, 'food_order:created', notification);
       }
 
       // Send to hotel channel for general kitchen staff
       if (outlet.hotelId) {
-        await websocketService.sendToHotel(outlet.hotelId, {
-          ...notification,
-          roles: ['staff', 'admin', 'manager']
-        });
+        await websocketService.broadcastToHotel(outlet.hotelId, 'food_order:created', notification);
       }
 
     } catch (error) {

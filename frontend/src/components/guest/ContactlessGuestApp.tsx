@@ -897,12 +897,12 @@ const ContactlessGuestApp: React.FC = () => {
           {tabs.map(tab => {
             const Icon = tab.icon;
             return (
-              <button aria-label="Close"
+              <button aria-label={tab.name}
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
-                  activeTab === tab.id 
-                    ? 'text-blue-600 bg-blue-50' 
+                  activeTab === tab.id
+                    ? 'text-blue-600 bg-blue-50'
                     : 'text-gray-600 hover:text-blue-600'
                 }`}
               >

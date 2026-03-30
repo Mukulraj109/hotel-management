@@ -24,7 +24,10 @@ export type BookingSource =
   | 'admin'
   | 'guest'
   | 'system'
-  | 'api';
+  | 'api'
+  | 'walk_in'
+  | 'manual'
+  | 'frontdesk';
 
 export type BookingRoomType = 'single' | 'double' | 'suite' | 'deluxe';
 
@@ -116,7 +119,7 @@ export interface SettlementAdjustment {
   appliedBy?: {
     userId?: string;
     userName?: string;
-    userRole?: 'admin' | 'staff';
+    userRole?: 'admin' | 'staff' | 'manager' | 'frontdesk';
   };
   invoiceGenerated?: boolean;
   invoiceId?: string;
@@ -135,7 +138,7 @@ export interface SettlementHistoryEntry {
   processedBy?: {
     userId?: string;
     userName?: string;
-    userRole?: 'admin' | 'staff';
+    userRole?: 'admin' | 'staff' | 'manager' | 'frontdesk';
   };
   paymentMethod?: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'refund_to_source';
   reference?: string;
@@ -221,6 +224,7 @@ export interface Booking {
   guestDetails: GuestDetails;
   corporateBooking?: CorporateBookingDetails;
   gstDetails?: GSTDetails;
+  source?: 'direct' | 'walk_in' | 'booking_com' | 'expedia' | 'airbnb';
   extras?: BookingExtra[];
   extraPersons?: ExtraPerson[];
   idVerification?: {
@@ -248,7 +252,7 @@ export interface Booking {
       userId?: string;
       userName?: string;
       userRole?: string;
-      source?: 'direct' | 'ota' | 'admin' | 'guest' | 'system' | 'api';
+      source?: BookingSource;
     };
     fieldChanges?: Array<{
       field: string;

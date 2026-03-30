@@ -433,10 +433,10 @@ const AdminUserAnalytics: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Time</option>
-                <option value='{"start":"2024-01-01","end":"2024-12-31"}'>2024</option>
-                <option value='{"start":"2024-11-01","end":"2024-11-30"}'>Last 30 Days</option>
-                <option value='{"start":"2024-11-25","end":"2024-12-01"}'>Last 7 Days</option>
-                <option value='{"start":"2024-11-30","end":"2024-12-01"}'>Last 24 Hours</option>
+                <option value="365d">Last Year</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="1d">Last 24 Hours</option>
               </select>
             </div>
             <div>

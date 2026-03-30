@@ -76,13 +76,13 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
       
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch room types');
+      setError(err instanceof Error ? err.message : 'Failed to fetch room types');
     }
   };
 
   const fetchCalendarData = async () => {
     if (!selectedRoomTypeId) return;
-    
+
     try {
       setLoading(true);
       const data = await inventoryService.getInventoryCalendar({
@@ -94,7 +94,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
       setCalendarData(data);
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch calendar data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch calendar data');
     } finally {
       setLoading(false);
     }
@@ -248,7 +248,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
       setShowEditModal(false);
       setSelectedCell(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to update inventory');
+      setError(err instanceof Error ? err.message : 'Failed to update inventory');
     }
   };
 

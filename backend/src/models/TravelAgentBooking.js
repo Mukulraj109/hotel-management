@@ -608,7 +608,9 @@ travelAgentBookingSchema.statics.getPendingCommissions = function(hotelId) {
   return this.find(matchStage)
     .populate('travelAgent', 'companyName agentCode')
     .populate('hotel', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .lean();
 };
 
 const TravelAgentBooking = mongoose.model('TravelAgentBooking', travelAgentBookingSchema);

@@ -90,7 +90,11 @@ interface ReportFilter {
   endDate: Date;
 }
 
-const FinancialReports: React.FC = () => {
+interface FinancialReportsProps {
+  readOnly?: boolean;
+}
+
+const FinancialReports: React.FC<FinancialReportsProps> = ({ readOnly: _readOnly = false }) => {
   const [loading, setLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState('income-statement');
   const [financialData, setFinancialData] = useState<FinancialStatement | null>(null);
@@ -231,7 +235,13 @@ const FinancialReports: React.FC = () => {
   };
 
   const formatPercentage = (value: number) => {
+    if (!isFinite(value) || isNaN(value)) return '0.0%';
     return `${value.toFixed(1)}%`;
+  };
+
+  const safeDivide = (numerator: number, denominator: number): number => {
+    if (!denominator || denominator === 0) return 0;
+    return (numerator / denominator) * 100;
   };
 
   const renderIncomeStatement = () => (
@@ -253,7 +263,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.revenue.roomRevenue || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.revenue.roomRevenue || 0) / (financialData?.incomeStatement.revenue.totalRevenue || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.revenue.roomRevenue || 0, financialData?.incomeStatement.revenue.totalRevenue || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -262,7 +272,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.revenue.fbRevenue || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.revenue.fbRevenue || 0) / (financialData?.incomeStatement.revenue.totalRevenue || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.revenue.fbRevenue || 0, financialData?.incomeStatement.revenue.totalRevenue || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -271,7 +281,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.revenue.otherRevenue || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.revenue.otherRevenue || 0) / (financialData?.incomeStatement.revenue.totalRevenue || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.revenue.otherRevenue || 0, financialData?.incomeStatement.revenue.totalRevenue || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow className="border-t-2">
@@ -305,7 +315,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.expenses.operatingExpenses || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.expenses.operatingExpenses || 0) / (financialData?.incomeStatement.expenses.totalExpenses || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.expenses.operatingExpenses || 0, financialData?.incomeStatement.expenses.totalExpenses || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -314,7 +324,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.expenses.staffExpenses || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.expenses.staffExpenses || 0) / (financialData?.incomeStatement.expenses.totalExpenses || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.expenses.staffExpenses || 0, financialData?.incomeStatement.expenses.totalExpenses || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -323,7 +333,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.expenses.marketingExpenses || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.expenses.marketingExpenses || 0) / (financialData?.incomeStatement.expenses.totalExpenses || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.expenses.marketingExpenses || 0, financialData?.incomeStatement.expenses.totalExpenses || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -332,7 +342,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.expenses.adminExpenses || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {((financialData?.incomeStatement.expenses.adminExpenses || 0) / (financialData?.incomeStatement.expenses.totalExpenses || 1) * 100).toFixed(1)}%
+                  {safeDivide(financialData?.incomeStatement.expenses.adminExpenses || 0, financialData?.incomeStatement.expenses.totalExpenses || 0).toFixed(1)}%
                 </TableCell>
               </TableRow>
               <TableRow className="border-t-2">
@@ -366,7 +376,7 @@ const FinancialReports: React.FC = () => {
                   {formatCurrency(financialData?.incomeStatement.grossProfit || 0)}
                 </TableCell>
                 <TableCell className="text-right text-sm text-gray-500">
-                  {formatPercentage(((financialData?.incomeStatement.grossProfit || 0) / (financialData?.incomeStatement.revenue.totalRevenue || 1)) * 100)}
+                  {formatPercentage(safeDivide(financialData?.incomeStatement.grossProfit || 0, financialData?.incomeStatement.revenue.totalRevenue || 0))}
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -474,6 +484,17 @@ const FinancialReports: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Empty State */}
+      {!financialData && !loading && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <BarChart3 className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+            <p className="text-gray-500 font-medium text-lg">No financial data available</p>
+            <p className="text-gray-400 text-sm mt-1">Adjust the date range or click "Update Report" to generate reports.</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Report Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>

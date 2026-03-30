@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  Gift, 
-  Star, 
-  Percent, 
-  ArrowUp, 
+import {
+  Gift,
+  Star,
+  Percent,
+  ArrowUp,
   Circle,
   Search,
   Filter,
-  ChevronDown,
   Eye
 } from 'lucide-react';
 import { loyaltyService, Offer } from '../../services/loyaltyService';
@@ -18,10 +17,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { formatCurrency } from '../../utils/formatters';
 import FavoriteButton from '../../components/ui/FavoriteButton';
 import BackButton from '../../components/ui/BackButton';
 import ErrorAlert, { parseErrorToLoyaltyError } from '../../components/ui/ErrorAlert';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
 
 const getOfferIcon = (type: string) => {
@@ -61,7 +61,6 @@ export default function AllOffers() {
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [redeemingOffer, setRedeemingOffer] = useState<string | null>(null);
   const [redemptionError, setRedemptionError] = useState<unknown>(null);
-  const [userLoyaltyInfo, setUserLoyaltyInfo] = useState<unknown>(null);
 
   const { data: offers = [], isLoading, error, refetch } = useQuery({
     queryKey: ['loyalty-offers', selectedCategory],
@@ -98,15 +97,20 @@ export default function AllOffers() {
     }
   };
 
-  const canUserRedeemOffer = (offer: Offer) => {
-    if (!loyaltyInfo) return { canRedeem: false, reason: 'Loading...' };
-    
+  const canUserRedeemOffer = (offer: Offer): {
+    canRedeem: boolean;
+    reason?: string;
+    pointsNeeded?: number;
+    requiredTier?: string;
+    userTier?: string;
+  } => {
+    if (!loyaltyInfo) return { canRedeem: false, reason: 'loading' };
+
     const hasEnoughPoints = loyaltyInfo.points >= offer.pointsRequired;
-    const meetstierRequirement = loyaltyService.getTierLevel ? 
-      loyaltyService.getTierLevel(loyaltyInfo.tier) >= loyaltyService.getTierLevel(offer.minTier) : true;
+    const meetsTierRequirement = loyaltyService.getTierLevel(loyaltyInfo.tier) >= loyaltyService.getTierLevel(offer.minTier);
     const isActive = offer.isActive;
     const notExpired = !offer.validUntil || new Date() <= new Date(offer.validUntil);
-    
+
     if (!hasEnoughPoints) {
       return {
         canRedeem: false,
@@ -114,8 +118,8 @@ export default function AllOffers() {
         pointsNeeded: offer.pointsRequired - loyaltyInfo.points
       };
     }
-    
-    if (!meetstierRequirement) {
+
+    if (!meetsTierRequirement) {
       return {
         canRedeem: false,
         reason: 'tier_required',
@@ -123,15 +127,15 @@ export default function AllOffers() {
         userTier: loyaltyInfo.tier
       };
     }
-    
+
     if (!isActive) {
       return { canRedeem: false, reason: 'offer_inactive' };
     }
-    
+
     if (!notExpired) {
       return { canRedeem: false, reason: 'offer_expired' };
     }
-    
+
     return { canRedeem: true };
   };
 
@@ -320,7 +324,7 @@ export default function AllOffers() {
                       <Badge variant="secondary" className="bg-green-100 text-green-800">
                         {offer.discountPercentage 
                           ? `${offer.discountPercentage}% off` 
-                          : `₹${offer.discountAmount} off`
+                          : `${formatCurrency(offer.discountAmount || 0)} off`
                         }
                       </Badge>
                     )}
@@ -430,9 +434,9 @@ export default function AllOffers() {
                   <h4 className="font-semibold mb-2">Discount Details</h4>
                   <div className="bg-green-50 p-4 rounded-lg">
                     <p className="text-green-800 font-medium">
-                      {selectedOffer.discountPercentage 
-                        ? `${selectedOffer.discountPercentage}% discount` 
-                        : `₹${selectedOffer.discountAmount} discount`
+                      {selectedOffer.discountPercentage
+                        ? `${selectedOffer.discountPercentage}% discount`
+                        : `${formatCurrency(selectedOffer.discountAmount || 0)} discount`
                       }
                     </p>
                   </div>

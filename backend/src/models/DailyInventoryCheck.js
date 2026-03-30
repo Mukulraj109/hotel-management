@@ -243,7 +243,7 @@ dailyInventoryCheckSchema.statics.getTodayChecks = function(hotelId) {
 dailyInventoryCheckSchema.statics.getOverdueChecks = function(hotelId) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   return this.find({
     hotelId,
     checkDate: { $lt: today },
@@ -251,6 +251,52 @@ dailyInventoryCheckSchema.statics.getOverdueChecks = function(hotelId) {
   }).populate('roomId', 'roomNumber type')
     .populate('checkedBy', 'name email')
     .sort('checkDate');
+};
+
+// Static method to get checks for a specific room within a date range
+dailyInventoryCheckSchema.statics.getRoomChecks = function(roomId, startDate, endDate) {
+  const query = { roomId: new mongoose.Types.ObjectId(roomId) };
+  if (startDate || endDate) {
+    query.checkDate = {};
+    if (startDate) query.checkDate.$gte = new Date(startDate);
+    if (endDate) query.checkDate.$lte = new Date(endDate);
+  }
+  return this.find(query)
+    .populate('roomId', 'roomNumber type')
+    .populate('checkedBy', 'name email')
+    .sort('-checkDate')
+    .limit(100)
+    .lean();
+};
+
+// Static method to get pending replacements for a hotel
+dailyInventoryCheckSchema.statics.getPendingReplacements = function(hotelId) {
+  return this.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    'items.status': { $in: ['missing', 'damaged'] },
+    status: { $ne: 'completed' }
+  }).populate('roomId', 'roomNumber type')
+    .populate('checkedBy', 'name email')
+    .sort('-checkDate')
+    .limit(100)
+    .lean();
+};
+
+// Static method to get guest charges from inventory checks
+dailyInventoryCheckSchema.statics.getGuestCharges = function(guestId, bookingId) {
+  const query = {
+    checkedBy: new mongoose.Types.ObjectId(guestId),
+    'items.status': { $in: ['missing', 'damaged'] }
+  };
+  if (bookingId) {
+    query.bookingId = new mongoose.Types.ObjectId(bookingId);
+  }
+  return this.find(query)
+    .populate('roomId', 'roomNumber type')
+    .populate('items.itemId', 'name category')
+    .sort('-checkDate')
+    .limit(100)
+    .lean();
 };
 
 export default mongoose.model('DailyInventoryCheck', dailyInventoryCheckSchema);

@@ -16,9 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useGuestSatisfaction } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatPercentage, formatRelativeTime } from '../../../utils/dashboardUtils';
 
 export default function GuestSatisfaction() {
+  const { selectedPropertyId, properties } = useProperty();
+
   const [filters, setFilters] = useState({
     hotelId: '',
     period: 'month',
@@ -26,8 +29,10 @@ export default function GuestSatisfaction() {
     category: '',
   });
 
+  const activeHotelId = filters.hotelId || selectedPropertyId || '';
+
   const satisfactionQuery = useGuestSatisfaction(
-    filters.hotelId,
+    activeHotelId,
     filters.period,
     filters.rating ? parseInt(filters.rating) : undefined
   );
@@ -65,7 +70,7 @@ export default function GuestSatisfaction() {
           <ExportButton
             endpoint="guest-satisfaction"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               period: filters.period,
               rating: filters.rating,
             }}
@@ -90,8 +95,7 @@ export default function GuestSatisfaction() {
             type: 'select',
             options: [
               { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
+              ...properties.map((p) => ({ value: p._id, label: p.name })),
             ],
           },
           {
@@ -139,49 +143,49 @@ export default function GuestSatisfaction() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Average Rating"
-          value={data?.overview.averageRating || 0}
+          value={data?.overview?.averageRating || 0}
           suffix="/5"
           trend={{
-            value: 0.2,
-            direction: 'up',
+            value: data?.overview?.ratingTrend || 0,
+            direction: (data?.overview?.ratingTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs last period'
           }}
           color="yellow"
           loading={satisfactionQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Total Reviews"
-          value={data?.overview.totalReviews || 0}
+          value={data?.overview?.totalReviews || 0}
           trend={{
-            value: 15,
-            direction: 'up',
+            value: data?.overview?.newReviews || 0,
+            direction: (data?.overview?.newReviews || 0) > 0 ? 'up' : 'neutral',
             label: 'new reviews'
           }}
           color="blue"
           loading={satisfactionQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Positive Sentiment"
           value={data?.sentiment?.positive || 0}
           type="percentage"
           trend={{
-            value: 5,
-            direction: 'up',
+            value: data?.sentiment?.positiveTrend || 0,
+            direction: (data?.sentiment?.positiveTrend || 0) >= 0 ? 'up' : 'down',
             label: 'sentiment score'
           }}
           color="green"
           loading={satisfactionQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Response Rate"
-          value={87}
+          value={data?.overview?.responseRate || 0}
           type="percentage"
           trend={{
-            value: 3,
-            direction: 'up',
+            value: data?.overview?.responseRateTrend || 0,
+            direction: (data?.overview?.responseRateTrend || 0) >= 0 ? 'up' : 'down',
             label: 'guest response'
           }}
           color="purple"
@@ -234,9 +238,9 @@ export default function GuestSatisfaction() {
             centerContent={
               <div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {((data?.sentiment?.positive || 0) + (data?.sentiment?.neutral || 0) + (data?.sentiment?.negative || 0)).toFixed(0)}%
+                  {(data?.sentiment?.positive || 0).toFixed(1)}%
                 </div>
-                <div className="text-sm text-gray-500">Total Coverage</div>
+                <div className="text-sm text-gray-500">Positive</div>
               </div>
             }
           />
@@ -272,24 +276,24 @@ export default function GuestSatisfaction() {
                       </Badge>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-2xl font-bold" style={{ color: getRatingColor(category.averageRating) }}>
-                        {category.averageRating.toFixed(1)}
+                      <span className="text-2xl font-bold" style={{ color: getRatingColor(category.averageRating ?? 0) }}>
+                        {(category.averageRating ?? 0).toFixed(1)}
                       </span>
                       <span className="text-sm text-gray-500">/5</span>
                       <div className={cn(
                         'text-sm font-medium',
-                        category.trend > 0 ? 'text-green-600' : category.trend < 0 ? 'text-red-600' : 'text-gray-600'
+                        (category.trend ?? 0) > 0 ? 'text-green-600' : (category.trend ?? 0) < 0 ? 'text-red-600' : 'text-gray-600'
                       )}>
-                        {category.trend > 0 ? '↗' : category.trend < 0 ? '↘' : '→'} {Math.abs(category.trend).toFixed(1)}%
+                        {(category.trend ?? 0) > 0 ? '↗' : (category.trend ?? 0) < 0 ? '↘' : '→'} {Math.abs(category.trend ?? 0).toFixed(1)}%
                       </div>
                     </div>
                   </div>
                   <ProgressBar
-                    value={(category.averageRating / 5) * 100}
+                    value={((category.averageRating ?? 0) / 5) * 100}
                     color={
-                      category.averageRating >= 4.5 ? 'green' :
-                      category.averageRating >= 4.0 ? 'blue' :
-                      category.averageRating >= 3.5 ? 'yellow' :
+                      (category.averageRating ?? 0) >= 4.5 ? 'green' :
+                      (category.averageRating ?? 0) >= 4.0 ? 'blue' :
+                      (category.averageRating ?? 0) >= 3.5 ? 'yellow' :
                       'red'
                     }
                     showPercentage={false}
@@ -502,7 +506,7 @@ export default function GuestSatisfaction() {
           <ExportButton
             endpoint="guest-satisfaction"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               period: filters.period,
               detailed: 'true',
             }}

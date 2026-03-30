@@ -113,16 +113,18 @@ billingSessionSchema.pre('save', function(next) {
 
 // Method to calculate totals
 billingSessionSchema.methods.calculateTotals = function() {
-  this.subtotal = this.items.reduce((sum, item) => {
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  this.subtotal = round2(this.items.reduce((sum, item) => {
     return sum + (item.price * item.quantity);
-  }, 0);
-  
-  this.totalTax = this.items.reduce((sum, item) => {
+  }, 0));
+
+  this.totalTax = round2(this.items.reduce((sum, item) => {
     return sum + ((item.tax || 0) * item.quantity);
-  }, 0);
-  
-  this.grandTotal = this.subtotal + this.totalTax - this.totalDiscount;
-  
+  }, 0));
+
+  this.grandTotal = round2(this.subtotal + this.totalTax - this.totalDiscount);
+
   return {
     subtotal: this.subtotal,
     totalTax: this.totalTax,
@@ -140,10 +142,10 @@ billingSessionSchema.methods.addItem = function(item) {
     price: item.price,
     outlet: item.outlet,
     quantity: 1,
-    tax: item.price * 0.18, // 18% GST
+    tax: Math.round(item.price * 18) / 100, // 18% GST, rounded to avoid floating-point errors
     timestamp: new Date()
   };
-  
+
   this.items.push(newItem);
   this.calculateTotals();
   return this;

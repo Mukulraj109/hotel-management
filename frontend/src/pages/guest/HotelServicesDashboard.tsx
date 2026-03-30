@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -8,25 +9,19 @@ import {
   MapPin,
   Users,
   Calendar,
-  Phone,
-  Mail,
   Heart,
-  HeartOff,
   ChevronRight,
-  Loader2,
   Sparkles,
   TrendingUp,
   Activity,
   Eye,
-  Settings,
-  Zap
+  Settings
 } from 'lucide-react';
-import { hotelServicesService, HotelService, ServiceType } from '../../services/hotelServicesService';
+import { hotelServicesService, HotelService } from '../../services/hotelServicesService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { formatCurrency } from '../../utils/formatters';
 import { useRealTime } from '../../services/realTimeService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -38,16 +33,15 @@ function HotelServicesDashboard() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [filterFeatured, setFilterFeatured] = useState(false);
 
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
 
   // WebSocket connection setup
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
+    connect().catch(() => { /* WebSocket unavailable */ });
+  }, [connect]);
 
   // Real-time event listeners for hotel services updates
   useEffect(() => {
@@ -71,16 +65,16 @@ function HotelServicesDashboard() {
 
       // Show notification for price changes or availability updates
       if (data.priceChanged) {
-        toast.info(`Price updated for ${updatedService.name}`, {
+        toast(`Price updated for ${updatedService.name}`, {
           duration: 4000,
           icon: '💰'
         });
       }
 
       if (data.availabilityChanged) {
-        toast.info(`Availability updated for ${updatedService.name}`, {
+        toast(`Availability updated for ${updatedService.name}`, {
           duration: 3000,
-          icon: updatedService.available ? '✅' : '❌'
+          icon: updatedService.isActive ? '✅' : '❌'
         });
       }
     };
@@ -106,8 +100,8 @@ function HotelServicesDashboard() {
       // Update cache to reflect unavailable status
       queryClient.setQueryData(['hotel-services'], (oldData: Record<string, unknown>) => {
         if (!oldData) return oldData;
-        return oldData.map((s: HotelService) => 
-          s._id === service._id ? { ...s, available: false } : s
+        return oldData.map((s: HotelService) =>
+          s._id === service._id ? { ...s, isActive: false } : s
         );
       });
 
@@ -161,13 +155,13 @@ function HotelServicesDashboard() {
   };
 
   // Queries
-  const { data: services, isLoading: servicesLoading } = useQuery({
+  const { data: services, isLoading: servicesLoading, error: servicesError, refetch: refetchServices } = useQuery({
     queryKey: ['hotel-services', getServicesQuery()],
     queryFn: () => hotelServicesService.getServices(getServicesQuery()),
     staleTime: 5 * 60 * 1000
   });
 
-  const { data: serviceTypes, isLoading: typesLoading } = useQuery({
+  const { data: serviceTypes, isLoading: typesLoading, error: typesError } = useQuery({
     queryKey: ['service-types'],
     queryFn: hotelServicesService.getServiceTypes,
     staleTime: 10 * 60 * 1000
@@ -180,24 +174,41 @@ function HotelServicesDashboard() {
   });
 
   // Filter services based on favorites if needed
-  const filteredServices = services?.filter(service => 
+  const filteredServices = services?.filter(service =>
     !filterFeatured || service.featured
   ) || [];
 
   const handleServiceClick = (service: HotelService) => {
-    // Navigate to service detail page
-    window.location.href = `/app/services/${service._id}`;
+    navigate(`/app/services/${service._id}`);
   };
 
   const handleBookNow = (service: HotelService) => {
-    // Navigate to booking page
-    window.location.href = `/app/services/${service._id}/book`;
+    navigate(`/app/services/${service._id}/book`);
   };
 
   if (servicesLoading || typesLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (servicesError || typesError) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Sparkles className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load hotel services</h2>
+          <p className="text-gray-600 mb-4">
+            {servicesError instanceof Error ? servicesError.message :
+             typesError instanceof Error ? typesError.message :
+             'An unexpected error occurred while loading services.'}
+          </p>
+          <Button onClick={() => refetchServices()} variant="outline">
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -288,7 +299,7 @@ function HotelServicesDashboard() {
                   </div>
                 </div>
                 <div className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  {services?.filter(s => s.available).length || 0}
+                  {services?.filter(s => s.isActive).length || 0}
                 </div>
                 <div className="text-xs font-medium text-gray-600">Available</div>
               </div>
@@ -342,9 +353,14 @@ function HotelServicesDashboard() {
                   </div>
                 </div>
                 <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                  98%
+                  {(() => {
+                    if (!services || services.length === 0) return '0.0';
+                    const ratedServices = services.filter(s => s.rating?.count > 0);
+                    if (ratedServices.length === 0) return 'N/A';
+                    return (ratedServices.reduce((sum, s) => sum + (s.rating?.average || 0), 0) / ratedServices.length).toFixed(1);
+                  })()}
                 </div>
-                <div className="text-xs font-medium text-gray-600">Satisfaction</div>
+                <div className="text-xs font-medium text-gray-600">Avg Rating</div>
               </div>
             </Card>
           </div>
@@ -559,7 +575,7 @@ function ServiceCard({
         </div>
         
         {/* Favorite Button */}
-        <button aria-label="Toggle"
+        <button aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           onClick={(e) => {
             e.stopPropagation();
             onToggleFavorite(service._id);
@@ -615,11 +631,11 @@ function ServiceCard({
           </div>
 
           {/* Rating */}
-          {service.rating.count > 0 && (
+          {service.rating?.count > 0 && (
             <div className="flex items-center space-x-1">
               <Star className="h-4 w-4 text-yellow-400 fill-current" />
               <span className="text-sm text-gray-600">
-                {service.rating.average.toFixed(1)} ({service.rating.count} reviews)
+                {service.rating.average?.toFixed(1)} ({service.rating.count} reviews)
               </span>
             </div>
           )}

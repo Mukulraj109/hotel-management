@@ -10,6 +10,7 @@ export interface HotelService {
   duration?: number;
   capacity?: number;
   isActive: boolean;
+  available: boolean;
   images: string[];
   amenities: string[];
   operatingHours?: {
@@ -109,15 +110,22 @@ export interface ServiceBookingsResponse {
 
 class HotelServicesService {
   /**
-   * Get all hotel services
+   * Get all hotel services with pagination
    */
   async getServices(params?: {
     type?: string;
     search?: string;
     featured?: boolean;
+    page?: number;
+    limit?: number;
   }): Promise<HotelService[]> {
     try {
-      const response = await api.get('/hotel-services', { params });
+      const paginatedParams = {
+        page: 1,
+        limit: 20,
+        ...params,
+      };
+      const response = await api.get('/hotel-services', { params: paginatedParams });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -376,10 +384,17 @@ class HotelServicesService {
   }
 
   /**
-   * Format price with currency
+   * Format price with currency using proper locale formatting
    */
   formatPrice(price: number, currency: string = 'INR'): string {
-    return `${currency} ${price.toLocaleString()}`;
+    try {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency,
+      }).format(price);
+    } catch {
+      return `${currency} ${price.toLocaleString('en-IN')}`;
+    }
   }
 
   /**
@@ -452,6 +467,7 @@ class HotelServicesService {
    * Get all services for admin management (with pagination)
    */
   async getAdminServices(params?: {
+    hotelId?: string;
     page?: number;
     limit?: number;
     type?: string;

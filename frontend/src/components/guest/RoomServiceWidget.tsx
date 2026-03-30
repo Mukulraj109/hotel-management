@@ -3,7 +3,6 @@ import { api } from '../../services/api';
 import {
   Package,
   CoffeeIcon,
-  Wifi,
   Tv,
   Bath,
   ShoppingCart,
@@ -112,15 +111,17 @@ export function RoomServiceWidget({
           // Fetch inventory charges for the guest
           const params: Record<string, unknown> = {};
           if (bookingId) params.bookingId = bookingId;
-          const { data } = await api.get(`/daily-inventory-check/guest-charges/${guestId}`, { params });
-          inventoryCharges = data.data.charges.flatMap((charge: Record<string, unknown>) =>
-            charge.items.map((item: Record<string, unknown>) => ({
-              itemName: item.name,
-              reason: item.reason || 'damage',
-              cost: item.cost,
-              date: charge.date
-            }))
-          );
+          const { data } = await api.get(`/daily-inventory-checks/guest-charges/${guestId}`, { params });
+          const charges = Array.isArray(data?.data?.charges) ? data.data.charges : [];
+          inventoryCharges = charges.flatMap((charge: Record<string, unknown>) => {
+            const items = Array.isArray(charge.items) ? charge.items : [];
+            return items.map((item: Record<string, unknown>) => ({
+              itemName: (item as any).name || 'Unknown',
+              reason: (item as any).status || 'damage',
+              cost: Number((item as any).cost) || 0,
+              date: (charge as any).date || ''
+            }));
+          });
         } catch {
           // Error handled silently
         }
@@ -292,22 +293,26 @@ export function RoomServiceWidget({
   return (
     <div className="space-y-6">
       {/* Room Condition Status */}
-      <Card className="p-4 bg-green-50 border-green-200">
+      {summary.roomCondition.score > 0 && (
+      <Card className={`p-4 ${summary.roomCondition.score >= 70 ? 'bg-green-50 border-green-200' : summary.roomCondition.score >= 40 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+            <CheckCircle className={`w-5 h-5 mr-2 ${summary.roomCondition.score >= 70 ? 'text-green-600' : summary.roomCondition.score >= 40 ? 'text-yellow-600' : 'text-red-600'}`} />
             <div>
-              <h3 className="font-semibold text-green-900">Room Status: Excellent</h3>
-              <p className="text-sm text-green-700">
+              <h3 className={`font-semibold ${summary.roomCondition.score >= 70 ? 'text-green-900' : summary.roomCondition.score >= 40 ? 'text-yellow-900' : 'text-red-900'}`}>
+                Room Status: {summary.roomCondition.score >= 80 ? 'Excellent' : summary.roomCondition.score >= 60 ? 'Good' : summary.roomCondition.score >= 40 ? 'Fair' : 'Needs Attention'}
+              </h3>
+              <p className={`text-sm ${summary.roomCondition.score >= 70 ? 'text-green-700' : summary.roomCondition.score >= 40 ? 'text-yellow-700' : 'text-red-700'}`}>
                 Room condition score: {summary.roomCondition.score}/100
               </p>
             </div>
           </div>
-          <Badge variant="secondary" className="bg-green-100 text-green-800">
+          <Badge variant="secondary" className={summary.roomCondition.score >= 70 ? 'bg-green-100 text-green-800' : summary.roomCondition.score >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>
             {summary.roomCondition.status}
           </Badge>
         </div>
       </Card>
+      )}
 
       {/* Current Charges Summary */}
       {summary.totalCharges > 0 && (
@@ -425,7 +430,8 @@ export function RoomServiceWidget({
             All Services
           </button>
           {summary.availableServices.map(service => (
-            <button aria-label="Close"
+            <button
+              aria-label={`Filter by ${service.name}`}
               key={service.category}
               onClick={() => setSelectedCategory(service.category)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
@@ -442,6 +448,12 @@ export function RoomServiceWidget({
 
         {/* Service Items */}
         <div className="space-y-6">
+          {filteredServices.length === 0 && (
+            <div className="text-center py-8">
+              <Package className="mx-auto h-8 w-8 text-gray-400 mb-3" />
+              <p className="text-gray-500">No services available in this category</p>
+            </div>
+          )}
           {filteredServices.map(service => (
             <div key={service.category} className="space-y-4">
               <div className="flex items-center space-x-2">
@@ -533,6 +545,12 @@ export function RoomServiceWidget({
       {/* Complimentary Usage Tracker */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Complimentary Items Usage</h3>
+        {summary.complimentaryUsage.length === 0 ? (
+          <div className="text-center py-6">
+            <Star className="mx-auto h-8 w-8 text-gray-400 mb-3" />
+            <p className="text-gray-500">No complimentary items tracked for this room</p>
+          </div>
+        ) : (
         <div className="space-y-3">
           {summary.complimentaryUsage.map((usage, index) => (
             <div key={`summary-complimentaryUsage-${index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -549,13 +567,14 @@ export function RoomServiceWidget({
                 <div className="w-20 bg-gray-200 rounded-full h-2 mt-1">
                   <div
                     className="bg-green-500 h-2 rounded-full"
-                    style={{ width: `${(usage.remaining / usage.allowed) * 100}%` }}
+                    style={{ width: `${usage.allowed > 0 ? (usage.remaining / usage.allowed) * 100 : 0}%` }}
                   />
                 </div>
               </div>
             </div>
           ))}
         </div>
+        )}
       </Card>
 
       {/* Service Request History */}
@@ -563,7 +582,7 @@ export function RoomServiceWidget({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Recent Requests</h3>
           <Button
-            onClick={() => window.location.href = '/guest/requests'}
+            onClick={() => window.location.href = '/app/services'}
             size="sm"
             variant="secondary"
           >

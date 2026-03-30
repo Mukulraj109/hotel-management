@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { userService } from '../../services/userService';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Lock, 
-  Bed, 
-  Building, 
+import {
+  User,
+  Mail,
+  Phone,
+  Lock,
+  Bed,
+  Building,
   Save,
   Edit3,
   X,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -36,13 +38,24 @@ interface PasswordFormData {
   confirmPassword: string;
 }
 
+interface FormErrors {
+  name?: string;
+  phone?: string;
+}
+
+const PHONE_REGEX = /^\+?[\d\s\-()]{7,20}$/;
+
 export default function GuestProfile() {
   const { user, updateUser } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+
   const [profileData, setProfileData] = useState<ProfileFormData>({
     name: '',
     phone: '',
@@ -72,6 +85,7 @@ export default function GuestProfile() {
           other: user.preferences?.other || ''
         }
       });
+      setLoading(false);
     }
   }, [user]);
 
@@ -81,7 +95,7 @@ export default function GuestProfile() {
       setProfileData(prev => ({
         ...prev,
         [parent]: {
-          ...(prev as unknown)[parent],
+          ...(prev[parent as keyof ProfileFormData] as Record<string, unknown>),
           [child]: value
         }
       }));
@@ -100,43 +114,92 @@ export default function GuestProfile() {
     }));
   };
 
+  const validateProfileForm = (): boolean => {
+    const errors: FormErrors = {};
+
+    if (!profileData.name.trim()) {
+      errors.name = 'Name is required';
+    } else if (profileData.name.trim().length < 2) {
+      errors.name = 'Name must be at least 2 characters';
+    } else if (profileData.name.trim().length > 100) {
+      errors.name = 'Name cannot exceed 100 characters';
+    }
+
+    if (profileData.phone && !PHONE_REGEX.test(profileData.phone)) {
+      errors.phone = 'Please enter a valid phone number';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleProfileSave = async () => {
+    if (saving) return; // Prevent double-submit
+
+    if (!validateProfileForm()) {
+      return;
+    }
+
     try {
       setSaving(true);
       const response = await userService.updateProfile({
-        name: profileData.name,
-        phone: profileData.phone,
+        name: profileData.name.trim(),
+        phone: profileData.phone.trim(),
         preferences: profileData.preferences
       });
-      
+
       updateUser(response.user);
       setEditing(false);
+      setFormErrors({});
       toast.success('Profile updated successfully');
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update profile');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
   const handlePasswordChange = async () => {
+    if (changingPassword) return; // Prevent double-submit
+
+    if (!passwordData.currentPassword) {
+      toast.error('Current password is required');
+      return;
+    }
+
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error('New passwords do not match');
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      toast.error('New password must be at least 6 characters');
+    if (passwordData.newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+
+    if (!/[A-Z]/.test(passwordData.newPassword)) {
+      toast.error('New password must contain at least one uppercase letter');
+      return;
+    }
+
+    if (!/[0-9]/.test(passwordData.newPassword)) {
+      toast.error('New password must contain at least one number');
+      return;
+    }
+
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(passwordData.newPassword)) {
+      toast.error('New password must contain at least one special character');
       return;
     }
 
     try {
-      setSaving(true);
+      setChangingPassword(true);
       await userService.changePassword({
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
-      
+
       setPasswordData({
         currentPassword: '',
         newPassword: '',
@@ -145,9 +208,10 @@ export default function GuestProfile() {
       setShowPasswordForm(false);
       toast.success('Password changed successfully');
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to change password');
+      const err = error as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Failed to change password');
     } finally {
-      setSaving(false);
+      setChangingPassword(false);
     }
   };
 
@@ -233,16 +297,27 @@ export default function GuestProfile() {
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name
+                  Full Name *
                 </label>
                 {editing ? (
-                  <input
-                    type="text"
-                    value={profileData.name}
-                    onChange={(e) => handleProfileChange('name', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter your full name"
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      value={profileData.name}
+                      onChange={(e) => {
+                        handleProfileChange('name', e.target.value);
+                        if (formErrors.name) setFormErrors(prev => ({ ...prev, name: undefined }));
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        formErrors.name ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Enter your full name"
+                      maxLength={100}
+                    />
+                    {formErrors.name && (
+                      <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                     <User className="w-5 h-5 text-gray-400" />
@@ -269,13 +344,23 @@ export default function GuestProfile() {
                   Phone Number
                 </label>
                 {editing ? (
-                  <input
-                    type="tel"
-                    value={profileData.phone}
-                    onChange={(e) => handleProfileChange('phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter your phone number"
-                  />
+                  <div>
+                    <input
+                      type="tel"
+                      value={profileData.phone}
+                      onChange={(e) => {
+                        handleProfileChange('phone', e.target.value);
+                        if (formErrors.phone) setFormErrors(prev => ({ ...prev, phone: undefined }));
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        formErrors.phone ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Enter your phone number (e.g. +1 234 567 8900)"
+                    />
+                    {formErrors.phone && (
+                      <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                     <Phone className="w-5 h-5 text-gray-400" />
@@ -428,39 +513,87 @@ export default function GuestProfile() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Current Password
+                    Current Password *
                   </label>
-                  <input
-                    type="password"
-                    value={passwordData.currentPassword}
-                    onChange={(e) => handlePasswordFieldChange('currentPassword', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter current password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={passwordData.currentPassword}
+                      onChange={(e) => handlePasswordFieldChange('currentPassword', e.target.value)}
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter current password"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    New Password
+                    New Password *
                   </label>
-                  <input
-                    type="password"
-                    value={passwordData.newPassword}
-                    onChange={(e) => handlePasswordFieldChange('newPassword', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter new password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={passwordData.newPassword}
+                      onChange={(e) => handlePasswordFieldChange('newPassword', e.target.value)}
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter new password"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {passwordData.newPassword && (
+                    <div className="mt-2 space-y-1">
+                      <p className={`text-xs ${passwordData.newPassword.length >= 8 ? 'text-green-600' : 'text-gray-500'}`}>
+                        {passwordData.newPassword.length >= 8 ? <CheckCircle className="w-3 h-3 inline mr-1" /> : <AlertCircle className="w-3 h-3 inline mr-1" />}
+                        At least 8 characters
+                      </p>
+                      <p className={`text-xs ${/[A-Z]/.test(passwordData.newPassword) ? 'text-green-600' : 'text-gray-500'}`}>
+                        {/[A-Z]/.test(passwordData.newPassword) ? <CheckCircle className="w-3 h-3 inline mr-1" /> : <AlertCircle className="w-3 h-3 inline mr-1" />}
+                        At least one uppercase letter
+                      </p>
+                      <p className={`text-xs ${/[0-9]/.test(passwordData.newPassword) ? 'text-green-600' : 'text-gray-500'}`}>
+                        {/[0-9]/.test(passwordData.newPassword) ? <CheckCircle className="w-3 h-3 inline mr-1" /> : <AlertCircle className="w-3 h-3 inline mr-1" />}
+                        At least one number
+                      </p>
+                      <p className={`text-xs ${/[!@#$%^&*(),.?":{}|<>]/.test(passwordData.newPassword) ? 'text-green-600' : 'text-gray-500'}`}>
+                        {/[!@#$%^&*(),.?":{}|<>]/.test(passwordData.newPassword) ? <CheckCircle className="w-3 h-3 inline mr-1" /> : <AlertCircle className="w-3 h-3 inline mr-1" />}
+                        At least one special character
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Confirm New Password
+                    Confirm New Password *
                   </label>
                   <input
                     type="password"
                     value={passwordData.confirmPassword}
                     onChange={(e) => handlePasswordFieldChange('confirmPassword', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                      passwordData.confirmPassword && passwordData.newPassword !== passwordData.confirmPassword
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}
                     placeholder="Confirm new password"
+                    autoComplete="new-password"
                   />
+                  {passwordData.confirmPassword && passwordData.newPassword !== passwordData.confirmPassword && (
+                    <p className="mt-1 text-xs text-red-600">Passwords do not match</p>
+                  )}
                 </div>
                 <div className="flex space-x-2">
                   <Button
@@ -481,9 +614,10 @@ export default function GuestProfile() {
                     variant="primary"
                     size="sm"
                     onClick={handlePasswordChange}
-                    loading={saving}
+                    loading={changingPassword}
+                    disabled={changingPassword}
                   >
-                    Update Password
+                    {changingPassword ? 'Updating...' : 'Update Password'}
                   </Button>
                 </div>
               </div>

@@ -40,22 +40,24 @@ const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       queryClient.invalidateQueries({ queryKey: ['favoriteStats'] });
       toast.success('Added to favorites! ❤️');
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to add to favorites');
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to add to favorites');
     }
   });
 
-  // Remove from favorites mutation
+  // Remove from favorites mutation - FIX: remove by offerId since backend DELETE /:id tries both
   const removeFromFavoritesMutation = useMutation({
-    mutationFn: (favoriteId: string) => favoritesService.removeFromFavorites(favoriteId),
+    mutationFn: (id: string) => favoritesService.removeFromFavorites(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['favorite-status', offerId] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.invalidateQueries({ queryKey: ['favoriteStats'] });
       toast.success('Removed from favorites');
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to remove from favorites');
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to remove from favorites');
     }
   });
 
@@ -63,8 +65,9 @@ const FavoriteButton: React.FC<FavoriteButtonProps> = ({
     e.preventDefault();
     e.stopPropagation();
 
-    if (isFavorite && favoriteId) {
-      removeFromFavoritesMutation.mutate(favoriteId);
+    if (isFavorite) {
+      // Use favoriteId if available, otherwise fall back to offerId
+      removeFromFavoritesMutation.mutate(favoriteId || offerId);
     } else {
       addToFavoritesMutation.mutate({
         offerId,

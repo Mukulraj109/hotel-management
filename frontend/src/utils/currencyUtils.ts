@@ -31,7 +31,7 @@ export const SERVICE_VARIATIONS = {
     'Late night dining',
     'Special dietary requirements'
   ],
-  transportation: [
+  transport: [
     'Airport pickup',
     'Airport drop-off',
     'City tour',
@@ -39,6 +39,33 @@ export const SERVICE_VARIATIONS = {
     'Taxi service',
     'Local attractions',
     'Shopping assistance'
+  ],
+  spa: [
+    'Full body massage',
+    'Facial treatment',
+    'Aromatherapy',
+    'Manicure & Pedicure',
+    'Steam & Sauna',
+    'Couples massage',
+    'Body scrub'
+  ],
+  laundry: [
+    'Regular wash',
+    'Dry cleaning',
+    'Express service',
+    'Ironing only',
+    'Stain removal',
+    'Delicate garments',
+    'Bulk laundry'
+  ],
+  other: [
+    'Wake-up call',
+    'Extra key card',
+    'Baby crib',
+    'Wheelchair request',
+    'Late checkout request',
+    'Early check-in request',
+    'Special occasion arrangement'
   ],
   concierge: [
     'Restaurant reservations',

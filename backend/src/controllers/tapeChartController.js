@@ -1,5 +1,6 @@
 import TapeChartService from '../services/tapeChartService.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { refToHotelIdString } from '../middleware/propertyAccess.js';
 
 const tapeChartService = new TapeChartService();
 
@@ -81,7 +82,7 @@ class TapeChartController {
 
   async getAvailableRooms(req, res) {
     try {
-      const hotelId = req.user.hotelId;
+      const hotelId = refToHotelIdString(req.user.hotelId);
       const { checkIn, checkOut, roomType, floor, guestCount } = req.query;
 
       const filters = {
@@ -239,7 +240,8 @@ class TapeChartController {
 
   async getTapeChartViews(req, res) {
     try {
-      const views = await tapeChartService.getTapeChartViews(req.user.id);
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
+      const views = await tapeChartService.getTapeChartViews(req.user.id, hotelId);
       res.json({ success: true, data: views });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -271,19 +273,21 @@ class TapeChartController {
   async generateTapeChartData(req, res) {
     try {
       const { viewId, startDate, endDate } = req.query;
-      
+
       if (!viewId || !startDate || !endDate) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'viewId, startDate, and endDate are required' 
+        return res.status(400).json({
+          success: false,
+          message: 'viewId, startDate, and endDate are required'
         });
       }
 
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const chartData = await tapeChartService.generateTapeChartData(
-        viewId, 
-        { startDate, endDate }
+        viewId,
+        { startDate, endDate },
+        hotelId
       );
-      
+
       res.json({ success: true, data: chartData });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -414,7 +418,7 @@ class TapeChartController {
   // Dashboard Data
   async getTapeChartDashboard(req, res) {
     try {
-      const hotelId = req.user.hotelId;
+      const hotelId = refToHotelIdString(req.user.hotelId);
       const dashboard = await tapeChartService.generateTapeChartDashboard(hotelId);
       res.json({ success: true, data: dashboard });
     } catch (error) {

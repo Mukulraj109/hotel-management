@@ -248,7 +248,8 @@ serviceBookingSchema.virtual('statusColor').get(function() {
 // Static method to get user bookings
 serviceBookingSchema.statics.getUserBookings = async function(userId, options = {}) {
   try {
-    const { page = 1, limit = 20, status } = options;
+    const { page = 1, status } = options;
+    const limit = Math.min(100, Math.max(1, options.limit || 20));
     const skip = (page - 1) * limit;
   
     const matchQuery = { userId };
@@ -293,7 +294,7 @@ serviceBookingSchema.statics.getServiceBookings = async function(serviceId, date
       serviceId,
       bookingDate: { $gte: startOfDay, $lte: endOfDay },
       status: { $in: ['pending', 'confirmed'] }
-    }).populate('userId', 'name email').lean().limit(1000);
+    }).populate('userId', 'name email').lean().limit(100);
   } catch (error) {
     throw new Error(`${error.message}`);
   }
@@ -315,19 +316,26 @@ serviceBookingSchema.statics.checkAvailability = async function(serviceId, date,
       serviceId,
       bookingDate: { $gte: startOfDay, $lte: endOfDay },
       status: { $in: ['pending', 'confirmed'] }
-    }).lean().limit(1000);
+    }).lean().limit(100);
   
+    // If service has no capacity limit, it's always available
+    if (!service.capacity) {
+      return { available: true, availableCapacity: null };
+    }
+
     const totalBookedPeople = existingBookings.reduce((sum, booking) => sum + booking.numberOfPeople, 0);
     const availableCapacity = service.capacity - totalBookedPeople;
-  
+
     if (availableCapacity < numberOfPeople) {
       return {
         available: false,
-        reason: `Only ${availableCapacity} people can be accommodated`,
+        reason: availableCapacity <= 0
+          ? 'This service is fully booked for the selected date'
+          : `Only ${availableCapacity} spot${availableCapacity !== 1 ? 's' : ''} available`,
         availableCapacity
       };
     }
-  
+
     return { available: true, availableCapacity };
   } catch (error) {
     throw new Error(`${error.message}`);

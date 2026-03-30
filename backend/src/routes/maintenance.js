@@ -13,7 +13,64 @@ import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
 const router = express.Router();
-const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+const createMaintenanceSchema = Joi.object({
+  title: Joi.string().trim().min(1).max(200).required().messages({
+    'string.empty': 'Task title is required',
+    'string.max': 'Title cannot exceed 200 characters'
+  }),
+  description: Joi.string().trim().max(1000).optional().allow(''),
+  type: Joi.string().valid('plumbing', 'electrical', 'hvac', 'cleaning', 'carpentry', 'painting', 'appliance', 'safety', 'other').required(),
+  priority: Joi.string().valid('low', 'medium', 'high', 'urgent', 'emergency').required(),
+  category: Joi.string().valid('preventive', 'corrective', 'emergency', 'inspection').default('corrective'),
+  roomId: Joi.string().optional().allow(''),
+  assignedTo: Joi.string().optional().allow(''),
+  hotelId: Joi.string().optional(),
+  dueDate: Joi.date().iso().optional(),
+  estimatedDuration: Joi.number().min(0).max(9999).optional(),
+  estimatedCost: Joi.number().min(0).optional(),
+  notes: Joi.string().trim().max(1000).optional().allow(''),
+  materials: Joi.array().items(Joi.object({
+    name: Joi.string().trim().required(),
+    quantity: Joi.number().min(0).required(),
+    unitCost: Joi.number().min(0).optional()
+  })).optional(),
+  roomOutOfOrder: Joi.boolean().optional(),
+  vendorRequired: Joi.boolean().optional(),
+  isRecurring: Joi.boolean().optional(),
+  recurringSchedule: Joi.object({
+    frequency: Joi.string().valid('daily', 'weekly', 'monthly', 'quarterly', 'yearly'),
+    interval: Joi.number().min(1)
+  }).optional()
+}).unknown(false);
+
+const updateMaintenanceSchema = Joi.object({
+  status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'on_hold').optional(),
+  assignedTo: Joi.string().optional().allow(''),
+  scheduledDate: Joi.date().iso().optional(),
+  actualDuration: Joi.number().min(0).optional(),
+  actualCost: Joi.number().min(0).optional(),
+  completionNotes: Joi.string().trim().max(1000).optional().allow(''),
+  materials: Joi.array().optional(),
+  images: Joi.array().optional(),
+  notes: Joi.string().trim().max(1000).optional().allow(''),
+  dueDate: Joi.date().iso().optional().allow(null),
+  priority: Joi.string().valid('low', 'medium', 'high', 'urgent', 'emergency').optional(),
+  vendor: Joi.object({
+    name: Joi.string().trim(),
+    contact: Joi.string().trim().optional().allow(''),
+    cost: Joi.number().min(0).optional()
+  }).optional(),
+  vendorRequired: Joi.boolean().optional()
+}).unknown(false);
+
+const assignMaintenanceSchema = Joi.object({
+  assignedTo: Joi.string().required().messages({
+    'string.empty': 'Staff member ID is required for assignment'
+  }),
+  scheduledDate: Joi.date().iso().optional(),
+  notes: Joi.string().trim().max(1000).optional().allow('')
+}).unknown(false);
 
 // All routes require authentication and property access
 router.use(authenticate);
@@ -87,7 +144,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Maintenance task created successfully
  */
-router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createMaintenanceSchema), catchAsync(async (req, res) => {
   const taskData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -188,8 +245,6 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(mutatio
  */
 router.get('/', catchAsync(async (req, res) => {
   const {
-    page = 1,
-    limit = 20,
     status,
     type,
     priority,
@@ -197,6 +252,10 @@ router.get('/', catchAsync(async (req, res) => {
     roomId,
     overdue
   } = req.query;
+
+  // Parse and clamp pagination params to prevent unbounded queries and division by zero
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
   const query = {};
 
@@ -224,7 +283,7 @@ router.get('/', catchAsync(async (req, res) => {
   }
 
   const skip = (page - 1) * limit;
-  
+
   const [tasks, total] = await Promise.all([
     MaintenanceTask.find(query)
       .populate('hotelId', 'name')
@@ -233,7 +292,8 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('reportedBy', 'name')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limit)
+      .lean(),
     MaintenanceTask.countDocuments(query)
   ]);
 
@@ -242,8 +302,8 @@ router.get('/', catchAsync(async (req, res) => {
     data: {
       tasks,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         pages: Math.ceil(total / limit)
       }
@@ -530,7 +590,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Task updated successfully
  */
-router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(updateMaintenanceSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   logger.debug('Updating maintenance task', { id });
 
@@ -568,11 +628,11 @@ router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(mut
   // Special handling for status updates
   if (updates.status) {
     updates.updatedAt = new Date();
-    if (updates.status === 'in_progress' && !existingTask.startedAt) {
-      updates.startedAt = new Date();
+    if (updates.status === 'in_progress' && !existingTask.startedDate) {
+      updates.startedDate = new Date();
       updates.assignedTo = updates.assignedTo || existingTask.assignedTo || req.user._id;
-    } else if (updates.status === 'completed' && !existingTask.completedAt) {
-      updates.completedAt = new Date();
+    } else if (updates.status === 'completed' && !existingTask.completedDate) {
+      updates.completedDate = new Date();
     }
     logger.debug('Maintenance task status changed', { from: existingTask.status, to: updates.status });
   }
@@ -655,7 +715,7 @@ router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(mut
  *       200:
  *         description: Task assigned successfully
  */
-router.post('/:id/assign', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/assign', authorizePolicy('maintenance', 'staffAccess'), validate(assignMaintenanceSchema), catchAsync(async (req, res) => {
   const { assignedTo, scheduledDate, notes } = req.body;
 
   const existingTask = await MaintenanceTask.findById(req.params.id).lean();

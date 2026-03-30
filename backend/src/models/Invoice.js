@@ -148,17 +148,20 @@ const invoiceSchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: [true, 'Hotel ID is required']
+    required: [true, 'Hotel ID is required'],
+    index: true
   },
   bookingId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Booking',
-    required: [true, 'Booking ID is required']
+    required: [true, 'Booking ID is required'],
+    index: true
   },
   guestId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',
-    required: [true, 'Guest ID is required']
+    required: [true, 'Guest ID is required'],
+    index: true
   },
   invoiceNumber: {
     type: String,
@@ -579,32 +582,35 @@ invoiceSchema.virtual('daysOverdue').get(function() {
 
 // Instance method to calculate totals
 invoiceSchema.methods.calculateTotals = function() {
+  // Round to 2 decimal places to avoid floating-point precision errors
+  const round2 = (n) => Math.round(n * 100) / 100;
+
   // Calculate item totals
   this.items.forEach(item => {
-    item.totalPrice = item.quantity * item.unitPrice;
-    item.taxAmount = (item.totalPrice * item.taxRate) / 100;
+    item.totalPrice = round2(item.quantity * item.unitPrice);
+    item.taxAmount = round2((item.totalPrice * item.taxRate) / 100);
   });
-  
+
   // Calculate subtotal
-  this.subtotal = this.items.reduce((total, item) => total + item.totalPrice, 0);
-  
+  this.subtotal = round2(this.items.reduce((total, item) => total + item.totalPrice, 0));
+
   // Calculate total tax
-  this.taxAmount = this.items.reduce((total, item) => total + item.taxAmount, 0);
-  
+  this.taxAmount = round2(this.items.reduce((total, item) => total + item.taxAmount, 0));
+
   // Calculate discount amount
-  const discountAmount = this.discounts.reduce((total, discount) => total + discount.amount, 0);
-  
+  const discountAmount = round2(this.discounts.reduce((total, discount) => total + discount.amount, 0));
+
   // Calculate adjustment amount
-  const adjustmentAmount = this.adjustments.reduce((total, adj) => {
+  const adjustmentAmount = round2(this.adjustments.reduce((total, adj) => {
     return total + (adj.type === 'credit' ? -adj.amount : adj.amount);
-  }, 0);
-  
+  }, 0));
+
   // Calculate total amount
-  this.totalAmount = this.subtotal + this.taxAmount - discountAmount + adjustmentAmount;
-  
+  this.totalAmount = round2(this.subtotal + this.taxAmount - discountAmount + adjustmentAmount);
+
   // Ensure non-negative total
   this.totalAmount = Math.max(0, this.totalAmount);
-  
+
   // Update split billing amounts if enabled
   if (this.splitBilling.isEnabled) {
     this.recalculateSplits();
@@ -621,33 +627,36 @@ invoiceSchema.methods.addPayment = function(amount, method, paidBy, transactionI
     notes,
     paidAt: new Date()
   });
-  
+
   // Update status based on payment
-  const totalPaid = this.amountPaid + amount;
-  
+  // NOTE: amountPaid virtual already includes the payment just pushed above,
+  // so we use it directly instead of adding amount again (which would double-count).
+  const totalPaid = this.amountPaid;
+
   if (totalPaid >= this.totalAmount) {
     this.status = 'paid';
     this.paidDate = new Date();
   } else if (totalPaid > 0) {
     this.status = 'partially_paid';
   }
-  
+
   return this.save();
 };
 
 // Instance method to add discount
 invoiceSchema.methods.addDiscount = function(description, type, value, appliedBy) {
-  let amount;
-  
+  const round2 = (n) => Math.round(n * 100) / 100;
+  let amount = 0;
+
   if (type === 'percentage') {
-    amount = (this.subtotal * value) / 100;
+    amount = round2((this.subtotal * value) / 100);
   } else if (type === 'fixed_amount') {
-    amount = value;
+    amount = round2(value);
   } else if (type === 'loyalty_points') {
-    // Assuming 1 point = 0.01 currency unit
-    amount = value * 0.01;
+    // 1 point = 0.01 currency unit (1 paisa)
+    amount = round2(value * 0.01);
   }
-  
+
   this.discounts.push({
     description,
     type,
@@ -676,20 +685,22 @@ invoiceSchema.methods.setupSplitBilling = function(method, splits) {
 // Instance method to recalculate splits
 invoiceSchema.methods.recalculateSplits = function() {
   if (!this.splitBilling.isEnabled || this.splitBilling.splits.length === 0) return;
-  
+
+  const round2 = (n) => Math.round(n * 100) / 100;
   const method = this.splitBilling.method;
   const splits = this.splitBilling.splits;
-  
+
   if (method === 'equal') {
-    const amountPerSplit = this.totalAmount / splits.length;
+    const splitCount = splits.length;
+    const amountPerSplit = splitCount > 0 ? round2(this.totalAmount / splitCount) : 0;
     splits.forEach(split => {
       split.amount = amountPerSplit;
-      split.percentage = (amountPerSplit / this.totalAmount) * 100;
+      split.percentage = this.totalAmount > 0 ? round2((amountPerSplit / this.totalAmount) * 100) : 0;
     });
   } else if (method === 'percentage') {
     splits.forEach(split => {
       if (split.percentage) {
-        split.amount = (this.totalAmount * split.percentage) / 100;
+        split.amount = round2((this.totalAmount * split.percentage) / 100);
       }
     });
   }
@@ -701,23 +712,39 @@ invoiceSchema.methods.markSplitPaid = function(splitIndex, amount, method, trans
   if (splitIndex < 0 || splitIndex >= this.splitBilling.splits.length) {
     throw new Error('Invalid split index');
   }
-  
+
   const split = this.splitBilling.splits[splitIndex];
   split.status = 'paid';
   split.paidAt = new Date();
   split.paymentMethod = method;
   split.transactionId = transactionId;
-  
-  // Add to main payments
-  this.addPayment(amount, method, split.guestId, transactionId, `Split payment from ${split.guestName}`);
-  
+
+  // Add to main payments (inline instead of calling addPayment to avoid double-save)
+  this.payments.push({
+    amount,
+    method,
+    paidBy: split.guestId,
+    transactionId,
+    notes: `Split payment from ${split.guestName}`,
+    paidAt: new Date()
+  });
+
+  // Update status based on total paid
+  const totalPaid = this.amountPaid;
+  if (totalPaid >= this.totalAmount) {
+    this.status = 'paid';
+    this.paidDate = new Date();
+  } else if (totalPaid > 0) {
+    this.status = 'partially_paid';
+  }
+
   // Check if all splits are paid
   const allPaid = this.splitBilling.splits.every(s => s.status === 'paid');
   if (allPaid) {
     this.status = 'paid';
     this.paidDate = new Date();
   }
-  
+
   return this.save();
 };
 
@@ -908,14 +935,15 @@ invoiceSchema.statics.generateSettlementInvoice = async function(settlementId, a
 
 // Instance method to add extra person charges to existing invoice
 invoiceSchema.methods.addExtraPersonCharges = function(extraPersonCharges) {
+  const round2 = (n) => Math.round(n * 100) / 100;
   const extraItems = extraPersonCharges.map(charge => ({
     description: charge.description || `Extra person charge - ${charge.personName || 'Additional Guest'}`,
     category: 'accommodation',
     quantity: 1,
-    unitPrice: charge.baseCharge || charge.totalCharge,
-    totalPrice: charge.totalCharge,
+    unitPrice: round2(charge.baseCharge || charge.totalCharge),
+    totalPrice: round2(charge.totalCharge),
     taxRate: 18,
-    taxAmount: (charge.totalCharge * 18) / 100,
+    taxAmount: round2((charge.totalCharge * 18) / 100),
     serviceType: 'ExtraPersonCharge',
     serviceId: charge.personId,
     dateProvided: charge.addedAt || new Date()

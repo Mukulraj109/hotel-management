@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Search, Filter, Eye, Download, Mail, Calendar, User, Building, FileText } from 'lucide-react';
+import { Plus, Search, Eye, Download, Mail, User, Building, FileText } from 'lucide-react';
 import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
@@ -48,7 +48,11 @@ interface Invoice {
   }>;
 }
 
-const InvoiceManagement: React.FC = () => {
+interface InvoiceManagementProps {
+  readOnly?: boolean;
+}
+
+const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,6 +61,8 @@ const InvoiceManagement: React.FC = () => {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   const invoiceTypes = [
     { value: 'guest_folio', label: 'Guest Folio' },
@@ -79,9 +85,11 @@ const InvoiceManagement: React.FC = () => {
     fetchInvoices();
   }, [filterType, filterStatus, dateRange]);
 
-  // Log when component mounts
+  // Reset pagination when filters change
   useEffect(() => {
-  }, []);
+    setCurrentPage(1);
+  }, [searchTerm, filterType, filterStatus, dateRange]);
+
 
   const fetchInvoices = async () => {
     try {
@@ -145,6 +153,12 @@ const InvoiceManagement: React.FC = () => {
 
   // Log state changes for debugging
 
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / ITEMS_PER_PAGE));
+  const paginatedInvoices = filteredInvoices.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
   const totalAmount = (Array.isArray(invoices) ? invoices : []).reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
   const paidInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => invoice.status === 'paid').length;
   const overdueInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => invoice.status === 'overdue').length;
@@ -171,12 +185,14 @@ const InvoiceManagement: React.FC = () => {
           <p className="text-gray-600">Manage invoices and billing</p>
         </div>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          {!readOnly && (
           <DialogTrigger asChild>
             <Button>
               <Plus className="w-4 h-4 mr-2" />
               New Invoice
             </Button>
           </DialogTrigger>
+          )}
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create New Invoice</DialogTitle>
@@ -383,7 +399,7 @@ const InvoiceManagement: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices.length === 0 && (
+              {paginatedInvoices.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12">
                     <div className="text-gray-400 mb-2">
@@ -394,7 +410,7 @@ const InvoiceManagement: React.FC = () => {
                   </TableCell>
                 </TableRow>
               )}
-              {filteredInvoices.map((invoice) => (
+              {paginatedInvoices.map((invoice) => (
                 <TableRow key={invoice._id}>
                   <TableCell className="font-mono font-medium">
                     {invoice.invoiceNumber || invoice.invoiceId}
@@ -416,10 +432,10 @@ const InvoiceManagement: React.FC = () => {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {invoice.issueDate ? new Date(invoice.issueDate).toLocaleDateString() : 'N/A'}
+                    {invoice.issueDate ? new Date(invoice.issueDate).toLocaleDateString('en-IN') : 'N/A'}
                   </TableCell>
                   <TableCell>
-                    {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}
+                    {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-IN') : 'N/A'}
                   </TableCell>
                   <TableCell className="font-medium">
                     {formatCurrency(invoice.totalAmount || 0)}
@@ -438,10 +454,10 @@ const InvoiceManagement: React.FC = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => toast.info('Invoice PDF download coming soon')}>
                         <Download className="w-4 h-4" />
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => toast.info('Invoice email sending coming soon')}>
                         <Mail className="w-4 h-4" />
                       </Button>
                     </div>
@@ -450,6 +466,37 @@ const InvoiceManagement: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          {/* Pagination Controls */}
+          {filteredInvoices.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-gray-600">
+                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+                {Math.min(currentPage * ITEMS_PER_PAGE, filteredInvoices.length)} of{' '}
+                {filteredInvoices.length} invoices
+              </p>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="flex items-center px-3 text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

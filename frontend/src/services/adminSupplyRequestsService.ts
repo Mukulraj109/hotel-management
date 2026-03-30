@@ -130,6 +130,7 @@ export interface SupplyRequestFilters {
   dateTo?: string;
   minCost?: number;
   maxCost?: number;
+  hotelId?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -261,11 +262,8 @@ class AdminSupplyRequestsService {
     });
   }
 
-  async getStats(filters?: { dateFrom?: string; dateTo?: string; department?: string }): Promise<ApiResponse<SupplyRequestStats>> {
+  async getStats(filters?: { dateFrom?: string; dateTo?: string; department?: string; hotelId?: string }): Promise<ApiResponse<SupplyRequestStats>> {
     const queryParams = new URLSearchParams();
-
-    // hotelId is injected automatically by the api interceptor from selectedPropertyId
-    // (same mechanism used by getRequests), ensuring stats match the selected property.
 
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {

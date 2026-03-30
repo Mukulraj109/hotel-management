@@ -85,14 +85,27 @@ router.get('/hotels', authenticate, ensureTenantContext, ensurePropertyAccess, a
 // Users list endpoint - accessible by admin, staff, and frontdesk (needed for staff management)
 router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
   const {
-    page = 1,
-    limit = 20,
     role,
     search,
-    isActive
+    isActive,
+    hotelId: queryHotelId
   } = req.query;
 
+  const parsedPage = Math.max(1, parseInt(req.query.page) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+
   const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
+
+  // If a specific hotelId was requested, validate it is within accessible properties
+  let scopedPropertyIds = accessiblePropertyIds;
+  if (queryHotelId && typeof queryHotelId === 'string') {
+    const isAccessible = accessiblePropertyIds.some(id => id.toString() === queryHotelId);
+    if (isAccessible) {
+      scopedPropertyIds = [queryHotelId];
+    }
+    // If not accessible, silently fall back to all accessible properties (no data leak)
+  }
+
   const query = {};
 
   if (isActive !== undefined) query.isActive = isActive === 'true';
@@ -100,14 +113,14 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
   // Handle role filtering properly for staff management vs general user management
   if (role === 'guest') {
     query.role = 'guest';
-    query.hotelId = { $in: accessiblePropertyIds };
+    query.hotelId = { $in: scopedPropertyIds };
   } else if (role === 'staff' || role === 'admin') {
     query.role = role;
-    query.hotelId = { $in: accessiblePropertyIds };
+    query.hotelId = { $in: scopedPropertyIds };
   } else if (!role) {
     query.$or = [
-      { role: 'staff', hotelId: { $in: accessiblePropertyIds } },
-      { role: 'admin', hotelId: { $in: accessiblePropertyIds } }
+      { role: 'staff', hotelId: { $in: scopedPropertyIds } },
+      { role: 'admin', hotelId: { $in: scopedPropertyIds } }
     ];
   }
 
@@ -130,7 +143,7 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
     }
   }
 
-  const skip = (page - 1) * limit;
+  const skip = (parsedPage - 1) * parsedLimit;
 
   const [users, total] = await Promise.all([
     User.find(query)
@@ -138,7 +151,8 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
       .select('-password -passwordResetToken -passwordResetExpires')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(parsedLimit)
+      .lean(),
     User.countDocuments(query)
   ]);
 
@@ -147,10 +161,10 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
     data: {
       users,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / parsedLimit) || 1
       }
     }
   });
@@ -360,6 +374,25 @@ router.post('/users', authorizePolicy('admin', 'createUser'), validate(mutationB
  *       200:
  *         description: User updated successfully
  */
+router.get('/users/:id', authorizePolicy('admin', 'createUser'), catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const user = await User.findById(id).select('-password').lean();
+
+  if (!user) {
+    throw new ApplicationError('User not found', 404);
+  }
+
+  // Tenant isolation: ensure the requested user belongs to the same hotel
+  if (req.user.hotelId && user.hotelId && user.hotelId.toString() !== req.user.hotelId.toString()) {
+    throw new ApplicationError('User not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { user }
+  });
+}));
+
 router.patch('/users/:id', authorizePolicy('admin', 'updateUser'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const { role, isActive, hotelId } = req.body;

@@ -35,6 +35,7 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { isDirty }
   } = useForm<StaffNotificationFormData>({
     defaultValues: {
@@ -50,6 +51,29 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
   });
 
   const watchedValues = watch();
+
+  // Load saved notification preferences from backend
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const { data } = await api.get('/staff/notification-preferences');
+        const prefs = data?.data;
+        if (prefs) {
+          setValue('workAssignments', prefs.workAssignments ?? true, { shouldDirty: false });
+          setValue('guestRequests', prefs.guestRequests ?? true, { shouldDirty: false });
+          setValue('scheduleChanges', prefs.scheduleChanges ?? true, { shouldDirty: false });
+          setValue('emergencyAlerts', prefs.emergencyAlerts ?? true, { shouldDirty: false });
+          setValue('maintenanceAlerts', prefs.maintenanceAlerts ?? true, { shouldDirty: false });
+          setValue('inventoryUpdates', prefs.inventoryUpdates ?? false, { shouldDirty: false });
+          setValue('sound', prefs.sound ?? true, { shouldDirty: false });
+          setValue('vibration', prefs.vibration ?? true, { shouldDirty: false });
+        }
+      } catch {
+        // Use defaults if preferences not yet saved
+      }
+    };
+    loadPreferences();
+  }, [setValue]);
 
   // Watch for form changes
   useEffect(() => {
@@ -224,10 +248,10 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveNotificationMutation.isLoading}
+              disabled={!isDirty || saveNotificationMutation.isPending}
               className="flex items-center space-x-2"
             >
-              {saveNotificationMutation.isLoading ? (
+              {saveNotificationMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Package, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffDashboardService, StaffInventoryData, StaffTodayData } from '../../services/staffDashboardService';
 import toast from 'react-hot-toast';
@@ -83,6 +82,12 @@ export default function StaffInventory() {
 
   const { lowStockAlert, inspectionsDue } = inventoryData;
 
+  // Compute total items: lowStockAlert.count gives the count of low-stock items.
+  // Use the total from lowStockAlert to avoid a hardcoded percentage.
+  const totalItems = lowStockAlert.count + (lowStockAlert.items?.length || 0);
+  // Best-effort: if the backend provides a total, use it; otherwise show count-based summary
+  const wellStockedCount = Math.max(0, totalItems - lowStockAlert.count);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
@@ -106,23 +111,23 @@ export default function StaffInventory() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <AlertTriangle className="h-5 w-5 mr-2 text-red-600" />
-              Low Stock Alerts
+              Low Stock Alerts ({lowStockAlert.count})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {lowStockAlert.items.length > 0 ? (
-                lowStockAlert.items.map((item, index) => (
+                lowStockAlert.items.map((item) => (
                   <div key={item._id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
                     <div>
-                      <p className="font-medium">{item.name}</p>
+                      <p className="font-medium">{item.name || 'Unnamed Item'}</p>
                       <p className="text-sm text-gray-600">
-                        Current: {item.currentStock} | Threshold: {item.threshold}
+                        Current: {item.currentStock ?? 0} | Threshold: {item.threshold ?? 0}
                       </p>
-                      <p className="text-xs text-red-600">Category: {item.category}</p>
+                      <p className="text-xs text-red-600">Category: {item.category || 'N/A'}</p>
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => handleOrderItem(item._id, item.name)}
                     >
                       Order
@@ -144,22 +149,22 @@ export default function StaffInventory() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Clock className="h-5 w-5 mr-2 text-orange-600" />
-              Inspections Due
+              Inspections Due ({inspectionsDue.count})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {inspectionsDue.rooms.length > 0 ? (
-                inspectionsDue.rooms.map((room, index) => (
+                inspectionsDue.rooms.map((room) => (
                   <div key={room._id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
                     <div>
-                      <p className="font-medium">Room {room.roomNumber}</p>
+                      <p className="font-medium">Room {room.roomNumber || 'N/A'}</p>
                       <p className="text-sm text-gray-600">
-                        {room.daysPastDue} days past due
+                        {room.daysPastDue ?? 0} days past due
                       </p>
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => handleInspectRoom(room._id, room.roomNumber)}
                     >
                       Inspect
@@ -188,9 +193,9 @@ export default function StaffInventory() {
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">
-                  {lowStockAlert.count === 0 ? '100%' : '85%'}
+                  {lowStockAlert.count === 0 ? 'All Good' : `${lowStockAlert.count} Low`}
                 </div>
-                <div className="text-sm text-gray-600">Well Stocked</div>
+                <div className="text-sm text-gray-600">Stock Status</div>
               </div>
               <div className="text-center p-4 bg-orange-50 rounded-lg">
                 <div className="text-2xl font-bold text-orange-600">
@@ -205,7 +210,7 @@ export default function StaffInventory() {
                 <div className="text-sm text-gray-600">Inspections Due</div>
               </div>
               <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{todayData.pendingOrders}</div>
+                <div className="text-2xl font-bold text-blue-600">{todayData.pendingOrders ?? 0}</div>
                 <div className="text-sm text-gray-600">Pending Orders</div>
               </div>
             </div>

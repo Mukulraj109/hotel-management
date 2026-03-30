@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Calendar, Users, Wifi, Tv, Coffee, Car, Bed, Crown, Star, CheckCircle, type LucideIcon } from 'lucide-react';
+import { Calendar, Users, Wifi, Bed, Crown, Star, CheckCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -83,6 +83,10 @@ export default function RoomsPage() {
     guests: parseInt(searchParams.get('guests') || searchParams.get('adults') || '2'),
   });
 
+  useEffect(() => {
+    document.title = 'Our Rooms - The Pentouz';
+  }, []);
+
   const { data: apiOptions, isLoading: catalogLoading } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
 
   const displayRows: DisplayRow[] = useMemo(() => {
@@ -120,7 +124,8 @@ export default function RoomsPage() {
     if (!filters.checkIn || !filters.checkOut) return 0;
     const start = new Date(filters.checkIn);
     const end = new Date(filters.checkOut);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
   };
 
   const nights = calculateNights();

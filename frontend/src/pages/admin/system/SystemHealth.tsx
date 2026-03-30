@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '../../../utils/cn';
 import {
   MetricCard,
@@ -8,20 +8,28 @@ import {
   LineChart,
   DonutChart,
   ProgressBar,
-  CircularProgress,
 } from '../../../components/dashboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useSystemHealth } from '../../../hooks/useDashboard';
-import { formatRelativeTime, formatDuration } from '../../../utils/dashboardUtils';
+import { useProperty } from '../../../context/PropertyContext';
+import { formatRelativeTime } from '../../../utils/dashboardUtils';
 
 export default function SystemHealth() {
+  const { selectedPropertyId } = useProperty();
+
   const [filters, setFilters] = useState({
-    hotelId: '',
+    hotelId: selectedPropertyId || '',
     component: '',
     timeRange: '24h',
   });
+
+  useEffect(() => {
+    if (selectedPropertyId) {
+      setFilters(prev => ({ ...prev, hotelId: selectedPropertyId }));
+    }
+  }, [selectedPropertyId]);
 
   const healthQuery = useSystemHealth(
     filters.hotelId,
@@ -109,9 +117,7 @@ export default function SystemHealth() {
             label: 'Hotel',
             type: 'select',
             options: [
-              { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
+              { value: selectedPropertyId || '', label: 'Select Hotel' },
             ],
           },
           {
@@ -146,8 +152,8 @@ export default function SystemHealth() {
       {/* Overall System Status */}
       <Card className={cn(
         'border-l-4',
-        data?.overall.status === 'healthy' ? 'border-green-500 bg-green-50' :
-        data?.overall.status === 'warning' ? 'border-yellow-500 bg-yellow-50' :
+        data?.overall?.status === 'healthy' ? 'border-green-500 bg-green-50' :
+        data?.overall?.status === 'warning' ? 'border-yellow-500 bg-yellow-50' :
         'border-red-500 bg-red-50'
       )}>
         <CardContent className="p-6">
@@ -155,25 +161,25 @@ export default function SystemHealth() {
             <div className="flex items-center space-x-3">
               <div className={cn(
                 'p-2 rounded-full',
-                getStatusColor(data?.overall.status || 'unknown')
+                getStatusColor(data?.overall?.status || 'unknown')
               )}>
-                {getStatusIcon(data?.overall.status || 'unknown')}
+                {getStatusIcon(data?.overall?.status || 'unknown')}
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
-                  System Status: {data?.overall.status?.toUpperCase() || 'UNKNOWN'}
+                  System Status: {data?.overall?.status?.toUpperCase() || 'UNKNOWN'}
                 </h2>
                 <p className="text-gray-600">
-                  Overall Health Score: {data?.overall.score || 0}/100
+                  Overall Health Score: {data?.overall?.score || 0}/100
                 </p>
               </div>
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-gray-900">
-                {data?.overall.score || 0}%
+                {data?.overall?.score || 0}%
               </div>
               <p className="text-sm text-gray-500">
-                Last updated: {data?.overall.lastUpdated ? 
+                Last updated: {data?.overall?.lastUpdated ?
                   formatRelativeTime(data.overall.lastUpdated) : 'Unknown'}
               </p>
             </div>
@@ -185,50 +191,30 @@ export default function SystemHealth() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="System Uptime"
-          value={data?.metrics.systemUptime || 0}
+          value={data?.metrics?.systemUptime || 0}
           suffix="days"
-          trend={{
-            value: 99.9,
-            direction: 'up',
-            label: 'uptime %'
-          }}
           color="green"
           loading={healthQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Avg Response Time"
-          value={data?.metrics.averageResponseTime || 0}
+          value={data?.metrics?.averageResponseTime || 0}
           suffix="ms"
-          trend={{
-            value: -15,
-            direction: 'down',
-            label: 'improvement'
-          }}
           color="blue"
           loading={healthQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Active Users"
-          value={data?.metrics.totalUsers || 0}
-          trend={{
-            value: 12,
-            direction: 'up',
-            label: 'online now'
-          }}
+          value={data?.metrics?.totalUsers || 0}
           color="purple"
           loading={healthQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Total Requests"
-          value={45678}
-          trend={{
-            value: 8.3,
-            direction: 'up',
-            label: 'vs yesterday'
-          }}
+          value={data?.metrics?.totalRequests?.toLocaleString() || '0'}
           color="yellow"
           loading={healthQuery.isLoading}
         />
@@ -276,7 +262,7 @@ export default function SystemHealth() {
                       variant="secondary"
                       className={getStatusColor(component.status)}
                     >
-                      {component.status.toUpperCase()}
+                      {(component.status || 'unknown').toUpperCase()}
                     </Badge>
                   </div>
 
@@ -340,23 +326,22 @@ export default function SystemHealth() {
           loading={healthQuery.isLoading}
           height="400px"
         >
-          <LineChart
-            data={[
-              { time: '00:00', api: 120, database: 45, storage: 30 },
-              { time: '04:00', api: 110, database: 42, storage: 28 },
-              { time: '08:00', api: 150, database: 55, storage: 40 },
-              { time: '12:00', api: 180, database: 70, storage: 50 },
-              { time: '16:00', api: 160, database: 60, storage: 45 },
-              { time: '20:00', api: 130, database: 50, storage: 35 },
-            ]}
-            xDataKey="time"
-            lines={[
-              { dataKey: 'api', name: 'API Server', color: '#3b82f6' },
-              { dataKey: 'database', name: 'Database', color: '#10b981' },
-              { dataKey: 'storage', name: 'Storage', color: '#f59e0b' },
-            ]}
-            height={350}
-          />
+          {data?.trends?.responseTime ? (
+            <LineChart
+              data={data.trends.responseTime}
+              xDataKey="time"
+              lines={[
+                { dataKey: 'api', name: 'API Server', color: '#3b82f6' },
+                { dataKey: 'database', name: 'Database', color: '#10b981' },
+                { dataKey: 'storage', name: 'Storage', color: '#f59e0b' },
+              ]}
+              height={350}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-[350px] text-gray-500">
+              No response time data available
+            </div>
+          )}
         </ChartCard>
 
         {/* System Resource Usage */}
@@ -367,17 +352,22 @@ export default function SystemHealth() {
           height="400px"
         >
           <DonutChart
-            data={[
-              { name: 'CPU Usage', value: 65, color: '#3b82f6' },
-              { name: 'Memory Usage', value: 78, color: '#10b981' },
-              { name: 'Disk Usage', value: 45, color: '#f59e0b' },
-              { name: 'Network Usage', value: 32, color: '#ef4444' },
+            data={data?.resources ? [
+              { name: 'CPU Usage', value: data.resources.cpu || 0, color: '#3b82f6' },
+              { name: 'Memory Usage', value: data.resources.memory || 0, color: '#10b981' },
+              { name: 'Disk Usage', value: data.resources.disk || 0, color: '#f59e0b' },
+              { name: 'Network Usage', value: data.resources.network || 0, color: '#ef4444' },
+            ] : [
+              { name: 'CPU Usage', value: 0, color: '#3b82f6' },
+              { name: 'Memory Usage', value: 0, color: '#10b981' },
+              { name: 'Disk Usage', value: 0, color: '#f59e0b' },
+              { name: 'Network Usage', value: 0, color: '#ef4444' },
             ]}
             height={350}
             centerContent={
               <div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {data?.overall.score || 0}%
+                  {data?.overall?.score || 0}%
                 </div>
                 <div className="text-sm text-gray-500">Health Score</div>
               </div>
@@ -391,7 +381,7 @@ export default function SystemHealth() {
         <Card>
           <CardContent className="p-6 text-center">
             <div className="text-3xl font-bold text-blue-600 mb-2">
-              {data?.metrics.totalBookings?.toLocaleString() || '0'}
+              {data?.metrics?.totalBookings?.toLocaleString() || '0'}
             </div>
             <div className="text-sm text-gray-600">Total Bookings</div>
           </CardContent>
@@ -400,7 +390,7 @@ export default function SystemHealth() {
         <Card>
           <CardContent className="p-6 text-center">
             <div className="text-3xl font-bold text-green-600 mb-2">
-              {data?.metrics.totalRooms?.toLocaleString() || '0'}
+              {data?.metrics?.totalRooms?.toLocaleString() || '0'}
             </div>
             <div className="text-sm text-gray-600">Total Rooms</div>
           </CardContent>
@@ -409,7 +399,7 @@ export default function SystemHealth() {
         <Card>
           <CardContent className="p-6 text-center">
             <div className="text-3xl font-bold text-purple-600 mb-2">
-              {data?.metrics.totalReviews?.toLocaleString() || '0'}
+              {data?.metrics?.totalReviews?.toLocaleString() || '0'}
             </div>
             <div className="text-sm text-gray-600">Total Reviews</div>
           </CardContent>
@@ -418,7 +408,7 @@ export default function SystemHealth() {
         <Card>
           <CardContent className="p-6 text-center">
             <div className="text-3xl font-bold text-yellow-600 mb-2">
-              {data?.metrics.totalCommunications?.toLocaleString() || '0'}
+              {data?.metrics?.totalCommunications?.toLocaleString() || '0'}
             </div>
             <div className="text-sm text-gray-600">Communications</div>
           </CardContent>
@@ -432,49 +422,38 @@ export default function SystemHealth() {
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
               <span>Recent Errors</span>
-              <Badge variant="secondary" className="bg-red-100 text-red-800">
-                3 errors
-              </Badge>
+              {data?.errors && data.errors.length > 0 && (
+                <Badge variant="secondary" className="bg-red-100 text-red-800">
+                  {data.errors.length} {data.errors.length === 1 ? 'error' : 'errors'}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {[
-                {
-                  timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-                  component: 'API Server',
-                  error: 'Database connection timeout',
-                  severity: 'warning'
-                },
-                {
-                  timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-                  component: 'Storage',
-                  error: 'Disk space warning at 85%',
-                  severity: 'warning'
-                },
-                {
-                  timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-                  component: 'Cache',
-                  error: 'Redis connection failed',
-                  severity: 'critical'
-                },
-              ].map((error, index) => (
-                <div key={`-${index}-${error}`} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
-                  <div className={cn(
-                    'w-2 h-2 rounded-full mt-2 flex-shrink-0',
-                    error.severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'
-                  )} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-900">{error.component}</p>
-                      <span className="text-xs text-gray-500">
-                        {formatRelativeTime(error.timestamp)}
-                      </span>
+              {data?.errors && data.errors.length > 0 ? (
+                data.errors.map((error: { timestamp: string; component: string; error: string; severity: string }, index: number) => (
+                  <div key={`error-${index}`} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
+                    <div className={cn(
+                      'w-2 h-2 rounded-full mt-2 flex-shrink-0',
+                      error.severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-gray-900">{error.component}</p>
+                        <span className="text-xs text-gray-500">
+                          {formatRelativeTime(error.timestamp)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{error.error}</p>
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">{error.error}</p>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-gray-500 text-sm">
+                  No recent errors
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -486,25 +465,25 @@ export default function SystemHealth() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {[
-                { timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), event: 'Database backup completed successfully' },
-                { timestamp: new Date(Date.now() - 1000 * 60 * 20).toISOString(), event: 'System maintenance scheduled for tonight' },
-                { timestamp: new Date(Date.now() - 1000 * 60 * 35).toISOString(), event: 'Cache server restarted' },
-                { timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(), event: 'Security scan completed - no issues found' },
-                { timestamp: new Date(Date.now() - 1000 * 60 * 90).toISOString(), event: 'API rate limiting updated' },
-              ].map((activity, index) => (
-                <div key={`activity-${index}`} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
-                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-gray-900">{activity.event}</p>
-                      <span className="text-xs text-gray-500">
-                        {formatRelativeTime(activity.timestamp)}
-                      </span>
+              {data?.activities && data.activities.length > 0 ? (
+                data.activities.map((activity: { timestamp: string; event: string }, index: number) => (
+                  <div key={`activity-${index}`} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-900">{activity.event}</p>
+                        <span className="text-xs text-gray-500">
+                          {formatRelativeTime(activity.timestamp)}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-6 text-gray-500 text-sm">
+                  No recent activity
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>

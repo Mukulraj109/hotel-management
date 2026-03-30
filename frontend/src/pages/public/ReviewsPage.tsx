@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star, Filter, ThumbsUp, MessageCircle, Calendar, User, Heart, TrendingUp, BarChart3 } from 'lucide-react';
+import { Star, Filter, ThumbsUp, MessageCircle, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
@@ -198,6 +198,10 @@ export default function ReviewsPage() {
 
   const hotelId = DEFAULT_PUBLIC_HOTEL_ID;
 
+  useEffect(() => {
+    document.title = 'Guest Reviews - The Pentouz';
+  }, []);
+
   const loadReviews = async (page = 1) => {
     try {
       setLoading(true);
@@ -217,7 +221,7 @@ export default function ReviewsPage() {
       setCurrentPage(reviewsData.pagination.page);
       setTotalPages(reviewsData.pagination.pages);
     } catch (error) {
-      // In real app, show error toast
+      console.error('Failed to load reviews:', error);
     } finally {
       setLoading(false);
     }
@@ -229,7 +233,7 @@ export default function ReviewsPage() {
 
   const handleHelpful = async (reviewId: string) => {
     try {
-      await reviewsService.markReviewHelpful(reviewId);
+      await reviewsService.markHelpful(reviewId);
       // Reload reviews to get updated helpful count
       loadReviews(currentPage);
     } catch {
@@ -288,7 +292,7 @@ export default function ReviewsPage() {
                   </label>
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as unknown)}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="newest">Newest First</option>
@@ -374,7 +378,7 @@ export default function ReviewsPage() {
                       {[...Array(Math.min(5, totalPages))].map((_, i) => {
                         const page = i + 1;
                         return (
-                          <button aria-label="Close"
+                          <button aria-label={`Go to page ${page}`}
                             key={page}
                             onClick={() => handlePageChange(page)}
                             className={cn(

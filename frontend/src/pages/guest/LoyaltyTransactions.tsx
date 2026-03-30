@@ -18,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../../utils/formatters';
 
 const getTransactionIcon = (type: string) => {
   switch (type) {
@@ -139,34 +138,34 @@ export default function LoyaltyTransactions() {
           </Select>
         </div>
 
-        {/* Summary Stats */}
+        {/* Summary Stats (this page) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">
             <div className="flex items-center space-x-2">
               <TrendingUp className="h-5 w-5 text-green-600" />
               <div>
-                <p className="text-sm text-gray-600">Total Earned</p>
+                <p className="text-sm text-gray-600">Earned (this page)</p>
                 <p className="font-semibold text-green-600">
                   {loyaltyService.formatPoints(
                     transactions
-                      .filter(t => t.type === 'earned')
-                      .reduce((sum, t) => sum + t.points, 0)
+                      .filter((t: { type: string }) => t.type === 'earned')
+                      .reduce((sum: number, t: { points: number }) => sum + t.points, 0)
                   )} pts
                 </p>
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-4">
             <div className="flex items-center space-x-2">
               <Gift className="h-5 w-5 text-red-600" />
               <div>
-                <p className="text-sm text-gray-600">Total Redeemed</p>
+                <p className="text-sm text-gray-600">Redeemed (this page)</p>
                 <p className="font-semibold text-red-600">
                   {loyaltyService.formatPoints(
                     Math.abs(transactions
-                      .filter(t => t.type === 'redeemed')
-                      .reduce((sum, t) => sum + t.points, 0))
+                      .filter((t: { type: string }) => t.type === 'redeemed')
+                      .reduce((sum: number, t: { points: number }) => sum + t.points, 0))
                   )} pts
                 </p>
               </div>
@@ -177,12 +176,12 @@ export default function LoyaltyTransactions() {
             <div className="flex items-center space-x-2">
               <Star className="h-5 w-5 text-yellow-600" />
               <div>
-                <p className="text-sm text-gray-600">Bonus Points</p>
+                <p className="text-sm text-gray-600">Bonus (this page)</p>
                 <p className="font-semibold text-yellow-600">
                   {loyaltyService.formatPoints(
                     transactions
-                      .filter(t => t.type === 'bonus')
-                      .reduce((sum, t) => sum + t.points, 0)
+                      .filter((t: { type: string }) => t.type === 'bonus')
+                      .reduce((sum: number, t: { points: number }) => sum + t.points, 0)
                   )} pts
                 </p>
               </div>

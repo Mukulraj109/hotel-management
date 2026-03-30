@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   Calendar,
-  Clock, 
+  Clock,
   Users,
   MapPin,
   Star,
   CreditCard,
   CheckCircle,
-  AlertCircle,
-  ChevronLeft
+  AlertCircle
 } from 'lucide-react';
 import { hotelServicesService } from '../../services/hotelServicesService';
 import { Card } from '@/components/ui/card';
@@ -20,6 +19,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const ServiceBookingPage: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
@@ -53,8 +53,9 @@ const ServiceBookingPage: React.FC = () => {
         toast.error(data.reason || 'Service is not available for the selected date and time');
       }
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to check availability');
+    onError: (error: Error) => {
+      const axiosError = error as Error & { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to check availability');
     }
   });
 
@@ -66,8 +67,9 @@ const ServiceBookingPage: React.FC = () => {
       toast.success('Service booked successfully!');
       navigate(`/app/services/bookings/confirmation/${data.booking._id}`);
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to book service');
+    onError: (error: Error) => {
+      const axiosError = error as Error & { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to book service');
     }
   });
 
@@ -187,10 +189,10 @@ const ServiceBookingPage: React.FC = () => {
                   <h2 className="text-xl font-semibold text-gray-900">{service.name}</h2>
                   <p className="text-gray-600">{service.type.charAt(0).toUpperCase() + service.type.slice(1)}</p>
                   <div className="flex items-center gap-4 mt-2">
-                    {service.rating.count > 0 && (
+                    {service.rating?.count > 0 && (
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="text-sm">{service.rating.average.toFixed(1)}</span>
+                        <span className="text-sm">{service.rating.average?.toFixed(1)}</span>
                       </div>
                     )}
                     {service.location && (
@@ -396,4 +398,4 @@ const ServiceBookingPage: React.FC = () => {
   );
 };
 
-export default ServiceBookingPage;
+export default withErrorBoundary(ServiceBookingPage, { level: 'page' });

@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import { api } from '../../services/api';
+import toast from 'react-hot-toast';
 
 interface EnhancedRoomServiceWidgetProps {
   bookingId?: string;
@@ -158,9 +159,9 @@ export function EnhancedRoomServiceWidget({
         const categories = processMenusIntoCategories(response.data.data);
         setMenuCategories(categories);
       }
-    } catch (error) {
-      // Fallback to mock data if API fails
-      setMenuCategories(getMockMenuCategories());
+    } catch {
+      // Show empty state when menu cannot be loaded
+      setMenuCategories([]);
     }
   };
 
@@ -209,35 +210,6 @@ export function EnhancedRoomServiceWidget({
       items,
       icon: categoryIcons[category as keyof typeof categoryIcons] || categoryIcons.default
     }));
-  };
-
-  const getMockMenuCategories = (): MenuCategory[] => {
-    return [
-      {
-        category: 'appetizers',
-        icon: categoryIcons.appetizers,
-        items: [
-          { itemId: 'app1', name: 'Spring Rolls', description: 'Crispy vegetable spring rolls', price: 350, category: 'appetizers', isAvailable: true },
-          { itemId: 'app2', name: 'Chicken Wings', description: 'Spicy buffalo wings', price: 450, category: 'appetizers', isAvailable: true }
-        ]
-      },
-      {
-        category: 'main_course',
-        icon: categoryIcons.main_course,
-        items: [
-          { itemId: 'main1', name: 'Butter Chicken', description: 'Rich and creamy chicken curry', price: 650, category: 'main_course', isAvailable: true },
-          { itemId: 'main2', name: 'Pasta Alfredo', description: 'Creamy fettuccine pasta', price: 550, category: 'main_course', isAvailable: true }
-        ]
-      },
-      {
-        category: 'beverages',
-        icon: categoryIcons.beverages,
-        items: [
-          { itemId: 'bev1', name: 'Fresh Orange Juice', description: 'Freshly squeezed orange juice', price: 150, category: 'beverages', isAvailable: true },
-          { itemId: 'bev2', name: 'Coffee', description: 'Hot brewed coffee', price: 100, category: 'beverages', isAvailable: true }
-        ]
-      }
-    ];
   };
 
   const addToCart = (item: MenuItem) => {
@@ -326,11 +298,10 @@ export function EnhancedRoomServiceWidget({
           onRequestService('room_service', cart, posOrder);
         }
 
-        // Show success message (you could add a toast notification here)
-        alert(`Order submitted successfully! ${posOrder ? `POS Order #${posOrder.orderNumber}` : 'Service Request created'}`);
+        toast.success(`Order submitted successfully! ${posOrder ? `POS Order #${posOrder.orderNumber}` : 'Service Request created'}`);
       }
-    } catch (error) {
-      alert('Failed to submit order. Please try again.');
+    } catch {
+      toast.error('Failed to submit order. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -411,7 +382,7 @@ export function EnhancedRoomServiceWidget({
             All Categories
           </button>
           {menuCategories.map(category => (
-            <button aria-label="Close"
+            <button aria-label={`Filter by ${category.category.replace('_', ' ')} category`}
               key={category.category}
               onClick={() => setSelectedCategory(category.category)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${

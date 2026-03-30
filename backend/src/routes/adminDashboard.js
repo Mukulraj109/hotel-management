@@ -4820,6 +4820,12 @@ router.get('/alerts', authorize('admin', 'staff'), catchAsync(async (req, res, n
   // Apply limit
   filteredAlerts = filteredAlerts.slice(0, parseInt(limit));
 
+  // Add `timestamp` field for frontend compatibility (frontend expects `timestamp`, backend generates `createdAt`)
+  filteredAlerts = filteredAlerts.map(alert => ({
+    ...alert,
+    timestamp: alert.timestamp || alert.createdAt || new Date().toISOString()
+  }));
+
   // Generate alert summary
   const alertSummary = {
     total: filteredAlerts.length,
@@ -5353,9 +5359,107 @@ router.get('/system-health', authorize('admin'), catchAsync(async (req, res, nex
     responseData.alerts = systemAlerts;
   }
 
+  // Build frontend-compatible response with `overall`, `metrics`, `components`, `resources`, `errors`, `activities`, `trends`
+  const frontendData = {
+    // Map overview -> overall (frontend expects `overall`)
+    overall: {
+      status: overallHealthScore > 90 ? 'healthy' : overallHealthScore > 60 ? 'warning' : 'critical',
+      score: overallHealthScore,
+      lastUpdated: now.toISOString()
+    },
+    // Flatten metrics from scattered sources
+    metrics: {
+      systemUptime: Math.floor(process.uptime() / 86400), // days
+      averageResponseTime: apiHealth.avgResponseTime || 0,
+      totalUsers: dbStats[2] || 0,
+      totalRequests: apiHealth.totalRequests || 0,
+      totalBookings: dbStats[0] || 0,
+      totalRooms: dbStats[1] || 0,
+      totalReviews: dbStats[3] || 0,
+      totalCommunications: dbStats[4] || 0
+    },
+    // Build components array from individual health objects
+    components: [
+      {
+        name: 'database',
+        status: databaseHealth.status,
+        uptime: 99.9,
+        responseTime: databaseHealth.queryPerformance.avgResponseTime,
+        errorRate: 0,
+        lastCheck: now.toISOString()
+      },
+      {
+        name: 'api_server',
+        status: apiHealth.status,
+        uptime: 99.8,
+        responseTime: apiHealth.avgResponseTime,
+        errorRate: apiHealth.totalErrors > 0 ? Math.round((apiHealth.totalErrors / Math.max(apiHealth.totalRequests, 1)) * 10000) / 100 : 0,
+        lastCheck: now.toISOString()
+      },
+      {
+        name: 'cache',
+        status: cacheHealth.status,
+        uptime: 99.5,
+        responseTime: 5,
+        errorRate: 0,
+        lastCheck: now.toISOString()
+      },
+      ...Object.entries(externalServicesHealth)
+        .filter(([, svc]) => typeof svc === 'object' && typeof svc.status === 'string')
+        .map(([key, svc]) => ({
+          name: key.replace(/([A-Z])/g, ' $1').trim().toLowerCase(),
+          status: svc.status,
+          uptime: svc.uptime || 0,
+          responseTime: svc.responseTime || 0,
+          errorRate: 0,
+          lastCheck: now.toISOString()
+        }))
+    ],
+    // Resource usage percentages for donut chart
+    resources: {
+      cpu: serverHealth.cpu.usage,
+      memory: serverHealth.memory.usagePercentage,
+      disk: serverHealth.disk.usagePercentage,
+      network: Math.round((serverHealth.network.connectionsActive / Math.max(serverHealth.network.connectionsTotal, 1)) * 100)
+    },
+    // Map response time trends for chart
+    trends: component === 'all' && performanceTrends ? {
+      responseTime: performanceTrends.apiResponseTime.map((point, i) => ({
+        time: new Date(point.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        api: Math.round(point.value),
+        database: Math.round((performanceTrends.databaseResponseTime[i]?.value || 0)),
+        storage: Math.round((performanceTrends.disk[i]?.value || 0))
+      }))
+    } : undefined,
+    // Map errors from errorAnalysis
+    errors: (errorAnalysis.recentErrors || []).map(e => ({
+      timestamp: e.timestamp,
+      component: e.type,
+      error: e.message,
+      severity: e.severity
+    })),
+    // Activities from backup/security events
+    activities: [
+      ...(backupHealth.status === 'successful' ? [{
+        timestamp: backupHealth.lastBackup,
+        event: `Database backup completed successfully (${backupHealth.backupSize})`
+      }] : []),
+      ...(backupHealth.nextScheduled ? [{
+        timestamp: now.toISOString(),
+        event: `Next backup scheduled: ${new Date(backupHealth.nextScheduled).toLocaleString()}`
+      }] : []),
+      ...(securityHealth.failedLogins.blocked > 0 ? [{
+        timestamp: now.toISOString(),
+        event: `${securityHealth.failedLogins.blocked} suspicious login attempts blocked`
+      }] : [])
+    ],
+    // Keep raw data for advanced views
+    _raw: responseData
+  };
+
   res.status(200).json({
     status: 'success',
-    data: responseData
+    data: frontendData
   });
 }));
 

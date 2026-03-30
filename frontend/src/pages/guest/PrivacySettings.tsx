@@ -27,21 +27,27 @@ const PrivacySettings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dataDownloadRequest, setDataDownloadRequest] = useState<DataDownloadRequest | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<PrivacyFormData>();
 
   useEffect(() => {
-    // Load existing privacy settings
-    if (user?.privacy) {
-      setValue('dataSharing', user.privacy.dataSharing || false);
-      setValue('locationTracking', user.privacy.locationTracking || false);
-      setValue('analyticsTracking', user.privacy.analyticsTracking || true);
-      setValue('marketingEmails', user.privacy.marketingEmails || false);
-      setValue('thirdPartySharing', user.privacy.thirdPartySharing || false);
-      setValue('profileVisibility', user.privacy.profileVisibility || false);
-      setValue('bookingHistoryVisibility', user.privacy.bookingHistoryVisibility || true);
-      setValue('personalizedExperience', user.privacy.personalizedExperience || true);
-    }
+    // Load existing privacy settings from user preferences
+    const loadPrivacySettings = async () => {
+      try {
+        const { data } = await api.get('/user-preferences/guest');
+        const privacy = data?.data?.guest?.privacy;
+        if (privacy) {
+          setValue('dataSharing', privacy.dataSharing ?? false);
+          setValue('locationTracking', privacy.locationTracking ?? false);
+          setValue('analyticsTracking', privacy.analyticsTracking ?? false);
+        }
+      } catch {
+        // Fall back to defaults if preferences not yet created
+      }
+    };
+
+    loadPrivacySettings();
 
     // Check for existing data download requests
     fetchDataDownloadRequest();
@@ -49,17 +55,33 @@ const PrivacySettings: React.FC = () => {
 
   const fetchDataDownloadRequest = async () => {
     try {
-      const { data } = await api.get('/settings/privacy/data-request');
-      setDataDownloadRequest(data.request);
+      // Use the user-preferences export endpoint to check for data export availability
+      const { data } = await api.get('/user-preferences/export');
+      if (data?.data) {
+        setDataDownloadRequest({
+          requestDate: data.data.exportedAt,
+          status: 'ready',
+          downloadUrl: undefined
+        });
+      }
     } catch {
-      // Error handled silently
+      // No existing data download request -- this is expected for new users
     }
   };
 
   const onSubmit = async (data: PrivacyFormData) => {
     setIsLoading(true);
     try {
-      await api.put('/settings/guest/settings', { privacy: data });
+      // Save privacy-related settings under the guest preferences privacy section
+      const guestPreferences = {
+        privacy: {
+          dataSharing: data.dataSharing,
+          locationTracking: data.locationTracking,
+          analyticsTracking: data.analyticsTracking,
+        },
+      };
+
+      await api.put('/user-preferences/guest', guestPreferences);
 
       showToast('Privacy settings updated successfully', 'success');
     } catch (error) {
@@ -71,23 +93,40 @@ const PrivacySettings: React.FC = () => {
 
   const requestDataDownload = async () => {
     try {
-      const { data } = await api.post('/settings/privacy/request-data');
-      setDataDownloadRequest(data.request);
-      showToast('Data download request submitted successfully', 'success');
+      // Use the export endpoint to get user data (GDPR data export)
+      const { data } = await api.get('/user-preferences/export');
+      if (data?.data) {
+        // Create a downloadable JSON file of the user's data
+        const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `my-data-export-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setDataDownloadRequest({
+          requestDate: new Date().toISOString(),
+          status: 'ready',
+        });
+        showToast('Your data has been exported successfully', 'success');
+      }
     } catch (error) {
-      showToast('Failed to request data download', 'error');
+      showToast('Failed to export data. Please try again later.', 'error');
     }
   };
 
   const deleteAccount = async () => {
     try {
-      await api.post('/settings/privacy/delete-account');
+      // Reset all user preferences as a soft-delete / data removal step
+      await api.delete('/user-preferences');
 
-      showToast('Account deletion request submitted', 'success');
+      showToast('Account data has been cleared. Contact support to complete account deletion.', 'success');
       setShowDeleteModal(false);
-      // Redirect to logout or confirmation page
     } catch (error) {
-      showToast('Failed to delete account', 'error');
+      showToast('Failed to process request. Please contact support.', 'error');
     }
   };
 
@@ -273,11 +312,21 @@ const PrivacySettings: React.FC = () => {
         <div className="flex justify-end space-x-4 pt-6 border-t">
           <button
             type="button"
+            onClick={() => {
+              setValue('analyticsTracking', false);
+              setValue('locationTracking', false);
+              setValue('personalizedExperience', false);
+              setValue('thirdPartySharing', false);
+              setValue('marketingEmails', false);
+              setValue('profileVisibility', false);
+              setValue('bookingHistoryVisibility', true);
+              setValue('dataSharing', false);
+            }}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
           >
             Reset to Defaults
           </button>
-          <button aria-label="Settings"
+          <button aria-label="Save privacy settings"
             type="submit"
             disabled={isLoading}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -361,20 +410,37 @@ const PrivacySettings: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Account Deletion</h3>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="text-sm text-gray-600 mb-4">
               Are you sure you want to delete your account? This action is permanent and cannot be undone.
               All your data, bookings, and preferences will be permanently removed.
             </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Type <span className="font-bold">DELETE</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                placeholder="Type DELETE here"
+                autoComplete="off"
+              />
+            </div>
             <div className="flex space-x-4">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
                 className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={deleteAccount}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                disabled={deleteConfirmText !== 'DELETE'}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete Account
               </button>

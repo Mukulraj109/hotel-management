@@ -102,12 +102,14 @@ const reviewSchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: [true, 'Hotel ID is required']
+    required: [true, 'Hotel ID is required'],
+    index: true
   },
   userId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',
-    required: [true, 'User ID is required']
+    required: [true, 'User ID is required'],
+    index: true
   },
   bookingId: {
     type: mongoose.Schema.ObjectId,
@@ -203,6 +205,10 @@ const reviewSchema = new mongoose.Schema({
   guestName: {
     type: String,
     trim: true
+  },
+  isAnonymous: {
+    type: Boolean,
+    default: false
   },
   roomType: {
     type: String,
@@ -369,11 +375,17 @@ reviewSchema.methods.moderate = function(status, notes = '') {
   return this.save();
 };
 
+// Capture isNew before save (post-save resets this flag to false)
+reviewSchema.pre('save', function(next) {
+  this._wasNew = this.isNew;
+  next();
+});
+
 // PHASE 6: OPERATIONAL INTELLIGENCE NOTIFICATION HOOKS
 reviewSchema.post('save', async function(doc) {
   try {
     // Trigger immediate alerts for very low ratings (1-2 stars)
-    if (this.isNew && doc.rating <= 2) {
+    if (doc._wasNew && doc.rating <= 2) {
       // Get room information if available
       let roomNumber = 'Unknown';
       if (doc.bookingId) {
@@ -399,7 +411,7 @@ reviewSchema.post('save', async function(doc) {
           reviewContent: doc.content,
           reviewId: doc._id,
           categories: doc.categories,
-          issueAreas: this.identifyIssueAreas(doc),
+          issueAreas: doc.identifyIssueAreas(doc),
           urgency: doc.rating === 1 ? 'Critical' : 'High',
           responseRequired: true,
           createdAt: doc.createdAt || new Date()
@@ -409,6 +421,9 @@ reviewSchema.post('save', async function(doc) {
         doc.hotelId
       );
     }
+
+    // Clean up transient flag
+    delete doc._wasNew;
 
   } catch (error) {
     console.error('Error in Review notification hook:', error);

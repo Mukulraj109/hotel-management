@@ -77,11 +77,8 @@ function AdminCheckoutInventoryManagement() {
     fetchData();
     
     // Connect to real-time updates
+    // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
     connect().catch(() => { /* Error handled silently */ });
-    
-    return () => {
-      disconnect();
-    };
   }, [selectedPropertyId]);
 
   // Set up real-time event listeners

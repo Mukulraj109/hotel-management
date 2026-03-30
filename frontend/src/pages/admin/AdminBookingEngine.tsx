@@ -12,7 +12,7 @@ import PromoCodeManager from '../../components/marketing/PromoCodeManager';
 import ReviewManager from '../../components/marketing/ReviewManager';
 
 const AdminBookingEngine: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
 
   // Early return if no property selected in single mode
   if (!selectedPropertyId && viewMode === 'single') {
@@ -62,13 +62,6 @@ const AdminBookingEngine: React.FC = () => {
 
         <TabsContent value="promos">
           <PromoCodeManager />
-        </TabsContent>
-
-        <TabsContent value="crm">
-          <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4">Guest CRM</h2>
-            <p className="text-gray-600">Guest relationship management features coming soon...</p>
-          </div>
         </TabsContent>
 
         <TabsContent value="reviews">

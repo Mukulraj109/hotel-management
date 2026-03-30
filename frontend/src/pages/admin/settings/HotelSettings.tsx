@@ -304,8 +304,8 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
     }
   };
 
-  const isAnyLoading = saveBasicInfoMutation.isLoading ||
-                     saveTaxesMutation.isLoading;
+  const isAnyLoading = saveBasicInfoMutation.isPending ||
+                     saveTaxesMutation.isPending;
 
   if (isLoading) {
     return (

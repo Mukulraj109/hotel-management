@@ -1,49 +1,37 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   Banknote,
   TrendingUp,
   Calendar,
-  Building,
   AlertCircle,
   CheckCircle,
   XCircle,
   Clock,
   Download,
-  Filter,
   Search,
   Plus,
   Edit,
   Eye,
   Ban,
-  RefreshCw,
-  FileText,
-  CreditCard,
   Award,
   BarChart3,
   Activity,
-  Bell,
   Target,
   Zap
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { format, subDays, subMonths } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { travelAgentService, TravelAgent, TravelDashboardOverview } from '../../services/travelAgentService';
 import { toast } from 'sonner';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
-import AnalyticsChart, { ChartData } from '../../components/analytics/AnalyticsChart';
-import BookingTrendsChart, { BookingTrend } from '../../components/analytics/BookingTrendsChart';
-import CommissionChart, { CommissionData } from '../../components/analytics/CommissionChart';
-import RevenueChart, { RevenueData } from '../../components/analytics/RevenueChart';
 import DateRangeSelector, { DateRange } from '../../components/filters/DateRangeSelector';
 import MultiCriteriaFilter, { FilterCriteria, FilterField } from '../../components/filters/MultiCriteriaFilter';
 import SavedFiltersManager, { SavedFilter } from '../../components/filters/SavedFiltersManager';
 import ExportOptionsModal, { ExportOptions } from '../../components/filters/ExportOptionsModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
-// import RealTimeUpdater from '../../components/realtime/RealTimeUpdater';
-// import NotificationCenter, { Notification } from '../../components/realtime/NotificationCenter';
 
 const AdminTravelDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -60,49 +48,34 @@ const AdminTravelDashboard: React.FC = () => {
     label: 'Last month'
   });
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
-  const [analytics, setAnalytics] = useState<unknown>(null);
-  const [pendingCommissions, setPendingCommissions] = useState<unknown>(null);
-  const [comparativeData, setComparativeData] = useState({
-    agentPerformance: [] as unknown[],
-    revenueComparison: [] as RevenueData[],
-    commissionComparison: [] as CommissionData[]
+  const [analytics, setAnalytics] = useState<Record<string, unknown> | null>(null);
+  const [pendingCommissions, setPendingCommissions] = useState<Record<string, unknown> | null>(null);
+  const [comparativeData, setComparativeData] = useState<{
+    agentPerformance: Array<{
+      agentId: string;
+      agentName: string;
+      bookingCount: number;
+      revenue: number;
+      commission: number;
+      averageBookingValue: number;
+      performanceScore: number;
+    }>;
+  }>({
+    agentPerformance: []
   });
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria[]>([]);
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
+  const [agentPage, setAgentPage] = useState(1);
+  const [agentTotalPages, setAgentTotalPages] = useState(1);
+  const [agentTotal, setAgentTotal] = useState(0);
+  const AGENTS_PER_PAGE = 20;
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [bulkOperationMode, setBulkOperationMode] = useState(false);
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-    loadSavedFilters();
-    // initializeNotifications();
-  }, []);
-
-  useEffect(() => {
-    // Only fetch data if not loading to prevent multiple simultaneous calls
-    if (!loading) {
-      fetchDashboardData();
-    }
-  }, [selectedTab, dateRange, timeRange]);
-
-  useEffect(() => {
-    if (selectedTab === 'comparative' && !loading) {
-      fetchComparativeData();
-    }
-  }, [selectedTab, selectedAgents, timeRange, dateRange]);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -110,9 +83,15 @@ const AdminTravelDashboard: React.FC = () => {
       const dashboardOverview = await travelAgentService.getTravelDashboardOverview();
       setOverview(dashboardOverview);
 
-      // Fetch agents list
-      const agentsData = await travelAgentService.getAllTravelAgents();
+      // Fetch agents list with pagination
+      const agentsData = await travelAgentService.getAllTravelAgents({
+        status: filterStatus !== 'all' ? filterStatus : undefined,
+        search: searchTerm || undefined,
+        sortBy: 'createdAt'
+      });
       setAgents(agentsData?.travelAgents || []);
+      setAgentTotal(agentsData?.total || agentsData?.travelAgents?.length || 0);
+      setAgentTotalPages(Math.max(1, Math.ceil((agentsData?.total || agentsData?.travelAgents?.length || 0) / AGENTS_PER_PAGE)));
 
       // Fetch analytics if on analytics tab
       if (selectedTab === 'analytics') {
@@ -120,20 +99,31 @@ const AdminTravelDashboard: React.FC = () => {
           startDate: dateRange.start,
           endDate: dateRange.end
         });
-        setAnalytics(analyticsData);
+        setAnalytics(analyticsData as Record<string, unknown>);
       }
 
       // Fetch pending commissions if on commissions tab
       if (selectedTab === 'commissions') {
         const commissionsData = await travelAgentService.getPendingCommissions();
-        setPendingCommissions(commissionsData);
+        setPendingCommissions(commissionsData as Record<string, unknown>);
       }
     } catch (error) {
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedTab, dateRange, filterStatus, searchTerm]);
+
+  useEffect(() => {
+    fetchDashboardData();
+    loadSavedFilters();
+  }, [fetchDashboardData]);
+
+  useEffect(() => {
+    if (selectedTab === 'comparative' && !loading) {
+      fetchComparativeData();
+    }
+  }, [selectedTab, selectedAgents, timeRange, dateRange]);
 
   const handleStatusUpdate = async (agentId: string, status: string) => {
     try {
@@ -147,22 +137,38 @@ const AdminTravelDashboard: React.FC = () => {
 
   const fetchComparativeData = async () => {
     try {
-      // Use real data from overview and agents
-      const agentPerformance = agents.map(agent => ({
-        agentId: agent._id,
-        agentName: agent.companyName,
-        bookingCount: agent.performanceMetrics?.totalBookings || 0,
-        revenue: agent.performanceMetrics?.totalRevenue || 0,
-        commission: agent.performanceMetrics?.totalCommissionEarned || 0,
-        conversionRate: '85.0', // Could be calculated from actual data
-        averageBookingValue: agent.performanceMetrics?.averageBookingValue || 0,
-        performanceScore: Math.floor((agent.performanceMetrics?.totalBookings || 0) / 10) + 70 // Simple scoring based on bookings
-      }));
+      // Build comparative data from real agent performance metrics
+      const filteredForComparison = selectedAgents.length > 0
+        ? agents.filter(a => selectedAgents.includes(a._id))
+        : agents;
+
+      const agentPerformance = filteredForComparison.map(agent => {
+        const bookings = agent.performanceMetrics?.totalBookings || 0;
+        const revenue = agent.performanceMetrics?.totalRevenue || 0;
+        const commission = agent.performanceMetrics?.totalCommissionEarned || 0;
+        const avgBookingValue = agent.performanceMetrics?.averageBookingValue || 0;
+        // Weighted score: 40% bookings (normalized), 40% revenue (normalized), 20% avg value
+        const maxBookings = Math.max(...filteredForComparison.map(a => a.performanceMetrics?.totalBookings || 0), 1);
+        const maxRevenue = Math.max(...filteredForComparison.map(a => a.performanceMetrics?.totalRevenue || 0), 1);
+        const performanceScore = Math.round(
+          ((bookings / maxBookings) * 40) +
+          ((revenue / maxRevenue) * 40) +
+          (Math.min(avgBookingValue / 10000, 1) * 20)
+        );
+
+        return {
+          agentId: agent._id,
+          agentName: agent.companyName || 'Unknown',
+          bookingCount: bookings,
+          revenue,
+          commission,
+          averageBookingValue: avgBookingValue,
+          performanceScore
+        };
+      });
 
       setComparativeData({
-        agentPerformance,
-        revenueComparison: [],
-        commissionComparison: []
+        agentPerformance
       });
     } catch (error) {
       toast.error('Failed to load comparative data');
@@ -171,51 +177,39 @@ const AdminTravelDashboard: React.FC = () => {
 
   const loadSavedFilters = async () => {
     try {
-      // Mock saved filters - replace with actual API call
+      // Saved filters are stored in local component state for now.
+      // Persisted filters could be stored via a user-preferences API in the future.
       setSavedFilters([]);
     } catch {
-      // Error handled silently
+      // Silently ignore — saved filters are non-critical
     }
   };
 
-  // const initializeNotifications = () => {
-  //   // Mock notifications for admin
-  //   const mockNotifications: Notification[] = [
-  //     {
-  //       id: '1',
-  //       type: 'warning',
-  //       title: 'Commission Payment Overdue',
-  //       message: '3 agents have commissions pending for over 30 days.',
-  //       timestamp: new Date(),
-  //       read: false,
-  //       actionUrl: '/admin/travel-agents?tab=commissions',
-  //       actionLabel: 'Review Commissions'
-  //     },
-  //     {
-  //       id: '2',
-  //       type: 'success',
-  //       title: 'New Agent Registration',
-  //       message: 'Sunshine Travel Agency has completed registration and is pending approval.',
-  //       timestamp: new Date(Date.now() - 1000 * 60 * 15),
-  //       read: false,
-  //       actionUrl: '/admin/travel-agents/new',
-  //       actionLabel: 'Review Application'
-  //     }
-  //   ];
-  //   setNotifications(mockNotifications);
-  // };
+  // Notification system removed — will be re-added when NotificationCenter component is ready
 
   const handleExportData = async (options: ExportOptions) => {
     try {
-      // Mock export functionality - replace with actual implementation
-      toast.success(`Exporting data as ${options.format.toUpperCase()}...`);
       setShowExportModal(false);
+      toast.success(`Exporting data as ${options.format.toUpperCase()}...`);
 
-      // Simulate export delay
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        toast.success('Export completed successfully!');
-      }, 2000);
+      const blob = await travelAgentService.exportTravelData({
+        type: 'agents',
+        format: (options.format === 'csv' ? 'csv' : options.format === 'pdf' ? 'pdf' : 'excel') as 'csv' | 'excel' | 'pdf',
+        startDate: dateRange.start,
+        endDate: dateRange.end
+      });
+
+      // Download the blob
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${options.fileName || 'travel-export'}.${options.format === 'csv' ? 'csv' : options.format === 'pdf' ? 'pdf' : 'json'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Export completed successfully!');
     } catch (error) {
       toast.error('Export failed');
     }
@@ -263,21 +257,6 @@ const AdminTravelDashboard: React.FC = () => {
     toast.success('Filter deleted successfully!');
   };
 
-  // const handleNotificationAction = (action: string, notificationId: string) => {
-  //   switch (action) {
-  //     case 'markAsRead':
-  //       setNotifications(prev => prev.map(n =>
-  //         n.id === notificationId ? { ...n, read: true } : n
-  //       ));
-  //       break;
-  //     case 'dismiss':
-  //       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-  //       break;
-  //     case 'clearAll':
-  //       setNotifications([]);
-  //       break;
-  //   }
-  // };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -479,19 +458,8 @@ const AdminTravelDashboard: React.FC = () => {
               <p className="text-gray-600 mt-2">
                 Manage travel agents, commissions, and performance
               </p>
-              {/* <RealTimeUpdater
-                onUpdate={fetchDashboardData}
-                enabled={realTimeEnabled}
-                className="mt-2"
-              /> */}
             </div>
             <div className="flex items-center gap-3">
-              {/* <NotificationCenter
-                notifications={notifications}
-                onMarkAsRead={(id) => handleNotificationAction('markAsRead', id)}
-                onDismiss={(id) => handleNotificationAction('dismiss', id)}
-                onClearAll={() => handleNotificationAction('clearAll', '')}
-              /> */}
               {bulkOperationMode && selectedAgents.length > 0 && (
                 <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
                   <span className="text-sm text-indigo-700">
@@ -553,10 +521,11 @@ const AdminTravelDashboard: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm mb-6">
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
-              {['overview', 'agents', 'commissions', 'analytics', 'comparative'].map((tab) => (
-                <button aria-label="Close"
+              {(['overview', 'agents', 'commissions', 'analytics', 'comparative'] as const).map((tab) => (
+                <button
+                  aria-label={`Switch to ${tab} tab`}
                   key={tab}
-                  onClick={() => setSelectedTab(tab as unknown)}
+                  onClick={() => setSelectedTab(tab)}
                   className={`px-6 py-3 text-sm font-medium capitalize flex items-center gap-2 ${
                     selectedTab === tab
                       ? 'text-indigo-600 border-b-2 border-indigo-600'
@@ -632,8 +601,8 @@ const AdminTravelDashboard: React.FC = () => {
                     <p className="text-3xl font-bold text-gray-900 mt-2">
                       ₹{overview?.revenue?.totalRevenue?.toLocaleString() || '0'}
                     </p>
-                    <p className="text-sm text-green-600 mt-2">
-                      +12% vs last month
+                    <p className={`text-sm mt-2 ${(overview?.overview?.revenueGrowth ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {(overview?.overview?.revenueGrowth ?? 0) >= 0 ? '+' : ''}{overview?.overview?.revenueGrowth?.toFixed(1) ?? '0'}% vs last period
                     </p>
                   </div>
                   <div className="p-3 bg-green-100 rounded-full">
@@ -740,34 +709,44 @@ const AdminTravelDashboard: React.FC = () => {
                     {(!overview?.recentBookings || overview.recentBookings.length === 0) && (
                       <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500 text-sm">No recent agent bookings</td></tr>
                     )}
-                    {(overview?.recentBookings || []).slice(0, 5).map((booking) => (
-                      <tr key={booking._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {booking.confirmationNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {booking.travelAgentId?.companyName || agents.find(a => a._id === booking.travelAgentId?._id || booking.travelAgentId)?.companyName || 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {booking.guestDetails?.primaryGuest?.name || 'Mock Guest'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ₹{booking.pricing?.totalAmount?.toLocaleString() || '0'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ₹{(booking.commission?.totalCommission || booking.commission?.amount || 0).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            (booking.status || booking.bookingStatus) === 'confirmed' ? 'bg-green-100 text-green-800' :
-                            (booking.status || booking.bookingStatus) === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {booking.status || booking.bookingStatus || 'confirmed'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {(overview?.recentBookings || []).slice(0, 5).map((booking) => {
+                      // travelAgentId may be populated to an object by the backend
+                      const agentRef = booking.travelAgentId as unknown as (string | { _id?: string; companyName?: string });
+                      const agentName = typeof agentRef === 'object' && agentRef?.companyName
+                        ? agentRef.companyName
+                        : agents.find(a => a._id === (typeof agentRef === 'string' ? agentRef : agentRef?._id))?.companyName || 'N/A';
+                      const commissionAmt = ((booking.commission as Record<string, unknown>)?.totalCommission as number) || booking.commission?.amount || 0;
+                      const bookingStatus = (booking as unknown as Record<string, unknown>).status as string || booking.bookingStatus || 'unknown';
+
+                      return (
+                        <tr key={booking._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {booking.confirmationNumber || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {agentName}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {booking.guestDetails?.primaryGuest?.name || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ₹{booking.pricing?.totalAmount?.toLocaleString() || '0'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ₹{commissionAmt.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              bookingStatus === 'confirmed' ? 'bg-green-100 text-green-800' :
+                              bookingStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {bookingStatus}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -824,7 +803,7 @@ const AdminTravelDashboard: React.FC = () => {
                   currentCriteria={filterCriteria}
                   currentDateRange={dateRange}
                 />
-                <button aria-label="Close"
+                <button aria-label="Toggle real-time updates"
                   onClick={() => setRealTimeEnabled(!realTimeEnabled)}
                   className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
                     realTimeEnabled
@@ -957,13 +936,13 @@ const AdminTravelDashboard: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <p className="text-sm font-medium text-gray-900">
-                          {agent.commissionStructure.defaultRate}%
+                          {agent.commissionStructure?.defaultRate ?? 0}%
                         </p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(agent.status)}`}>
                           {getStatusIcon(agent.status)}
-                          <span className="ml-1">{agent.status.replace('_', ' ')}</span>
+                          <span className="ml-1">{(agent.status || 'unknown').replace(/_/g, ' ')}</span>
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -981,14 +960,14 @@ const AdminTravelDashboard: React.FC = () => {
                             <Edit className="h-4 w-4" />
                           </button>
                           {agent.status === 'active' ? (
-                            <button aria-label="Close"
+                            <button aria-label="Suspend agent"
                               onClick={() => handleStatusUpdate(agent._id, 'suspended')}
                               className="text-red-600 hover:text-red-900"
                             >
                               <Ban className="h-4 w-4" />
                             </button>
                           ) : (
-                            <button aria-label="Close"
+                            <button aria-label="Activate agent"
                               onClick={() => handleStatusUpdate(agent._id, 'active')}
                               className="text-green-600 hover:text-green-900"
                             >
@@ -1015,19 +994,19 @@ const AdminTravelDashboard: React.FC = () => {
                 <div className="text-center p-4 border border-gray-200 rounded-lg">
                   <p className="text-gray-600 text-sm">Total Pending</p>
                   <p className="text-2xl font-bold text-gray-900 mt-2">
-                    ₹{pendingCommissions?.totalAmount?.toLocaleString() || '0'}
+                    ₹{((pendingCommissions?.summary as Record<string, unknown>)?.totalPendingAmount as number || 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="text-center p-4 border border-yellow-200 rounded-lg bg-yellow-50">
-                  <p className="text-gray-600 text-sm">Agents with Pending</p>
+                  <p className="text-gray-600 text-sm">Bookings with Pending</p>
                   <p className="text-2xl font-bold text-yellow-600 mt-2">
-                    {pendingCommissions?.commissions?.length || 0}
+                    {(pendingCommissions?.summary as Record<string, unknown>)?.totalBookings as number || (pendingCommissions?.commissions as unknown[])?.length || 0}
                   </p>
                 </div>
                 <div className="text-center p-4 border border-blue-200 rounded-lg bg-blue-50">
                   <p className="text-gray-600 text-sm">Average Commission</p>
                   <p className="text-2xl font-bold text-blue-600 mt-2">
-                    ₹{Math.round((pendingCommissions?.totalAmount || 0) / (pendingCommissions?.commissions?.length || 1)).toLocaleString()}
+                    ₹{Math.round((pendingCommissions?.summary as Record<string, unknown>)?.averageCommission as number || 0).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -1046,43 +1025,59 @@ const AdminTravelDashboard: React.FC = () => {
                 </button>
               </div>
               <div className="space-y-4">
-                {(!pendingCommissions?.commissions || pendingCommissions.commissions.length === 0) && (
+                {(!pendingCommissions?.commissions || (pendingCommissions.commissions as unknown[]).length === 0) && (
                   <div className="text-center py-8 text-gray-500">
                     <p className="font-medium">No pending commissions</p>
                     <p className="text-sm mt-1">All commission payments are up to date.</p>
                   </div>
                 )}
-                {(pendingCommissions?.commissions || []).map((commission: Record<string, unknown>) => (
-                  <div key={commission.agentId} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-gray-900">{commission.agentName}</p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {commission.bookings} bookings pending payment
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Oldest pending: {format(new Date(commission.oldestPending), 'MMM dd, yyyy')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-gray-900">
-                          ₹{commission.totalAmount?.toLocaleString()}
-                        </p>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Process ₹${commission.totalAmount?.toLocaleString()} commission for ${commission.agentName}?`)) {
-                              toast.success(`Commission payment processed for ${commission.agentName}`);
-                              fetchDashboardData();
-                            }
-                          }}
-                          className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-                        >
-                          Process Payment
-                        </button>
+                {(pendingCommissions?.commissions as Array<Record<string, unknown>> || []).map((commission: Record<string, unknown>) => {
+                  const bookingId = (commission._id || commission.agentId || '') as string;
+                  const agentInfo = commission.travelAgentId as Record<string, unknown> | undefined;
+                  const agentName = (agentInfo?.companyName || commission.agentName || 'Unknown Agent') as string;
+                  const commissionObj = (commission.commission || {}) as Record<string, unknown>;
+                  const commissionAmount = (commissionObj.totalCommission || commission.totalAmount || 0) as number;
+                  const createdAt = commission.createdAt as string | undefined;
+
+                  return (
+                    <div key={bookingId} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-gray-900">{agentName}</p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            Booking: {(commission.confirmationNumber || bookingId) as string}
+                          </p>
+                          {createdAt && (
+                            <p className="text-sm text-gray-600">
+                              Created: {format(new Date(createdAt), 'MMM dd, yyyy')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-semibold text-gray-900">
+                            ₹{commissionAmount.toLocaleString()}
+                          </p>
+                          <button
+                            onClick={async () => {
+                              if (window.confirm(`Process ₹${commissionAmount.toLocaleString()} commission for ${agentName}?`)) {
+                                try {
+                                  await travelAgentService.updateBookingCommissionStatus(bookingId, 'paid');
+                                  toast.success(`Commission payment processed for ${agentName}`);
+                                  fetchDashboardData();
+                                } catch {
+                                  toast.error(`Failed to process commission for ${agentName}`);
+                                }
+                              }
+                            }}
+                            className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
+                          >
+                            Process Payment
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1108,7 +1103,7 @@ const AdminTravelDashboard: React.FC = () => {
                     value={dateRange}
                     onChange={setDateRange}
                   />
-                  <button aria-label="Close"
+                  <button aria-label="Toggle live updates"
                     onClick={() => setRealTimeEnabled(!realTimeEnabled)}
                     className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                       realTimeEnabled
@@ -1130,78 +1125,99 @@ const AdminTravelDashboard: React.FC = () => {
             </div>
 
             {/* Analytics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600 text-sm">Total Bookings</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">
-                      {analytics?.bookingStatusBreakdown?.reduce((sum, status) => sum + status.count, 0) || 0}
-                    </p>
-                    <p className="text-sm text-green-600 mt-1">last 30 days</p>
-                  </div>
-                  <TrendingUp className="h-8 w-8 text-green-600" />
-                </div>
-              </div>
+            {(() => {
+              const bookingBreakdown = (analytics?.bookingStatusBreakdown || []) as Array<{ _id: string; count: number; revenue: number }>;
+              const commissionTiers = (analytics?.commissionTiers || []) as Array<{ _id: string; count: number; totalCommission: number; avgRate: number }>;
+              const stayMetrics = (analytics?.averageStayMetrics || { avgNights: 0, avgRooms: 0, avgGuests: 0 }) as { avgNights: number; avgRooms: number; avgGuests: number };
+              const totalBookings = bookingBreakdown.reduce((sum, s) => sum + (s.count || 0), 0);
+              const confirmedBookings = bookingBreakdown.find(s => s._id === 'confirmed')?.count || 0;
+              const avgCommission = commissionTiers.length > 0
+                ? commissionTiers.reduce((sum, t) => sum + (t.avgRate || 0), 0) / commissionTiers.length
+                : 0;
 
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600 text-sm">Average Commission</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">
-                      {analytics?.commissionTiers?.length > 0 
-                        ? `${(analytics.commissionTiers.reduce((sum, tier) => sum + tier.avgRate, 0) / analytics.commissionTiers.length).toFixed(1)}%`
-                        : '0%'}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">across all agents</p>
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-white p-6 rounded-lg shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-gray-600 text-sm">Total Bookings</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {totalBookings}
+                        </p>
+                        <p className="text-sm text-green-600 mt-1">last 30 days</p>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-green-600" />
+                    </div>
                   </div>
-                  <Award className="h-8 w-8 text-purple-600" />
-                </div>
-              </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600 text-sm">Confirmed Bookings</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">
-                      {analytics?.bookingStatusBreakdown?.find(status => status._id === 'confirmed')?.count || 0}
-                    </p>
-                    <p className="text-sm text-blue-600 mt-1">confirmed status</p>
+                  <div className="bg-white p-6 rounded-lg shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-gray-600 text-sm">Average Commission</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {avgCommission.toFixed(1)}%
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">across all agents</p>
+                      </div>
+                      <Award className="h-8 w-8 text-purple-600" />
+                    </div>
                   </div>
-                  <BarChart3 className="h-8 w-8 text-blue-600" />
-                </div>
-              </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600 text-sm">Avg Stay Duration</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">
-                      {analytics?.averageStayMetrics?.avgNights?.toFixed(1) || '0'} nights
-                    </p>
-                    <p className="text-sm text-indigo-600 mt-1">average stay</p>
+                  <div className="bg-white p-6 rounded-lg shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-gray-600 text-sm">Confirmed Bookings</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {confirmedBookings}
+                        </p>
+                        <p className="text-sm text-blue-600 mt-1">confirmed status</p>
+                      </div>
+                      <BarChart3 className="h-8 w-8 text-blue-600" />
+                    </div>
                   </div>
-                  <Users className="h-8 w-8 text-indigo-600" />
+
+                  <div className="bg-white p-6 rounded-lg shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-gray-600 text-sm">Avg Stay Duration</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {(stayMetrics.avgNights || 0).toFixed(1)} nights
+                        </p>
+                        <p className="text-sm text-indigo-600 mt-1">average stay</p>
+                      </div>
+                      <Users className="h-8 w-8 text-indigo-600" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* System Performance Chart */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">System Performance Overview</h2>
               
               {analytics ? (
+                (() => {
+                  const bookingBreakdown = (analytics.bookingStatusBreakdown || []) as Array<{ _id: string; count: number; revenue: number }>;
+                  const paymentBreakdown = (analytics.paymentStatusBreakdown || []) as Array<{ _id: string; count: number; amount: number }>;
+                  const seasonality = (analytics.seasonalityAnalysis || []) as Array<{ _id: string; count: number; revenue: number; avgCommission: number }>;
+                  const leadTimes = (analytics.leadTimeAnalysis || []) as Array<{ _id: string; count: number; avgLeadTime: number }>;
+
+                  return (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Booking Status Breakdown */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="text-md font-semibold text-gray-900 mb-3">Booking Status Breakdown</h3>
                     <div className="space-y-2">
-                      {analytics.bookingStatusBreakdown?.map((status, index) => (
-                        <div key={status._id} className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600 capitalize">{status._id}</span>
+                      {bookingBreakdown.length === 0 && (
+                        <p className="text-sm text-gray-500">No booking data available</p>
+                      )}
+                      {bookingBreakdown.map((status) => (
+                        <div key={status._id || 'unknown'} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600 capitalize">{status._id || 'unknown'}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{status.count}</span>
-                            <span className="text-xs text-gray-500">₹{status.revenue?.toLocaleString()}</span>
+                            <span className="text-sm font-medium text-gray-900">{status.count ?? 0}</span>
+                            <span className="text-xs text-gray-500">₹{(status.revenue ?? 0).toLocaleString()}</span>
                           </div>
                         </div>
                       ))}
@@ -1212,12 +1228,15 @@ const AdminTravelDashboard: React.FC = () => {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="text-md font-semibold text-gray-900 mb-3">Payment Status Breakdown</h3>
                     <div className="space-y-2">
-                      {analytics.paymentStatusBreakdown?.map((payment, index) => (
-                        <div key={payment._id} className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600 capitalize">{payment._id}</span>
+                      {paymentBreakdown.length === 0 && (
+                        <p className="text-sm text-gray-500">No payment data available</p>
+                      )}
+                      {paymentBreakdown.map((payment) => (
+                        <div key={payment._id || 'unknown'} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600 capitalize">{payment._id || 'unknown'}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{payment.count}</span>
-                            <span className="text-xs text-gray-500">₹{payment.amount?.toLocaleString()}</span>
+                            <span className="text-sm font-medium text-gray-900">{payment.count ?? 0}</span>
+                            <span className="text-xs text-gray-500">₹{(payment.amount ?? 0).toLocaleString()}</span>
                           </div>
                         </div>
                       ))}
@@ -1228,13 +1247,16 @@ const AdminTravelDashboard: React.FC = () => {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="text-md font-semibold text-gray-900 mb-3">Seasonality Analysis</h3>
                     <div className="space-y-2">
-                      {analytics.seasonalityAnalysis?.map((season, index) => (
-                        <div key={season._id} className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600 capitalize">{season._id}</span>
+                      {seasonality.length === 0 && (
+                        <p className="text-sm text-gray-500">No seasonality data available</p>
+                      )}
+                      {seasonality.map((season) => (
+                        <div key={season._id || 'unknown'} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600 capitalize">{season._id || 'unknown'}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{season.count}</span>
-                            <span className="text-xs text-gray-500">₹{season.revenue?.toLocaleString()}</span>
-                            <span className="text-xs text-blue-600">{season.avgCommission?.toFixed(1)}%</span>
+                            <span className="text-sm font-medium text-gray-900">{season.count ?? 0}</span>
+                            <span className="text-xs text-gray-500">₹{(season.revenue ?? 0).toLocaleString()}</span>
+                            <span className="text-xs text-blue-600">{(season.avgCommission ?? 0).toFixed(1)}%</span>
                           </div>
                         </div>
                       ))}
@@ -1245,18 +1267,23 @@ const AdminTravelDashboard: React.FC = () => {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="text-md font-semibold text-gray-900 mb-3">Lead Time Analysis</h3>
                     <div className="space-y-2">
-                      {analytics.leadTimeAnalysis?.map((leadTime, index) => (
-                        <div key={leadTime._id} className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">{leadTime._id}</span>
+                      {leadTimes.length === 0 && (
+                        <p className="text-sm text-gray-500">No lead time data available</p>
+                      )}
+                      {leadTimes.map((leadTime) => (
+                        <div key={leadTime._id || 'unknown'} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">{leadTime._id || 'unknown'}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{leadTime.count}</span>
-                            <span className="text-xs text-gray-500">{leadTime.avgLeadTime?.toFixed(1)} days avg</span>
+                            <span className="text-sm font-medium text-gray-900">{leadTime.count ?? 0}</span>
+                            <span className="text-xs text-gray-500">{(leadTime.avgLeadTime ?? 0).toFixed(1)} days avg</span>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
+                  );
+                })()
               ) : (
                 <div className="h-80 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                   <div className="text-center">

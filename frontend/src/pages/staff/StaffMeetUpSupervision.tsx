@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
   Calendar,
@@ -13,14 +13,16 @@ import {
   Shield,
   Filter,
   Search,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { meetUpRequestService, MeetUpRequest } from '../../services/meetUpRequestService';
-import { staffMeetUpSupervisionService, SupervisionMeetUp } from '../../services/staffMeetUpSupervisionService';
+import { staffMeetUpSupervisionService } from '../../services/staffMeetUpSupervisionService';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -38,22 +40,23 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
 
   const queryClient = useQueryClient();
 
-  // Fetch meet-ups requiring supervision
+  // Fetch meet-ups requiring supervision via staff supervision endpoint
   const { data: meetUpsData, isLoading, error } = useQuery({
     queryKey: ['staff-supervision-meetups', currentPage, searchTerm, statusFilter, safetyFilter],
-    queryFn: () => meetUpRequestService.getAdminAllMeetUps({
+    queryFn: () => staffMeetUpSupervisionService.getSupervisionMeetUps({
       page: currentPage,
       limit: 20,
-      search: searchTerm || undefined,
       status: statusFilter || undefined,
+      priority: safetyFilter === 'high-risk' ? 'high' : undefined,
+      safetyLevel: undefined,
     }),
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  // Get supervision statistics
+  // Get supervision statistics via staff supervision endpoint
   const { data: supervisionStats } = useQuery({
     queryKey: ['staff-supervision-stats'],
-    queryFn: () => meetUpRequestService.getAdminInsights(),
+    queryFn: () => staffMeetUpSupervisionService.getSupervisionStats('7d'),
     refetchInterval: 60000, // Refresh every minute
   });
 
@@ -89,11 +92,11 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
   const getSupervisionPriority = (meetUp: MeetUpRequest) => {
     const safety = getSafetyLevel(meetUp);
     const isNighttime = new Date(meetUp.proposedDate).getHours() > 20 || new Date(meetUp.proposedDate).getHours() < 6;
-    const isOffSite = meetUp.location.type === 'outdoor' || meetUp.location.type === 'other';
+    const isOffSite = meetUp.location?.type === 'outdoor' || meetUp.location?.type === 'other';
 
     if (safety.level === 'low' || isNighttime || isOffSite) {
       return { priority: 'high', color: 'bg-red-100 text-red-800', label: 'High Priority' };
-    } else if (safety.level === 'medium' || meetUp.participants.maxParticipants > 4) {
+    } else if (safety.level === 'medium' || (meetUp.participants?.maxParticipants ?? 0) > 4) {
       return { priority: 'medium', color: 'bg-yellow-100 text-yellow-800', label: 'Medium Priority' };
     } else {
       return { priority: 'low', color: 'bg-green-100 text-green-800', label: 'Low Priority' };
@@ -111,7 +114,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
     return true;
   }) || [];
 
-  const tabs = [
+  const tabs: Array<{ id: string; label: string; count?: number }> = [
     { id: 'requiring-supervision', label: 'Supervision Required', count: filteredMeetUps.filter(m => getSupervisionPriority(m).priority !== 'low').length },
     { id: 'all-meetups', label: 'All Meet-ups', count: filteredMeetUps.length },
     { id: 'safety-alerts', label: 'Safety Alerts', count: filteredMeetUps.filter(m => getSafetyLevel(m).level === 'low').length },
@@ -152,7 +155,10 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
         </div>
         <div className="flex gap-3">
           <Button
-            onClick={() => queryClient.invalidateQueries({ queryKey: ['staff-supervision-meetups', 'staff-supervision-stats'] })}
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['staff-supervision-meetups'] });
+              queryClient.invalidateQueries({ queryKey: ['staff-supervision-stats'] });
+            }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
           >
             <RefreshCw className="w-4 h-4" />
@@ -162,74 +168,71 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
       </div>
 
       {/* Quick Stats */}
-      {supervisionStats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Users className="h-8 w-8 text-blue-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Active Meet-ups</dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {filteredMeetUps.filter(m => m.status === 'accepted' || m.status === 'pending').length}
-                  </dd>
-                </dl>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <Users className="h-8 w-8 text-blue-600" />
             </div>
-          </Card>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">Active Meet-ups</dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {filteredMeetUps.filter(m => m.status === 'accepted' || m.status === 'pending').length}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">High Priority</dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {filteredMeetUps.filter(m => getSupervisionPriority(m).priority === 'high').length}
-                  </dd>
-                </dl>
-              </div>
+        <Card className="p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
             </div>
-          </Card>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">High Priority</dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {supervisionStats?.summary?.highRiskMeetUps ?? filteredMeetUps.filter(m => getSupervisionPriority(m).priority === 'high').length}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Shield className="h-8 w-8 text-green-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Staff Required</dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {filteredMeetUps.filter(m => m.safety?.hotelStaffPresent).length}
-                  </dd>
-                </dl>
-              </div>
+        <Card className="p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <Shield className="h-8 w-8 text-green-600" />
             </div>
-          </Card>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">Staff Required</dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {supervisionStats?.summary?.staffRequiredMeetUps ?? filteredMeetUps.filter(m => m.safety?.hotelStaffPresent).length}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <CheckCircle className="h-8 w-8 text-purple-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Completed Today</dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {filteredMeetUps.filter(m => m.status === 'completed' &&
-                      new Date(m.updatedAt).toDateString() === new Date().toDateString()).length}
-                  </dd>
-                </dl>
-              </div>
+        <Card className="p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <CheckCircle className="h-8 w-8 text-purple-600" />
             </div>
-          </Card>
-        </div>
-      )}
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="text-sm font-medium text-gray-500 truncate">Completed Supervision</dt>
+                <dd className="text-lg font-medium text-gray-900">
+                  {supervisionStats?.summary?.completedSupervision ?? 0}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       {/* Navigation Tabs */}
       <div className="border-b border-gray-200">
@@ -245,7 +248,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
               }`}
             >
               {tab.label}
-              {'count' in tab && tab.count > 0 && (
+              {tab.count != null && tab.count > 0 && (
                 <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs">
                   {tab.count}
                 </span>
@@ -352,7 +355,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                           <div className="flex items-center gap-2">
                             <Users className="w-4 h-4 text-gray-500" />
                             <span className="text-gray-700">
-                              {meetUp.requesterId.name} → {meetUp.targetUserId.name}
+                              {meetUp.requesterId?.name || 'Unknown'} → {meetUp.targetUserId?.name || 'Unknown'}
                             </span>
                           </div>
 
@@ -364,13 +367,13 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-gray-500" />
                             <span className="text-gray-700">
-                              {meetUp.proposedTime.start} - {meetUp.proposedTime.end}
+                              {meetUp.proposedTime?.start || '--:--'} - {meetUp.proposedTime?.end || '--:--'}
                             </span>
                           </div>
 
                           <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-700">{meetUp.location.name}</span>
+                            <span className="text-gray-700">{meetUp.location?.name || 'Not specified'}</span>
                           </div>
                         </div>
 
@@ -387,10 +390,10 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                             </div>
                           )}
 
-                          {meetUp.participants.maxParticipants > 4 && (
+                          {(meetUp.participants?.maxParticipants ?? 0) > 4 && (
                             <div className="flex items-center gap-2">
                               <Users className="w-4 h-4 text-orange-500" />
-                              <span className="text-sm text-orange-600 font-medium">Large Group ({meetUp.participants.maxParticipants})</span>
+                              <span className="text-sm text-orange-600 font-medium">Large Group ({meetUp.participants?.maxParticipants})</span>
                             </div>
                           )}
                         </div>
@@ -412,71 +415,96 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                 );
               })
           )}
+
+          {/* Pagination Controls */}
+          {meetUpsData?.pagination && meetUpsData.pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+              <p className="text-sm text-gray-600">
+                Page {meetUpsData.pagination.currentPage} of {meetUpsData.pagination.totalPages} ({meetUpsData.pagination.totalItems} total)
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!meetUpsData.pagination.hasPrev}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!meetUpsData.pagination.hasNext}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  className="flex items-center gap-1"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Statistics Tab */}
       {activeTab === 'statistics' && supervisionStats && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Safety Statistics</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Supervision Summary</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Verified Users Only:</span>
-                  <span className="font-medium">
-                    {supervisionStats.safetyInsights.verifiedOnly}/{supervisionStats.safetyInsights.totalRequests}
-                  </span>
+                  <span className="text-gray-600">Total Meet-ups:</span>
+                  <span className="font-medium">{supervisionStats.summary?.totalMeetUps ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Public Locations:</span>
-                  <span className="font-medium">
-                    {supervisionStats.safetyInsights.publicLocation}/{supervisionStats.safetyInsights.totalRequests}
-                  </span>
+                  <span className="text-gray-600">Pending Supervision:</span>
+                  <span className="font-medium text-yellow-600">{supervisionStats.summary?.pendingSupervision ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Staff Presence:</span>
-                  <span className="font-medium">
-                    {supervisionStats.safetyInsights.hotelStaffPresent}/{supervisionStats.safetyInsights.totalRequests}
-                  </span>
+                  <span className="text-gray-600">Completed Supervision:</span>
+                  <span className="font-medium text-green-600">{supervisionStats.summary?.completedSupervision ?? 0}</span>
                 </div>
               </div>
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">User Engagement</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Overview</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Total Users:</span>
-                  <span className="font-medium">{supervisionStats.userEngagement.totalUsers}</span>
+                  <span className="text-gray-600">High Risk Meet-ups:</span>
+                  <span className="font-medium text-red-600">{supervisionStats.summary?.highRiskMeetUps ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Active Users:</span>
-                  <span className="font-medium">{supervisionStats.userEngagement.activeUsers}</span>
+                  <span className="text-gray-600">Staff Required:</span>
+                  <span className="font-medium text-blue-600">{supervisionStats.summary?.staffRequiredMeetUps ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Engagement Rate:</span>
-                  <span className="font-medium">{supervisionStats.userEngagement.engagementRate.toFixed(1)}%</span>
+                  <span className="text-gray-600">Upcoming Supervised:</span>
+                  <span className="font-medium">{supervisionStats.summary?.upcomingSupervised ?? 0}</span>
                 </div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
+              <div className="space-y-3">
+                {(supervisionStats.statusBreakdown?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">No status data available</p>
+                ) : (
+                  supervisionStats.statusBreakdown?.map((status: { _id: string; count: number }) => (
+                    <div key={status._id} className="flex justify-between">
+                      <span className="text-gray-600 capitalize">{status._id}:</span>
+                      <span className="font-medium">{status.count}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
           </div>
-
-          {supervisionStats.riskAssessment.riskyMeetUpDetails.length > 0 && (
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Assessment</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Potentially Risky Meet-ups:</span>
-                  <span className="font-medium text-red-600">{supervisionStats.riskAssessment.potentiallyRiskyMeetUps}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Frequent Requesters:</span>
-                  <span className="font-medium">{supervisionStats.riskAssessment.frequentRequesters}</span>
-                </div>
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
@@ -510,9 +538,9 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                     <div><span className="text-gray-500">Type:</span> {meetUpRequestService.getMeetUpTypeInfo(selectedMeetUp.type).label}</div>
                     <div><span className="text-gray-500">Status:</span> {meetUpRequestService.getStatusInfo(selectedMeetUp.status).label}</div>
                     <div><span className="text-gray-500">Date:</span> {formatDate(selectedMeetUp.proposedDate)}</div>
-                    <div><span className="text-gray-500">Time:</span> {selectedMeetUp.proposedTime.start} - {selectedMeetUp.proposedTime.end}</div>
-                    <div><span className="text-gray-500">Location:</span> {selectedMeetUp.location.name}</div>
-                    <div><span className="text-gray-500">Max Participants:</span> {selectedMeetUp.participants.maxParticipants}</div>
+                    <div><span className="text-gray-500">Time:</span> {selectedMeetUp.proposedTime?.start || '--:--'} - {selectedMeetUp.proposedTime?.end || '--:--'}</div>
+                    <div><span className="text-gray-500">Location:</span> {selectedMeetUp.location?.name || 'Not specified'}</div>
+                    <div><span className="text-gray-500">Max Participants:</span> {selectedMeetUp.participants?.maxParticipants ?? 2}</div>
                   </div>
                 </div>
 
@@ -531,9 +559,9 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Participants</h4>
                 <div className="space-y-2 text-sm">
-                  <div><span className="text-gray-500">Requester:</span> {selectedMeetUp.requesterId.name} ({selectedMeetUp.requesterId.email})</div>
-                  <div><span className="text-gray-500">Target User:</span> {selectedMeetUp.targetUserId.name} ({selectedMeetUp.targetUserId.email})</div>
-                  <div><span className="text-gray-500">Hotel:</span> {selectedMeetUp.hotelId.name}</div>
+                  <div><span className="text-gray-500">Requester:</span> {selectedMeetUp.requesterId?.name || 'Unknown'} ({selectedMeetUp.requesterId?.email || ''})</div>
+                  <div><span className="text-gray-500">Target User:</span> {selectedMeetUp.targetUserId?.name || 'Unknown'} ({selectedMeetUp.targetUserId?.email || ''})</div>
+                  <div><span className="text-gray-500">Hotel:</span> {selectedMeetUp.hotelId?.name || 'Unknown Hotel'}</div>
                 </div>
               </div>
 
@@ -541,9 +569,9 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Activity Information</h4>
                   <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-500">Activity Type:</span> {meetUpRequestService.getActivityTypeInfo(selectedMeetUp.activity.type).label}</div>
-                    <div><span className="text-gray-500">Duration:</span> {selectedMeetUp.activity.duration} minutes</div>
-                    <div><span className="text-gray-500">Cost:</span> ${selectedMeetUp.activity.cost}</div>
+                    <div><span className="text-gray-500">Activity Type:</span> {meetUpRequestService.getActivityTypeInfo(selectedMeetUp.activity?.type || 'other').label}</div>
+                    <div><span className="text-gray-500">Duration:</span> {selectedMeetUp.activity?.duration ?? 0} minutes</div>
+                    <div><span className="text-gray-500">Cost:</span> ${selectedMeetUp.activity?.cost ?? 0}</div>
                     <div><span className="text-gray-500">Cost Sharing:</span> {selectedMeetUp.activity.costSharing ? 'Yes' : 'No'}</div>
                   </div>
                 </div>

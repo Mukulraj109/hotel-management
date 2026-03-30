@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { RefreshButton } from '@/components/dashboard/RefreshButton';
 import { ExportButton } from '@/components/dashboard/ExportButton';
 import { toast } from '@/utils/toast';
 import { useAuth } from '@/context/AuthContext';
+import { useProperty } from '@/context/PropertyContext';
 import { api } from '@/services/api';
 import {
   TrendingUp,
@@ -45,9 +46,14 @@ interface OTAStats {
   syncFrequency: Record<string, string>;
 }
 
-const OTADashboard: React.FC = () => {
+interface OTADashboardProps {
+  onConfigure?: () => void;
+}
+
+const OTADashboard: React.FC<OTADashboardProps> = ({ onConfigure }) => {
   const { user } = useAuth();
-  const hotelId = user?.hotelId || '';
+  const { selectedPropertyId } = useProperty();
+  const hotelId = selectedPropertyId || (typeof user?.hotelId === 'string' ? user.hotelId : '') || '';
 
   // State
   const [dateRange, setDateRange] = useState({
@@ -61,53 +67,56 @@ const OTADashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   // Load dashboard data
-  const isMountedRef = useRef(true);
-
   useEffect(() => {
-    return () => { isMountedRef.current = false; };
-  }, []);
-
-  useEffect(() => {
-    if (hotelId) {
-      loadDashboardData();
+    if (!hotelId) {
+      setLoading(false);
+      setHasNoData(true);
+      return;
     }
+
+    let cancelled = false;
+
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setHasNoData(false);
+
+        const response = await api.get(`/ota/stats/${hotelId}`);
+        if (cancelled) return;
+
+        const stats: OTAStats = response.data?.data?.stats;
+        if (!stats || stats.providersActive === 0) {
+          setHasNoData(true);
+          setOtaStats(null);
+        } else {
+          setOtaStats(stats);
+        }
+      } catch (error: unknown) {
+        if (cancelled) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 404 || status === 503) {
+          setHasNoData(true);
+        } else {
+          toast.error('Failed to load OTA dashboard data');
+          setHasNoData(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => { cancelled = true; };
   }, [dateRange, hotelId]);
 
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      setHasNoData(false);
-
-      const response = await api.get(`/ota/stats/${hotelId}`);
-      if (!isMountedRef.current) return;
-
-      const stats: OTAStats = response.data?.data?.stats;
-      if (!stats || stats.providersActive === 0) {
-        setHasNoData(true);
-        setOtaStats(null);
-      } else {
-        setOtaStats(stats);
-      }
-    } catch (error: unknown) {
-      if (!isMountedRef.current) return;
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 404 || status === 503) {
-        setHasNoData(true);
-      } else {
-        toast.error('Failed to load OTA dashboard data');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
-    }
-  };
-
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
+    // Trigger re-fetch by toggling dateRange (forces useEffect re-run)
     setRefreshing(true);
-    await loadDashboardData();
-    setRefreshing(false);
-    toast.success('Dashboard data refreshed');
+    setDateRange(prev => ({ ...prev, to: endOfDay(new Date()) }));
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
   const handleExportData = () => {
@@ -150,7 +159,7 @@ const OTADashboard: React.FC = () => {
             <p className="text-gray-500 text-center max-w-md mb-6">
               Connect your OTA channels to see performance data. Configure Booking.com, Expedia, or Airbnb integrations to start tracking bookings and revenue from online travel agencies.
             </p>
-            <Button variant="outline">
+            <Button variant="outline" onClick={onConfigure}>
               <Settings className="w-4 h-4 mr-2" />
               Configure OTA Channels
             </Button>

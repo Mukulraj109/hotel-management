@@ -8,6 +8,7 @@ import Room from '../models/Room.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -17,8 +18,9 @@ import { escapeRegex } from '../utils/escapeRegex.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication and property access to all routes
+// Apply authentication, tenant isolation, and property access to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('digitalKeys', 'baseAccess'));
 
@@ -445,201 +447,11 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
   });
 }));
 
-// Get a specific digital key
-router.get('/:keyId', catchAsync(async (req, res) => {
-  const digitalKey = await DigitalKey.findOne({
-    _id: req.params.keyId,
-    $or: [
-      { userId: req.user.id },
-      { 'sharedWith.userId': req.user.id, 'sharedWith.isActive': true }
-    ]
-  })
-  .populate('bookingId', 'bookingNumber checkIn checkOut')
-  .populate('roomId', 'number type floor')
-  .populate('hotelId', 'name address')
-  .populate('sharedWith.userId', 'name email').lean();
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Digital key not found', 404);
-  }
-  
-  res.json({
-    success: true,
-    data: digitalKey
-  });
-}));
-
-// Validate a digital key (for door access)
-router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { keyCode } = req.params;
-  const { pin, deviceInfo = {} } = req.body;
-  
-  const digitalKey = await DigitalKey.findByKeyCode(keyCode);
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Invalid key code', 404);
-  }
-  
-  if (!digitalKey.canBeUsed) {
-    throw new ApplicationError('Key is not valid or has expired', 400);
-  }
-  
-  // Check PIN if required
-  if (digitalKey.securitySettings.requirePin) {
-    if (!pin) {
-      throw new ApplicationError('PIN is required', 400);
-    }
-    if (digitalKey.securitySettings.pin !== pin) {
-      throw new ApplicationError('Invalid PIN', 400);
-    }
-  }
-  
-  // Use the key
-  await digitalKey.useKey(req.user.id, {
-    userAgent: req.get('User-Agent'),
-    ipAddress: req.ip,
-    ...deviceInfo
-  });
-  
-  res.json({
-    success: true,
-    message: 'Key validated successfully',
-    data: {
-      keyId: digitalKey._id,
-      roomNumber: digitalKey.roomId.number,
-      hotelName: digitalKey.hotelId.name,
-      remainingUses: digitalKey.remainingUses,
-      validUntil: digitalKey.validUntil
-    }
-  });
-}));
-
-// Share a digital key
-router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async (req, res) => {
-  const { keyId } = req.params;
-  const { email, name, expiresAt } = req.body;
-  
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id
-  }).lean();
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Digital key not found', 404);
-  }
-  
-  if (!digitalKey.canBeShared) {
-    throw new ApplicationError('This key cannot be shared', 400);
-  }
-  
-  // Find user by email if provided
-  let sharedUserId = null;
-  if (email) {
-    const sharedUser = await User.findOne({ email }).lean();
-    if (sharedUser) {
-      sharedUserId = sharedUser._id;
-    }
-  }
-  
-  const shareData = {
-    userId: sharedUserId,
-    email,
-    name,
-    expiresAt: expiresAt ? new Date(expiresAt) : undefined
-  };
-  
-  await digitalKey.shareWithUser(shareData);
-  
-  res.json({
-    success: true,
-    message: 'Key shared successfully',
-    data: {
-      keyId: digitalKey._id,
-      sharedWith: shareData
-    }
-  });
-}));
-
-// Revoke a shared key
-router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { keyId, userIdOrEmail } = req.params;
-  
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id
-  }).lean();
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Digital key not found', 404);
-  }
-  
-  await digitalKey.revokeShare(userIdOrEmail);
-  
-  res.json({
-    success: true,
-    message: 'Key access revoked successfully'
-  });
-}));
-
-// Get access logs for a digital key
-router.get('/:keyId/logs', catchAsync(async (req, res) => {
-  const { keyId } = req.params;
-  const { page = 1, limit = 50 } = req.query;
-  const skip = (page - 1) * limit;
-  
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id
-  }).populate('accessLogs.userId', 'name email').lean();
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Digital key not found', 404);
-  }
-  
-  const logs = digitalKey.accessLogs
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(skip, skip + parseInt(limit));
-  
-  res.json({
-    success: true,
-    data: {
-      logs,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(digitalKey.accessLogs.length / limit),
-        totalItems: digitalKey.accessLogs.length,
-        hasNext: skip + logs.length < digitalKey.accessLogs.length,
-        hasPrev: page > 1
-      }
-    }
-  });
-}));
-
-// Revoke a digital key
-router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { keyId } = req.params;
-  
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id
-  }).lean();
-  
-  if (!digitalKey) {
-    throw new ApplicationError('Digital key not found', 404);
-  }
-  
-  await digitalKey.revokeKey();
-  
-  res.json({
-    success: true,
-    message: 'Digital key revoked successfully'
-  });
-}));
-
-// Get key statistics
+// Get key statistics (MUST be before /:keyId to avoid route conflict)
 router.get('/stats/overview', catchAsync(async (req, res) => {
   const userId = req.user.id;
-  
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
   const [
     totalKeys,
     activeKeys,
@@ -649,13 +461,13 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
     recentActivity
   ] = await Promise.all([
     DigitalKey.countDocuments({ userId }),
-    DigitalKey.countDocuments({ 
-      userId, 
+    DigitalKey.countDocuments({
+      userId,
       status: 'active',
       validUntil: { $gt: new Date() }
     }),
-    DigitalKey.countDocuments({ 
-      userId, 
+    DigitalKey.countDocuments({
+      userId,
       status: 'expired'
     }),
     DigitalKey.countDocuments({
@@ -665,11 +477,11 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
       validUntil: { $gt: new Date() }
     }),
     DigitalKey.aggregate([
-      { $match: { userId: req.user._id } },
+      { $match: { userId: userObjectId } },
       { $group: { _id: null, total: { $sum: '$currentUses' } } }
     ]),
     DigitalKey.aggregate([
-      { $match: { userId: req.user._id } },
+      { $match: { userId: userObjectId } },
       { $unwind: '$accessLogs' },
       { $sort: { 'accessLogs.timestamp': -1 } },
       { $limit: 10 },
@@ -681,7 +493,7 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
       }}
     ])
   ]);
-  
+
   res.json({
     success: true,
     data: {
@@ -695,7 +507,7 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
   });
 }));
 
-// Get admin activity logs for all digital keys
+// Get admin activity logs for all digital keys (MUST be before /:keyId to avoid route conflict)
 router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
@@ -846,7 +658,7 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
   });
 }));
 
-// Export admin digital keys data
+// Export admin digital keys data (MUST be before /:keyId to avoid route conflict)
 router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const {
     status,
@@ -865,13 +677,15 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
   if (status && status !== 'all') filters.status = status;
   if (type && type !== 'all') filters.type = type;
 
-  // Get all matching keys with populated data
+  // Get matching keys with populated data (capped at 1000 for export)
   const keys = await DigitalKey.find(filters)
     .populate('userId', 'name email')
     .populate('roomId', 'roomNumber floor type')
     .populate('hotelId', 'name')
     .populate('bookingId', 'bookingNumber')
-    .sort({ createdAt: -1 }).lean().limit(1000);
+    .sort({ createdAt: -1 })
+    .limit(1000)
+    .lean();
 
   // Prepare data for export
   const exportData = keys.map(key => ({
@@ -928,6 +742,202 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
       data: exportData
     });
   }
+}));
+
+// --- Parameterized routes below (/:keyId) --- must come AFTER all static routes ---
+
+// Get a specific digital key
+router.get('/:keyId', catchAsync(async (req, res) => {
+  const digitalKey = await DigitalKey.findOne({
+    _id: req.params.keyId,
+    $or: [
+      { userId: req.user.id },
+      { 'sharedWith.userId': req.user.id, 'sharedWith.isActive': true }
+    ]
+  })
+  .populate('bookingId', 'bookingNumber checkIn checkOut')
+  .populate('roomId', 'number type floor')
+  .populate('hotelId', 'name address')
+  .populate('sharedWith.userId', 'name email').lean();
+  
+  if (!digitalKey) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
+  
+  res.json({
+    success: true,
+    data: digitalKey
+  });
+}));
+
+// Validate a digital key (for door access)
+router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { keyCode } = req.params;
+  const { pin, deviceInfo = {} } = req.body;
+  
+  const digitalKey = await DigitalKey.findByKeyCode(keyCode);
+  
+  if (!digitalKey) {
+    throw new ApplicationError('Invalid key code', 404);
+  }
+  
+  if (!digitalKey.canBeUsed) {
+    throw new ApplicationError('Key is not valid or has expired', 400);
+  }
+  
+  // Check PIN if required (PIN is hashed in the database)
+  if (digitalKey.securitySettings.requirePin) {
+    if (!pin) {
+      throw new ApplicationError('PIN is required', 400);
+    }
+    if (!digitalKey.verifyPin(pin)) {
+      throw new ApplicationError('Invalid PIN', 400);
+    }
+  }
+  
+  // Use the key
+  await digitalKey.useKey(req.user.id, {
+    userAgent: req.get('User-Agent'),
+    ipAddress: req.ip,
+    ...deviceInfo
+  });
+  
+  res.json({
+    success: true,
+    message: 'Key validated successfully',
+    data: {
+      keyId: digitalKey._id,
+      roomNumber: digitalKey.roomId.number,
+      hotelName: digitalKey.hotelId.name,
+      remainingUses: digitalKey.remainingUses,
+      validUntil: digitalKey.validUntil
+    }
+  });
+}));
+
+// Share a digital key
+router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async (req, res) => {
+  const { keyId } = req.params;
+  const { email, name, expiresAt } = req.body;
+
+  // Do NOT use .lean() — we need Mongoose instance methods (shareWithUser)
+  const digitalKey = await DigitalKey.findOne({
+    _id: keyId,
+    userId: req.user.id
+  });
+
+  if (!digitalKey) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
+
+  if (!digitalKey.canBeShared) {
+    throw new ApplicationError('This key cannot be shared', 400);
+  }
+
+  // Find user by email if provided
+  let sharedUserId = null;
+  if (email) {
+    const sharedUser = await User.findOne({ email }).lean();
+    if (sharedUser) {
+      sharedUserId = sharedUser._id;
+    }
+  }
+
+  const shareData = {
+    userId: sharedUserId,
+    email,
+    name,
+    expiresAt: expiresAt ? new Date(expiresAt) : undefined
+  };
+
+  await digitalKey.shareWithUser(shareData);
+
+  res.json({
+    success: true,
+    message: 'Key shared successfully',
+    data: {
+      keyId: digitalKey._id,
+      sharedWith: shareData
+    }
+  });
+}));
+
+// Revoke a shared key
+router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { keyId, userIdOrEmail } = req.params;
+
+  // Do NOT use .lean() — we need Mongoose instance methods (revokeShare)
+  const digitalKey = await DigitalKey.findOne({
+    _id: keyId,
+    userId: req.user.id
+  });
+
+  if (!digitalKey) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
+
+  await digitalKey.revokeShare(userIdOrEmail);
+
+  res.json({
+    success: true,
+    message: 'Key access revoked successfully'
+  });
+}));
+
+// Get access logs for a digital key
+router.get('/:keyId/logs', catchAsync(async (req, res) => {
+  const { keyId } = req.params;
+  const { page = 1, limit = 50 } = req.query;
+  const skip = (page - 1) * limit;
+  
+  const digitalKey = await DigitalKey.findOne({
+    _id: keyId,
+    userId: req.user.id
+  }).populate('accessLogs.userId', 'name email').lean();
+  
+  if (!digitalKey) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
+  
+  const logs = digitalKey.accessLogs
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(skip, skip + parseInt(limit));
+  
+  res.json({
+    success: true,
+    data: {
+      logs,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(digitalKey.accessLogs.length / limit),
+        totalItems: digitalKey.accessLogs.length,
+        hasNext: skip + logs.length < digitalKey.accessLogs.length,
+        hasPrev: page > 1
+      }
+    }
+  });
+}));
+
+// Revoke a digital key
+router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { keyId } = req.params;
+
+  // Do NOT use .lean() — we need Mongoose instance methods (revokeKey)
+  const digitalKey = await DigitalKey.findOne({
+    _id: keyId,
+    userId: req.user.id
+  });
+
+  if (!digitalKey) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
+
+  await digitalKey.revokeKey();
+
+  res.json({
+    success: true,
+    message: 'Digital key revoked successfully'
+  });
 }));
 
 export default router;

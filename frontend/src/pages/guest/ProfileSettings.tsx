@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import { userService } from '../../services/userService';
 
 interface ProfileFormData {
   name: string;
@@ -14,8 +15,10 @@ interface ProfileFormData {
   language: string;
 }
 
+const PHONE_REGEX = /^\+?[\d\s\-()]{7,20}$/;
+
 const ProfileSettings: React.FC = () => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
@@ -27,18 +30,23 @@ const ProfileSettings: React.FC = () => {
       setValue('name', user.name || '');
       setValue('email', user.email || '');
       setValue('phone', user.phone || '');
-      setValue('dateOfBirth', user.dateOfBirth?.split('T')[0] || '');
-      setValue('nationality', user.nationality || '');
+      setValue('dateOfBirth', (user as Record<string, unknown>).dateOfBirth ? String((user as Record<string, unknown>).dateOfBirth).split('T')[0] : '');
+      setValue('nationality', (user as Record<string, unknown>).nationality as string || '');
       setValue('avatar', user.avatar || '');
-      setValue('timezone', user.timezone || 'UTC');
-      setValue('language', user.language || 'en');
+      setValue('timezone', (user as Record<string, unknown>).timezone as string || 'UTC');
+      setValue('language', (user as Record<string, unknown>).language as string || 'en');
     }
   }, [user, setValue]);
 
   const onSubmit = async (data: ProfileFormData) => {
     setIsLoading(true);
     try {
-      await updateProfile(data);
+      const response = await userService.updateProfile({
+        name: data.name.trim(),
+        phone: data.phone?.trim() || undefined,
+        preferences: user?.preferences
+      });
+      updateUser(response.user);
       showToast('Profile updated successfully', 'success');
     } catch (error) {
       showToast('Failed to update profile', 'error');
@@ -113,8 +121,14 @@ const ProfileSettings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  {...register('name', { required: 'Name is required' })}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  {...register('name', {
+                    required: 'Name is required',
+                    minLength: { value: 2, message: 'Name must be at least 2 characters' },
+                    maxLength: { value: 100, message: 'Name cannot exceed 100 characters' }
+                  })}
+                  className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.name ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 />
                 {errors.name && (
                   <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -123,22 +137,16 @@ const ProfileSettings: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address *
+                  Email Address
                 </label>
                 <input
                   type="email"
-                  {...register('email', {
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address'
-                    }
-                  })}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  {...register('email')}
+                  readOnly
+                  disabled
+                  className="block w-full px-3 py-2 border border-gray-200 rounded-md shadow-sm bg-gray-50 text-gray-500 cursor-not-allowed"
                 />
-                {errors.email && (
-                  <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-                )}
+                <p className="mt-1 text-xs text-gray-500">Email cannot be changed. Contact support if you need to update it.</p>
               </div>
 
               <div>
@@ -147,9 +155,20 @@ const ProfileSettings: React.FC = () => {
                 </label>
                 <input
                   type="tel"
-                  {...register('phone')}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  {...register('phone', {
+                    pattern: {
+                      value: PHONE_REGEX,
+                      message: 'Please enter a valid phone number'
+                    }
+                  })}
+                  className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.phone ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="+1 234 567 8900"
                 />
+                {errors.phone && (
+                  <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>
+                )}
               </div>
 
               <div>
@@ -239,43 +258,32 @@ const ProfileSettings: React.FC = () => {
             {/* Profile Privacy */}
             <div className="border rounded-lg p-4">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Privacy</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                These settings are informational. To manage your privacy preferences in detail, visit the Privacy Settings page.
+              </p>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-sm font-medium text-gray-700">
+                    <p className="text-sm font-medium text-gray-700">
                       Show profile to other guests
-                    </label>
+                    </p>
                     <p className="text-sm text-gray-500">
                       Allow other guests to see your basic profile information
                     </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      defaultChecked={false}
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
+                  <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">Off</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-sm font-medium text-gray-700">
+                    <p className="text-sm font-medium text-gray-700">
                       Allow booking history visibility
-                    </label>
+                    </p>
                     <p className="text-sm text-gray-500">
                       Show your booking history to hotel staff for better service
                     </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      defaultChecked={true}
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
+                  <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">On</span>
                 </div>
               </div>
             </div>
@@ -286,6 +294,14 @@ const ProfileSettings: React.FC = () => {
         <div className="flex justify-end space-x-4 pt-6 border-t">
           <button
             type="button"
+            onClick={() => {
+              if (user) {
+                setValue('name', user.name || '');
+                setValue('email', user.email || '');
+                setValue('phone', user.phone || '');
+                setValue('avatar', user.avatar || '');
+              }
+            }}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
           >
             Cancel

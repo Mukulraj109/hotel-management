@@ -501,10 +501,10 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
           <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-600">
             <Button
               type="submit"
-              disabled={!isDirty || saveDisplayMutation.isLoading || isUpdating}
+              disabled={!isDirty || saveDisplayMutation.isPending || isUpdating}
               className="flex items-center space-x-2"
             >
-              {(saveDisplayMutation.isLoading || isUpdating) ? (
+              {(saveDisplayMutation.isPending || isUpdating) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

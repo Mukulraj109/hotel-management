@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
 import { Booking } from '../../types/booking';
-import { 
-  Calendar, 
-  CreditCard, 
-  MapPin, 
-  TrendingUp, 
-  Clock, 
+import {
+  Calendar,
+  CreditCard,
+  MapPin,
+  Clock,
   CheckCircle,
   Users,
   Star
@@ -36,6 +35,7 @@ export default function GuestDashboard() {
     recentBookings: []
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -48,19 +48,22 @@ export default function GuestDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await bookingService.getUserBookings({ limit: 5 });
-      const bookings = Array.isArray(response.data?.bookings) ? response.data.bookings : 
+      const bookings = Array.isArray(response.data?.bookings) ? response.data.bookings :
                       Array.isArray(response.data) ? response.data : [];
-      
-      // Calculate stats from bookings
-      const totalBookings = bookings.length;
+
+      // Use pagination total if available, otherwise fall back to array length
+      const totalBookings = (response as any).pagination?.total
+        ?? (response as any).stats?.totalBookings
+        ?? bookings.length;
       // Active or upcoming bookings: confirmed/pending (future) + checked_in (current stay)
       const upcomingBookings = bookings.filter(b =>
         ['confirmed', 'pending', 'checked_in'].includes(b.status)
       ).length;
       const totalSpent = bookings
         .filter(b => b.paymentStatus === 'paid')
-        .reduce((total, booking) => total + booking.totalAmount, 0);
+        .reduce((total, booking) => total + (Number(booking.totalAmount) || 0), 0);
 
       setStats({
         totalBookings,
@@ -69,7 +72,9 @@ export default function GuestDashboard() {
         loyaltyPoints: user?.loyalty?.points || 0,
         recentBookings: bookings.slice(0, 5)
       });
-    } catch (error) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load your bookings. Please try again.';
+      setError(message);
       toast.error('Unable to load your bookings. Please try refreshing.');
       // Keep previous data if available, only set defaults if first load
       setStats(prev => prev.totalBookings > 0 ? prev : {
@@ -88,6 +93,24 @@ export default function GuestDashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error && stats.recentBookings.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Clock className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load dashboard</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchDashboardData}
+            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
@@ -240,13 +263,17 @@ export default function GuestDashboard() {
                   </div>
                   <div className="flex flex-row sm:flex-col items-start sm:items-end justify-between sm:justify-start gap-2 sm:gap-1">
                     <p className="font-semibold text-gray-900">
-                      {formatCurrency(booking.totalAmount, booking.currency)}
+                      {formatCurrency(Number(booking.totalAmount) || 0, booking.currency || 'INR')}
                     </p>
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
-                      booking.status === 'confirmed' 
-                        ? 'bg-green-100 text-green-800' 
+                      booking.status === 'confirmed'
+                        ? 'bg-green-100 text-green-800'
+                        : booking.status === 'checked_in'
+                        ? 'bg-blue-100 text-blue-800'
                         : booking.status === 'pending'
                         ? 'bg-yellow-100 text-yellow-800'
+                        : booking.status === 'cancelled'
+                        ? 'bg-red-100 text-red-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
                       {booking.status}
@@ -330,21 +357,28 @@ export default function GuestDashboard() {
         </Card>
       </div>
 
-      {/* Room Service Section - Only show if user has an active booking */}
-      {stats.upcomingBookings > 0 && (
-        <div className="mt-8">
-          <RoomServiceWidget 
-            guestId={user?._id}
-            bookingId={stats.recentBookings.find(b => 
-              ['confirmed', 'pending', 'checked_in'].includes(b.status) && 
-              new Date(b.checkOut) > new Date()
-            )?._id}
-            onRequestService={(serviceType, items) => {
-              // Handle service request here - could integrate with booking system
-            }}
-          />
-        </div>
-      )}
+      {/* Room Service Section - Only show if user has a checked-in booking */}
+      {stats.recentBookings.some(b => b.status === 'checked_in') && (() => {
+        const activeBooking = stats.recentBookings.find(b =>
+          b.status === 'checked_in' && new Date(b.checkOut) > new Date()
+        );
+        if (!activeBooking) return null;
+        const roomId = (activeBooking as any).rooms?.[0]?.roomId?._id
+          || (activeBooking as any).rooms?.[0]?.roomId
+          || undefined;
+        return (
+          <div className="mt-8">
+            <RoomServiceWidget
+              guestId={user?._id}
+              bookingId={activeBooking._id}
+              roomId={typeof roomId === 'string' ? roomId : undefined}
+              onRequestService={(serviceType, items) => {
+                toast.success(`Service request submitted (${(items as any[]).length} items). Our team will be with you shortly.`);
+              }}
+            />
+          </div>
+        );
+      })()}
 
       {/* Quick Actions */}
       <div className="mt-6 sm:mt-8">

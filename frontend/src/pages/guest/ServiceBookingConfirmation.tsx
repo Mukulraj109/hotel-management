@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { 
   CheckCircle,
+  AlertCircle,
   Calendar,
   Clock,
   Users,
@@ -20,6 +21,7 @@ import { Button } from '../../components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const ServiceBookingConfirmation: React.FC = () => {
   const { bookingId } = useParams<{ bookingId: string }>();
@@ -75,8 +77,9 @@ const ServiceBookingConfirmation: React.FC = () => {
     if (!booking) return;
 
     const bookingDateTime = formatDateTime(booking.bookingDate);
+    const hotelName = booking.hotelId?.name || 'Hotel';
     const receiptContent = `
-THE PENTOUZ Hotel - Service Booking Receipt
+${hotelName} - Service Booking Receipt
 ==========================================
 
 Booking ID: ${booking._id}
@@ -100,7 +103,7 @@ ${booking.specialRequests ? `Special Requests: ${booking.specialRequests}` : ''}
 Hotel Information:
 - Hotel: ${booking.hotelId.name}
 
-Thank you for choosing THE PENTOUZ Hotel!
+Thank you for choosing ${hotelName}!
 For any queries, please contact us.
     `.trim();
 
@@ -148,7 +151,7 @@ For any queries, please contact us.
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <Card className="max-w-md w-full p-8 text-center">
           <div className="text-red-500 mb-4">
-            <CheckCircle className="h-16 w-16 mx-auto" />
+            <AlertCircle className="h-16 w-16 mx-auto" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Booking Not Found</h2>
           <p className="text-gray-600 mb-6">
@@ -458,4 +461,4 @@ For any queries, please contact us.
   );
 };
 
-export default ServiceBookingConfirmation;
+export default withErrorBoundary(ServiceBookingConfirmation, { level: 'page' });

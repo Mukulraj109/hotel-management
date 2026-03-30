@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Inventory from '../models/Inventory.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
@@ -12,13 +13,41 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+const createInventorySchema = Joi.object({
+  name: Joi.string().trim().min(1).max(200).required(),
+  sku: Joi.string().trim().min(1).max(100).required(),
+  category: Joi.string().valid('linens', 'toiletries', 'cleaning', 'maintenance', 'food_beverage', 'other').required(),
+  quantity: Joi.number().integer().min(0).required(),
+  unit: Joi.string().valid('pieces', 'bottles', 'rolls', 'kg', 'liters', 'sets').default('pieces'),
+  minimumThreshold: Joi.number().integer().min(0).required(),
+  maximumCapacity: Joi.number().integer().min(1).required(),
+  costPerUnit: Joi.number().min(0).optional(),
+  supplier: Joi.object({
+    name: Joi.string().allow('').optional(),
+    contact: Joi.string().allow('').optional(),
+    email: Joi.string().email({ tlds: false }).allow('').optional()
+  }).optional(),
+  location: Joi.object({
+    building: Joi.string().allow('').optional(),
+    floor: Joi.string().allow('').optional(),
+    room: Joi.string().allow('').optional(),
+    shelf: Joi.string().allow('').optional()
+  }).optional()
+}).unknown(false);
+
+const supplyRequestSchema = Joi.object({
+  itemId: Joi.string().required(),
+  quantity: Joi.number().integer().min(1).required(),
+  reason: Joi.string().max(500).allow('').optional()
+}).unknown(false);
+
 // Get inventory stats (aggregated across ALL items, not just current page)
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const query = { isActive: true };
-
-  if (req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
+  if (!req.user.hotelId) {
+    throw new ApplicationError('Hotel context is required', 400);
   }
+  const hotelObjectId = new mongoose.Types.ObjectId(req.user.hotelId);
+  const query = { isActive: true, hotelId: hotelObjectId };
 
   const [statsResult] = await Inventory.aggregate([
     { $match: query },
@@ -74,45 +103,49 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 
     category,
     lowStock,
     page = 1,
-    limit = 10
+    limit: rawLimit = 10
   } = req.query;
 
-  const query = { isActive: true };
-  
-  if (req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
+  const limit = Math.min(Math.max(parseInt(rawLimit) || 10, 1), 100);
+  const pageNum = Math.max(parseInt(page) || 1, 1);
+
+  if (!req.user.hotelId) {
+    throw new ApplicationError('Hotel context is required', 400);
   }
-  
+  const query = { isActive: true, hotelId: req.user.hotelId };
+
   if (category) query.category = category;
-  
+
   if (lowStock === 'true') {
     query.$expr = { $lte: ['$quantity', '$minimumThreshold'] };
   }
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (pageNum - 1) * limit;
 
   const items = await Inventory.find(query)
     .sort({ name: 1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(limit)
+    .lean({ virtuals: true });
 
   const total = await Inventory.countDocuments(query);
+  const totalPages = limit > 0 ? Math.ceil(total / limit) : 1;
 
   res.json({
     status: 'success',
     results: items.length,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: pageNum,
+      limit,
       total,
-      pages: Math.ceil(total / parseInt(limit))
+      pages: totalPages
     },
     data: { items }
   });
 }));
 
 // Create inventory item
-router.post('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 'manageAccess'), ensurePropertyAccess, validate(createInventorySchema), catchAsync(async (req, res) => {
   const itemData = {
     ...req.body,
     hotelId: req.user.hotelId
@@ -165,16 +198,35 @@ router.delete('/:id', authenticate, ensureTenantContext, authorizePolicy('invent
 }));
 
 // Create supply request
-router.post('/request', authenticate, ensureTenantContext, authorizePolicy('inventory', 'requestAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/request', authenticate, ensureTenantContext, authorizePolicy('inventory', 'requestAccess'), ensurePropertyAccess, validate(supplyRequestSchema), catchAsync(async (req, res) => {
   const { itemId, quantity, reason } = req.body;
 
-  const item = await Inventory.findByIdAndUpdate(
-    itemId,
+  // Validate quantity is a positive number
+  const parsedQty = Number(quantity);
+  if (!Number.isFinite(parsedQty) || parsedQty < 1) {
+    throw new ApplicationError('Quantity must be a positive number (minimum 1)', 400);
+  }
+
+  // Check item exists and verify stock availability
+  const existingItem = await Inventory.findOne({ _id: itemId, hotelId: req.user.hotelId, isActive: true }).lean();
+  if (!existingItem) {
+    throw new ApplicationError('Inventory item not found', 404);
+  }
+
+  if (existingItem.quantity < parsedQty) {
+    throw new ApplicationError(
+      `Insufficient stock. Available: ${existingItem.quantity} ${existingItem.unit || 'units'}, Requested: ${parsedQty}`,
+      400
+    );
+  }
+
+  const item = await Inventory.findOneAndUpdate(
+    { _id: itemId, hotelId: req.user.hotelId },
     {
       $push: {
         requests: {
           userId: req.user._id,
-          quantity,
+          quantity: parsedQty,
           reason,
           status: 'pending'
         }
@@ -207,8 +259,14 @@ router.patch('/request/:itemId/:requestId',
     const { itemId, requestId } = req.params;
     const { status } = req.body; // 'approved', 'rejected', 'fulfilled'
 
+    // Validate status value
+    const validStatuses = ['approved', 'rejected', 'fulfilled'];
+    if (!validStatuses.includes(status)) {
+      throw new ApplicationError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
+    }
+
     // First, read to get request quantity if we need to fulfill
-    const existingItem = await Inventory.findById(itemId).lean();
+    const existingItem = await Inventory.findOne({ _id: itemId, hotelId: req.user.hotelId }).lean();
 
     if (!existingItem) {
       throw new ApplicationError('Inventory item not found', 404);
@@ -222,6 +280,11 @@ router.patch('/request/:itemId/:requestId',
       throw new ApplicationError('Request not found', 404);
     }
 
+    // Prevent processing already-processed requests
+    if (request.status !== 'pending' && request.status !== 'approved') {
+      throw new ApplicationError(`Request has already been ${request.status}`, 400);
+    }
+
     // Build atomic update
     const updateOps = {
       $set: {
@@ -231,13 +294,20 @@ router.patch('/request/:itemId/:requestId',
       }
     };
 
-    // If fulfilled, atomically increment inventory quantity
+    // If fulfilled, atomically deduct inventory quantity (supply was taken from stock)
     if (status === 'fulfilled') {
-      updateOps.$inc = { quantity: request.quantity };
+      // Verify sufficient stock before deducting
+      if (existingItem.quantity < request.quantity) {
+        throw new ApplicationError(
+          `Insufficient stock to fulfill. Available: ${existingItem.quantity}, Requested: ${request.quantity}`,
+          400
+        );
+      }
+      updateOps.$inc = { quantity: -request.quantity };
     }
 
-    const item = await Inventory.findByIdAndUpdate(
-      itemId,
+    const item = await Inventory.findOneAndUpdate(
+      { _id: itemId, hotelId: req.user.hotelId },
       updateOps,
       {
         new: true,

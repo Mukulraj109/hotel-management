@@ -357,7 +357,8 @@ meetUpRequestSchema.virtual('isSupervisionCompleted').get(function() {
 });
 
 // Static methods
-meetUpRequestSchema.statics.getUpcomingMeetUps = function(userId) {
+meetUpRequestSchema.statics.getUpcomingMeetUps = function(userId, { page = 1, limit = 20 } = {}) {
+  const limitNum = Math.min(100, Math.max(1, limit));
   return this.find({
     $or: [
       { requesterId: userId },
@@ -371,26 +372,37 @@ meetUpRequestSchema.statics.getUpcomingMeetUps = function(userId) {
   .populate('targetUserId', 'name email avatar')
   .populate('hotelId', 'name address')
   .populate('meetingRoomBooking.roomId', 'number type')
-  .sort({ proposedDate: 1 });
+  .sort({ proposedDate: 1 })
+  .skip((page - 1) * limitNum)
+  .limit(limitNum)
+  .lean();
 };
 
-meetUpRequestSchema.statics.getPendingRequests = function(userId) {
+meetUpRequestSchema.statics.getPendingRequests = function(userId, { page = 1, limit = 20 } = {}) {
+  const limitNum = Math.min(100, Math.max(1, limit));
   return this.find({
     targetUserId: userId,
     status: 'pending'
   })
   .populate('requesterId', 'name email avatar')
   .populate('hotelId', 'name address')
-  .sort({ createdAt: -1 });
+  .sort({ createdAt: -1 })
+  .skip((page - 1) * limitNum)
+  .limit(limitNum)
+  .lean();
 };
 
-meetUpRequestSchema.statics.getSentRequests = function(userId) {
+meetUpRequestSchema.statics.getSentRequests = function(userId, { page = 1, limit = 20 } = {}) {
+  const limitNum = Math.min(100, Math.max(1, limit));
   return this.find({
     requesterId: userId
   })
   .populate('targetUserId', 'name email avatar')
   .populate('hotelId', 'name address')
-  .sort({ createdAt: -1 });
+  .sort({ createdAt: -1 })
+  .skip((page - 1) * limitNum)
+  .limit(limitNum)
+  .lean();
 };
 
 meetUpRequestSchema.statics.getMeetUpStats = function(userId) {

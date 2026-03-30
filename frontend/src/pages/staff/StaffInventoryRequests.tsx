@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
-import { 
-  Package, 
-  Clock, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Package,
+  Clock,
+  CheckCircle,
+  AlertCircle,
   User,
-  MapPin,
   Play,
   CheckSquare,
   RefreshCw,
@@ -54,7 +53,8 @@ export default function StaffInventoryRequests() {
         serviceType: 'other', // Only inventory requests
         assignedTo: user?.id, // Only requests assigned to current staff member
         status: statusFilter === 'all' ? undefined : statusFilter,
-        limit: 100
+        page: 1,
+        limit: 20
       };
 
       const response = await adminGuestServicesService.getServices(filters);
@@ -371,7 +371,7 @@ export default function StaffInventoryRequests() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-500">
                         <div>
                           <strong className="text-gray-700">Guest:</strong><br />
-                          {request.userId?.name}
+                          {request.userId?.name || 'N/A'}
                         </div>
                         <div>
                           <strong className="text-gray-700">Room:</strong><br />
@@ -379,7 +379,7 @@ export default function StaffInventoryRequests() {
                         </div>
                         <div>
                           <strong className="text-gray-700">Booking:</strong><br />
-                          {request.bookingId?.bookingNumber}
+                          {request.bookingId?.bookingNumber || 'N/A'}
                         </div>
                         <div>
                           <strong className="text-gray-700">Created:</strong><br />
@@ -449,8 +449,8 @@ export default function StaffInventoryRequests() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Guest</label>
                   <div className="mt-1">
-                    <div className="font-medium">{selectedRequest.userId?.name}</div>
-                    <div className="text-sm text-gray-500">{selectedRequest.userId?.email}</div>
+                    <div className="font-medium">{selectedRequest.userId?.name || 'N/A'}</div>
+                    <div className="text-sm text-gray-500">{selectedRequest.userId?.email || 'N/A'}</div>
                   </div>
                 </div>
                 <div>
@@ -471,7 +471,7 @@ export default function StaffInventoryRequests() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Requested Items</label>
                   <div className="bg-gray-50 p-3 rounded-md space-y-2">
                     {selectedRequest.items.map((item, index) => (
-                      <div key={`selectedRequest-items-${index}-${item}`} className="flex justify-between items-center">
+                      <div key={`selectedRequest-items-${index}-${item.name}`} className="flex justify-between items-center">
                         <span className="font-medium">{item.name}</span>
                         <span className="text-sm text-gray-500">Qty: {item.quantity}</span>
                       </div>

@@ -8,8 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Star, MessageSquare, Eye, CheckCircle, XCircle, AlertTriangle, Filter, Search } from 'lucide-react';
+import { Star, MessageSquare, CheckCircle, XCircle, AlertTriangle, Search } from 'lucide-react';
 import { bookingEngineService, ReviewManagement } from '@/services/bookingEngineService';
+import { api } from '@/services/api';
 
 interface ReviewResponse {
   reviewId: string;
@@ -42,8 +43,8 @@ const ReviewManager: React.FC = () => {
       setLoading(true);
       const data = await bookingEngineService.getReviews();
       setReviews(data);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load reviews:', error);
     } finally {
       setLoading(false);
     }
@@ -51,23 +52,25 @@ const ReviewManager: React.FC = () => {
 
   const handleModerateReview = async (reviewId: string, status: string) => {
     try {
-      // This would call the moderation endpoint
-      alert(`Review ${status} successfully!`);
+      await api.put(`/booking-engine/reviews/${reviewId}/moderate`, { status });
       fetchReviews();
     } catch (error) {
-      alert('Error moderating review');
+      console.error('Error moderating review:', error);
     }
   };
 
   const handleRespondToReview = async () => {
+    if (!selectedReview) return;
     try {
-      // This would call the response endpoint
-      alert('Response added successfully!');
+      await api.post(`/booking-engine/reviews/${selectedReview._id}/respond`, {
+        response: responseData.response,
+        isPublic: responseData.isPublic,
+      });
       setIsResponseModalOpen(false);
       setResponseData({ reviewId: '', response: '', isPublic: true });
       fetchReviews();
     } catch (error) {
-      alert('Error responding to review');
+      console.error('Error responding to review:', error);
     }
   };
 
@@ -199,10 +202,11 @@ const ReviewManager: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Avg Rating</p>
               <p className="text-2xl font-bold">
-                {reviews.length > 0 
-                  ? (reviews.reduce((sum, r) => sum + (r.content?.rating || 0), 0) / reviews.filter(r => r.content?.rating).length).toFixed(1)
-                  : '0'
-                }
+                {(() => {
+                  const ratedReviews = reviews.filter(r => r.content?.rating);
+                  if (ratedReviews.length === 0) return '0';
+                  return (ratedReviews.reduce((sum, r) => sum + (r.content?.rating || 0), 0) / ratedReviews.length).toFixed(1);
+                })()}
               </p>
             </div>
           </CardContent>

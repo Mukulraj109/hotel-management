@@ -40,8 +40,19 @@ interface RequestStats {
   averageCompletionTime: number;
 }
 
+// Extract hotelId string from user object, handling both string and populated object forms
+function getUserHotelIdString(hotelId: unknown): string | undefined {
+  if (!hotelId) return undefined;
+  if (typeof hotelId === 'string') return hotelId;
+  if (typeof hotelId === 'object' && hotelId !== null && '_id' in hotelId) {
+    return (hotelId as { _id: string })._id;
+  }
+  return undefined;
+}
+
 export const SpecialRequestTracker: React.FC = () => {
   const { user } = useAuth();
+  const hotelId = getUserHotelIdString(user?.hotelId);
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [availableStaff, setAvailableStaff] = useState<StaffMember[]>([]);
   const [stats, setStats] = useState<RequestStats>({
@@ -86,7 +97,7 @@ export const SpecialRequestTracker: React.FC = () => {
       if (filterStatus !== 'all') params.status = filterStatus;
       if (filterPriority !== 'all') params.priority = filterPriority;
       if (filterType !== 'all') params.serviceType = filterType;
-      if (user?.hotelId) params.hotelId = user.hotelId;
+      if (hotelId) params.hotelId = hotelId;
 
       const response = await guestServiceRequestService.getServiceRequests(params);
       setRequests(response.serviceRequests);
@@ -102,7 +113,7 @@ export const SpecialRequestTracker: React.FC = () => {
   const loadRequestStats = async () => {
     try {
       const params: Record<string, unknown> = {};
-      if (user?.hotelId) params.hotelId = user.hotelId;
+      if (hotelId) params.hotelId = hotelId;
 
       const response = await guestServiceRequestService.getServiceStats(params);
 
@@ -140,7 +151,7 @@ export const SpecialRequestTracker: React.FC = () => {
 
   const loadAvailableStaff = async () => {
     try {
-      const staff = await guestServiceRequestService.getAvailableStaff(user?.hotelId);
+      const staff = await guestServiceRequestService.getAvailableStaff(hotelId);
       setAvailableStaff(staff);
     } catch (error) {
       setAvailableStaff([]);

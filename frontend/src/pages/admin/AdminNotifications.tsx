@@ -2,39 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
-  Filter,
   Search,
   Check,
   Trash2,
   Settings,
   Eye,
-  EyeOff,
   ChevronDown,
   ChevronUp,
-  MoreHorizontal,
-  Clock,
   AlertCircle,
-  CheckCircle,
-  XCircle,
-  Star,
-  CreditCard,
   Calendar,
-  Gift,
-  Heart,
-  LogIn,
-  LogOut,
-  MessageSquare,
-  Tag,
-  HelpCircle,
-  Minus,
   Circle,
   AlertTriangle,
-  AlertOctagon,
   Mail,
   MessageCircle,
   Smartphone,
-  Users,
-  BarChart3
 } from 'lucide-react';
 import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
 import { Card } from '@/components/ui/card';
@@ -450,7 +431,7 @@ function AdminNotifications() {
                 {unreadCount > 0 && (
                   <Button
                     onClick={handleMarkAllAsRead}
-                    disabled={markAllAsReadMutation.isLoading}
+                    disabled={markAllAsReadMutation.isPending}
                     variant="outline"
                     size="sm"
                   >
@@ -624,7 +605,7 @@ function AdminNotifications() {
                                 {notificationService.isUnread(notification) && (
                                   <Button
                                     onClick={() => handleMarkAsRead(notification._id)}
-                                    disabled={markAsReadMutation.isLoading}
+                                    disabled={markAsReadMutation.isPending}
                                     variant="ghost"
                                     size="sm"
                                     className="text-xs"
@@ -636,7 +617,7 @@ function AdminNotifications() {
 
                                 <Button
                                   onClick={() => handleDeleteNotification(notification._id)}
-                                  disabled={deleteNotificationMutation.isLoading}
+                                  disabled={deleteNotificationMutation.isPending}
                                   variant="ghost"
                                   size="sm"
                                   className="text-xs text-red-600 hover:text-red-700"

@@ -68,7 +68,7 @@ export function DailyInventoryCheckForm({
   const fetchTemplate = async () => {
     try {
       setLoadingTemplate(true);
-      const { data } = await api.get(`/daily-inventory-check/template/${roomId}`);
+      const { data } = await api.get(`/daily-inventory-checks/template/${roomId}`);
       setItems(data.data.template);
     } catch {
       // Error handled silently

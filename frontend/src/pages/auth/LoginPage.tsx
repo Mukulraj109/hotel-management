@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Hotel, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -18,6 +18,10 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    document.title = 'Sign In - The Pentouz';
+  }, []);
 
   const from = location.state?.from?.pathname || '/';
 
@@ -160,7 +164,8 @@ export default function LoginPage() {
                 error={errors.password}
                 placeholder="Enter your password"
               />
-              <button aria-label="View"
+              <button
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
                 type="button"
                 className="absolute inset-y-0 right-0 pr-3 flex items-center mt-6"
                 onClick={() => setShowPassword(!showPassword)}
@@ -182,23 +187,25 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
+          {import.meta.env.DEV && (
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Demo Accounts (Dev Only)</span>
+                </div>
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Demo Accounts</span>
-              </div>
-            </div>
 
-            <div className="mt-4 space-y-2 text-sm text-gray-600">
-              <p><strong>Admin:</strong> admin@hotel.com / admin123</p>
-              <p><strong>Front Desk:</strong> frontdesk@hotel.com / frontdesk123</p>
-              <p><strong>Staff:</strong> staff@hotel.com / staff123</p>
-              <p><strong>Guest:</strong> john@example.com / guest123</p>
+              <div className="mt-4 space-y-2 text-sm text-gray-600">
+                <p><strong>Admin:</strong> admin@hotel.com / admin123</p>
+                <p><strong>Front Desk:</strong> frontdesk@hotel.com / frontdesk123</p>
+                <p><strong>Staff:</strong> staff@hotel.com / staff123</p>
+                <p><strong>Guest:</strong> john@example.com / guest123</p>
+              </div>
             </div>
-          </div>
+          )}
         </Card>
       </div>
     </div>

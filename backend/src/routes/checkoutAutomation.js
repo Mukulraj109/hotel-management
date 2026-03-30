@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -14,8 +15,9 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// All routes require authentication
+// All routes require authentication + tenant isolation
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -318,19 +320,42 @@ router.get('/dashboard', authorizePolicy('checkoutAutomation', 'managerAccess'),
     end: endDate
   });
 
-  // Get recent automation logs
-  const recentLogs = await CheckoutAutomationLog.find({
-    'bookingId.hotelId': hotelId,
-    processedAt: { $gte: startDate, $lte: endDate }
-  })
+  // Get recent automation logs — use hotelId directly (denormalized field, falls back to booking join)
+  const logBaseFilter = { processedAt: { $gte: startDate, $lte: endDate } };
+  // Use hotelId if available on the log, fall back to booking-based filter for legacy data
+  const hasHotelIdOnLogs = await CheckoutAutomationLog.findOne({ hotelId }).select('_id').lean();
+  if (hasHotelIdOnLogs) {
+    logBaseFilter.hotelId = hotelId;
+  } else {
+    // Legacy fallback: scope via booking IDs (capped for safety)
+    const hotelBookingIds = await Booking.find({ hotelId })
+      .select('_id')
+      .lean()
+      .limit(5000);
+    logBaseFilter.bookingId = { $in: hotelBookingIds.map(b => b._id) };
+  }
+
+  const recentLogs = await CheckoutAutomationLog.find(logBaseFilter)
     .sort({ processedAt: -1 })
     .limit(20)
     .populate('bookingId', 'bookingNumber')
     .populate('roomId', 'roomNumber')
-    .populate('initiatedBy', 'name email').lean();
+    .populate('initiatedBy', 'name email')
+    .lean();
 
-  // Get failed automations
-  const failedAutomations = await CheckoutAutomationLog.getFailedAutomations(24, 10);
+  // Get failed automations scoped to this hotel
+  const failedFilter = {
+    ...logBaseFilter,
+    status: 'failed',
+    processedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+  };
+  const failedAutomations = await CheckoutAutomationLog.find(failedFilter)
+    .sort({ processedAt: -1 })
+    .limit(10)
+    .populate('bookingId', 'bookingNumber')
+    .populate('roomId', 'roomNumber')
+    .populate('initiatedBy', 'name email')
+    .lean();
 
   // Get pending automations
   const pendingAutomations = await Booking.find({
@@ -395,19 +420,34 @@ router.get('/dashboard', authorizePolicy('checkoutAutomation', 'managerAccess'),
  */
 router.get('/logs', authorizePolicy('checkoutAutomation', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
-  const { 
-    status, 
-    automationType, 
-    page = 1, 
-    limit = 20 
+  const {
+    status,
+    automationType,
+    page = 1,
+    limit = 20
   } = req.query;
 
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+  // Scope logs to hotel: use hotelId directly if available, fall back to booking join
+  const hasHotelIdOnLogs = await CheckoutAutomationLog.findOne({ hotelId }).select('_id').lean();
   const filter = {};
-  
+  if (hasHotelIdOnLogs) {
+    filter.hotelId = hotelId;
+  } else {
+    // Legacy fallback
+    const hotelBookingIds = await Booking.find({ hotelId })
+      .select('_id')
+      .lean()
+      .limit(5000);
+    filter.bookingId = { $in: hotelBookingIds.map(b => b._id) };
+  }
+
   if (status) filter.status = status;
   if (automationType) filter.automationType = automationType;
 
-  const skip = (page - 1) * limit;
+  const skip = (parsedPage - 1) * parsedLimit;
 
   const [logs, total] = await Promise.all([
     CheckoutAutomationLog.find(filter)
@@ -416,7 +456,8 @@ router.get('/logs', authorizePolicy('checkoutAutomation', 'managerAccess'), catc
       .populate('initiatedBy', 'name email')
       .sort({ processedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(parsedLimit)
+      .lean(),
     CheckoutAutomationLog.countDocuments(filter)
   ]);
 
@@ -425,10 +466,10 @@ router.get('/logs', authorizePolicy('checkoutAutomation', 'managerAccess'), catc
     data: {
       logs,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: total > 0 ? Math.ceil(total / parsedLimit) : 0
       }
     }
   });

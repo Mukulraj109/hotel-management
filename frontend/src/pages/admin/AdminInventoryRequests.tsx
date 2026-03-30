@@ -13,9 +13,6 @@ import {
   UserCheck,
   Play,
   CheckSquare,
-  Trash2,
-  Edit3,
-  Plus,
   TrendingUp,
   Activity,
   Zap,
@@ -26,25 +23,17 @@ import {
   XCircle,
   Download,
   Search,
-  FileText,
   History,
   CheckCircle2,
-  RotateCcw,
-  Bell,
-  Settings
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
-import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
-import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
+import { adminGuestServicesService, GuestService, GuestServiceFilters } from '../../services/adminGuestServicesService';
 import { api } from '../../services/api';
-// import { useRealTime } from '../../services/realTimeService'; // Disabled for now - will implement later
-import { useAuth } from '../../context/AuthContext';
 import '../../styles/inventory-requests-animations.css';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -92,80 +81,18 @@ interface BulkOperationData {
   notes?: string;
 }
 
-const InventoryRequestInfo = React.memo(({ request, getItemsSummary }: {
-  request: InventoryRequest;
-  getItemsSummary: (items: InventoryRequest['items']) => string;
-}) => (
-  <div className="flex items-center space-x-4 flex-1">
-    <div className="p-3 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 animate-icon-float">
-      <Package className="h-6 w-6 text-blue-600" />
-    </div>
-    <div className="flex-1">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-bold text-gray-900 text-lg">{request.title}</h3>
-          <p className="text-gray-600 mt-1">{request.description}</p>
-          <div className="text-sm text-gray-500 mt-2">
-            {getItemsSummary(request.items)}
-          </div>
-        </div>
-        <div className="ml-4">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold animate-pulse ${
-            request.priority === 'urgent' ? 'bg-red-100 text-red-800 animate-pulse-glow-red' :
-            request.priority === 'high' ? 'bg-orange-100 text-orange-800 animate-pulse-glow-orange' :
-            request.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
-            {request.priority === 'urgent' && <Zap className="h-3 w-3 mr-1" />}
-            {request.priority}
-          </span>
-        </div>
-      </div>
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-effect rounded-lg p-3">
-          <div className="flex items-center space-x-2">
-            <User className="h-4 w-4 text-blue-500" />
-            <div>
-              <div className="font-medium text-sm">{request.userId?.name}</div>
-              <div className="text-xs text-gray-500">Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber}</div>
-            </div>
-          </div>
-        </div>
-        <div className="glass-effect rounded-lg p-3">
-          <div className="flex items-center space-x-2">
-            {request.assignedTo ? (
-              <>
-                <UserCheck className="h-4 w-4 text-green-500" />
-                <div>
-                  <div className="font-medium text-sm">{request.assignedTo.name}</div>
-                  <div className="text-xs text-gray-500">{request.assignedTo.email}</div>
-                </div>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm text-gray-500">Unassigned</span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="glass-effect rounded-lg p-3">
-          <div className="flex items-center space-x-2">
-            <Clock className="h-4 w-4 text-purple-500" />
-            <div className="text-sm text-gray-600">
-              {format(parseISO(request.createdAt), 'MMM dd, HH:mm')}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-));
-InventoryRequestInfo.displayName = 'InventoryRequestInfo';
+/** Safe date formatting helper -- returns fallback string when the value is missing or invalid */
+function safeFormatDate(dateStr: string | undefined | null, formatStr: string): string {
+  if (!dateStr) return 'N/A';
+  try {
+    return format(parseISO(dateStr), formatStr);
+  } catch {
+    return 'N/A';
+  }
+}
 
 export default function AdminInventoryRequests() {
-  const { user, logout } = useAuth();
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,12 +105,7 @@ export default function AdminInventoryRequests() {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [availableStaff, setAvailableStaff] = useState<Array<{ _id: string; name: string; email: string; department: string }>>([]);
 
-  // Real-time connection with improved management
-  // Real-time disabled for now
-  // const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
-  // const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+  // Real-time connection disabled for now -- will implement later
 
   // Search and bulk operations state
   const [searchTerm, setSearchTerm] = useState('');
@@ -263,36 +185,26 @@ export default function AdminInventoryRequests() {
     }
   };
 
-  const fetchStats = async () => {
-    try {
-      const response = await adminGuestServicesService.getStats(selectedPropertyId || undefined);
-      const backendData = response.data;
-      const overall = backendData.overall || {};
-      
-      // Calculate inventory-specific stats from the requests
-      const inventoryStats = {
-        total: requests.length,
-        pending: requests.filter(r => r.status === 'pending').length,
-        assigned: requests.filter(r => r.status === 'assigned').length,
-        inProgress: requests.filter(r => r.status === 'in_progress').length,
-        completed: requests.filter(r => r.status === 'completed').length,
-        cancelled: requests.filter(r => r.status === 'cancelled').length,
-        urgent: requests.filter(r => r.priority === 'urgent' || r.priority === 'high').length,
-        avgCompletionTime: 0 // Would need more complex calculation
-      };
-      
-      setStats(inventoryStats);
-    } catch (error) {
-      toast.error('Failed to load inventory request statistics');
-    }
-  };
+  const computeStats = useCallback((reqs: InventoryRequest[]) => {
+    const inventoryStats: InventoryStats = {
+      total: reqs.length,
+      pending: reqs.filter(r => r.status === 'pending').length,
+      assigned: reqs.filter(r => r.status === 'assigned').length,
+      inProgress: reqs.filter(r => r.status === 'in_progress').length,
+      completed: reqs.filter(r => r.status === 'completed').length,
+      cancelled: reqs.filter(r => r.status === 'cancelled').length,
+      urgent: reqs.filter(r => r.priority === 'urgent' || r.priority === 'high').length,
+      avgCompletionTime: 0
+    };
+    setStats(inventoryStats);
+  }, []);
 
   const fetchAvailableStaff = async () => {
     try {
       const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId);
-      setAvailableStaff(response.data);
+      setAvailableStaff(response.data || []);
     } catch {
-      // Error handled silently
+      setAvailableStaff([]);
     }
   };
 
@@ -330,8 +242,8 @@ export default function AdminInventoryRequests() {
       request.status || '',
       request.assignedTo?.name || 'Unassigned',
       getItemsSummary(request.items),
-      format(parseISO(request.createdAt), 'yyyy-MM-dd HH:mm'),
-      request.completedTime ? format(parseISO(request.completedTime), 'yyyy-MM-dd HH:mm') : ''
+      safeFormatDate(request.createdAt, 'yyyy-MM-dd HH:mm'),
+      request.completedTime ? safeFormatDate(request.completedTime, 'yyyy-MM-dd HH:mm') : ''
     ]);
 
     const csvContent = [headers, ...csvData]
@@ -348,38 +260,6 @@ export default function AdminInventoryRequests() {
     link.click();
     document.body.removeChild(link);
     toast.success('Inventory requests exported to CSV successfully');
-  }, [requests]);
-
-  const exportToExcel = useCallback(() => {
-    const data = requests.map(request => ({
-      'Request Title': request.title || '',
-      'Description': request.description || '',
-      'Guest Name': request.userId?.name || '',
-      'Room Number': request.bookingId?.rooms?.[0]?.roomId?.roomNumber || '',
-      'Priority': request.priority || '',
-      'Status': request.status || '',
-      'Assigned To': request.assignedTo?.name || 'Unassigned',
-      'Items': getItemsSummary(request.items),
-      'Created Date': format(parseISO(request.createdAt), 'yyyy-MM-dd HH:mm'),
-      'Completed Date': request.completedTime ? format(parseISO(request.completedTime), 'yyyy-MM-dd HH:mm') : ''
-    }));
-
-    // Simple Excel export using CSV format with .xlsx extension
-    const headers = Object.keys(data[0] || {});
-    const csvContent = [headers, ...data.map(row => headers.map(header => row[header]))]
-      .map(row => row.map(field => `"${field.toString().replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob([csvContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `inventory-requests-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Inventory requests exported to Excel successfully');
   }, [requests]);
 
   // Bulk operations
@@ -421,7 +301,7 @@ export default function AdminInventoryRequests() {
         toast.success(`${requestIds.length} requests assigned successfully`);
       } else if (bulkActionData.operation === 'updateStatus' && bulkActionData.status) {
         for (const requestId of requestIds) {
-          await adminGuestServicesService.updateStatus(requestId, bulkActionData.status as unknown);
+          await adminGuestServicesService.updateStatus(requestId, bulkActionData.status);
         }
         toast.success(`${requestIds.length} requests updated successfully`);
       }
@@ -471,52 +351,18 @@ export default function AdminInventoryRequests() {
     }
   };
 
-  /* WebSocket connection disabled for now - will implement later
-  const connectWithRetry = useCallback(async () => {
-    try {
-      await connect();
-      reconnectAttempts.current = 0;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-    } catch (error) {
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-        reconnectAttempts.current++;
-        reconnectTimeoutRef.current = setTimeout(connectWithRetry, delay);
-      }
-    }
-  }, [connect]);
-  */
-
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
   useEffect(() => {
     if (selectedPropertyId) {
       fetchRequests();
       fetchAvailableStaff();
     }
 
-    // WebSocket connection disabled for now
-    // connectWithRetry();
-
     return () => {
-      // disconnect();
-      // if (reconnectTimeoutRef.current) {
-      //   clearTimeout(reconnectTimeoutRef.current);
-      // }
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [filters, selectedPropertyId]); // removed connectWithRetry, disconnect from deps
+  }, [filters, selectedPropertyId]);
 
   // Trigger search when searchTerm changes
   useEffect(() => {
@@ -524,64 +370,8 @@ export default function AdminInventoryRequests() {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (requests.length > 0) {
-      fetchStats();
-    }
-  }, [requests]);
-  
-  /* Real-time event listeners disabled for now - will implement later
-  useEffect(() => {
-    if (!isConnected) {
-      // Attempt reconnection if not connected
-      if (connectionState === 'disconnected' && reconnectAttempts.current < maxReconnectAttempts) {
-        connectWithRetry();
-      }
-      return;
-    }
-
-    const handleInventoryUpdate = (data: Record<string, unknown>) => {
-      fetchRequests();
-      // Show notification badge instead of toast to avoid spam
-      const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-bounce';
-      notification.textContent = 'Inventory data updated';
-      document.body.appendChild(notification);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        if (document.body.contains(notification)) {
-          document.body.removeChild(notification);
-        }
-      }, 3000);
-    };
-
-    const handleInventoryCreate = (data: Record<string, unknown>) => {
-      fetchRequests();
-      toast.success('New inventory request received', {
-        icon: '📦',
-        duration: 3000
-      });
-    };
-
-    const handleConnectionError = () => {
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        connectWithRetry();
-      }
-    };
-
-    // Subscribe to guest service events (inventory requests use the same event system)
-    on('guest-services:created', handleInventoryCreate);
-    on('guest-services:updated', handleInventoryUpdate);
-    on('guest-services:status_changed', handleInventoryUpdate);
-    on('connection:error', handleConnectionError);
-
-    return () => {
-      off('guest-services:created', handleInventoryCreate);
-      off('guest-services:updated', handleInventoryUpdate);
-      off('guest-services:status_changed', handleInventoryUpdate);
-      off('connection:error', handleConnectionError);
-    };
-  }, [isConnected, connectionState, on, off, connectWithRetry, fetchRequests]);
-  */
+    computeStats(requests);
+  }, [requests, computeStats]);
 
   // Handle status update
   const handleStatusUpdate = async (requestId: string, newStatus: 'assigned' | 'in_progress' | 'completed' | 'cancelled') => {
@@ -628,169 +418,12 @@ export default function AdminInventoryRequests() {
     setShowAssignModal(true);
   };
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      low: 'bg-gray-100 text-gray-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      high: 'bg-orange-100 text-orange-800',
-      urgent: 'bg-red-100 text-red-800'
-    };
-    return colors[priority] || 'bg-gray-100 text-gray-800';
-  };
-
   const getItemsSummary = (items?: Array<{ name: string; quantity: number; price: number }>) => {
     if (!items || items.length === 0) return 'No specific items listed';
     
     const summary = items.map(item => `${item.quantity}x ${item.name}`).join(', ');
     return summary.length > 50 ? `${summary.substring(0, 50)}...` : summary;
   };
-
-  const columns = [
-    {
-      key: 'title',
-      header: 'Request',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-blue-100 text-blue-800">
-              <Package className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="font-medium text-gray-900">{request.title}</div>
-              <div className="text-sm text-gray-500">{request.description}</div>
-              <div className="text-xs text-gray-400 mt-1">
-                {getItemsSummary(request.items)}
-              </div>
-            </div>
-          </div>
-        );
-      }
-    },
-    {
-      key: 'guest',
-      header: 'Guest & Room',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <div className="text-sm">
-            <div className="font-medium">{request.userId?.name}</div>
-            <div className="text-gray-500">Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber}</div>
-            <div className="text-gray-500">{request.bookingId?.bookingNumber}</div>
-          </div>
-        );
-      }
-    },
-    {
-      key: 'priority',
-      header: 'Priority',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
-            {request.priority}
-          </span>
-        );
-      }
-    },
-    {
-      key: 'assignedTo',
-      header: 'Assigned To',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <div className="text-sm">
-            {request.assignedTo ? (
-              <>
-                <div className="font-medium">{request.assignedTo.name}</div>
-                <div className="text-gray-500">{request.assignedTo.email}</div>
-              </>
-            ) : (
-              <span className="text-gray-400">Unassigned</span>
-            )}
-          </div>
-        );
-      }
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <StatusBadge 
-            status={request.status} 
-            colorMap={{
-              pending: 'yellow',
-              assigned: 'blue',
-              in_progress: 'orange',
-              completed: 'green',
-              cancelled: 'red'
-            }}
-          />
-        );
-      }
-    },
-    {
-      key: 'createdAt',
-      header: 'Created',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request || !request.createdAt) return <div>No data</div>;
-        return (
-          <div className="text-sm text-gray-600">
-            {format(parseISO(request.createdAt), 'MMM dd, HH:mm')}
-          </div>
-        );
-      }
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (value: unknown, request: InventoryRequest) => {
-        if (!request) return <div>No data</div>;
-        return (
-          <div className="flex items-center space-x-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => handleViewRequest(request)}
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-            {request.status === 'pending' && (
-              <Button
-                size="sm"
-                onClick={() => openAssignModal(request)}
-                disabled={updating}
-              >
-                <UserCheck className="h-4 w-4" />
-              </Button>
-            )}
-            {request.status === 'assigned' && (
-              <Button
-                size="sm"
-                onClick={() => handleStatusUpdate(request._id, 'in_progress')}
-                disabled={updating}
-              >
-                <Play className="h-4 w-4" />
-              </Button>
-            )}
-            {(request.status === 'in_progress' || request.status === 'assigned') && (
-              <Button
-                size="sm"
-                onClick={() => handleStatusUpdate(request._id, 'completed')}
-                disabled={updating}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <CheckSquare className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        );
-      },
-      align: 'center' as const
-    }
-  ];
 
   // Early return if no property selected in single property mode
   if (!selectedPropertyId && viewMode === 'single') {
@@ -1201,8 +834,8 @@ export default function AdminInventoryRequests() {
                             <div className="flex items-center space-x-2">
                               <User className="h-4 w-4 text-blue-500" />
                               <div>
-                                <div className="font-medium text-sm">{request.userId?.name}</div>
-                                <div className="text-xs text-gray-500">Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber}</div>
+                                <div className="font-medium text-sm">{request.userId?.name || 'Unknown Guest'}</div>
+                                <div className="text-xs text-gray-500">Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'}</div>
                               </div>
                             </div>
                           </div>
@@ -1230,7 +863,7 @@ export default function AdminInventoryRequests() {
                             <div className="flex items-center space-x-2">
                               <Clock className="h-4 w-4 text-purple-500" />
                               <div className="text-sm text-gray-600">
-                                {format(parseISO(request.createdAt), 'MMM dd, HH:mm')}
+                                {safeFormatDate(request.createdAt, 'MMM dd, HH:mm')}
                               </div>
                             </div>
                           </div>
@@ -1248,7 +881,7 @@ export default function AdminInventoryRequests() {
                         request.status === 'completed' ? 'bg-green-100 text-green-800 animate-status-completed' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {request.status.replace('_', ' ').toUpperCase()}
+                        {(request.status || 'unknown').replace('_', ' ').toUpperCase()}
                       </div>
 
                       {/* Action Buttons */}
@@ -1417,7 +1050,7 @@ export default function AdminInventoryRequests() {
                           selectedRequest.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
-                          {selectedRequest.priority.toUpperCase()}
+                          {(selectedRequest.priority || 'unknown').toUpperCase()}
                         </span>
                       </div>
                     </div>
@@ -1430,7 +1063,7 @@ export default function AdminInventoryRequests() {
                         selectedRequest.status === 'completed' ? 'bg-green-100 text-green-800 animate-status-completed' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {selectedRequest.status.replace('_', ' ').toUpperCase()}
+                        {(selectedRequest.status || 'unknown').replace('_', ' ').toUpperCase()}
                       </div>
                     </div>
                   </div>
@@ -1445,8 +1078,8 @@ export default function AdminInventoryRequests() {
                         <label className="block text-sm font-bold text-gray-700 ml-3">Guest Information</label>
                       </div>
                       <div className="space-y-2">
-                        <div className="font-bold text-lg text-gray-900">{selectedRequest.userId?.name}</div>
-                        <div className="text-sm text-gray-600">{selectedRequest.userId?.email}</div>
+                        <div className="font-bold text-lg text-gray-900">{selectedRequest.userId?.name || 'Unknown Guest'}</div>
+                        <div className="text-sm text-gray-600">{selectedRequest.userId?.email || 'N/A'}</div>
                         {selectedRequest.userId?.phone && (
                           <div className="text-sm text-gray-600">{selectedRequest.userId.phone}</div>
                         )}
@@ -1498,7 +1131,7 @@ export default function AdminInventoryRequests() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {selectedRequest.items.map((item, index) => (
-                          <div key={`selectedRequest-items-${index}-${item}`} className="glass-effect rounded-lg p-4 flex justify-between items-center animate-scale-grow" style={{animationDelay: `${index * 0.1}s`}}>
+                          <div key={`selectedRequest-items-${index}-${item.name}`} className="glass-effect rounded-lg p-4 flex justify-between items-center animate-scale-grow" style={{animationDelay: `${index * 0.1}s`}}>
                             <span className="font-bold text-gray-900">{item.name}</span>
                             <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1 rounded-full text-sm font-bold">
                               Qty: {item.quantity}
@@ -1534,7 +1167,7 @@ export default function AdminInventoryRequests() {
                         <label className="block text-sm font-bold text-gray-700 ml-3">Created</label>
                       </div>
                       <div className="text-lg font-bold text-gray-900">
-                        {format(parseISO(selectedRequest.createdAt), 'MMM dd, yyyy HH:mm')}
+                        {safeFormatDate(selectedRequest.createdAt, 'MMM dd, yyyy HH:mm')}
                       </div>
                     </div>
 
@@ -1547,7 +1180,7 @@ export default function AdminInventoryRequests() {
                           <label className="block text-sm font-bold text-gray-700 ml-3">Completed</label>
                         </div>
                         <div className="text-lg font-bold text-gray-900">
-                          {format(parseISO(selectedRequest.completedTime), 'MMM dd, yyyy HH:mm')}
+                          {safeFormatDate(selectedRequest.completedTime, 'MMM dd, yyyy HH:mm')}
                         </div>
                       </div>
                     )}
@@ -1599,8 +1232,8 @@ export default function AdminInventoryRequests() {
                       {selectedRequest.status !== 'pending' && (
                         <Button
                           onClick={() => {
-                            const nextStatus = selectedRequest.status === 'assigned' ? 'in_progress' : 'completed';
-                            handleStatusUpdate(selectedRequest._id, nextStatus as unknown);
+                            const nextStatus: 'in_progress' | 'completed' = selectedRequest.status === 'assigned' ? 'in_progress' : 'completed';
+                            handleStatusUpdate(selectedRequest._id, nextStatus);
                             setShowViewModal(false);
                           }}
                           disabled={updating}
@@ -1920,7 +1553,7 @@ export default function AdminInventoryRequests() {
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="font-bold text-gray-900">{log.action}</h4>
                               <span className="text-sm text-gray-500">
-                                {format(parseISO(log.timestamp), 'MMM dd, yyyy HH:mm')}
+                                {safeFormatDate(log.timestamp, 'MMM dd, yyyy HH:mm')}
                               </span>
                             </div>
                             <div className="text-sm text-gray-600 mb-2">
@@ -1931,9 +1564,9 @@ export default function AdminInventoryRequests() {
                                 {log.changes.map((change, changeIndex) => (
                                   <div key={changeIndex} className="text-sm bg-gray-50 rounded-lg p-2">
                                     <span className="font-medium text-gray-700">{change.field}:</span>
-                                    <span className="text-red-600 mx-2">{change.oldValue || 'null'}</span>
+                                    <span className="text-red-600 mx-2">{change.oldValue != null ? String(change.oldValue) : 'null'}</span>
                                     <span className="text-gray-400">→</span>
-                                    <span className="text-green-600 mx-2">{change.newValue}</span>
+                                    <span className="text-green-600 mx-2">{change.newValue != null ? String(change.newValue) : 'null'}</span>
                                   </div>
                                 ))}
                               </div>

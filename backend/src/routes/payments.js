@@ -573,6 +573,29 @@ router.post('/refund',
   })
 );
 
+// Look up a payment by Stripe payment intent ID
+router.get('/intent/:paymentIntentId', authenticate, ensureTenantContext, catchAsync(async (req, res) => {
+  const { paymentIntentId } = req.params;
+
+  if (!paymentIntentId) {
+    throw new ApplicationError('Payment intent ID is required', 400);
+  }
+
+  const payment = await Payment.findOne({
+    stripePaymentIntentId: paymentIntentId,
+    ...(req.user?.hotelId ? { hotelId: req.user.hotelId } : {})
+  }).lean();
+
+  if (!payment) {
+    throw new ApplicationError('Payment not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { payment }
+  });
+}));
+
 // Food ordering payment methods
 
 // Process room charge payment for food orders

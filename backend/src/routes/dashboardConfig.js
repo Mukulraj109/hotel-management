@@ -13,7 +13,7 @@ router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // GET /dashboard-configs — list user's dashboards
-router.get('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const hotelId = req.query.hotelId || req.user.hotelId;
   const dashboards = await DashboardConfig.find({
     hotelId,

@@ -33,6 +33,10 @@ export interface GuestServiceRequest {
   actualCost?: number;
   notes?: string;
   specialInstructions?: string;
+  rating?: number;
+  feedback?: string;
+  cancellationReason?: string;
+  attachments?: string[];
   items?: Array<{
     name: string;
     quantity: number;
@@ -67,15 +71,17 @@ interface ServiceRequestFilters {
   limit?: number;
 }
 
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
 interface ApiResponse<T> {
   status: string;
-  data: T;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
+  data: T & { pagination?: PaginationMeta };
+  pagination?: PaginationMeta;
 }
 
 class GuestServiceService {

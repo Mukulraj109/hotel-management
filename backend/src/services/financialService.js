@@ -736,11 +736,11 @@ class FinancialService {
   async generateCashFlowStatement(startDate, endDate, currency = 'INR', hotelId = null) {
     try {
       // Operating Activities
-      const operatingCash = await this.calculateOperatingCashFlow(startDate, endDate);
-      
+      const operatingCash = await this.calculateOperatingCashFlow(startDate, endDate, hotelId);
+
       // Investing Activities
-      const investingCash = await this.calculateInvestingCashFlow(startDate, endDate);
-      
+      const investingCash = await this.calculateInvestingCashFlow(startDate, endDate, hotelId);
+
       // Financing Activities
       const financingCash = await this.calculateFinancingCashFlow(startDate, endDate);
 
@@ -754,8 +754,8 @@ class FinancialService {
         investingActivities: investingCash,
         financingActivities: financingCash,
         netCashFlow,
-        beginningCash: await this.getCashBalanceAsOf(startDate),
-        endingCash: await this.getCashBalanceAsOf(endDate)
+        beginningCash: await this.getCashBalanceAsOf(startDate, hotelId),
+        endingCash: await this.getCashBalanceAsOf(endDate, hotelId)
       };
 
       return report;
@@ -1394,10 +1394,10 @@ class FinancialService {
   }
 
   // Helper methods
-  async calculateOperatingCashFlow(startDate, endDate) {
+  async calculateOperatingCashFlow(startDate, endDate, hotelId = null) {
     try {
       // Simplified operating cash flow calculation
-      const profitLoss = await this.generateProfitLossReport(startDate, endDate);
+      const profitLoss = await this.generateProfitLossReport(startDate, endDate, 'INR', hotelId);
       return {
         net: profitLoss.summary.netIncome * 0.8, // Simplified calculation
         details: {}
@@ -1407,17 +1407,18 @@ class FinancialService {
     }
   }
 
-  async calculateInvestingCashFlow(startDate, endDate) {
+  async calculateInvestingCashFlow(startDate, endDate, hotelId = null) {
     try {
       // Calculate real investing activities from maintenance and equipment purchases
+      const matchFilter = {
+        createdAt: { $gte: startDate, $lte: endDate },
+        status: 'completed',
+        type: { $in: ['equipment_purchase', 'major_repair', 'upgrade'] }
+      };
+      if (hotelId) matchFilter.hotelId = hotelId;
+
       const maintenanceInvestments = await MaintenanceTask.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: 'completed',
-            type: { $in: ['equipment_purchase', 'major_repair', 'upgrade'] }
-          }
-        },
+        { $match: matchFilter },
         {
           $group: {
             _id: null,
@@ -1466,9 +1467,11 @@ class FinancialService {
     }
   }
 
-  async getCashBalanceAsOf(date) {
+  async getCashBalanceAsOf(date, hotelId = null) {
     try {
-      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' }).lean();
+      const cashFilter = { accountCode: '1001' };
+      if (hotelId) cashFilter.hotelId = hotelId;
+      const cashAccount = await ChartOfAccounts.findOne(cashFilter).lean();
       if (!cashAccount) return 0;
 
       const transactions = await GeneralLedger.aggregate([

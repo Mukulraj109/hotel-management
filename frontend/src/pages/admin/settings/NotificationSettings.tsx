@@ -435,10 +435,10 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveNotificationMutation.isLoading}
+              disabled={!isDirty || saveNotificationMutation.isPending}
               className="flex items-center space-x-2"
             >
-              {saveNotificationMutation.isLoading ? (
+              {saveNotificationMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

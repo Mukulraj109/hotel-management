@@ -11,9 +11,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Play,
-  Pause,
-  MapPin,
-  User,
   RefreshCw,
   Calendar,
   CheckSquare,
@@ -45,12 +42,10 @@ export default function StaffHousekeeping() {
   }, []);
 
   // Real-time connection setup
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
+    connect().catch(() => { /* WebSocket unavailable */ });
+  }, [connect]);
 
   // Set up real-time event listeners
   useEffect(() => {
@@ -104,8 +99,9 @@ export default function StaffHousekeeping() {
       setUpdating(true);
       await housekeepingService.updateTaskStatus(taskId, newStatus);
       await fetchTasks();
+      toast.success(`Task ${newStatus === 'in_progress' ? 'started' : 'updated'} successfully`);
     } catch {
-      // Error handled silently
+      toast.error('Failed to update task status. Please try again.');
     } finally {
       setUpdating(false);
     }
@@ -129,8 +125,9 @@ export default function StaffHousekeeping() {
       await fetchTasks();
       setShowCompletionModal(false);
       setSelectedTask(null);
+      toast.success('Task completed successfully!');
     } catch {
-      // Error handled silently
+      toast.error('Failed to complete task. Please try again.');
     } finally {
       setUpdating(false);
     }
@@ -280,20 +277,20 @@ export default function StaffHousekeeping() {
                       <div className="flex-1">
                         <div className="flex items-center mb-2">
                           {getTaskTypeIcon(task.taskType)}
-                          <p className="font-medium ml-2">{task.roomId.roomNumber}</p>
+                          <p className="font-medium ml-2">{task.roomId?.roomNumber || 'No Room'}</p>
                           <Badge variant="secondary" className="ml-2 text-xs">
-                            {task.taskType.replace('_', ' ')}
+                            {task.taskType ? task.taskType.replace('_', ' ') : 'Unknown'}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{task.title}</p>
+                        <p className="text-sm text-gray-600 mb-2">{task.title || 'Untitled Task'}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <Clock className="w-3 h-3 mr-1" />
-                          <span>{task.estimatedDuration} min</span>
+                          <span>{task.estimatedDuration != null ? `${task.estimatedDuration} min` : 'N/A'}</span>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        onClick={() => updateTaskStatus(task._id, 'in_progress')}
+                      <Button
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); updateTaskStatus(task._id, 'in_progress'); }}
                         disabled={updating}
                       >
                         <Play className="w-3 h-3 mr-1" />

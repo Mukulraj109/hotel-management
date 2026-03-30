@@ -200,7 +200,8 @@ const AdminPOSAttributes: React.FC = () => {
       setIsCreateModalOpen(false);
       resetForm();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to create attribute');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to create attribute');
     }
   };
 
@@ -237,7 +238,8 @@ const AdminPOSAttributes: React.FC = () => {
       setSelectedAttribute(null);
       resetForm();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update attribute');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to update attribute');
     }
   };
 
@@ -273,7 +275,8 @@ const AdminPOSAttributes: React.FC = () => {
 
       fetchAttributes();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to delete attribute');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to delete attribute');
     }
   };
 

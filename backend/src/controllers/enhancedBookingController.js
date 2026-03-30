@@ -256,17 +256,17 @@ class EnhancedBookingController {
         limit = 10
       } = req.query;
 
+      // Enforce max limit to prevent unbounded queries
+      const parsedLimit = Math.min(parseInt(limit) || 10, 100);
+
       // Build query based on user role and filters
       const query = {};
-      
+
       if (req.user.role === 'guest') {
         query.userId = req.user._id;
-      } else if (req.user.role === 'staff' && req.user.hotelId) {
+      } else if (req.user.hotelId) {
+        // All non-guest roles (admin, manager, staff, frontdesk, housekeeping) are scoped to their hotel
         query.hotelId = req.user.hotelId;
-      }
-
-      if (hotelId && req.user.role === 'admin') {
-        query.hotelId = hotelId;
       }
 
       if (status) query.status = status;
@@ -293,7 +293,8 @@ class EnhancedBookingController {
         };
       }
 
-      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const parsedPage = parseInt(page) || 1;
+      const skip = (parsedPage - 1) * parsedLimit;
 
       const bookings = await Booking.find(query)
         .populate('userId', 'name email phone')
@@ -302,7 +303,7 @@ class EnhancedBookingController {
         .populate('channel', 'name category')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)).lean();
+        .limit(parsedLimit).lean();
 
       // Batch-fetch all room types to avoid N+1 queries
       const roomTypeIds = [...new Set(
@@ -323,7 +324,7 @@ class EnhancedBookingController {
       }
 
       const enhancedBookings = bookings.map((booking) => {
-        const bookingObj = typeof booking.toObject === 'function' ? booking.toObject() : { ...booking };
+        const bookingObj = { ...booking };
         for (let room of bookingObj.rooms || []) {
           if (room.roomId?.roomTypeId) {
             room.roomType = roomTypesMap[room.roomId.roomTypeId.toString()] || null;
@@ -338,8 +339,9 @@ class EnhancedBookingController {
         success: true,
         results: bookings.length,
         pagination: {
-          current: parseInt(page),
-          pages: Math.ceil(total / parseInt(limit)),
+          current: parsedPage,
+          limit: parsedLimit,
+          pages: Math.ceil(total / parsedLimit) || 1,
           total
         },
         data: enhancedBookings
@@ -347,6 +349,82 @@ class EnhancedBookingController {
 
     } catch (error) {
       console.error('Error getting bookings:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Get a single booking by ID with enhanced data
+   */
+  async getBookingById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const booking = await Booking.findById(id)
+        .populate('userId', 'name email phone')
+        .populate('rooms.roomId', 'roomNumber type roomTypeId floor baseRate currentRate')
+        .populate('hotelId', 'name address contact policies')
+        .populate('channel', 'name category')
+        .lean();
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: 'Booking not found'
+        });
+      }
+
+      // Check permissions - guests can only see their own bookings
+      if (req.user.role === 'guest' && booking.userId?._id?.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Enforce tenant isolation for non-guest roles
+      const bookingHotelId = typeof booking.hotelId === 'object' && booking.hotelId?._id
+        ? booking.hotelId._id.toString()
+        : booking.hotelId?.toString?.() || '';
+      const userHotelId = req.user?.hotelId?.toString?.() || '';
+      if (req.user.role !== 'guest' && bookingHotelId && userHotelId && bookingHotelId !== userHotelId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Enrich room data with room type info
+      const roomTypeIds = [...new Set(
+        (booking.rooms || [])
+          .map(r => r.roomId?.roomTypeId)
+          .filter(Boolean)
+          .map(rtId => rtId.toString())
+      )];
+      if (roomTypeIds.length > 0) {
+        const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } })
+          .select('name code basePrice maxOccupancy').lean().limit(100);
+        const roomTypesMap = {};
+        for (const rt of roomTypes) {
+          roomTypesMap[rt._id.toString()] = rt;
+        }
+        for (const room of booking.rooms || []) {
+          if (room.roomId?.roomTypeId) {
+            room.roomType = roomTypesMap[room.roomId.roomTypeId.toString()] || null;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        data: booking
+      });
+
+    } catch (error) {
+      console.error('Error getting booking by ID:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -1516,10 +1594,11 @@ class EnhancedBookingController {
     try {
       const { id } = req.params;
 
+      // Do NOT use .lean() here because we need the getTotalAdjustments() model method
       const booking = await Booking.findById(id)
         .populate('priceAdjustments.adjustedBy.userId', 'name email')
         .populate('priceAdjustments.authorizedBy.userId', 'name email')
-        .populate('priceAdjustments.reversedBy.userId', 'name email').lean();
+        .populate('priceAdjustments.reversedBy.userId', 'name email');
 
       if (!booking) {
         return res.status(404).json({
@@ -1528,7 +1607,7 @@ class EnhancedBookingController {
         });
       }
 
-      // Check permissions
+      // Check permissions - guests can only see their own bookings
       if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
         return res.status(403).json({
           success: false,
@@ -1536,21 +1615,26 @@ class EnhancedBookingController {
         });
       }
 
-      if (req.user.role === 'staff' && booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      // Enforce tenant isolation for all non-guest roles
+      const bookingHotelId = booking.hotelId?.toString?.() || '';
+      const userHotelId = req.user?.hotelId?.toString?.() || '';
+      if (req.user.role !== 'guest' && bookingHotelId && userHotelId && bookingHotelId !== userHotelId) {
         return res.status(403).json({
           success: false,
           message: 'Access denied'
         });
       }
 
-      const adjustmentSummary = booking.getTotalAdjustments();
+      const adjustmentSummary = typeof booking.getTotalAdjustments === 'function'
+        ? booking.getTotalAdjustments()
+        : { totalDiscount: booking.discountAmount || 0, totalSurcharge: booking.surchargeAmount || 0 };
 
       res.json({
         success: true,
         data: {
           bookingId: booking._id,
           adjustmentSummary,
-          adjustmentHistory: booking.priceAdjustments,
+          adjustmentHistory: booking.priceAdjustments || [],
           currentAmount: booking.totalAmount
         }
       });

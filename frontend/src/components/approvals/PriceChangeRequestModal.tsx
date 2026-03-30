@@ -37,8 +37,9 @@ const PriceChangeRequestModal: React.FC<PriceChangeRequestModalProps> = ({
       handleClose();
       onSuccess?.();
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to submit request');
+    onError: (err: unknown) => {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || 'Failed to submit request');
     },
   });
 
@@ -70,23 +71,21 @@ const PriceChangeRequestModal: React.FC<PriceChangeRequestModalProps> = ({
       return;
     }
 
-    const data = {
+    createRequestMutation.mutate({
       requestType: 'price_change',
-      targetResource: {
-        type: 'room_type',
-        id: roomType._id,
-        name: roomType.name,
+      targetResource: 'room_type',
+      targetResourceId: roomType._id,
+      requestData: {
+        original: {
+          basePrice: roomType.basePrice,
+          name: roomType.name,
+        },
+        proposed: {
+          basePrice: parseFloat(requestedPrice),
+          reason: reason.trim(),
+        },
       },
-      currentData: {
-        basePrice: roomType.basePrice,
-      },
-      requestedData: {
-        basePrice: parseFloat(requestedPrice),
-      },
-      reason: reason.trim(),
-    };
-
-    createRequestMutation.mutate(data);
+    });
   };
 
   const handleClose = () => {
@@ -99,9 +98,9 @@ const PriceChangeRequestModal: React.FC<PriceChangeRequestModalProps> = ({
   const priceChange = requestedPrice
     ? parseFloat(requestedPrice) - roomType.basePrice
     : 0;
-  const priceChangePercent = requestedPrice
+  const priceChangePercent = requestedPrice && roomType.basePrice !== 0
     ? ((priceChange / roomType.basePrice) * 100).toFixed(1)
-    : '0';
+    : 'N/A';
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Request Price Change">

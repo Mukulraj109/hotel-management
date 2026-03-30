@@ -86,7 +86,7 @@ const ChannelDistributionHub: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  // Mock data initialization
+  // Fetch channel data on mount and auto-refresh
   useEffect(() => {
     fetchChannelData();
     
@@ -670,14 +670,23 @@ const ChannelDistributionHub: React.FC = () => {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={() => {
-                    // Save settings
-                    setChannels(prev => prev.map(c => 
-                      c.id === selectedChannel.id ? selectedChannel : c
-                    ));
-                    setEditDialogOpen(false);
-                    toast.success('Channel settings updated');
+                <Button
+                  onClick={async () => {
+                    try {
+                      await channelManagerService.updateChannel(selectedChannel.id, {
+                        commission: selectedChannel.commission,
+                        syncInterval: selectedChannel.syncInterval,
+                        autoSync: selectedChannel.autoSync,
+                        settings: selectedChannel.settings,
+                      });
+                      setChannels(prev => prev.map(c =>
+                        c.id === selectedChannel.id ? selectedChannel : c
+                      ));
+                      setEditDialogOpen(false);
+                      toast.success('Channel settings updated');
+                    } catch (error) {
+                      toast.error('Failed to save channel settings');
+                    }
                   }}
                 >
                   Save Changes

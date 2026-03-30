@@ -4,7 +4,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 const AdminAutomation: React.FC = () => {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
 
   // If in single mode and no property selected, show selection prompt
   if (!selectedPropertyId && viewMode === 'single') {

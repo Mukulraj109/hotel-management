@@ -5,10 +5,10 @@ import User from '../models/User.js';
 import Hotel from '../models/Hotel.js';
 import Room from '../models/Room.js';
 import ServiceBooking from '../models/ServiceBooking.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
-import { authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -18,8 +18,29 @@ import { validateStatusTransition, MEETUP_TRANSITIONS } from '../utils/statusTra
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication to all routes
+/**
+ * Attach computed virtual-equivalent fields to lean meetup documents.
+ * Mongoose .lean() strips virtuals; this restores the ones the frontend needs.
+ */
+function attachVirtuals(doc) {
+  if (!doc) return doc;
+  const now = new Date();
+  const proposedDate = new Date(doc.proposedDate);
+  doc.isUpcoming = proposedDate > now && doc.status === 'accepted';
+  doc.isPast = proposedDate < now;
+  doc.canBeCancelled = doc.status === 'accepted' && proposedDate > now;
+  doc.canBeRescheduled = doc.status === 'accepted' && proposedDate > now;
+  doc.participantCount = doc.participants?.confirmedParticipants?.length ?? 0;
+  doc.hasAvailableSpots = doc.participantCount < (doc.participants?.maxParticipants ?? 2);
+  return doc;
+}
+function attachVirtualsToList(docs) {
+  return docs.map(attachVirtuals);
+}
+
+// Apply authentication, tenant isolation, and property access to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('meetUpRequests', 'baseAccess'));
 
@@ -27,8 +48,6 @@ router.use(authorizePolicy('meetUpRequests', 'baseAccess'));
 // Admin/Staff/Frontdesk: Get all meet-up requests across the system
 router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const {
-    page = 1,
-    limit = 20,
     status,
     type,
     hotelId,
@@ -36,6 +55,8 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
     dateTo,
     search
   } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
   // Mandatory hotel filtering for tenant isolation
@@ -69,14 +90,14 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
     ];
   }
 
-  const meetUps = await MeetUpRequest.find(query)
+  const meetUps = attachVirtualsToList(await MeetUpRequest.find(query)
     .populate('requesterId', 'name email avatar role')
     .populate('targetUserId', 'name email avatar role')
     .populate('hotelId', 'name address')
     .populate('meetingRoomBooking.roomId', 'number type')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(limit).lean());
 
   const total = await MeetUpRequest.countDocuments(query);
 
@@ -85,7 +106,7 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
     data: {
       meetUps,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalItems: total,
         hasNext: skip + meetUps.length < total,
@@ -132,7 +153,7 @@ router.get('/admin/insights', authorize('admin', 'staff', 'frontdesk'), catchAsy
         { status: 'declined' },
         { 'safety.verifiedOnly': false, 'safety.publicLocation': false }
       ]
-    }).populate('requesterId', 'name email').populate('targetUserId', 'name email'),
+    }).populate('requesterId', 'name email').populate('targetUserId', 'name email').sort({ createdAt: -1 }).limit(50).lean(),
 
     // Users with excessive requests
     MeetUpRequest.aggregate([
@@ -409,9 +430,16 @@ router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAs
 router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
+  // Tenant isolation: resolve hotel context
+  const resolvedCancelHotelId = req.body.hotelId || req.user?.hotelId;
   const existingRequest = await MeetUpRequest.findById(req.params.requestId).lean();
 
   if (!existingRequest) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
+
+  // Verify the meet-up belongs to the admin's hotel
+  if (resolvedCancelHotelId && existingRequest.hotelId?.toString() !== resolvedCancelHotelId.toString()) {
     throw new ApplicationError('Meet-up request not found', 404);
   }
 
@@ -455,9 +483,11 @@ router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'front
 // ============= USER ROUTES =============
 // Get all meet-up requests for the authenticated user
 router.get('/', catchAsync(async (req, res) => {
-  const { page = 1, limit = 20, status, type, filter } = req.query;
+  const { status, type, filter, search } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
-  
+
   let query = {
     $or: [
       { requesterId: req.user._id },
@@ -465,36 +495,54 @@ router.get('/', catchAsync(async (req, res) => {
       { 'participants.confirmedParticipants.userId': req.user._id }
     ]
   };
-  
+
   if (status) query.status = status;
   if (type) query.type = type;
-  
+
   // Filter by role (sent vs received)
   if (filter === 'sent') {
     query = { requesterId: req.user._id };
+    if (status) query.status = status;
+    if (type) query.type = type;
   } else if (filter === 'received') {
     query = { targetUserId: req.user._id };
+    if (status) query.status = status;
+    if (type) query.type = type;
   } else if (filter === 'participating') {
     query = { 'participants.confirmedParticipants.userId': req.user._id };
+    if (status) query.status = status;
+    if (type) query.type = type;
   }
-  
-  const meetUps = await MeetUpRequest.find(query)
+
+  // Text search in title and description
+  if (search) {
+    const escapedSearch = escapeRegex(search);
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { title: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } }
+      ]
+    });
+  }
+
+  const meetUps = attachVirtualsToList(await MeetUpRequest.find(query)
     .populate('requesterId', 'name email avatar')
     .populate('targetUserId', 'name email avatar')
     .populate('hotelId', 'name address')
     .populate('meetingRoomBooking.roomId', 'number type')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
-  
+    .limit(limit).lean());
+
   const total = await MeetUpRequest.countDocuments(query);
-  
+
   res.json({
     success: true,
     data: {
       meetUps,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalItems: total,
         hasNext: skip + meetUps.length < total,
@@ -506,24 +554,27 @@ router.get('/', catchAsync(async (req, res) => {
 
 // Get pending requests (requests sent to the user)
 router.get('/pending', catchAsync(async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
-  
-  const pendingRequests = await MeetUpRequest.getPendingRequests(req.user._id)
-    .skip(skip)
-    .limit(parseInt(limit));
-  
+
+  const pendingRequests = attachVirtualsToList(
+    await MeetUpRequest.getPendingRequests(req.user._id)
+      .skip(skip)
+      .limit(limit)
+  );
+
   const total = await MeetUpRequest.countDocuments({
     targetUserId: req.user._id,
     status: 'pending'
   });
-  
+
   res.json({
     success: true,
     data: {
       pendingRequests,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalItems: total,
         hasNext: skip + pendingRequests.length < total,
@@ -535,13 +586,16 @@ router.get('/pending', catchAsync(async (req, res) => {
 
 // Get upcoming meet-ups
 router.get('/upcoming', catchAsync(async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
-  
-  const upcomingMeetUps = await MeetUpRequest.getUpcomingMeetUps(req.user._id)
-    .skip(skip)
-    .limit(parseInt(limit));
-  
+
+  const upcomingMeetUps = attachVirtualsToList(
+    await MeetUpRequest.getUpcomingMeetUps(req.user._id)
+      .skip(skip)
+      .limit(limit)
+  );
+
   const total = await MeetUpRequest.countDocuments({
     $or: [
       { requesterId: req.user._id },
@@ -551,13 +605,13 @@ router.get('/upcoming', catchAsync(async (req, res) => {
     status: 'accepted',
     proposedDate: { $gt: new Date() }
   });
-  
+
   res.json({
     success: true,
     data: {
       upcomingMeetUps,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalItems: total,
         hasNext: skip + upcomingMeetUps.length < total,
@@ -612,7 +666,7 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
   }
   
   // Check if user is trying to meet with themselves
-  if (targetUserId === req.user._id) {
+  if (targetUserId.toString() === req.user._id.toString()) {
     throw new ApplicationError('Cannot create meet-up request with yourself', 400);
   }
   
@@ -683,10 +737,12 @@ router.get('/:requestId', catchAsync(async (req, res) => {
   .populate('hotelId', 'name address')
   .populate('meetingRoomBooking.roomId', 'number type')
   .populate('participants.confirmedParticipants.userId', 'name email avatar').lean();
-  
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found', 404);
   }
+
+  attachVirtuals(meetUpRequest);
   
   res.json({
     success: true,
@@ -915,15 +971,15 @@ router.post('/:requestId/suggest-alternative', validate(schemas.suggestAlternati
 
 // Search for potential meet-up partners
 router.get('/search/partners', catchAsync(async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 20, 
-    interests, 
-    languages, 
-    ageGroup, 
+  const {
+    interests,
+    languages,
+    ageGroup,
     gender,
-    hotelId 
+    hotelId
   } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
   
   let query = {
@@ -957,16 +1013,16 @@ router.get('/search/partners', catchAsync(async (req, res) => {
   const users = await User.find(query)
     .select('name email avatar interests languages ageGroup gender')
     .skip(skip)
-    .limit(parseInt(limit)).lean();
-  
+    .limit(limit).lean();
+
   const total = await User.countDocuments(query);
-  
+
   res.json({
     success: true,
     data: {
       users,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: page,
         totalPages: Math.ceil(total / limit),
         totalItems: total,
         hasNext: skip + users.length < total,

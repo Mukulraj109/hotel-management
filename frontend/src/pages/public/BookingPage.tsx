@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,13 +25,11 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../context/AuthContext';
 import { formatIndianCurrency } from '../../utils/currency';
 import { bookingService } from '../../services/bookingService';
-import { adminService } from '../../services/adminService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
 import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
-import { checkPublicBookingAvailability } from '../../services/publicRoomCatalogService';
 
 // Room types data
 const ROOM_TYPES = {
@@ -84,7 +82,11 @@ const BookingPage: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  
+
+  useEffect(() => {
+    document.title = 'Book Your Stay - The Pentouz';
+  }, []);
+
   // Get URL parameters for pre-filling booking data
   const urlRoomType = searchParams.get('roomType') as keyof typeof ROOM_TYPES | null;
   const urlRoomTypeId = searchParams.get('roomTypeId');
@@ -108,7 +110,7 @@ const BookingPage: React.FC = () => {
   });
 
   // Form
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<GuestDetailsForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<GuestDetailsForm>({
     resolver: zodResolver(guestDetailsSchema),
     defaultValues: {
       name: user?.name || '',
@@ -122,7 +124,8 @@ const BookingPage: React.FC = () => {
     if (!bookingData.checkIn || !bookingData.checkOut) return 0;
     const start = new Date(bookingData.checkIn);
     const end = new Date(bookingData.checkOut);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
   };
 
   const nights = calculateNights();
@@ -562,7 +565,7 @@ const BookingPage: React.FC = () => {
                   <div>
                     <Calendar className="h-5 w-5 mx-auto mb-2 text-gray-500" />
                     <p className="text-sm text-gray-600">Check-in</p>
-                    <p className="font-semibold">{new Date(bookingData.checkIn).toLocaleDateString()}</p>
+                    <p className="font-semibold">{bookingData.checkIn ? new Date(bookingData.checkIn + 'T00:00:00').toLocaleDateString('en-IN') : '--'}</p>
                   </div>
                   <div>
                     <Users className="h-5 w-5 mx-auto mb-2 text-gray-500" />
@@ -572,7 +575,7 @@ const BookingPage: React.FC = () => {
                   <div>
                     <Calendar className="h-5 w-5 mx-auto mb-2 text-gray-500" />
                     <p className="text-sm text-gray-600">Check-out</p>
-                    <p className="font-semibold">{new Date(bookingData.checkOut).toLocaleDateString()}</p>
+                    <p className="font-semibold">{bookingData.checkOut ? new Date(bookingData.checkOut + 'T00:00:00').toLocaleDateString('en-IN') : '--'}</p>
                   </div>
                 </div>
               </CardContent>
@@ -719,7 +722,7 @@ const BookingPage: React.FC = () => {
     );
   };
 
-  const canContinueStep1 = bookingData.roomType && bookingData.checkIn && bookingData.checkOut && nights > 0;
+  const canContinueStep1 = (bookingData.roomType || bookingData.roomTypeId) && bookingData.checkIn && bookingData.checkOut && nights > 0;
 
   return (
     <div className="min-h-screen bg-gray-50 py-6 sm:py-8">

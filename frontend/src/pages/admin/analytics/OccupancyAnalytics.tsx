@@ -16,9 +16,12 @@ import { StatusBadge } from '../../../components/dashboard/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useOccupancyData, useOperationsData } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatPercentage, calculateOccupancyRate } from '../../../utils/dashboardUtils';
 
 export default function OccupancyAnalytics() {
+  const { selectedPropertyId, properties } = useProperty();
+
   const [filters, setFilters] = useState({
     hotelId: '',
     floor: '',
@@ -26,13 +29,15 @@ export default function OccupancyAnalytics() {
     status: '',
   });
 
+  const activeHotelId = filters.hotelId || selectedPropertyId || '';
+
   const occupancyQuery = useOccupancyData(
-    filters.hotelId,
+    activeHotelId,
     filters.floor,
     filters.roomType
   );
 
-  const operationsQuery = useOperationsData(filters.hotelId);
+  const operationsQuery = useOperationsData(activeHotelId);
 
   const handleFilterChange = (key: string, value: unknown) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -53,7 +58,7 @@ export default function OccupancyAnalytics() {
           <ExportButton
             endpoint="occupancy"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               floor: filters.floor,
               roomType: filters.roomType,
             }}
@@ -81,8 +86,7 @@ export default function OccupancyAnalytics() {
             type: 'select',
             options: [
               { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
+              ...properties.map((p) => ({ value: p._id, label: p.name })),
             ],
           },
           {
@@ -130,48 +134,48 @@ export default function OccupancyAnalytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Overall Occupancy"
-          value={data?.summary.occupancyRate || 0}
+          value={data?.summary?.occupancyRate || 0}
           type="percentage"
           trend={{
-            value: 3.2,
-            direction: 'up',
+            value: data?.summary?.occupancyTrend || 0,
+            direction: (data?.summary?.occupancyTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs yesterday'
           }}
           color="blue"
           loading={occupancyQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Available Rooms"
-          value={data?.summary.availableRooms || 0}
+          value={data?.summary?.availableRooms || 0}
           trend={{
-            value: -5,
-            direction: 'down',
+            value: data?.summary?.availableRoomsTrend || 0,
+            direction: (data?.summary?.availableRoomsTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs yesterday'
           }}
           color="green"
           loading={occupancyQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Out of Order"
-          value={data?.summary.outOfOrderRooms || 0}
+          value={data?.summary?.outOfOrderRooms || 0}
           trend={{
-            value: -2,
-            direction: 'down',
+            value: data?.summary?.outOfOrderTrend || 0,
+            direction: (data?.summary?.outOfOrderTrend || 0) <= 0 ? 'down' : 'up',
             label: 'vs yesterday'
           }}
           color="red"
           loading={occupancyQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Average Rate"
-          value={data?.summary.averageRate || 0}
+          value={data?.summary?.averageRate || 0}
           type="currency"
           trend={{
-            value: 8.5,
-            direction: 'up',
+            value: data?.summary?.averageRateTrend || 0,
+            direction: (data?.summary?.averageRateTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs last week'
           }}
           color="purple"
@@ -199,14 +203,15 @@ export default function OccupancyAnalytics() {
             ) : (
               <div className="space-y-4">
                 {[
-                  { status: 'occupied', label: 'Occupied', count: data?.summary.occupiedRooms || 0 },
-                  { status: 'vacant_clean', label: 'Vacant Clean', count: data?.summary.availableRooms || 0 },
-                  { status: 'vacant_dirty', label: 'Vacant Dirty', count: 15 },
-                  { status: 'out_of_order', label: 'Out of Order', count: data?.summary.outOfOrderRooms || 0 },
-                  { status: 'maintenance', label: 'Maintenance', count: 3 },
+                  { status: 'occupied', label: 'Occupied', count: data?.summary?.occupiedRooms || 0 },
+                  { status: 'vacant_clean', label: 'Vacant Clean', count: data?.summary?.availableRooms || 0 },
+                  { status: 'vacant_dirty', label: 'Vacant Dirty', count: data?.summary?.dirtyRooms || 0 },
+                  { status: 'out_of_order', label: 'Out of Order', count: data?.summary?.outOfOrderRooms || 0 },
+                  { status: 'maintenance', label: 'Maintenance', count: data?.summary?.maintenanceRooms || 0 },
                 ].map((item) => {
-                  const percentage = data?.summary.totalRooms 
-                    ? (item.count / data.summary.totalRooms) * 100 
+                  const totalRooms = data?.summary?.totalRooms || 0;
+                  const percentage = totalRooms > 0
+                    ? (item.count / totalRooms) * 100
                     : 0;
                   
                   return (
@@ -515,7 +520,7 @@ export default function OccupancyAnalytics() {
           <ExportButton
             endpoint="occupancy"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               detailed: 'true',
             }}
             formats={['csv', 'excel']}

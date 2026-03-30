@@ -105,13 +105,16 @@ class LoyaltyService {
   }
 
   /**
-   * Get available loyalty offers
+   * Get available loyalty offers (with pagination support)
    */
-  async getOffers(category?: string): Promise<Offer[]> {
+  async getOffers(category?: string, page = 1, limit = 50): Promise<Offer[]> {
     try {
-      const params = category ? { category } : {};
+      const params: Record<string, unknown> = { page, limit };
+      if (category) params.category = category;
       const response = await api.get('/loyalty/offers', { params });
-      return response.data.data;
+      // Backend returns { data: { offers, pagination } } - extract offers array
+      const data = response.data.data;
+      return Array.isArray(data) ? data : (data.offers || []);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -366,10 +369,11 @@ class LoyaltyService {
   }
 
   /**
-   * Format points with proper formatting
+   * Format points with proper formatting (en-IN locale, NaN-safe)
    */
   formatPoints(points: number): string {
-    return points.toLocaleString();
+    if (points == null || isNaN(points)) return '0';
+    return points.toLocaleString('en-IN');
   }
 
   /**

@@ -6,7 +6,9 @@ interface ApiResponse<T> {
   data: T;
   results?: number;
   pagination?: {
-    current: number;
+    page: number;
+    current?: number;
+    limit: number;
     pages: number;
     total: number;
   };
@@ -98,7 +100,7 @@ class BookingService {
     }
   }
 
-  async getBookings(filters: { status?: string; page?: number; limit?: number } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
+  async getBookings(filters: { status?: string; page?: number; limit?: number; startDate?: string; endDate?: string } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
     try {
       const params = new URLSearchParams();
     
@@ -183,7 +185,7 @@ class BookingService {
     statusBreakdown: Record<string, number>;
   }>> {
     try {
-      const response = await api.get(`/bookings/stats?period=${period}`);
+      const response = await api.get(`/reports/bookings/stats?period=${period}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

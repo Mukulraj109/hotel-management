@@ -201,7 +201,7 @@ class OTAIntegrationService {
       return {
         success: false,
         step: 'availability_check',
-        error: error.message || 'Unknown error occurred during booking flow'
+        error: error instanceof Error ? error.message : 'Unknown error occurred during booking flow'
       };
     }
   }
@@ -271,8 +271,8 @@ class OTAIntegrationService {
             availableRooms: inventory?.availableRooms || 0,
             blockedRooms: inventory?.blockedRooms || 0,
             soldRooms: inventory?.soldRooms || 0,
-            occupancyRate: inventory ? 
-              ((inventory.soldRooms + inventory.blockedRooms) / inventory.totalRooms * 100) : 0
+            occupancyRate: inventory && inventory.totalRooms > 0
+              ? ((inventory.soldRooms + inventory.blockedRooms) / inventory.totalRooms * 100) : 0
           };
         })
       );

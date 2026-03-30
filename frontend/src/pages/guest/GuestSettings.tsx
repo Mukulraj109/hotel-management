@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { api } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -15,10 +15,7 @@ import {
   MapPin,
   Utensils,
   Bed,
-  Volume2,
   MessageSquare,
-  Heart,
-  Gift,
   Save,
   Loader2,
   ArrowLeft
@@ -26,6 +23,9 @@ import {
 import { Button } from '../../components/ui/button';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+
+const MAX_AVATAR_SIZE_MB = 2;
+const MAX_AVATAR_SIZE_BYTES = MAX_AVATAR_SIZE_MB * 1024 * 1024;
 
 interface GuestSettingsFormData {
   // Profile
@@ -140,14 +140,29 @@ export default function GuestSettings() {
 
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-        setValue('avatar', reader.result as string, { shouldDirty: true });
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image file (JPEG, PNG, GIF, or WebP)');
+      event.target.value = '';
+      return;
     }
+
+    // Validate file size
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      toast.error(`Image must be smaller than ${MAX_AVATAR_SIZE_MB}MB`);
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string);
+      setValue('avatar', reader.result as string, { shouldDirty: true });
+    };
+    reader.readAsDataURL(file);
   };
 
   const languages = [
@@ -252,7 +267,7 @@ export default function GuestSettings() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Profile Picture</p>
-                  <p className="text-xs text-gray-500">Upload a profile picture</p>
+                  <p className="text-xs text-gray-500">Upload a profile picture (max {MAX_AVATAR_SIZE_MB}MB, JPEG/PNG/GIF/WebP)</p>
                 </div>
               </div>
 
@@ -260,13 +275,22 @@ export default function GuestSettings() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <User className="h-4 w-4 inline mr-1" />
-                    Full Name
+                    Full Name *
                   </label>
                   <input
-                    {...register('name', { required: 'Name is required' })}
+                    {...register('name', {
+                      required: 'Name is required',
+                      minLength: { value: 2, message: 'Name must be at least 2 characters' },
+                      maxLength: { value: 100, message: 'Name cannot exceed 100 characters' }
+                    })}
                     type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.name ? 'border-red-300' : 'border-gray-300'
+                    }`}
                   />
+                  {errors.name && (
+                    <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -275,10 +299,13 @@ export default function GuestSettings() {
                     Email
                   </label>
                   <input
-                    {...register('email', { required: 'Email is required' })}
+                    {...register('email')}
                     type="email"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    readOnly
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed. Contact support if you need to update it.</p>
                 </div>
 
                 <div>
@@ -287,10 +314,19 @@ export default function GuestSettings() {
                     Phone Number
                   </label>
                   <input
-                    {...register('phone')}
+                    {...register('phone', {
+                      pattern: {
+                        value: /^\+?[\d\s\-()]{7,20}$/,
+                        message: 'Please enter a valid phone number'
+                      }
+                    })}
                     type="tel"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="+1 234 567 8900"
                   />
+                  {errors.phone && (
+                    <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -541,10 +577,10 @@ export default function GuestSettings() {
             <div className="flex justify-end pt-4 border-t border-gray-200">
               <Button
                 type="submit"
-                disabled={!isDirty || saveSettingsMutation.isLoading}
+                disabled={!isDirty || saveSettingsMutation.isPending}
                 className="flex items-center space-x-2"
               >
-                {saveSettingsMutation.isLoading ? (
+                {saveSettingsMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4" />

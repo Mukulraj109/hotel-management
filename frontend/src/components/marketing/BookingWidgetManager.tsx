@@ -62,8 +62,8 @@ const BookingWidgetManager: React.FC = () => {
       setLoading(true);
       const data = await bookingEngineService.getBookingWidgets();
       setWidgets(data);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load booking widgets:', error);
     } finally {
       setLoading(false);
     }
@@ -75,9 +75,8 @@ const BookingWidgetManager: React.FC = () => {
       fetchWidgets();
       setIsCreateModalOpen(false);
       resetForm();
-      alert('Widget created successfully!');
     } catch (error) {
-      alert('Error creating widget');
+      console.error('Error creating widget:', error);
     }
   };
 
@@ -90,9 +89,8 @@ const BookingWidgetManager: React.FC = () => {
       setIsEditModalOpen(false);
       setSelectedWidget(null);
       resetForm();
-      alert('Widget updated successfully!');
     } catch (error) {
-      alert('Error updating widget');
+      console.error('Error updating widget:', error);
     }
   };
 
@@ -101,8 +99,8 @@ const BookingWidgetManager: React.FC = () => {
       const data = await bookingEngineService.getWidgetCode(widgetId);
       setWidgetCode(data.code);
       setIsCodeModalOpen(true);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Error getting widget code:', error);
     }
   };
 
@@ -169,7 +167,6 @@ const BookingWidgetManager: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('Widget code copied to clipboard!');
   };
 
   return (

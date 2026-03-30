@@ -1,95 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
 import {
   Building2,
   CalendarDays,
   RefreshCw,
-  AlertTriangle
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
-import { LoadingSpinner } from '../../components/LoadingSpinner';
 import CorporateCompanyManagement from '../../components/admin/CorporateCompanyManagement';
 import GroupBookingManagement from '../../components/admin/GroupBookingManagement';
-import { api } from '../../services/api';
-
-interface CorporateOverviewData {
-  companies: {
-    total: number;
-    newThisMonth: number;
-  };
-  bookings: {
-    totalYearly: number;
-    thisMonth: number;
-  };
-  revenue: {
-    monthly: number;
-    yearly: number;
-    averageBookingValue: number;
-  };
-  groupBookings: {
-    active: number;
-    upcoming: number;
-  };
-  credit: {
-    totalExposure: number;
-    overdueAmount: number;
-  };
-}
-
-// API functions
-const fetchCorporateOverview = async (): Promise<{ overview: CorporateOverviewData; topCompanies: unknown[] }> => {
-  try {
-    const response = await api.get('/corporate/admin/dashboard-overview');
-    return response.data.data;
-  } catch (error: unknown) {
-    throw error instanceof Error ? error : new Error('Failed to fetch corporate overview');
-  }
-};
 
 export default function FrontDeskCorporate() {
+  const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('companies');
 
-  // Fetch corporate overview data
-  const {
-    data: overviewData,
-    isLoading: overviewLoading,
-    error: overviewError,
-    refetch: refetchOverview
-  } = useQuery({
-    queryKey: ['corporate-overview'],
-    queryFn: fetchCorporateOverview,
-    refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
-  });
-
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setRefreshing(true);
-    await refetchOverview();
-    setRefreshing(false);
+    // Increment key to force child components to refetch
+    setRefreshKey(prev => prev + 1);
+    // Reset spinner after a short delay (children handle their own loading)
+    setTimeout(() => setRefreshing(false), 500);
   };
-
-  if (overviewLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <LoadingSpinner size="large" />
-      </div>
-    );
-  }
-
-  if (overviewError) {
-    return (
-      <div className="text-center py-12">
-        <AlertTriangle className="mx-auto h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load corporate data</h3>
-        <p className="text-gray-500 mb-4">There was an error loading the corporate dashboard data.</p>
-        <Button onClick={handleRefresh}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Try Again
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -156,12 +87,12 @@ export default function FrontDeskCorporate() {
         <div className="mt-6">
           {/* Companies Tab */}
           {activeTab === 'companies' && (
-            <CorporateCompanyManagement />
+            <CorporateCompanyManagement key={`companies-${refreshKey}`} />
           )}
 
           {/* Bookings Tab */}
           {activeTab === 'bookings' && (
-            <GroupBookingManagement />
+            <GroupBookingManagement key={`bookings-${refreshKey}`} />
           )}
         </div>
       </div>

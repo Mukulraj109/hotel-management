@@ -3,8 +3,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Mail, Globe, Users, Star, TrendingUp, Eye, MousePointer, ShoppingCart, Target } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { Mail, Globe, Users, Star, Eye, MousePointer, ShoppingCart, Target } from 'lucide-react';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { bookingEngineService, MarketingDashboardData } from '@/services/bookingEngineService';
 
@@ -33,6 +33,7 @@ interface MarketingStats {
     averageRating: number;
     positiveReviews: number;
   };
+  ratingDistribution?: Record<number, number>;
   totalWidgets: number;
   activeCampaigns: number;
 }
@@ -50,8 +51,8 @@ const MarketingDashboard: React.FC = () => {
       setLoading(true);
       const data = await bookingEngineService.getMarketingDashboard();
       setStats(data);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load marketing dashboard:', error);
     } finally {
       setLoading(false);
     }

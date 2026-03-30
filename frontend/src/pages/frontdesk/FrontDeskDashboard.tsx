@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
   Users,
   Bed,
   ClipboardList,
-  TrendingUp,
   Clock,
   CheckCircle,
   AlertCircle,
   Grid,
-  FileCheck
+  FileCheck,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
+import { realTimeService } from '../../services/realTimeService';
 
 interface QuickStat {
   label: string;
@@ -28,6 +29,7 @@ interface QuickStat {
 export default function FrontDeskDashboard() {
   const { user } = useAuth();
   const { selectedProperty } = useProperty();
+  const queryClient = useQueryClient();
 
   // Fetch dashboard stats - calls /api/v1/dashboard/counts and transforms to flat structure
   const { data: stats, isLoading, error: statsError } = useQuery({
@@ -57,17 +59,17 @@ export default function FrontDeskDashboard() {
     retry: 2,
   });
 
-  // Fetch pending approvals count
+  // Fetch pending approvals count using dedicated count endpoint
   const { data: pendingApprovalsData } = useQuery({
-    queryKey: ['pending-approvals-count'],
+    queryKey: ['pending-approvals-count', selectedProperty?._id],
     queryFn: async () => {
-      const response = await api.get('/approvals', {
-        params: { status: 'pending' }
+      const response = await api.get('/approvals/pending-count', {
+        params: { hotelId: selectedProperty?._id }
       });
       return response.data;
     },
     refetchInterval: 60000,
-    enabled: !!user,
+    enabled: !!user && !!selectedProperty,
   });
 
   // Fetch today's arrivals and departures for the schedule section
@@ -78,7 +80,9 @@ export default function FrontDeskDashboard() {
       const response = await api.get('/bookings', {
         params: { hotelId: selectedProperty?._id, checkIn: today, limit: 20 }
       });
-      return response.data?.data?.bookings || response.data?.bookings || [];
+      // Backend returns { data: bookings[] } where data is the array directly
+      const raw = response.data?.data;
+      return Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
     },
     enabled: !!selectedProperty,
     refetchInterval: 30000,
@@ -105,10 +109,61 @@ export default function FrontDeskDashboard() {
     refetchInterval: 30000,
   });
 
-  // Backend may return array directly, nested object, or paginated response
-  const pendingApprovalCount = Array.isArray(pendingApprovalsData?.data) ? pendingApprovalsData.data.length
-    : pendingApprovalsData?.data?.approvals?.length || pendingApprovalsData?.data?.data?.length
-    || pendingApprovalsData?.approvals?.length || 0;
+  // Fetch pending guest service requests so frontdesk can see what guests need
+  const { data: guestServiceRequests } = useQuery({
+    queryKey: ['frontdesk-guest-services', selectedProperty?._id],
+    queryFn: async () => {
+      const response = await api.get('/guest-services', {
+        params: { hotelId: selectedProperty?._id, status: 'pending', page: 1, limit: 5 }
+      });
+      const raw = response.data?.data?.serviceRequests || response.data?.data || [];
+      return Array.isArray(raw) ? raw : [];
+    },
+    enabled: !!selectedProperty,
+    refetchInterval: 30000,
+  });
+
+  // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
+  useEffect(() => {
+    realTimeService.connect().catch(() => { /* WebSocket unavailable -- page still works via polling */ });
+  }, []);
+
+  // Real-time: listen for booking, room, and guest-service events to refresh dashboard immediately
+  useEffect(() => {
+    const invalidateAll = () => {
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-today-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-room-status'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals-count'] });
+    };
+
+    const handleGuestServiceEvent = () => {
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-guest-services'] });
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-dashboard-stats'] });
+    };
+
+    realTimeService.on('booking:created', invalidateAll);
+    realTimeService.on('booking:updated', invalidateAll);
+    realTimeService.on('booking_cancelled', invalidateAll);
+    realTimeService.on('room_status_changed', invalidateAll);
+    realTimeService.on('guest-service:created', handleGuestServiceEvent);
+    realTimeService.on('guest-service:assigned', handleGuestServiceEvent);
+
+    return () => {
+      realTimeService.off('booking:created', invalidateAll);
+      realTimeService.off('booking:updated', invalidateAll);
+      realTimeService.off('booking_cancelled', invalidateAll);
+      realTimeService.off('room_status_changed', invalidateAll);
+      realTimeService.off('guest-service:created', handleGuestServiceEvent);
+      realTimeService.off('guest-service:assigned', handleGuestServiceEvent);
+    };
+  }, [selectedProperty?._id, queryClient]);
+
+  // /approvals/pending-count returns { count: N }
+  const pendingApprovalCount = pendingApprovalsData?.count ?? pendingApprovalsData?.data?.count ?? 0;
+
+  const pendingGuestServiceCount = stats?.pendingGuestServices || 0;
 
   const quickStats: QuickStat[] = [
     {
@@ -131,6 +186,13 @@ export default function FrontDeskDashboard() {
       icon: Bed,
       color: 'purple',
       link: '/frontdesk/rooms'
+    },
+    {
+      label: 'Guest Requests',
+      value: pendingGuestServiceCount,
+      icon: Bell,
+      color: 'orange',
+      link: '/frontdesk/guest-services'
     },
     {
       label: 'Pending Approvals',
@@ -172,6 +234,28 @@ export default function FrontDeskDashboard() {
     }
   ];
 
+  // No property selected — show a helpful message
+  if (!selectedProperty) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Front Desk Dashboard</h1>
+          <p className="mt-2 text-gray-600">
+            Welcome back, {user?.name}!
+          </p>
+        </div>
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-yellow-400 mr-3" />
+            <p className="text-sm font-medium text-yellow-800">
+              Please select a property to view the dashboard.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -183,7 +267,7 @@ export default function FrontDeskDashboard() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         {quickStats.map((stat) => {
           const Icon = stat.icon;
           const bgColor = {
@@ -215,6 +299,13 @@ export default function FrontDeskDashboard() {
           );
         })}
       </div>
+
+      {/* Error Banner */}
+      {statsError && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+          <p className="text-sm text-red-700">Failed to load dashboard data. Retrying...</p>
+        </div>
+      )}
 
       {/* Pending Approvals Alert */}
       {pendingApprovalCount > 0 && (
@@ -286,7 +377,7 @@ export default function FrontDeskDashboard() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center p-4 bg-green-50 rounded-lg">
-              <p className="text-2xl font-bold text-green-700">{roomStatus?.available || roomStatus?.vacant_clean || 0}</p>
+              <p className="text-2xl font-bold text-green-700">{roomStatus?.available ?? 0}</p>
               <p className="text-xs text-green-600 mt-1">Available</p>
             </div>
             <div className="text-center p-4 bg-blue-50 rounded-lg">
@@ -294,7 +385,7 @@ export default function FrontDeskDashboard() {
               <p className="text-xs text-blue-600 mt-1">Occupied</p>
             </div>
             <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <p className="text-2xl font-bold text-yellow-700">{roomStatus?.dirty || roomStatus?.vacant_dirty || 0}</p>
+              <p className="text-2xl font-bold text-yellow-700">{roomStatus?.dirty ?? 0}</p>
               <p className="text-xs text-yellow-600 mt-1">Dirty</p>
             </div>
             <div className="text-center p-4 bg-orange-50 rounded-lg">
@@ -302,17 +393,10 @@ export default function FrontDeskDashboard() {
               <p className="text-xs text-orange-600 mt-1">Maintenance</p>
             </div>
             <div className="text-center p-4 bg-red-50 rounded-lg">
-              <p className="text-2xl font-bold text-red-700">{roomStatus?.outOfOrder || roomStatus?.out_of_order || 0}</p>
+              <p className="text-2xl font-bold text-red-700">{roomStatus?.outOfOrder ?? 0}</p>
               <p className="text-xs text-red-600 mt-1">Out of Order</p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Error Banner */}
-      {statsError && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-          <p className="text-sm text-red-700">Failed to load dashboard data. Retrying...</p>
         </div>
       )}
 
@@ -384,6 +468,45 @@ export default function FrontDeskDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Pending Guest Service Requests */}
+      {guestServiceRequests && guestServiceRequests.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Bell className="h-5 w-5 text-orange-500" />
+              Pending Guest Requests
+            </h2>
+            <Link to="/frontdesk/guest-services" className="text-sm text-orange-600 hover:text-orange-700 font-medium">
+              View all requests →
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {guestServiceRequests.map((request: any) => (
+              <div key={request._id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">
+                    {request.serviceType || request.category || 'Service Request'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Guest: {request.userId?.name || 'Unknown'} — Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || '—'}
+                  </p>
+                  {request.description && (
+                    <p className="text-xs text-gray-400 mt-1 truncate max-w-[300px]">{request.description}</p>
+                  )}
+                </div>
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                  request.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                  request.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {request.priority || 'normal'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Active Summary */}
       <div className="bg-white rounded-lg shadow p-6">

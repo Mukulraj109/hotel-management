@@ -78,11 +78,15 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
 
-  // Set hotelId from user context
+  // Set hotelId from user context (handle both string and populated object forms)
   useEffect(() => {
     if (user?.hotelId) {
-      setFormData(prev => ({ ...prev, hotelId: user.hotelId }));
-    } else {
+      const hotelIdStr = typeof user.hotelId === 'string'
+        ? user.hotelId
+        : (user.hotelId as { _id?: string })?._id || undefined;
+      if (hotelIdStr) {
+        setFormData(prev => ({ ...prev, hotelId: hotelIdStr }));
+      }
     }
   }, [user]);
 

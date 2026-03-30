@@ -1,7 +1,7 @@
 import express from 'express';
 import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -10,7 +10,8 @@ import { validate, schemas } from '../middleware/validation.js';
 
 const router = express.Router();
 
-// Note: Some routes are public or optional auth, middleware applied per-route as needed
+// Note: Catalog-browsing routes use optionalAuth (public for booking widgets).
+// Mutation routes and user-specific routes require full authentication.
 
 /**
  * @swagger
@@ -39,7 +40,7 @@ const router = express.Router();
  *       200:
  *         description: List of hotel services
  */
-router.get('/', catchAsync(async (req, res) => {
+router.get('/', optionalAuth, catchAsync(async (req, res) => {
   const { type, search, featured, hotelId: queryHotelId, page = '1', limit = '20' } = req.query;
   const user = req.user;
 
@@ -63,32 +64,33 @@ router.get('/', catchAsync(async (req, res) => {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (pageNum - 1) * limitNum;
 
-  let services;
-
   if (search && typeof search === 'string') {
     const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').trim();
     if (safeSearch) {
       const regex = new RegExp(safeSearch, 'i');
       query.$or = [{ name: regex }, { description: regex }, { tags: regex }];
     }
-    services = await HotelService.find(query)
-      .sort({ featured: -1, 'rating.average': -1 })
-      .skip(skip)
-      .limit(limitNum)
-      .populate('hotelId', 'name')
-      .lean();
-  } else {
-    services = await HotelService.find(query)
-      .sort({ featured: -1, 'rating.average': -1 })
-      .skip(skip)
-      .limit(limitNum)
-      .populate('hotelId', 'name')
-      .lean();
   }
+
+  const [services, totalCount] = await Promise.all([
+    HotelService.find(query)
+      .sort({ featured: -1, 'rating.average': -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate('hotelId', 'name')
+      .lean(),
+    HotelService.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
-    data: services
+    data: services,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limitNum)
+    }
   });
 }));
 
@@ -173,7 +175,7 @@ router.get('/bookings/:bookingId',
     const { bookingId } = req.params;
     
     const booking = await ServiceBooking.findById(bookingId)
-      .populate('serviceId', 'name type price images description')
+      .populate('serviceId', 'name type price images description contactInfo')
       .populate('hotelId', 'name address')
       .populate('userId', 'name email').lean();
       
@@ -231,7 +233,7 @@ router.get('/types', catchAsync(async (req, res) => {
  *       200:
  *         description: List of featured services
  */
-router.get('/featured', catchAsync(async (req, res) => {
+router.get('/featured', optionalAuth, catchAsync(async (req, res) => {
   const user = req.user;
   const hotelId = user?.hotelId || req.query.hotelId;
 
@@ -265,12 +267,19 @@ router.get('/featured', catchAsync(async (req, res) => {
  *       404:
  *         description: Service not found
  */
-router.get('/:serviceId', catchAsync(async (req, res) => {
+router.get('/:serviceId', optionalAuth, catchAsync(async (req, res) => {
   const { serviceId } = req.params;
-  
-  const service = await HotelService.findById(serviceId)
+  const user = req.user;
+  const resolvedHotelId = user?.hotelId || req.query.hotelId;
+
+  const query = { _id: serviceId, isActive: true };
+  if (resolvedHotelId) {
+    query.hotelId = resolvedHotelId;
+  }
+
+  const service = await HotelService.findOne(query)
     .populate('hotelId', 'name address').lean();
-    
+
   if (!service) {
     throw new ApplicationError('Service not found', 404);
   }
@@ -310,14 +319,24 @@ router.get('/:serviceId', catchAsync(async (req, res) => {
  *       200:
  *         description: Availability status
  */
-router.get('/:serviceId/availability', catchAsync(async (req, res) => {
+router.get('/:serviceId/availability', optionalAuth, catchAsync(async (req, res) => {
   const { serviceId } = req.params;
   const { date, people } = req.query;
-  
+
   if (!date || !people) {
     throw new ApplicationError('Date and number of people are required', 400);
   }
-  
+
+  // Verify service exists and belongs to hotel context
+  const user = req.user;
+  const resolvedHotelId = user?.hotelId || req.query.hotelId;
+  if (resolvedHotelId) {
+    const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId, isActive: true }).lean();
+    if (!service) {
+      throw new ApplicationError('Service not found', 404);
+    }
+  }
+
   const availability = await ServiceBooking.checkAvailability(
     serviceId,
     new Date(date),
@@ -411,8 +430,8 @@ router.post('/:serviceId/bookings',
     
     // Populate booking data
     await booking.populate([
-      { path: 'serviceId', select: 'name type price images' },
-      { path: 'hotelId', select: 'name' }
+      { path: 'serviceId', select: 'name type price images description contactInfo' },
+      { path: 'hotelId', select: 'name address' }
     ]);
 
     res.status(201).json({

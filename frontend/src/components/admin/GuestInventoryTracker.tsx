@@ -72,10 +72,15 @@ interface DashboardData {
   };
 }
 
-const GuestInventoryTracker: React.FC = () => {
+interface GuestInventoryTrackerProps {
+  hotelId?: string;
+}
+
+const GuestInventoryTracker: React.FC<GuestInventoryTrackerProps> = ({ hotelId: propHotelId }) => {
   const { user } = useAuth();
-  // Resolve hotelId to string
+  // Use prop hotelId (from property context) or fall back to user's hotelId
   const resolvedHotelId = (() => {
+    if (propHotelId) return propHotelId;
     const raw = user?.hotelId;
     if (!raw) return undefined;
     if (typeof raw === 'string') return raw;

@@ -47,7 +47,10 @@ const notificationSchema = new mongoose.Schema({
       'task_assignment', 'task_overdue', 'shift_reminder', 'performance_review_due',
 
       // Emergency & Security
-      'emergency_alert', 'security_incident', 'evacuation_notice', 'safety_inspection_required'
+      'emergency_alert', 'security_incident', 'evacuation_notice', 'safety_inspection_required',
+
+      // Service Management
+      'service_assignment', 'service_escalation', 'service_feedback'
     ],
     required: [true, 'Notification type is required']
   },
@@ -103,7 +106,7 @@ const notificationSchema = new mongoose.Schema({
     actionUrl: { type: String, validate: { validator: function(value) { return !value || /^https?:\/\/.+/.test(value); }, message: 'Action URL must be a valid URL' } },
     actionText: { type: String, maxlength: [50, 'Action text cannot exceed 50 characters'] },
     imageUrl: { type: String, validate: { validator: function(value) { return !value || /^https?:\/\/.+/.test(value); }, message: 'Image URL must be a valid URL' } },
-    category: { type: String, enum: ['booking', 'payment', 'loyalty', 'service', 'promotional', 'system'] },
+    category: { type: String, enum: ['booking', 'payment', 'loyalty', 'service', 'promotional', 'system', 'service_management'] },
     tags: [{ type: String, trim: true }]
   },
   deliveryAttempts: [{
@@ -135,8 +138,10 @@ notificationSchema.index({ userId: 1, type: 1 });
 notificationSchema.index({ hotelId: 1, type: 1 });
 notificationSchema.index({ scheduledFor: 1, status: 'pending' });
 notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-// TTL index for data retention - auto-delete after 90 days
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 }); // 90 days
+// NOTE: Removed destructive TTL index on createdAt that auto-deleted notifications after 90 days.
+// Notifications are audit data and must not be auto-deleted. Use the expiresAt TTL index above
+// for explicit expiration, or run a scheduled archival job for old notifications instead.
+notificationSchema.index({ createdAt: -1 });
 
 // Virtual for checking if notification is expired
 notificationSchema.virtual('isExpired').get(function() {
@@ -154,17 +159,25 @@ notificationSchema.virtual('canBeSent').get(function() {
 });
 
 // Static method to get unread count for a user
-notificationSchema.statics.getUnreadCount = function(userId) {
-  return this.countDocuments({
+notificationSchema.statics.getUnreadCount = function(userId, hotelId) {
+  const query = {
     userId,
     status: { $in: ['pending', 'sent', 'delivered'] },
     readAt: { $exists: false }
-  });
+  };
+  if (hotelId) {
+    query.hotelId = hotelId;
+  }
+  return this.countDocuments(query);
 };
 
 // Static method to get notifications by type
-notificationSchema.statics.getByType = function(userId, type, limit = 20) {
-  return this.find({ userId, type })
+notificationSchema.statics.getByType = function(userId, type, limit = 20, hotelId) {
+  const query = { userId, type };
+  if (hotelId) {
+    query.hotelId = hotelId;
+  }
+  return this.find(query)
     .sort({ createdAt: -1 })
     .limit(limit)
     .populate('metadata.bookingId', 'bookingNumber checkIn checkOut')
@@ -173,30 +186,38 @@ notificationSchema.statics.getByType = function(userId, type, limit = 20) {
 };
 
 // Static method to mark notifications as read
-notificationSchema.statics.markAsRead = function(userId, notificationIds) {
+notificationSchema.statics.markAsRead = function(userId, notificationIds, hotelId) {
+  const query = {
+    _id: { $in: notificationIds },
+    userId,
+    readAt: { $exists: false }
+  };
+  if (hotelId) {
+    query.hotelId = hotelId;
+  }
   return this.updateMany(
-    { 
-      _id: { $in: notificationIds }, 
-      userId,
-      readAt: { $exists: false }
-    },
-    { 
-      $set: { 
+    query,
+    {
+      $set: {
         status: 'read',
-        readAt: new Date() 
-      } 
+        readAt: new Date()
+      }
     }
   );
 };
 
 // Static method to mark all notifications as read
-notificationSchema.statics.markAllAsRead = function(userId) {
+notificationSchema.statics.markAllAsRead = function(userId, hotelId) {
+  const query = {
+    userId,
+    status: { $in: ['pending', 'sent', 'delivered'] },
+    readAt: { $exists: false }
+  };
+  if (hotelId) {
+    query.hotelId = hotelId;
+  }
   return this.updateMany(
-    {
-      userId,
-      status: { $in: ['pending', 'sent', 'delivered'] },
-      readAt: { $exists: false }
-    },
+    query,
     {
       $set: {
         status: 'read',

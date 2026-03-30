@@ -14,8 +14,6 @@ import {
   X,
   User,
   MapPin,
-  Calendar,
-  ChevronDown,
   Save,
   RefreshCw,
   Activity,
@@ -27,7 +25,7 @@ import {
   Zap,
   Target
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/Modal';
@@ -35,7 +33,6 @@ import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import { formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { formatCurrency } from '../../utils/formatters';
 import { adminMaintenanceService, MaintenanceTask, MaintenanceStats, CreateMaintenanceTaskData, MaintenanceFilters } from '../../services/adminMaintenanceService';
 import { useRealTime } from '../../services/realTimeService';
@@ -140,24 +137,22 @@ export default function AdminMaintenance() {
     fetchAvailableRooms();
 
     // Connect to real-time updates
+    // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
     connect().catch(() => { /* Error handled silently */ });
-
-    return () => {
-      disconnect();
-    };
-  }, [filters, selectedPropertyId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- connect/disconnect are excluded to prevent reconnection loops
+  }, [filters, selectedPropertyId, fetchTasks, fetchStats, fetchAvailableStaff, fetchAvailableRooms]);
   
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
     
-    const handleMaintenanceUpdate = (data: Record<string, unknown>) => {
+    const handleMaintenanceUpdate = (_data: Record<string, unknown>) => {
       fetchTasks();
       fetchStats();
       toast.success('Maintenance data updated in real-time');
     };
-    
-    const handleMaintenanceCreate = (data: Record<string, unknown>) => {
+
+    const handleMaintenanceCreate = (_data: Record<string, unknown>) => {
       fetchTasks();
       fetchStats();
       toast.success('New maintenance task created');
@@ -173,7 +168,7 @@ export default function AdminMaintenance() {
       off('maintenance:updated', handleMaintenanceUpdate);
       off('maintenance:status_changed', handleMaintenanceUpdate);
     };
-  }, [isConnected, on, off]);
+  }, [isConnected, on, off, fetchTasks, fetchStats]);
 
   // Handle task creation
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -320,7 +315,8 @@ export default function AdminMaintenance() {
       low: 'bg-gray-100 text-gray-800',
       medium: 'bg-yellow-100 text-yellow-800',
       high: 'bg-orange-100 text-orange-800',
-      urgent: 'bg-red-100 text-red-800'
+      urgent: 'bg-red-100 text-red-800',
+      emergency: 'bg-red-200 text-red-900'
     };
     return colors[priority] || 'bg-gray-100 text-gray-800';
   };
@@ -415,15 +411,8 @@ export default function AdminMaintenance() {
           return <span className="text-gray-400">N/A</span>;
         }
         return (
-          <StatusBadge 
-            status={task.status} 
-            colorMap={{
-              pending: 'yellow',
-              assigned: 'blue',
-              in_progress: 'orange',
-              completed: 'green',
-              cancelled: 'red'
-            }}
+          <StatusBadge
+            status={task.status}
           />
         );
       }
@@ -736,6 +725,7 @@ export default function AdminMaintenance() {
                   <option value="pending">Pending</option>
                   <option value="assigned">Assigned</option>
                   <option value="in_progress">In Progress</option>
+                  <option value="on_hold">On Hold</option>
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
@@ -814,6 +804,8 @@ export default function AdminMaintenance() {
                     data={tasks}
                     columns={columns}
                     loading={loading}
+                    pagination={false}
+                    emptyMessage="No maintenance tasks found. Create one to get started."
                   />
                 </div>
               </div>
@@ -1185,15 +1177,8 @@ export default function AdminMaintenance() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Status</label>
                 <div className="mt-1">
-                  <StatusBadge 
-                    status={selectedTask.status} 
-                    colorMap={{
-                      pending: 'yellow',
-                      assigned: 'blue',
-                      in_progress: 'orange',
-                      completed: 'green',
-                      cancelled: 'red'
-                    }}
+                  <StatusBadge
+                    status={selectedTask.status}
                   />
                 </div>
               </div>
@@ -1226,7 +1211,7 @@ export default function AdminMaintenance() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Created</label>
                 <div className="mt-1 text-sm text-gray-900">
-                  {format(parseISO(selectedTask.createdAt), 'MMM dd, yyyy HH:mm')}
+                  {selectedTask.createdAt ? format(parseISO(selectedTask.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'}
                 </div>
               </div>
               {selectedTask.completedAt && (
@@ -1304,8 +1289,9 @@ export default function AdminMaintenance() {
                   <Button
                     onClick={() => {
                       const nextStatus = selectedTask.status === 'pending' ? 'assigned' :
-                                       selectedTask.status === 'assigned' ? 'in_progress' : 'completed';
-                      handleStatusUpdate(selectedTask._id, nextStatus as unknown);
+                                       selectedTask.status === 'assigned' ? 'in_progress' :
+                                       selectedTask.status === 'on_hold' ? 'in_progress' : 'completed';
+                      handleStatusUpdate(selectedTask._id, nextStatus as 'assigned' | 'in_progress' | 'completed' | 'cancelled');
                       setShowViewModal(false);
                     }}
                     disabled={updating}
@@ -1314,6 +1300,7 @@ export default function AdminMaintenance() {
                     {selectedTask.status === 'pending' && 'Assign Task'}
                     {selectedTask.status === 'assigned' && 'Start Task'}
                     {selectedTask.status === 'in_progress' && 'Complete Task'}
+                    {selectedTask.status === 'on_hold' && 'Resume Task'}
                   </Button>
                 )}
               </div>

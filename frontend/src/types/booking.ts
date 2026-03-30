@@ -18,8 +18,26 @@ export interface Room {
 
 export interface Booking {
   _id: string;
-  hotelId: string;
-  userId: string;
+  hotelId: string | {
+    _id: string;
+    name: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+    } | string;
+    contact?: {
+      phone?: string;
+      email?: string;
+    };
+  };
+  userId: string | {
+    _id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+  };
   bookingNumber: string;
   rooms: {
     roomId: Room;
@@ -28,8 +46,8 @@ export interface Booking {
   checkIn: string;
   checkOut: string;
   nights: number;
-  status: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
-  paymentStatus: 'pending' | 'paid' | 'refunded' | 'failed';
+  status: 'pending' | 'confirmed' | 'modified' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
+  paymentStatus: 'pending' | 'paid' | 'partially_paid' | 'refunded' | 'failed';
   totalAmount: number;
   currency: string;
   stripePaymentId?: string;
@@ -43,7 +61,7 @@ export interface Booking {
     price: number;
     quantity: number;
   }[];
-  source: 'direct' | 'booking_com' | 'expedia' | 'airbnb';
+  source: 'direct' | 'walk_in' | 'booking_com' | 'expedia' | 'airbnb';
   createdAt: string;
   updatedAt: string;
   // Price adjustment fields

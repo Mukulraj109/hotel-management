@@ -4,7 +4,8 @@ import mongoose from 'mongoose';
 import GuestService from '../models/GuestService.js';
 import Booking from '../models/Booking.js';
 import { authenticate } from '../middleware/auth.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensurePropertyAccess, refToHotelIdString } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -18,8 +19,9 @@ import { validateStatusTransition, GUEST_SERVICE_TRANSITIONS } from '../utils/st
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// All routes require authentication and property access
+// All routes require authentication, tenant isolation, and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('guestServices', 'baseAccess'));
 
@@ -94,20 +96,30 @@ router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(asyn
     specialInstructions
   } = req.body;
 
-  // Verify booking exists and belongs to user
-  const booking = await Booking.findById(bookingId).lean();
+  // Verify booking exists and belongs to user — include hotelId tenant check for non-guest roles
+  const bookingQuery = { _id: bookingId };
+  if (req.user.role !== 'guest' && req.user.hotelId) {
+    bookingQuery.hotelId = req.user.hotelId;
+  }
+  const booking = await Booking.findOne(bookingQuery).lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
 
-  // Intelligent automatic staff assignment based on hotel services
-  let assignedTo = null;
-  let status = 'pending';
-  let relatedHotelService = null;
-
   // Guests can only create requests for their own bookings
   if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
     throw new ApplicationError('You can only create requests for your own bookings', 403);
+  }
+
+  // Validate items: quantity must be >= 1, names must be non-empty
+  if (items && Array.isArray(items)) {
+    for (const item of items) {
+      if (item.name && typeof item.name === 'string' && item.name.trim()) {
+        if (typeof item.quantity !== 'number' || item.quantity < 1) {
+          throw new ApplicationError(`Item "${item.name}" must have a quantity of at least 1`, 400);
+        }
+      }
+    }
   }
 
   // Handle multiple service variations
@@ -126,7 +138,7 @@ router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(asyn
     description,
     priority: priority || 'now',
     scheduledTime,
-    items: items || [],
+    items: (items || []).filter(i => i.name && i.name.trim()),
     specialInstructions,
     status: 'pending'
   });
@@ -275,7 +287,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
   } else {
-    const hotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+    const hotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user?.hotelId);
     if (!hotelId) {
       return res.status(400).json({ status: 'error', message: 'Hotel context required' });
     }
@@ -288,8 +300,10 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
   if (priority) query.priority = priority;
   if (assignedTo) query.assignedTo = assignedTo;
 
-  const skip = (page - 1) * limit;
-  
+  const parsedPage = parseInt(page, 10) || 1;
+  const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
+  const skip = (parsedPage - 1) * parsedLimit;
+
   const [serviceRequests, total] = await Promise.all([
     GuestService.find(query)
       .populate('hotelId', 'name')
@@ -302,10 +316,11 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
           select: 'roomNumber'
         }
       })
-      .populate('assignedTo', 'name')
+      .populate('assignedTo', 'name email')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(parsedLimit)
+      .lean(),
     GuestService.countDocuments(query)
   ]);
 
@@ -314,10 +329,10 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
     data: {
       serviceRequests,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: parsedLimit > 0 ? Math.ceil(total / parsedLimit) : 1
       }
     }
   });
@@ -350,12 +365,12 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
   const { startDate, endDate } = req.query;
 
   let hotelId;
-  if (req.user.role === 'staff' || req.user.role === 'frontdesk') {
-    hotelId = req.user.hotelId;
+  if (['staff', 'frontdesk', 'manager'].includes(req.user.role)) {
+    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
   } else if (req.user.role === 'admin') {
-    hotelId = req.query.hotelId || req.user.hotelId;
+    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
   }
-  
+
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
   }
@@ -366,7 +381,7 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
   const overallStats = await GuestService.aggregate([
     { 
       $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId,
         ...(startDate && endDate ? {
           createdAt: {
             $gte: new Date(startDate),
@@ -399,8 +414,8 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
         totalResponseTime: {
           $avg: {
             $cond: [
-              { $and: [{ $ne: ['$respondedAt', null] }, { $ne: ['$createdAt', null] }] },
-              { $subtract: ['$respondedAt', '$createdAt'] },
+              { $and: [{ $ne: ['$scheduledTime', null] }, { $ne: ['$createdAt', null] }] },
+              { $subtract: ['$scheduledTime', '$createdAt'] },
               null
             ]
           }
@@ -408,8 +423,8 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
         totalCompletionTime: {
           $avg: {
             $cond: [
-              { $and: [{ $ne: ['$completedAt', null] }, { $ne: ['$createdAt', null] }] },
-              { $subtract: ['$completedAt', '$createdAt'] },
+              { $and: [{ $ne: ['$completedTime', null] }, { $ne: ['$createdAt', null] }] },
+              { $subtract: ['$completedTime', '$createdAt'] },
               null
             ]
           }
@@ -441,16 +456,16 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
  */
 router.get('/available-staff', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   let hotelId;
-  if (req.user.role === 'staff' || req.user.role === 'frontdesk') {
-    hotelId = req.user.hotelId;
+  if (['staff', 'frontdesk', 'manager'].includes(req.user.role)) {
+    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
   } else if (req.user.role === 'admin') {
-    hotelId = req.query.hotelId || req.user.hotelId;
+    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
   }
-  
-  if (!hotelId) { 
-    throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400); 
+
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
   }
-  
+
   const User = mongoose.model('User');
   const staffMembers = await User.find({
     hotelId: hotelId,
@@ -488,7 +503,10 @@ router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'sta
   if (!assignedTo) {
     throw new ApplicationError('assignedTo is required', 400);
   }
-  const hotelId = req.query.hotelId || req.user.hotelId;
+  const hotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user.hotelId);
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
   const result = await GuestService.updateMany(
     { _id: { $in: serviceIds }, hotelId },
     { $set: { assignedTo, status: 'assigned', updatedAt: new Date() } }
@@ -507,8 +525,11 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
     throw new ApplicationError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
   }
   const updateData = { status, updatedAt: new Date() };
-  if (status === 'completed') updateData.completedAt = new Date();
-  const bulkHotelId = req.query.hotelId || req.user.hotelId;
+  if (status === 'completed') updateData.completedTime = new Date();
+  const bulkHotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user.hotelId);
+  if (!bulkHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
   const result = await GuestService.updateMany(
     { _id: { $in: serviceIds }, hotelId: bulkHotelId },
     { $set: updateData }
@@ -519,9 +540,11 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
 // Export services as CSV
 router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const { format = 'csv', status: statusFilter, serviceType, priority } = req.query;
-  const hotelId = req.query.hotelId || req.user?.hotelId;
-  const filter = {};
-  if (hotelId) filter.hotelId = hotelId;
+  const hotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required for export', 400);
+  }
+  const filter = { hotelId };
   if (statusFilter) filter.status = statusFilter;
   if (serviceType) filter.serviceType = serviceType;
   if (priority) filter.priority = priority;
@@ -537,7 +560,7 @@ router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAcces
       s._id, s.serviceType || '', s.userId?.name || '', s.priority || '',
       s.status || '', s.assignedTo?.name || '', s.cost || 0,
       s.createdAt ? new Date(s.createdAt).toISOString() : '',
-      s.completedAt ? new Date(s.completedAt).toISOString() : ''
+      s.completedTime ? new Date(s.completedTime).toISOString() : ''
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
@@ -549,8 +572,15 @@ router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAcces
 
 // Delete a service request (only pending/cancelled)
 router.delete('/:id', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
-  const service = await GuestService.findById(req.params.id);
+  const service = await GuestService.findById(req.params.id).lean();
   if (!service) throw new ApplicationError('Service request not found', 404);
+
+  // Tenant isolation: ensure the service belongs to the user's hotel
+  const deleteHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+  if (deleteHotelId && service.hotelId.toString() !== deleteHotelId.toString()) {
+    throw new ApplicationError('You can only delete service requests for your hotel', 403);
+  }
+
   if (!['pending', 'cancelled'].includes(service.status)) {
     throw new ApplicationError('Only pending or cancelled service requests can be deleted', 400);
   }
@@ -643,7 +673,10 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
     actualCost,
     scheduledTime,
     priority,
-    completedServiceVariations
+    completedServiceVariations,
+    cancellationReason,
+    rating,
+    feedback
   } = req.body;
 
   // Permission checks
@@ -658,16 +691,27 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
 
   const setFields = {};
 
-  // Guests can only cancel their own requests
+  // Guests can only cancel their own requests or add feedback to completed ones
   if (req.user.role === 'guest') {
-    if (status && status !== 'cancelled') {
+    // Allow guests to add rating/feedback to completed requests
+    if (currentRequest.status === 'completed' && (rating !== undefined || feedback !== undefined)) {
+      if (rating !== undefined) {
+        if (typeof rating !== 'number' || rating < 1 || rating > 5) {
+          throw new ApplicationError('Rating must be a number between 1 and 5', 400);
+        }
+        setFields.rating = rating;
+      }
+      if (feedback !== undefined) setFields.feedback = feedback;
+    } else if (status && status !== 'cancelled') {
       throw new ApplicationError('Guests can only cancel their requests', 403);
+    } else if (status === 'cancelled') {
+      const guestTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, 'cancelled');
+      if (!guestTransition.valid) {
+        throw new ApplicationError(guestTransition.error, 400);
+      }
+      setFields.status = 'cancelled';
+      if (cancellationReason) setFields.cancellationReason = cancellationReason;
     }
-    const guestTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, 'cancelled');
-    if (!guestTransition.valid) {
-      throw new ApplicationError(guestTransition.error, 400);
-    }
-    setFields.status = 'cancelled';
   } else {
     // Staff/admin updates - validate transition if status is changing
     if (status !== undefined) {
@@ -676,7 +720,7 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
         throw new ApplicationError(staffTransition.error, 400);
       }
       setFields.status = status;
-      if (status === 'completed') setFields.completedAt = new Date();
+      if (status === 'completed') setFields.completedTime = new Date();
       setFields.statusUpdatedAt = new Date();
     }
     if (assignedTo !== undefined) setFields.assignedTo = assignedTo;

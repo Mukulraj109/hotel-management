@@ -103,7 +103,7 @@ const roomSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: {
-      values: ['vacant', 'occupied', 'dirty', 'maintenance', 'out_of_order'],
+      values: ['vacant', 'occupied', 'dirty', 'cleaning', 'reserved', 'maintenance', 'out_of_order'],
       message: 'Invalid room status'
     },
     default: 'vacant'
@@ -311,10 +311,10 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
       if (availabilityRecords.length > 0) {
         const minAvailable = Math.min(...availabilityRecords.map(r => r.availableRooms));
         if (minAvailable > 0) {
-          // Find actual room instances
+          // Find actual room instances — exclude only out_of_order/maintenance, not 'occupied'
           const query = {
             hotelId,
-            status: 'vacant',
+            status: { $nin: ['out_of_order', 'maintenance'] },
             isActive: true
           };
         
@@ -345,11 +345,11 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
       booking.rooms.map(room => room.roomId.toString())
     );
 
-    // Build query for available rooms
+    // Build query for available rooms — exclude only out_of_order/maintenance, not 'occupied'
     const query = {
       hotelId,
       _id: { $nin: occupiedRoomIds },
-      status: 'vacant',
+      status: { $nin: ['out_of_order', 'maintenance'] },
       isActive: true
     };
 
@@ -520,6 +520,10 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
         };
       } else if (room.status === 'out_of_order') {
         roomObj.computedStatus = 'out_of_order';
+      } else if (room.status === 'dirty' || room.status === 'cleaning') {
+        roomObj.computedStatus = 'dirty';
+      } else if (room.status === 'maintenance') {
+        roomObj.computedStatus = 'maintenance';
       } else {
         roomObj.computedStatus = 'vacant';
       }
@@ -548,7 +552,7 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
 roomSchema.post('save', async function(doc) {
   try {
     // Only trigger notifications for status changes
-    if (doc.isModified('status')) {
+    if (doc._wasStatusModified) {
       const statusNotifications = {
         'out_of_order': {
           type: 'room_out_of_order',
@@ -664,8 +668,9 @@ roomSchema.post('save', async function(doc) {
   }
 });
 
-// Store original values before save for comparison
+// Store original values and modification flags before save for comparison in post-save hooks
 roomSchema.pre('save', function(next) {
+  this._wasStatusModified = this.isModified('status');
   if (!this.isNew) {
     this.original = this.toObject();
   }

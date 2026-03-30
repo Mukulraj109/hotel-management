@@ -270,7 +270,8 @@ const AdminRoomAllotmentCreate: React.FC = () => {
         toast.error(response.data.message || `Failed to ${isEditMode ? 'update' : 'create'} allotment`);
       }
     } catch (error: unknown) {
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || `Failed to ${isEditMode ? 'update' : 'create'} allotment`;
+      const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || `Failed to ${isEditMode ? 'update' : 'create'} allotment`;
       
       // Handle specific error cases
       if (errorMessage.includes('already exists for this room type')) {

@@ -813,6 +813,13 @@ class AdvancedReportingService {
       description: this.reportTemplates[key].description
     }));
   }
+
+  /**
+   * Get report templates (alias for getAvailableReports)
+   */
+  getReportTemplates() {
+    return this.getAvailableReports();
+  }
   
   /**
    * Get report generation status

@@ -1,4 +1,3 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import ApprovalRequest from '../models/ApprovalRequest.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -140,23 +139,33 @@ export const getApprovalRequests = catchAsync(async (req, res) => {
     query.targetResource = targetResource;
   }
 
-  // Calculate pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  // Sanitize pagination params
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  const skip = (pageNum - 1) * limitNum;
   const sortOptions = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
-  // Execute query
-  const approvalRequests = await ApprovalRequest.find(query)
-    .populate('requestedBy', 'name email role')
-    .populate('reviewedBy', 'name email role')
-    .sort(sortOptions)
-    .skip(skip)
-    .limit(parseInt(limit)).lean();
+  // Execute query with pagination
+  const [approvalRequests, totalCount] = await Promise.all([
+    ApprovalRequest.find(query)
+      .populate('requestedBy', 'name email role')
+      .populate('reviewedBy', 'name email role')
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    ApprovalRequest.countDocuments(query),
+  ]);
 
-  // Get total count for pagination
-  const total = await ApprovalRequest.countDocuments(query);
+  const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
 
-  // Return array directly for frontend compatibility
-  res.status(200).json(approvalRequests);
+  res.status(200).json({
+    data: approvalRequests,
+    page: pageNum,
+    limit: limitNum,
+    totalCount,
+    totalPages,
+  });
 });
 
 /**
@@ -233,7 +242,8 @@ export const approveRequest = catchAsync(async (req, res) => {
     );
   }
 
-  const approvalRequest = await ApprovalRequest.findById(id).lean();
+  // Do NOT use .lean() here — we need a Mongoose document for .canBeModified() and .save()
+  const approvalRequest = await ApprovalRequest.findById(id);
 
   if (!approvalRequest) {
     throw new ApplicationError(
@@ -252,12 +262,12 @@ export const approveRequest = catchAsync(async (req, res) => {
     );
   }
 
-  // Check if request is still pending
-  if (!approvalRequest.canBeModified()) {
+  // Validate status transition: only 'pending' -> 'approved' is allowed
+  if (approvalRequest.status !== 'pending') {
     throw new ApplicationError(
-      `Cannot approve request with status: ${approvalRequest.status}`,
+      `Cannot approve request: invalid transition from '${approvalRequest.status}' to 'approved'`,
       400,
-      'INVALID_STATUS'
+      'INVALID_STATUS_TRANSITION'
     );
   }
 
@@ -303,15 +313,6 @@ export const approveRequest = catchAsync(async (req, res) => {
           400,
           'INVALID_RESOURCE'
         );
-    }
-
-    // Validate status transition: only 'pending' -> 'approved' is allowed
-    if (approvalRequest.status !== 'pending') {
-      throw new ApplicationError(
-        `Cannot approve request: invalid transition from '${approvalRequest.status}' to 'approved'`,
-        400,
-        'INVALID_STATUS_TRANSITION'
-      );
     }
 
     // Update approval request status

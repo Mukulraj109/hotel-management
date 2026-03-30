@@ -170,12 +170,12 @@ function AdminBookings() {
       }
 
     } catch (error: unknown) {
-
-      if (error.response?.status === 429) {
-        // Rate limit exceeded, will retry automatically
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr?.response?.status === 429) {
+        toast.error('Too many requests. Please wait a moment and try again.');
       }
       setBookings([]);
-      setPagination({ current: 1, pages: 0, total: 0 });
+      setPagination({ current: 1, pages: 1, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -540,10 +540,10 @@ function AdminBookings() {
       await fetchBookings();
       await fetchStats();
     } catch (error: unknown) {
-
+      const axiosErr = error as { response?: { data?: { code?: string; message?: string } } };
       // Check if error is due to outstanding balance
-      const errorCode = error.response?.data?.code;
-      const errorMessage = error.response?.data?.message;
+      const errorCode = axiosErr?.response?.data?.code;
+      const errorMessage = axiosErr?.response?.data?.message;
 
       if (errorCode === 'OUTSTANDING_BALANCE' || errorMessage?.includes('outstanding balance')) {
         // Extract balance from error message
@@ -564,8 +564,8 @@ function AdminBookings() {
   };
 
   // Handle checkout payment collection (BEFORE actual checkout)
-  const handleCheckOutPaymentCollection = async (paymentDetails: { paymentMethods: unknown[] }) => {
-    if (!selectedBookingForCheckOut) return;
+  const handleCheckOutPaymentCollection = async (paymentDetails: { paymentMethods: unknown[]; isPartialPayment?: boolean } | null) => {
+    if (!selectedBookingForCheckOut || !paymentDetails) return;
 
     try {
       setUpdating(true);
@@ -578,28 +578,59 @@ function AdminBookings() {
         amount: totalAmount
       });
 
-      toast.success('Payment collected successfully!');
+      const updatedBookingFromResponse = response.data?.data?.booking;
 
-      // Close the checkout payment modal
-      setShowCheckOutPaymentModal(false);
+      if (paymentDetails.isPartialPayment) {
+        // PARTIAL PAYMENT: Record payment only, do NOT checkout
+        toast.success(`Partial payment of ${totalAmount.toLocaleString()} collected. Remaining balance will be due at checkout.`);
 
-      // Fetch updated booking to get new totalPaid
-      await fetchBookings();
+        // Close the checkout payment modal
+        setShowCheckOutPaymentModal(false);
 
-      // Find the updated booking
-      const updatedBookings = bookings;
-      const updatedBooking = updatedBookings.find(b => b._id === selectedBookingForCheckOut._id);
+        // Refresh booking data to reflect updated payment
+        await fetchBookings();
+        await fetchStats();
 
-      // Now proceed with checkout using the updated booking
-      if (updatedBooking) {
-        await processCheckOut(updatedBooking);
+        // Invalidate queries to update UI everywhere
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['bookings'] });
+
+        // Update selected booking if the detail panel is open
+        if (selectedBooking && selectedBooking._id === selectedBookingForCheckOut._id && updatedBookingFromResponse) {
+          setSelectedBooking(updatedBookingFromResponse);
+        }
+
+        // Clear checkout payment state
+        setSelectedBookingForCheckOut(null);
       } else {
-        // Fallback to original booking
-        await processCheckOut(selectedBookingForCheckOut);
-      }
+        // FULL PAYMENT: Record payment then proceed with checkout
+        toast.success('Payment collected successfully!');
 
-      // Clear checkout payment state
-      setSelectedBookingForCheckOut(null);
+        // Close the checkout payment modal
+        setShowCheckOutPaymentModal(false);
+
+        // Fetch updated booking to get new totalPaid
+        await fetchBookings();
+
+        // Find the updated booking
+        const updatedBookings = bookings;
+        const updatedBooking = updatedBookings.find(b => b._id === selectedBookingForCheckOut._id);
+
+        // Now proceed with checkout using the updated booking
+        if (updatedBooking) {
+          await processCheckOut(updatedBooking);
+        } else if (updatedBookingFromResponse) {
+          await processCheckOut(updatedBookingFromResponse);
+        } else {
+          // Fallback to original booking
+          await processCheckOut(selectedBookingForCheckOut);
+        }
+
+        // Clear checkout payment state
+        setSelectedBookingForCheckOut(null);
+      }
 
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to process payment');
@@ -640,7 +671,8 @@ function AdminBookings() {
       setSelectedBookingForSettlement(null);
       setSettlementData(null);
     } catch (error: unknown) {
-      const message = error.response?.data?.message || 'Failed to process refund';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const message = axiosErr?.response?.data?.message || 'Failed to process refund';
       toast.error(message);
     } finally {
       setUpdating(false);
@@ -1131,7 +1163,8 @@ function AdminBookings() {
                   onChange={(e) => setFilters({ ...filters, source: e.target.value || undefined, page: 1 })}
                 >
                   <option value="">All Sources</option>
-                  <option value="direct">Direct</option>
+                  <option value="direct">Direct / Guest Self-Booking</option>
+                  <option value="walk_in">Walk-in</option>
                   <option value="booking_com">Booking.com</option>
                   <option value="expedia">Expedia</option>
                   <option value="airbnb">Airbnb</option>
@@ -1327,6 +1360,28 @@ function AdminBookings() {
                   </p>
                 )}
               </div>
+              {selectedBooking.source && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Booking Source</h3>
+                  <p className="text-sm text-gray-900">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      selectedBooking.source === 'direct' ? 'bg-blue-100 text-blue-800' :
+                      selectedBooking.source === 'walk_in' ? 'bg-green-100 text-green-800' :
+                      selectedBooking.source === 'booking_com' ? 'bg-indigo-100 text-indigo-800' :
+                      selectedBooking.source === 'expedia' ? 'bg-yellow-100 text-yellow-800' :
+                      selectedBooking.source === 'airbnb' ? 'bg-pink-100 text-pink-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {selectedBooking.source === 'direct' ? 'Direct / Guest Self-Booking' :
+                       selectedBooking.source === 'walk_in' ? 'Walk-in' :
+                       selectedBooking.source === 'booking_com' ? 'Booking.com' :
+                       selectedBooking.source === 'expedia' ? 'Expedia' :
+                       selectedBooking.source === 'airbnb' ? 'Airbnb' :
+                       selectedBooking.source.replace(/_/g, ' ')}
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Dates */}
@@ -2139,7 +2194,8 @@ function AdminBookings() {
             setSelectedBookingForCheckOut(null);
           }}
           onConfirm={handleCheckOutPaymentCollection}
-          totalAmount={selectedBookingForCheckOut.totalAmount - (selectedBookingForCheckOut.paymentDetails?.totalPaid || 0)}
+          totalAmount={selectedBookingForCheckOut.totalAmount}
+          paidAmount={selectedBookingForCheckOut.paymentDetails?.totalPaid || 0}
           currency={selectedBookingForCheckOut.currency}
           bookingNumber={selectedBookingForCheckOut.bookingNumber}
           mode="checkout"

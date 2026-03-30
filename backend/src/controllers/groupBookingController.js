@@ -601,10 +601,11 @@ export const updateGroupBookingRoom = catchAsync(async (req, res, next) => {
  *         description: Group booking not found
  */
 export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
+  // Do NOT use .lean() here — we need a Mongoose document to call .save()
   const groupBooking = await GroupBooking.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  }).populate('corporateCompanyId').lean();
+  }).populate('corporateCompanyId');
 
   if (!groupBooking) {
     return next(new ApplicationError('Group booking not found', 404));
@@ -620,15 +621,15 @@ export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
       statusMessage = 'Group booking confirmed successfully';
 
       // Check corporate company is active
-      if (!groupBooking.corporateCompanyId.isActive) {
+      if (!groupBooking.corporateCompanyId?.isActive) {
         return next(new ApplicationError('Cannot confirm booking for inactive corporate company', 400));
       }
 
       // Check if company has sufficient credit for corporate credit bookings
       if (groupBooking.paymentMethod === 'corporate_credit' &&
-          groupBooking.corporateCompanyId.availableCredit < groupBooking.totalAmount) {
+          groupBooking.corporateCompanyId?.availableCredit < groupBooking.totalAmount) {
         return next(new ApplicationError(
-          `Insufficient corporate credit. Required: ₹${groupBooking.totalAmount}, Available: ₹${groupBooking.corporateCompanyId.availableCredit}`,
+          `Insufficient corporate credit. Required: ₹${groupBooking.totalAmount}, Available: ₹${groupBooking.corporateCompanyId?.availableCredit ?? 0}`,
           400
         ));
       }
@@ -668,7 +669,9 @@ export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
 
   // Update the status
   groupBooking.status = newStatus;
-  groupBooking.metadata.lastModifiedBy = req.user.id;
+  if (groupBooking.metadata) {
+    groupBooking.metadata.lastModifiedBy = req.user.id;
+  }
 
   // If cancelling, update all room statuses (validate each transition)
   if (newStatus === 'cancelled') {

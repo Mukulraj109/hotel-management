@@ -422,6 +422,17 @@ class BookingEngineService {
   }
 
   /**
+   * Send an email campaign
+   */
+  async sendEmailCampaign(campaignId: string, testEmail?: string): Promise<void> {
+    try {
+      await api.post(`/booking-engine/campaigns/${campaignId}/send`, { testEmail });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Get all reviews
    */
   async getReviews(): Promise<ReviewManagement[]> {

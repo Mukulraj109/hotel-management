@@ -9,7 +9,8 @@ const paymentSchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: true
+    required: true,
+    index: true
   },
   stripePaymentIntentId: {
     type: String,

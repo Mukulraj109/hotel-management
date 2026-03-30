@@ -252,9 +252,12 @@ class BillingHistoryService {
    * Get payment details by payment intent ID
    */
   async getPaymentByIntentId(paymentIntentId: string) {
-    // This would require adding a new endpoint to get payment by intent ID
-    // For now, we'll return a placeholder
-    throw new Error('Payment lookup by intent ID not yet implemented');
+    try {
+      const response = await api.get(`/payments/intent/${encodeURIComponent(paymentIntentId)}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Failed to look up payment by intent ID');
+    }
   }
 
   /**
@@ -311,19 +314,22 @@ class BillingHistoryService {
    * Convert data to CSV format
    */
   private convertToCSV(data: unknown[]): string {
-    if (data.length === 0) return '';
+    if (!data || data.length === 0 || !data[0]) return '';
 
-    const headers = Object.keys(data[0]);
+    const headers = Object.keys(data[0] as Record<string, unknown>);
     const csvHeaders = headers.join(',');
-    
+
     const csvRows = data.map(row => {
+      const record = row as Record<string, unknown>;
       return headers.map(header => {
-        const value = row[header];
-        // Handle values that might contain commas or quotes
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          return `"${value.replace(/"/g, '""')}"`;
+        const value = record[header];
+        if (value === null || value === undefined) return '';
+        const strValue = String(value);
+        // Handle values that might contain commas, quotes, or newlines
+        if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+          return `"${strValue.replace(/"/g, '""')}"`;
         }
-        return value || '';
+        return strValue;
       }).join(',');
     });
 

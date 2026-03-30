@@ -209,8 +209,8 @@ export const transformToChartData = (
   labelKey?: string
 ): ChartDataPoint[] => {
   return data.map((item, index) => ({
-    label: labelKey ? item[labelKey] : item[xKey],
-    value: item[yKey],
+    label: String(labelKey ? item[labelKey] : item[xKey]),
+    value: Number(item[yKey]) || 0,
     color: getChartColors(data.length)[index],
   }));
 };
@@ -223,13 +223,14 @@ export const formatTimeSeriesData = (
 ): TimeSeriesData[] => {
   return data.map(item => {
     const formattedItem: TimeSeriesData = {
-      date: format(parseISO(item[dateKey]), 'MMM dd'),
+      date: format(parseISO(String(item[dateKey])), 'MMM dd'),
     };
-    
+
     valueKeys.forEach(key => {
-      formattedItem[key] = item[key];
+      const val = item[key];
+      formattedItem[key] = typeof val === 'number' ? val : String(val ?? '');
     });
-    
+
     return formattedItem;
   });
 };
@@ -272,13 +273,15 @@ export const getAlertSeverityPriority = (severity: string): number => {
 };
 
 // Sort alerts by severity and timestamp
-export const sortAlerts = (alerts: { severity: string; timestamp: string }[]): { severity: string; timestamp: string }[] => {
+export const sortAlerts = (alerts: { severity: string; timestamp?: string; createdAt?: string }[]): { severity: string; timestamp?: string; createdAt?: string }[] => {
   return [...alerts].sort((a, b) => {
     const severityDiff = getAlertSeverityPriority(a.severity) - getAlertSeverityPriority(b.severity);
     if (severityDiff !== 0) return severityDiff;
-    
-    // If same severity, sort by timestamp (newest first)
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+
+    // If same severity, sort by timestamp (newest first) — handle both timestamp and createdAt
+    const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+    const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+    return timeB - timeA;
   });
 };
 

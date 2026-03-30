@@ -7,7 +7,6 @@ import {
   Search,
   Users,
   Building2,
-  MapPin,
   Clock,
   AlertTriangle,
   CheckCircle,
@@ -18,7 +17,6 @@ import {
   User,
   Phone,
   Mail,
-  Briefcase,
   Power,
   PowerOff,
   Ban,
@@ -85,9 +83,9 @@ interface GroupBooking {
 }
 
 // API function to fetch group bookings
-const fetchGroupBookings = async (): Promise<{ groupBookings: GroupBooking[] }> => {
+const fetchGroupBookings = async (page = 1, limit = 100): Promise<{ groupBookings: GroupBooking[] }> => {
   try {
-    const { data } = await api.get('/corporate/group-bookings');
+    const { data } = await api.get(`/corporate/group-bookings?page=${page}&limit=${limit}`);
     return data.data || { groupBookings: [] };
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -151,7 +149,7 @@ const GroupBookingDetails = React.memo(({ booking }: { booking: GroupBooking }) 
         <User className="w-4 h-4 mr-1" />
         Contact Person
       </p>
-      <p className="font-medium">{booking.contactPerson.name}</p>
+      <p className="font-medium">{booking.contactPerson?.name || 'N/A'}</p>
     </div>
   </div>
 ));
@@ -251,7 +249,7 @@ function GroupBookingManagement() {
     if (editingBooking) {
       form.reset({
         groupName: editingBooking.groupName || '',
-        corporateCompanyId: editingBooking.corporateCompanyId?._id || editingBooking.corporateCompanyId || '',
+        corporateCompanyId: (editingBooking.corporateCompanyId as unknown as { _id: string })?._id || String(editingBooking.corporateCompanyId || ''),
         checkIn: formatDateForInput(editingBooking.checkIn) || '',
         checkOut: formatDateForInput(editingBooking.checkOut) || '',
         paymentMethod: editingBooking.paymentMethod || '',
@@ -374,10 +372,11 @@ function GroupBookingManagement() {
 
   // Filter bookings based on search term and status
   const filteredBookings = bookings.filter(booking => {
-    const matchesSearch = 
-      booking.groupName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.corporateCompanyId.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.contactPerson.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch =
+      (booking.groupName || '').toLowerCase().includes(searchLower) ||
+      (booking.corporateCompanyId?.name || '').toLowerCase().includes(searchLower) ||
+      (booking.contactPerson?.name || '').toLowerCase().includes(searchLower);
     
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
     
@@ -767,7 +766,6 @@ function GroupBookingManagement() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            required
             placeholder="Search by group name, company, or contact person..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -807,7 +805,7 @@ function GroupBookingManagement() {
                           <h3 className="text-lg font-semibold text-gray-900">{booking.groupName}</h3>
                           <p className="text-sm text-gray-600 flex items-center">
                             <Building2 className="w-4 h-4 mr-1" />
-                            {booking.corporateCompanyId.name}
+                            {booking.corporateCompanyId?.name || 'Unknown Company'}
                           </p>
                         </div>
                       </div>
@@ -921,7 +919,7 @@ function GroupBookingManagement() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Company
                     </label>
-                    <p className="text-sm text-gray-900">{selectedBooking.corporateCompanyId.name}</p>
+                    <p className="text-sm text-gray-900">{selectedBooking.corporateCompanyId?.name || 'Unknown Company'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -948,7 +946,7 @@ function GroupBookingManagement() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Payment Method
                     </label>
-                    <p className="text-sm text-gray-900 capitalize">{selectedBooking.paymentMethod.replace('_', ' ')}</p>
+                    <p className="text-sm text-gray-900 capitalize">{(selectedBooking.paymentMethod || '').replace('_', ' ') || 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -961,13 +959,13 @@ function GroupBookingManagement() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Name
                     </label>
-                    <p className="text-sm text-gray-900">{selectedBooking.contactPerson.name}</p>
+                    <p className="text-sm text-gray-900">{selectedBooking.contactPerson?.name || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Designation
                     </label>
-                    <p className="text-sm text-gray-900">{selectedBooking.contactPerson.designation || 'N/A'}</p>
+                    <p className="text-sm text-gray-900">{selectedBooking.contactPerson?.designation || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -975,7 +973,7 @@ function GroupBookingManagement() {
                     </label>
                     <p className="text-sm text-gray-900 flex items-center">
                       <Mail className="w-4 h-4 mr-1 text-gray-400" />
-                      {selectedBooking.contactPerson.email}
+                      {selectedBooking.contactPerson?.email || 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -984,7 +982,7 @@ function GroupBookingManagement() {
                     </label>
                     <p className="text-sm text-gray-900 flex items-center">
                       <Phone className="w-4 h-4 mr-1 text-gray-400" />
-                      {selectedBooking.contactPerson.phone}
+                      {selectedBooking.contactPerson?.phone || 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -1172,7 +1170,7 @@ function GroupBookingManagement() {
                         Company
                       </label>
                       <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border">
-                        {editingBooking.corporateCompanyId.name}
+                        {editingBooking.corporateCompanyId?.name || 'Unknown Company'}
                       </p>
                       {/* Hidden field for corporate company ID */}
                       <input

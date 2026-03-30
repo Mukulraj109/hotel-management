@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Bell, User, Menu } from 'lucide-react';
+import { User, Menu } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/button';
-import { useNotifications, useNotificationStream } from '../../hooks/useNotifications';
+import { useNotificationStream } from '../../hooks/useNotifications';
 import NotificationDropdown from '../../components/notifications/NotificationDropdown';
 import SettingsDropdown from '../../components/settings/SettingsDropdown';
 
@@ -12,11 +13,17 @@ interface GuestHeaderProps {
 
 export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Connect to notification stream
   useNotificationStream();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
 
 
   return (
@@ -47,7 +54,10 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
           <div className="relative">
             <NotificationDropdown
               isOpen={isNotificationOpen}
-              onToggle={() => setIsNotificationOpen(!isNotificationOpen)}
+              onToggle={() => {
+                setIsNotificationOpen(prev => !prev);
+                setIsSettingsOpen(false);
+              }}
             />
           </div>
 
@@ -55,7 +65,10 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
           <div className="relative">
             <SettingsDropdown
               isOpen={isSettingsOpen}
-              onToggle={() => setIsSettingsOpen(!isSettingsOpen)}
+              onToggle={() => {
+                setIsSettingsOpen(prev => !prev);
+                setIsNotificationOpen(false);
+              }}
             />
           </div>
 
@@ -63,7 +76,7 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
               <p className="text-xs text-gray-500">
-                {user?.role === 'travel_agent' ? 'Travel Agent' : `${user?.loyalty?.tier} Member`}
+                {user?.role === 'travel_agent' ? 'Travel Agent' : `${user?.loyalty?.tier || 'Guest'} Member`}
               </p>
             </div>
           </div>
@@ -72,10 +85,10 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
             <User className="h-4 w-4 text-white" />
           </div>
           
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={logout}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
             className="hidden sm:block"
           >
             Logout

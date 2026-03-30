@@ -1,14 +1,20 @@
 // ✅ Currency formatter (₹ Indian Rupee, Indian number system)
 export function formatCurrency(amount: number, currency = 'INR'): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency,
-  }).format(amount);
+  }).format(safeAmount);
 }
 
 // ✅ Date formatter (short, long, time) in Indian style
-export function formatDate(date: string | Date, format: 'short' | 'long' | 'time' = 'short'): string {
+export function formatDate(date: string | Date | undefined | null, format: 'short' | 'long' | 'time' = 'short'): string {
+  if (!date) return '—';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
+
+  if (isNaN(dateObj.getTime())) {
+    return '—';
+  }
 
   if (format === 'time') {
     return new Intl.DateTimeFormat('en-IN', {
@@ -75,8 +81,10 @@ export function formatPercent(value: number, minimumFractionDigits = 1): string 
 }
 
 // ✅ Time formatter (for timestamps)
-export function formatTime(date: string | Date): string {
+export function formatTime(date: string | Date | undefined | null): string {
+  if (!date) return '—';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(dateObj.getTime())) return '—';
 
   return new Intl.DateTimeFormat('en-IN', {
     hour: 'numeric',
@@ -86,8 +94,10 @@ export function formatTime(date: string | Date): string {
 }
 
 // ✅ DateTime formatter (full date and time)
-export function formatDateTime(date: string | Date): string {
+export function formatDateTime(date: string | Date | undefined | null): string {
+  if (!date) return '—';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(dateObj.getTime())) return '—';
 
   return new Intl.DateTimeFormat('en-IN', {
     dateStyle: 'medium',
@@ -96,8 +106,10 @@ export function formatDateTime(date: string | Date): string {
 }
 
 // ✅ Relative time formatter (e.g., "2 hours ago", "in 3 days")
-export function formatRelativeTime(date: string | Date): string {
+export function formatRelativeTime(date: string | Date | undefined | null): string {
+  if (!date) return '—';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(dateObj.getTime())) return '—';
   const now = new Date();
   const diffInMs = dateObj.getTime() - now.getTime();
   const diffInSec = Math.floor(diffInMs / 1000);

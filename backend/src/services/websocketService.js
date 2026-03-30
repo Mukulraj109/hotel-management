@@ -379,6 +379,26 @@ class WebSocketService {
   }
 
   /**
+   * Alias for broadcastToHotel — several callers use this name.
+   */
+  async sendToHotel(hotelId, event, data) {
+    // When called with (hotelId, dataObject) instead of (hotelId, event, data),
+    // normalize the arguments.
+    if (typeof event === 'object' && data === undefined) {
+      data = event;
+      event = 'general:updated';
+    }
+    return this.broadcastToHotel(hotelId, event, data);
+  }
+
+  /**
+   * Alias for sendToUser — bookings route uses this name.
+   */
+  async notifyUser(userId, event, data) {
+    return this.sendToUser(userId, event, data);
+  }
+
+  /**
    * Get connection statistics
    */
   getStats() {

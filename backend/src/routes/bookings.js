@@ -91,16 +91,21 @@ router.get('/current-hotel', authenticate, ensureTenantContext, ensurePropertyAc
  */
 router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
-    days = 7,
-    page = 1,
-    limit = 50
+    days: rawDays = 7,
+    page: rawPage = 1,
+    limit: rawLimit = 50
   } = req.query;
+
+  // Sanitize and clamp query params to prevent NaN/Infinity/abuse
+  const days = Math.min(Math.max(parseInt(rawDays) || 7, 1), 90);
+  const page = Math.max(parseInt(rawPage) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(rawLimit) || 50, 1), 100);
 
   // Build query based on user role
   const today = new Date();
   today.setHours(0, 0, 0, 0); // Start of today
 
-  const futureDate = new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000);
+  const futureDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
   // Query for upcoming bookings:
   // - confirmed/pending: checkIn is today or in the future (within specified days)
@@ -135,7 +140,7 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   }
   // Admin sees bookings for their hotel, or all if no hotelId
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (page - 1) * limit;
 
   const bookings = await Booking.find(finalQuery)
     .populate('userId', 'name email phone')
@@ -144,7 +149,7 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
     .populate('corporateBooking.corporateCompanyId', 'name gstNumber')
     .sort({ checkIn: 1 }) // Sort by check-in date (ascending)
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(limit).lean();
 
   const total = await Booking.countDocuments(finalQuery);
 
@@ -189,10 +194,10 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
       totalUpcoming: total
     },
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page,
+      limit,
       total,
-      pages: Math.ceil(total / parseInt(limit))
+      pages: Math.ceil(total / limit)
     },
     data: bookings
   });
@@ -245,12 +250,20 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
 router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     status,
+    paymentStatus,
+    source,
+    search,
     checkIn,
     checkOut,
+    startDate,
+    endDate,
     type,
     page = 1,
     limit = 10
   } = req.query;
+
+  // Enforce max limit to prevent unbounded queries
+  const parsedLimit = Math.min(parseInt(limit) || 10, 100);
 
   // Build query based on user role
   const query = {};
@@ -271,14 +284,39 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     }
   }
 
+  // Filter by payment status
+  if (paymentStatus) {
+    query.paymentStatus = paymentStatus;
+  }
+
+  // Filter by booking source
+  if (source) {
+    query.source = source;
+  }
+
+  // Search by guest name, email, or booking number
+  if (search && search.trim()) {
+    const searchRegex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    query.$or = [
+      { bookingNumber: searchRegex },
+      { 'guestDetails.name': searchRegex }
+    ];
+    // Note: searching by populated userId fields (name/email) requires
+    // a post-query filter or a lookup aggregation. For bookingNumber
+    // and guestDetails.name we can filter directly.
+  }
+
   // Filter by booking type (corporate, individual)
   if (type === 'corporate') {
     query['corporateBooking.corporateCompanyId'] = { $exists: true, $ne: null };
   } else if (type === 'individual') {
-    query.$or = [
-      { 'corporateBooking.corporateCompanyId': { $exists: false } },
-      { 'corporateBooking.corporateCompanyId': null }
-    ];
+    // Only add $or for type filter if search didn't already set it
+    if (!query.$or) {
+      query.$or = [
+        { 'corporateBooking.corporateCompanyId': { $exists: false } },
+        { 'corporateBooking.corporateCompanyId': null }
+      ];
+    }
   }
 
   if (checkIn) {
@@ -289,7 +327,18 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     query.checkOut = { $lte: new Date(checkOut) };
   }
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  // Date range overlap filter: find bookings that overlap with [startDate, endDate]
+  if (startDate && endDate) {
+    const rangeStart = new Date(startDate);
+    const rangeEnd = new Date(endDate);
+    // A booking overlaps if: checkIn < rangeEnd AND checkOut > rangeStart
+    if (!query.checkIn) query.checkIn = {};
+    if (!query.checkOut) query.checkOut = {};
+    query.checkIn = { ...query.checkIn, $lte: rangeEnd };
+    query.checkOut = { ...query.checkOut, $gte: rangeStart };
+  }
+
+  const skip = (parseInt(page) - 1) * parsedLimit;
 
   const bookings = await Booking.find(query)
     .populate('userId', 'name email phone')
@@ -298,7 +347,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     .populate('corporateBooking.corporateCompanyId', 'name gstNumber')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(parsedLimit).lean();
 
   const total = await Booking.countDocuments(query);
 
@@ -324,14 +373,18 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   const totalRevenue = revenueStats.totalRevenue || 0;
   const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
+  const parsedPage = parseInt(page) || 1;
+  const totalPages = Math.ceil(total / parsedLimit) || 1;
+
   res.json({
     status: 'success',
     results: bookings.length,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: parsedPage,
+      current: parsedPage, // alias for frontend compatibility
+      limit: parsedLimit,
       total,
-      pages: Math.ceil(total / parseInt(limit))
+      pages: totalPages
     },
     stats: {
       total: totalBookings,
@@ -475,11 +528,17 @@ router.post('/check-availability', validate(mutationBaselineSchema), authenticat
     throw new ApplicationError('Check-out must be after check-in', 400);
   }
 
+  // Always use the authenticated user's hotelId to prevent cross-tenant availability checks
+  const resolvedHotelId = req.user.hotelId || hotelId;
+  if (!resolvedHotelId) {
+    throw new ApplicationError('Hotel context is required for availability check', 400);
+  }
+
   // Find overlapping bookings for the requested rooms and dates
   const overlappingBookings = await Booking.find({
-    hotelId: hotelId || req.user.hotelId,
+    hotelId: resolvedHotelId,
     'rooms.roomId': { $in: roomIds },
-    status: { $nin: ['cancelled', 'no_show'] },
+    status: { $nin: ['cancelled', 'no_show', 'checked_out'] },
     $or: [
       { checkIn: { $lt: checkOutDate }, checkOut: { $gt: checkInDate } }
     ]
@@ -626,18 +685,25 @@ router.post('/',
       status,
       idempotencyKey: clientIdempotencyKey,
       roomType, // Add roomType field for room-type bookings
-      // Payment information for walk-in bookings
+      // Payment information for walk-in bookings (legacy singular fields)
       paymentMethod,
       advanceAmount,
       paymentReference,
       paymentNotes,
+      // Payment information for walk-in bookings (new array-based fields from WalkInBooking)
+      paymentMethods: reqPaymentMethods,
+      paidAmount: reqPaidAmount,
+      remainingAmount: reqRemainingAmount,
+      // Walk-in booking metadata
+      source: reqSource,
+      checkInTime: reqCheckInTime,
       // Walk-in guest details for auto-registration
       guestName,
       guestEmail,
       guestPhone
     } = req.body;
 
-    logger.debug('Booking payment fields', { paymentMethod, hasAdvanceAmount: !!advanceAmount });
+    logger.debug('Booking payment fields', { paymentMethod, hasAdvanceAmount: !!advanceAmount, hasPaymentMethods: !!(reqPaymentMethods && reqPaymentMethods.length) });
 
     const session = await mongoose.startSession();
 
@@ -665,27 +731,76 @@ router.post('/',
 
         // Create booking - use admin-provided values when available
         // Prepare payment details if payment information is provided
-        logger.debug('Payment processing check', { paymentMethod, hasAdvanceAmount: !!advanceAmount });
+        // Supports both legacy singular fields (paymentMethod/advanceAmount) and
+        // new array-based fields (paymentMethods[]/paidAmount) from WalkInBooking
+        logger.debug('Payment processing check', { paymentMethod, hasAdvanceAmount: !!advanceAmount, hasPaymentMethods: !!(reqPaymentMethods && reqPaymentMethods.length) });
 
-        const paymentDetails = {};
+        // IMPORTANT: This object is spread into the booking document at the TOP LEVEL.
+        // The key MUST be 'paymentDetails' (matching the schema subdocument name) so
+        // Mongoose maps it correctly. Do NOT spread individual sub-fields at top level.
+        let bookingPaymentData = {};
         const numericAdvanceAmount = Number(advanceAmount);
 
-        if (paymentMethod && numericAdvanceAmount > 0) {
-          paymentDetails.paymentMethods = [{
-            method: paymentMethod,
-            amount: numericAdvanceAmount,
-            reference: paymentReference || '',
-            processedBy: req.user._id,
-            processedAt: new Date(),
-            notes: paymentNotes || 'Walk-in booking payment'
-          }];
-          paymentDetails.totalPaid = numericAdvanceAmount;
-          paymentDetails.remainingAmount = Math.max(0, (totalAmount || calculatedTotal) - numericAdvanceAmount);
-          paymentDetails.collectedAt = new Date();
-          paymentDetails.collectedBy = req.user._id;
-          logger.debug('Payment details created for booking');
+        if (Array.isArray(reqPaymentMethods) && reqPaymentMethods.length > 0) {
+          // New array-based payment format from WalkInBooking component
+          const walkinTotalPaid = reqPaymentMethods.reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0);
+          bookingPaymentData = {
+            paymentDetails: {
+              paymentMethods: reqPaymentMethods.map(pm => ({
+                method: pm.method || 'cash',
+                amount: Number(pm.amount) || 0,
+                reference: pm.reference || '',
+                processedBy: req.user._id,
+                processedAt: new Date(),
+                notes: pm.notes || 'Walk-in booking payment'
+              })),
+              totalPaid: walkinTotalPaid,
+              remainingAmount: Math.max(0, (totalAmount || calculatedTotal) - walkinTotalPaid),
+              collectedAt: new Date(),
+              collectedBy: req.user._id
+            }
+          };
+          logger.debug('Payment details created from paymentMethods array', { totalPaid: walkinTotalPaid });
+        } else if (paymentMethod && numericAdvanceAmount > 0) {
+          // Legacy singular payment format
+          bookingPaymentData = {
+            paymentDetails: {
+              paymentMethods: [{
+                method: paymentMethod,
+                amount: numericAdvanceAmount,
+                reference: paymentReference || '',
+                processedBy: req.user._id,
+                processedAt: new Date(),
+                notes: paymentNotes || 'Walk-in booking payment'
+              }],
+              totalPaid: numericAdvanceAmount,
+              remainingAmount: Math.max(0, (totalAmount || calculatedTotal) - numericAdvanceAmount),
+              collectedAt: new Date(),
+              collectedBy: req.user._id
+            }
+          };
+          logger.debug('Payment details created from legacy singular fields');
         } else {
-          logger.debug('Payment skipped - conditions not met');
+          logger.debug('Payment skipped - no payment data provided');
+        }
+
+        // Ensure paymentStatus is consistent with actual payment data.
+        // Since Booking.create([...]) uses insertMany and does NOT run pre-save hooks,
+        // we must validate consistency here at the route handler level.
+        let resolvedPaymentStatus = paymentStatus || 'pending';
+        if (bookingPaymentData.paymentDetails) {
+          const pd = bookingPaymentData.paymentDetails;
+          const bookingTotal = totalAmount || calculatedTotal;
+          if (pd.totalPaid >= bookingTotal && bookingTotal > 0) {
+            resolvedPaymentStatus = 'paid';
+          } else if (pd.totalPaid > 0) {
+            resolvedPaymentStatus = 'partially_paid';
+          } else {
+            resolvedPaymentStatus = 'pending';
+          }
+        } else if (resolvedPaymentStatus === 'paid') {
+          // paymentStatus says 'paid' but no payment data was provided -- reset to pending
+          resolvedPaymentStatus = 'pending';
         }
 
         // Look up rate plan for cancellation policy snapshot
@@ -750,8 +865,10 @@ router.post('/',
           currency: currency || 'INR',
           idempotencyKey,
           status: status || 'pending',
-          paymentStatus: paymentStatus || 'pending',
+          paymentStatus: resolvedPaymentStatus,
           roomType, // Add roomType for room-type preference bookings
+          ...(reqSource ? { source: reqSource } : {}),
+          ...(reqCheckInTime ? { checkInTime: new Date(reqCheckInTime) } : {}),
           ...(holdPrimaryType
             ? {
                 primaryRoomTypeId: new mongoose.Types.ObjectId(String(req.body.roomTypeId)),
@@ -759,7 +876,7 @@ router.post('/',
               }
             : {}),
           ratePlanSnapshot,
-          ...paymentDetails // Spread payment details if provided
+          ...bookingPaymentData // Spread as { paymentDetails: { paymentMethods, totalPaid, remainingAmount, ... } }
         }], { session });
 
         // Keep RoomAvailability calendar aligned when specific rooms are assigned (FAB-004/005)
@@ -814,8 +931,8 @@ router.post('/',
                 quantity: nights,
                 unitPrice: room.rate,
                 totalPrice: room.rate * nights,
-                taxRate: 10, // Standard 10% tax rate
-                taxAmount: (room.rate * nights * 10) / 100
+                taxRate: 18, // 18% GST standard rate
+                taxAmount: Math.round((room.rate * nights * 18) / 100 * 100) / 100
               };
             })
           : [{
@@ -876,10 +993,11 @@ router.post('/',
             });
           }
 
-          // Notify staff roles specifically
+          // Notify staff roles specifically (including frontdesk)
           await websocketService.broadcastToRole('staff', 'booking:created', booking[0]);
           await websocketService.broadcastToRole('admin', 'booking:created', booking[0]);
           await websocketService.broadcastToRole('manager', 'booking:created', booking[0]);
+          await websocketService.broadcastToRole('frontdesk', 'booking:created', booking[0]);
         } catch (wsError) {
           // Log WebSocket errors but don't fail the booking creation
           logger.warn('Failed to send real-time booking notification', { error: wsError.message });
@@ -1101,6 +1219,90 @@ router.patch('/:id',
       metadata: {
         priority: 'medium',
         tags: ['booking_update']
+      }
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        booking: updatedBooking
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/assign-rooms:
+ *   patch:
+ *     summary: Assign specific rooms to a booking
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Rooms assigned successfully
+ */
+router.patch('/:id/assign-rooms',
+  validate(mutationBaselineSchema),
+  authenticate,
+  ensureTenantContext,
+  authorizePolicy('bookings', 'update'),
+  ensurePropertyAccess,
+  catchAsync(async (req, res) => {
+    const { roomAssignments } = req.body;
+
+    if (!roomAssignments || !Array.isArray(roomAssignments) || roomAssignments.length === 0) {
+      throw new ApplicationError('Room assignments are required', 400);
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    const bookingBeforeAssign = bookingAuditService.buildSnapshot(booking);
+
+    // Look up rooms by number and assign them
+    const roomIds = [];
+    for (const assignment of roomAssignments) {
+      const room = await Room.findOne({
+        roomNumber: assignment.roomNumber,
+        hotelId: booking.hotelId
+      });
+      if (!room) {
+        throw new ApplicationError(`Room ${assignment.roomNumber} not found`, 404);
+      }
+      roomIds.push({ roomId: room._id, roomType: assignment.roomType || room.type });
+    }
+
+    booking.rooms = roomIds;
+    await booking.save();
+
+    const updatedBooking = await Booking.findById(req.params.id)
+      .populate([
+        { path: 'rooms.roomId', select: 'roomNumber type baseRate currentRate' },
+        { path: 'userId', select: 'name email phone' },
+        { path: 'hotelId', select: 'name address contact' }
+      ]);
+
+    await bookingAuditService.logBookingMutation({
+      booking: updatedBooking,
+      changeType: 'update',
+      user: req.user,
+      req,
+      oldValues: bookingBeforeAssign,
+      newValues: bookingAuditService.buildSnapshot(updatedBooking),
+      metadata: {
+        priority: 'medium',
+        tags: ['room_assignment']
       }
     });
 
@@ -2007,6 +2209,60 @@ router.patch('/:id/check-out',
             bookingNumber: updatedBooking.bookingNumber,
             roomCount: updatedBooking.rooms.length
           });
+
+          // AUTO-CREATE housekeeping tasks for dirty rooms
+          const Housekeeping = mongoose.model('Housekeeping');
+          const housekeepingTasks = roomIdsForDirty.map(roomId => ({
+            hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
+            roomId: roomId,
+            taskType: 'checkout_clean',
+            type: 'checkout_clean',
+            title: `Checkout Cleaning - Room ${updatedBooking.rooms.find(r => (r.roomId._id || r.roomId).toString() === roomId.toString())?.roomId?.roomNumber || 'Unknown'}`,
+            description: `Post-checkout cleaning for booking ${updatedBooking.bookingNumber}. Guest: ${updatedBooking.userId?.name || 'Unknown'}`,
+            priority: 'high',
+            status: 'pending',
+            estimatedDuration: 30,
+            notes: `Auto-created on checkout of booking ${updatedBooking.bookingNumber}`
+          }));
+
+          if (housekeepingTasks.length > 0) {
+            await Housekeeping.insertMany(housekeepingTasks, { session });
+            logger.info('Auto-created housekeeping tasks at checkout', {
+              bookingNumber: updatedBooking.bookingNumber,
+              taskCount: housekeepingTasks.length
+            });
+
+            // Try to auto-assign to available housekeeping staff (non-blocking)
+            try {
+              const User = mongoose.model('User');
+              const availableStaff = await User.find({
+                hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
+                role: { $in: ['housekeeping', 'staff'] },
+                isActive: true
+              }).select('_id name').lean().limit(10);
+
+              if (availableStaff.length > 0) {
+                // Round-robin assign staff to tasks
+                const createdTasks = await Housekeeping.find({
+                  hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
+                  status: 'pending',
+                  taskType: 'checkout_clean',
+                  assignedToUserId: null
+                }).sort({ createdAt: -1 }).limit(housekeepingTasks.length);
+
+                for (let i = 0; i < createdTasks.length; i++) {
+                  const staff = availableStaff[i % availableStaff.length];
+                  await Housekeeping.updateOne(
+                    { _id: createdTasks[i]._id },
+                    { $set: { assignedToUserId: staff._id, assignedTo: staff._id, status: 'assigned' } }
+                  );
+                }
+                logger.info('Auto-assigned housekeeping staff', { staffCount: availableStaff.length });
+              }
+            } catch (assignError) {
+              logger.warn('Failed to auto-assign housekeeping staff', { error: assignError.message });
+            }
+          }
         }
       });
     } finally {

@@ -9,6 +9,7 @@ import { Calendar, TrendingUp, TrendingDown, Users, Package, Clock, AlertTriangl
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import { formatCurrency } from '../../utils/currencyUtils';
+import { toast } from 'react-hot-toast';
 
 interface StaffEfficiency {
   staffId: string;
@@ -103,8 +104,8 @@ const HousekeepingInventoryDashboard: React.FC = () => {
           peakHours: trendsData.data.peakHours
         });
       }
-    } catch {
-      // Error handled silently
+    } catch (error: unknown) {
+      toast.error('Failed to load inventory dashboard data');
     } finally {
       setLoading(false);
     }

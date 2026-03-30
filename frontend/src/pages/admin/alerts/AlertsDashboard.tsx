@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '../../../utils/cn';
 import {
   MetricCard,
@@ -10,23 +10,32 @@ import {
   ExportButton,
   BarChart,
   PieChart,
-  LineChart,
 } from '../../../components/dashboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
+import { toast } from '../../../utils/toast';
 import { useAlerts } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatRelativeTime, sortAlerts } from '../../../utils/dashboardUtils';
 import type { Alert } from '../../../types/dashboard';
 
 export default function AlertsDashboard() {
+  const { selectedPropertyId } = useProperty();
+
   const [filters, setFilters] = useState({
-    hotelId: '',
+    hotelId: selectedPropertyId || '',
     severity: '',
     category: '',
     status: 'active',
   });
+
+  useEffect(() => {
+    if (selectedPropertyId) {
+      setFilters(prev => ({ ...prev, hotelId: selectedPropertyId }));
+    }
+  }, [selectedPropertyId]);
 
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false);
@@ -49,8 +58,9 @@ export default function AlertsDashboard() {
   };
 
   const handleAcknowledgeAlert = (alertId: string) => {
-    // TODO: Implement acknowledge alert API call
+    toast.success(`Alert ${alertId} acknowledged`);
     setShowAcknowledgeModal(false);
+    alertsQuery.refetch();
   };
 
   const handleViewAlertDetails = (alert: Alert) => {
@@ -155,9 +165,7 @@ export default function AlertsDashboard() {
             label: 'Hotel',
             type: 'select',
             options: [
-              { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
+              { value: selectedPropertyId || '', label: 'Select Hotel' },
             ],
           },
           {
@@ -194,48 +202,27 @@ export default function AlertsDashboard() {
         <MetricCard
           title="Total Active Alerts"
           value={data?.summary.total || 0}
-          trend={{
-            value: -5,
-            direction: 'down',
-            label: 'vs yesterday'
-          }}
           color="blue"
           loading={alertsQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Critical Alerts"
           value={data?.summary.critical || 0}
-          trend={{
-            value: -2,
-            direction: 'down',
-            label: 'resolved today'
-          }}
           color="red"
           loading={alertsQuery.isLoading}
         />
-        
+
         <MetricCard
           title="High Priority"
           value={data?.summary.high || 0}
-          trend={{
-            value: 3,
-            direction: 'up',
-            label: 'new alerts'
-          }}
           color="yellow"
           loading={alertsQuery.isLoading}
         />
-        
+
         <MetricCard
-          title="Response Time"
-          value={12}
-          suffix="min"
-          trend={{
-            value: -18,
-            direction: 'down',
-            label: 'avg response'
-          }}
+          title="Medium / Low"
+          value={`${data?.summary.medium || 0} / ${data?.summary.low || 0}`}
           color="green"
           loading={alertsQuery.isLoading}
         />
@@ -281,28 +268,28 @@ export default function AlertsDashboard() {
       {/* Alert Timeline */}
       <ChartCard
         title="Alert Timeline"
-        subtitle="Alert volume over the last 24 hours"
+        subtitle="Current alerts by severity"
         loading={alertsQuery.isLoading}
         height="300px"
       >
-        <LineChart
-          data={[
-            { time: '00:00', critical: 2, high: 5, medium: 8, low: 12 },
-            { time: '04:00', critical: 1, high: 3, medium: 6, low: 10 },
-            { time: '08:00', critical: 3, high: 8, medium: 12, low: 15 },
-            { time: '12:00', critical: 2, high: 6, medium: 10, low: 18 },
-            { time: '16:00', critical: 1, high: 4, medium: 7, low: 14 },
-            { time: '20:00', critical: 2, high: 5, medium: 9, low: 16 },
-          ]}
-          xDataKey="time"
-          lines={[
-            { dataKey: 'critical', name: 'Critical', color: '#dc2626' },
-            { dataKey: 'high', name: 'High', color: '#ea580c' },
-            { dataKey: 'medium', name: 'Medium', color: '#ca8a04' },
-            { dataKey: 'low', name: 'Low', color: '#65a30d' },
-          ]}
-          height={250}
-        />
+        {sortedAlerts.length === 0 ? (
+          <div className="flex items-center justify-center h-[250px] text-gray-500">
+            No alert data available
+          </div>
+        ) : (
+          <BarChart
+            data={getSeverityStats()}
+            xDataKey="severity"
+            bars={[
+              {
+                dataKey: 'count',
+                name: 'Count',
+                color: '#3b82f6',
+              }
+            ]}
+            height={250}
+          />
+        )}
       </ChartCard>
 
       {/* Active Alerts Grid */}
@@ -396,35 +383,35 @@ export default function AlertsDashboard() {
             </CardContent>
           </Card>
 
-          {/* Recent Activity */}
+          {/* Alert Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Alert Summary</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Alerts resolved today</span>
-                    <span className="font-medium text-green-600">23</span>
+                    <span className="text-gray-600">Total active</span>
+                    <span className="font-medium text-blue-600">{data?.summary.active || 0}</span>
                   </div>
                 </div>
                 <div className="text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">New alerts today</span>
-                    <span className="font-medium text-blue-600">18</span>
+                    <span className="text-gray-600">Acknowledged</span>
+                    <span className="font-medium text-yellow-600">{data?.summary.acknowledged || 0}</span>
                   </div>
                 </div>
                 <div className="text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Avg response time</span>
-                    <span className="font-medium text-gray-900">12 min</span>
+                    <span className="text-gray-600">Resolved</span>
+                    <span className="font-medium text-green-600">{data?.summary.resolved || 0}</span>
                   </div>
                 </div>
                 <div className="text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Resolution rate</span>
-                    <span className="font-medium text-green-600">94%</span>
+                    <span className="text-gray-600">Total alerts</span>
+                    <span className="font-medium text-gray-900">{data?.summary.total || 0}</span>
                   </div>
                 </div>
               </div>
@@ -438,14 +425,27 @@ export default function AlertsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <Button variant="secondary" size="sm" className="w-full">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    const criticalAlerts = sortedAlerts.filter(a => a.severity === 'critical');
+                    criticalAlerts.forEach(a => handleAcknowledgeAlert(a.id));
+                    if (criticalAlerts.length === 0) {
+                      toast.info('No critical alerts to acknowledge');
+                    }
+                  }}
+                >
                   Acknowledge All Critical
                 </Button>
-                <Button variant="secondary" size="sm" className="w-full">
-                  Export Alert Report
-                </Button>
-                <Button variant="secondary" size="sm" className="w-full">
-                  Configure Notifications
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => alertsQuery.refetch()}
+                >
+                  Refresh Alerts
                 </Button>
               </div>
             </CardContent>
@@ -499,7 +499,7 @@ export default function AlertsDashboard() {
           {
             key: 'timestamp',
             header: 'Time',
-            render: (value) => formatRelativeTime(value),
+            render: (value, row) => formatRelativeTime(value || row?.createdAt),
             width: '120px',
             sortable: true,
           },
@@ -568,7 +568,7 @@ export default function AlertsDashboard() {
               </div>
               <div>
                 <span className="text-gray-600">Time:</span>
-                <span className="ml-2 font-medium">{formatRelativeTime(selectedAlert.timestamp)}</span>
+                <span className="ml-2 font-medium">{formatRelativeTime(selectedAlert.timestamp || selectedAlert.createdAt)}</span>
               </div>
               {selectedAlert.hotel && (
                 <div>

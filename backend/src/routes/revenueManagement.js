@@ -51,7 +51,7 @@ router.get('/analytics', authorizePolicy('revenueManagement', 'readAccess'), rev
 router.get('/analytics/summary', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getRevenueSummary);
 
 // Optimization Routes
-router.get('/optimization/recommendations', authorizePolicy('revenueManagement', 'manageAccess'), revenueController.getOptimizationRecommendations);
+router.get('/optimization/recommendations', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getOptimizationRecommendations);
 
 // Dashboard Metrics Route
 router.get('/dashboard/metrics', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getDashboardMetrics);

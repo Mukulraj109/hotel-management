@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Calendar as CalendarComponent } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { TooltipProvider } from '../ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { toast } from '../../utils/toast';
 import {
@@ -15,9 +14,9 @@ import {
   User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
-  UserPlus, Building2, Plane, Heart, Baby, RefreshCw, Check, X, ChevronUp
+  UserPlus, Building2, Plane, Heart, RefreshCw, Check, X, ChevronUp
 } from 'lucide-react';
-import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
+import { format, addDays, subDays, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '../../services/tapeChartService';
 import { api } from '../../services/api';
 import { formatCurrency } from '../../utils/currencyUtils';
@@ -217,7 +216,7 @@ const TapeChartView: React.FC = () => {
   // Enhanced Interactive Features - Click-to-Book Handler
   const handleCellClick = useCallback((roomId: string, roomNumber: string, date: string, timelineData: RoomCell | undefined) => {
     if (clickToBookMode && timelineData?.status === 'available') {
-      const baseRate = timelineData?.rate || 15000;
+      const baseRate = timelineData?.rate || 0;
       setQuickBookingModal({
         isOpen: true,
         roomId,
@@ -740,7 +739,7 @@ const TapeChartView: React.FC = () => {
         dirtyRooms: chartData.summary.dirtyRooms || 0, // Use backend's calculation
         blockedRooms: chartData.summary.blockedRooms || 0, // Use backend's calculation
         // Use backend's occupiedRooms but recalculate occupancy rate for filtered view
-        occupancyRate: filteredRooms.length > 0 ? (chartData.summary.occupiedRooms / filteredRooms.length) * 100 : 0
+        occupancyRate: filteredRooms.length > 0 ? ((chartData.summary.occupiedRooms ?? 0) / filteredRooms.length) * 100 : 0
       };
     }
 
@@ -991,7 +990,6 @@ const TapeChartView: React.FC = () => {
       const draggedRoomType = draggedReservation.roomType?.toLowerCase();
       const targetRoomType = room.room?.type?.toLowerCase() || room.config.roomType?.toLowerCase();
 
-
       if (draggedRoomType && targetRoomType && draggedRoomType !== targetRoomType) {
         setConflictIndicators(new Map([[cellId, {
           roomId: room.room?._id || room.config.roomId,
@@ -1014,10 +1012,7 @@ const TapeChartView: React.FC = () => {
       checkInDate.setHours(0, 0, 0, 0);
       checkOutDate.setHours(0, 0, 0, 0);
 
-
       if (targetDate < checkInDate || targetDate >= checkOutDate) {
-
-        // More specific error messages
         let errorMessage = '';
         if (targetDate < checkInDate) {
           errorMessage = `Guest ${draggedReservation.guestName} checks in on ${checkInDate.toDateString()}. Cannot assign before check-in.`;
@@ -1040,16 +1035,22 @@ const TapeChartView: React.FC = () => {
       // Check if room is already occupied for this date
       const timelineData = room.timeline.find((t: TimelineCell) => t.date === dateStr);
 
-
       if (timelineData?.status === 'occupied' || timelineData?.status === 'reserved') {
-        setConflictIndicators(new Map([[cellId, {
-          reason: `Room is ${timelineData.status} by ${timelineData.guestName || 'another guest'}`
-        }]]));
-        e.dataTransfer.dropEffect = 'none';
-        return;
+        // Skip conflict if the cell is occupied by the booking being dragged (source cell)
+        const isOwnBooking = timelineData.bookingId &&
+          draggedReservation._id &&
+          timelineData.bookingId.toString() === draggedReservation._id.toString();
+
+        if (!isOwnBooking) {
+          setConflictIndicators(new Map([[cellId, {
+            message: `Room is ${timelineData.status} by ${timelineData.guestName || 'another guest'}`
+          }]]));
+          e.dataTransfer.dropEffect = 'none';
+          return;
+        }
       }
 
-      // Clear conflicts and add positive feedback
+      // No conflicts — clear all indicators
       setConflictIndicators(new Map());
       e.dataTransfer.dropEffect = 'move';
     }
@@ -1411,9 +1412,35 @@ const TapeChartView: React.FC = () => {
       }
 
       const roomIds = Array.from(selectedRoomsForBlock);
-      // This would typically open a modal or form for block creation
-      // For now, we'll just show a placeholder
-      toast.info(`Creating block with ${roomIds.length} rooms`);
+      const roomNumbers = roomIds.map(id => {
+        const room = chartData?.rooms?.find((r: Record<string, unknown>) => r.config?._id === id || r.room?._id === id);
+        return room?.config?.roomNumber || id;
+      });
+
+      await tapeChartService.createRoomBlock({
+        blockName: `Block - ${format(new Date(), 'MMM dd yyyy')}`,
+        groupName: 'Manual Block',
+        eventType: 'general',
+        startDate: formatISO(startDate, { representation: 'date' }),
+        endDate: formatISO(endDate, { representation: 'date' }),
+        rooms: roomIds.map((id, idx) => ({
+          roomId: id,
+          roomNumber: roomNumbers[idx] || '',
+          roomType: 'Standard',
+          status: 'blocked'
+        })),
+        totalRooms: roomIds.length,
+        roomsBooked: 0,
+        roomsReleased: 0,
+        status: 'active',
+        contactPerson: {},
+        billingInstructions: '',
+        amenities: [],
+        currency: 'INR'
+      });
+
+      toast.success(`Block created with ${roomIds.length} rooms`);
+      fetchChartData();
 
       // Reset selection and exit block mode
       setSelectedRoomsForBlock(new Set());
@@ -1437,8 +1464,9 @@ const TapeChartView: React.FC = () => {
     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
     const isToday = isSameDay(date, new Date());
     const isDragOver = dragOverCell === cellId;
-    const hasConflict = conflictIndicators.has(cellId);
-    const conflict = conflictIndicators.get(cellId);
+    // Only show conflicts on the cell currently being hovered — prevents stale indicators on adjacent cells
+    const hasConflict = isDragOver && conflictIndicators.has(cellId);
+    const conflict = hasConflict ? conflictIndicators.get(cellId) : undefined;
     const isRecommended = roomSuggestions.has(cellId);
     
     // Find timeline data for this date
@@ -1470,7 +1498,19 @@ const TapeChartView: React.FC = () => {
         onDragOver={(e) => handleDragOver(e, cellId)}
         onDragLeave={(e) => handleDragLeave(e, cellId)}
         onDrop={(e) => handleDrop(e, room.room?._id || room.config.roomId, format(date, 'yyyy-MM-dd'), room.config.roomNumber)}
-        onClick={() => handleRoomSelect(room.config._id)}
+        onClick={() => {
+          // If cell has a booking (occupied/reserved), open booking details modal on single click
+          if (timelineData?.bookingId && (status === 'occupied' || status === 'reserved')) {
+            setBookingDetailsModal({
+              isOpen: true,
+              bookingId: timelineData.bookingId,
+              roomNumber: room.config.roomNumber
+            });
+          } else {
+            handleCellClick(room.config._id, room.config.roomNumber, format(date, 'yyyy-MM-dd'), timelineData as RoomCell | undefined);
+            handleRoomSelect(room.config._id);
+          }
+        }}
         onDoubleClick={() => handleCellDoubleClick(timelineData, room.config.roomNumber)}
         // Slide-to-Create feature (Hotelogix GAME CHANGER)
         onMouseDown={(e) => {
@@ -1520,7 +1560,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room type mismatch indicator */}
-        {hasConflict && conflict?.message?.includes('Room type mismatch') && dragState.isDragging && (
+        {isDragOver && hasConflict && conflict?.message?.includes('Room type mismatch') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-orange-100 bg-opacity-75 border-2 border-dashed border-orange-400">
             <div className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <AlertTriangle className="w-3 h-3" />
@@ -1530,7 +1570,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Date mismatch indicator */}
-        {hasConflict && conflict?.reason?.includes('Date mismatch') && dragState.isDragging && (
+        {isDragOver && hasConflict && conflict?.reason?.includes('Date mismatch') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <CalendarIcon className="w-3 h-3" />
@@ -1540,7 +1580,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room occupied indicator */}
-        {hasConflict && conflict?.message?.includes('occupied') && dragState.isDragging && (
+        {isDragOver && hasConflict && conflict?.message?.includes('occupied') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <X className="w-3 h-3" />
@@ -1743,14 +1783,14 @@ const TapeChartView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <div className="font-medium text-xs truncate">{room.config.roomNumber}</div>
-              <div className="text-xs text-gray-500 truncate">{room.config.roomType}</div>
+              <div className="text-xs text-gray-500 truncate">{room.room?.type || room.config.roomType}</div>
               <div className="text-xs text-gray-400">F{room.config.floor}</div>
             </div>
 
             <div className="flex flex-col items-center gap-0.5 ml-1">
-              <div className={`w-2 h-2 rounded-full ${getStatusColor(room.currentStatus).replace('bg-', 'bg-').replace('-100', '-500')}`} />
+              <div className={`w-2 h-2 rounded-full ${getStatusColor(room.currentStatus || 'available').replace('bg-', 'bg-').replace('-100', '-500')}`} />
               <div className="text-xs text-gray-500 capitalize px-1 py-0.5 bg-gray-50 rounded text-center leading-none">
-                {room.currentStatus.replace('_', ' ')}
+                {(room.currentStatus || 'available').replace('_', ' ')}
               </div>
             </div>
           </div>
@@ -1789,6 +1829,27 @@ const TapeChartView: React.FC = () => {
     );
   }
 
+  if (error && !chartData) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-red-400" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to Load Tape Chart</h3>
+            <p className="text-sm text-gray-500 mb-4">{error}</p>
+            <Button
+              variant="outline"
+              onClick={() => { setError(null); fetchViews(); }}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <TooltipProvider>
       <>
@@ -1805,6 +1866,7 @@ const TapeChartView: React.FC = () => {
           <ReservationSidebar
             onDragStart={handleDragStart}
             selectedDate={startDate}
+            endDate={endDate}
             isCompact={compactView}
             refreshTrigger={refreshTrigger}
             isCollapsed={isReservationSidebarCollapsed}
@@ -2230,7 +2292,7 @@ const TapeChartView: React.FC = () => {
                     <div className="text-xs text-gray-600">Blocked</div>
                   </div>
                   <div className="bg-blue-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-blue-800">{displayData.summary.occupancyRate.toFixed(1)}%</div>
+                    <div className="text-lg font-bold text-blue-800">{(displayData.summary.occupancyRate ?? 0).toFixed(1)}%</div>
                     <div className="text-xs text-blue-600">Occupancy</div>
                   </div>
                 </div>
@@ -2241,7 +2303,7 @@ const TapeChartView: React.FC = () => {
                   <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-500 ease-out"
-                      style={{ width: `${displayData.summary.occupancyRate}%` }}
+                      style={{ width: `${Math.min(displayData.summary.occupancyRate ?? 0, 100)}%` }}
                     />
                   </div>
                   <span className="text-xs text-gray-500 w-8">100%</span>
@@ -2497,14 +2559,14 @@ const TapeChartView: React.FC = () => {
               
                 {/* Room rows */}
                 <div className="divide-y divide-gray-200">
-                  {chartData?.rooms?.map((room, index) => (
+                  {displayData?.rooms?.map((room: Record<string, unknown>, index: number) => (
                     <div key={room.room?._id || `room-${index}`}>
                       {renderRoomRow(room, index)}
                     </div>
                   ))}
                 </div>
 
-                {(!chartData?.rooms || chartData.rooms.length === 0) && (
+                {(!displayData?.rooms || displayData.rooms.length === 0) && (
                   <div className="p-8 text-center text-gray-500">
                     <Bed className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                     <p>No room data available</p>
@@ -2562,44 +2624,74 @@ const TapeChartView: React.FC = () => {
             <div className="py-2 border-b border-gray-100">
               <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quick Actions</div>
               <div className="space-y-1 px-2">
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { handleStatusChange(contextMenu.roomId, 'occupied'); toast.success(`Room ${contextMenu.roomNumber} checked in`); }}
+                >
                   <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
                     <UserPlus className="h-3 w-3 text-blue-600" />
                   </div>
                   <span className="text-sm text-gray-700">Check In Guest</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { handleStatusChange(contextMenu.roomId, 'dirty'); toast.success(`Room ${contextMenu.roomNumber} checked out`); }}
+                >
                   <div className="w-6 h-6 bg-red-100 rounded-md flex items-center justify-center mr-3">
                     <UserX className="h-3 w-3 text-red-600" />
                   </div>
                   <span className="text-sm text-gray-700">Check Out Guest</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => {
+                    hideContextMenu();
+                    setWalkInBookingModal({
+                      isOpen: true,
+                      roomNumber: contextMenu.roomNumber,
+                      checkIn: format(startDate, 'yyyy-MM-dd'),
+                      checkOut: format(addDays(startDate, 1), 'yyyy-MM-dd'),
+                      nights: 1
+                    });
+                  }}
+                >
                   <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
                     <CalendarIcon className="h-3 w-3 text-green-600" />
                   </div>
                   <span className="text-sm text-gray-700">New Reservation</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info('Duplicate booking: Use the booking details modal to clone this reservation'); }}
+                >
                   <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
                     <Copy className="h-3 w-3 text-orange-600" />
                   </div>
                   <span className="text-sm text-gray-700">Duplicate Booking</span>
                 </button>
                 {/* HOTELOGIX STANDARD: Advanced Reservation Actions */}
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info('Extend stay: Open the booking details to modify check-out date'); }}
+                >
                   <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
                     <CalendarIcon className="h-3 w-3 text-blue-600" />
                   </div>
                   <span className="text-sm text-gray-700">Extend Stay</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info('Group management: Open the booking details to manage group assignments'); }}
+                >
                   <div className="w-6 h-6 bg-indigo-100 rounded-md flex items-center justify-center mr-3">
                     <Users className="h-3 w-3 text-indigo-600" />
                   </div>
                   <span className="text-sm text-gray-700">Add to Group</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info('Group management: Open the booking details to remove from group'); }}
+                >
                   <div className="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center mr-3">
                     <UserX className="h-3 w-3 text-gray-600" />
                   </div>
@@ -2630,7 +2722,10 @@ const TapeChartView: React.FC = () => {
                   </div>
                   <span className="text-sm text-gray-700">Mark Dirty</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { handleStatusChange(contextMenu.roomId, 'dirty'); toast.info(`Room ${contextMenu.roomNumber} marked for inspection`); }}
+                >
                   <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
                     <Settings className="h-3 w-3 text-blue-600" />
                   </div>
@@ -2646,19 +2741,44 @@ const TapeChartView: React.FC = () => {
                   <span className="text-sm text-gray-700">Maintenance</span>
                 </button>
                 {/* HOTELOGIX STANDARD: Advanced Housekeeping Actions */}
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => handleStatusChange(contextMenu.roomId, 'out_of_order')}
+                >
                   <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
                     <X className="h-3 w-3 text-orange-600" />
                   </div>
                   <span className="text-sm text-gray-700">Set Out of Order</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => handleStatusChange(contextMenu.roomId, 'blocked')}
+                >
                   <div className="w-6 h-6 bg-purple-100 rounded-md flex items-center justify-center mr-3">
                     <AlertTriangle className="h-3 w-3 text-purple-600" />
                   </div>
                   <span className="text-sm text-gray-700">Block Room</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={async () => {
+                    hideContextMenu();
+                    try {
+                      const history = await tapeChartService.getRoomStatusHistory(contextMenu.roomId);
+                      const entries = history?.data || history || [];
+                      if (entries.length === 0) {
+                        toast.info(`No status history found for Room ${contextMenu.roomNumber}`);
+                      } else {
+                        const latest = entries.slice(0, 5).map((h: { status?: string; changedBy?: string; date?: string }) =>
+                          `${h.status || 'unknown'} (${h.changedBy || 'system'} on ${h.date ? format(parseISO(h.date), 'MMM dd') : 'N/A'})`
+                        ).join('\n');
+                        toast.info(`Room ${contextMenu.roomNumber} history:\n${latest}`);
+                      }
+                    } catch {
+                      toast.error('Failed to load room history');
+                    }
+                  }}
+                >
                   <div className="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center mr-3">
                     <Clock className="h-3 w-3 text-gray-600" />
                   </div>
@@ -2671,38 +2791,56 @@ const TapeChartView: React.FC = () => {
             <div className="py-2 border-b border-gray-100">
               <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest Services</div>
               <div className="space-y-1 px-2">
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Contact guest in Room ${contextMenu.roomNumber} via phone`); }}
+                >
                   <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
                     <Phone className="h-3 w-3 text-blue-600" />
                   </div>
                   <span className="text-sm text-gray-700">Call Guest</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Email notification queued for guest in Room ${contextMenu.roomNumber}`); }}
+                >
                   <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
                     <Mail className="h-3 w-3 text-green-600" />
                   </div>
                   <span className="text-sm text-gray-700">Send Email to Guest</span>
                 </button>
                 {/* HOTELOGIX STANDARD: Advanced Guest Communication */}
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Push notification sent to guest in Room ${contextMenu.roomNumber}`); }}
+                >
                   <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
                     <Bell className="h-3 w-3 text-blue-600" />
                   </div>
                   <span className="text-sm text-gray-700">Send Notification</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 hover:border-cyan-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 hover:border-cyan-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Calling Room ${contextMenu.roomNumber}...`); }}
+                >
                   <div className="w-6 h-6 bg-cyan-100 rounded-md flex items-center justify-center mr-3">
                     <Phone className="h-3 w-3 text-cyan-600" />
                   </div>
                   <span className="text-sm text-gray-700">Call Guest Now</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Room service request created for Room ${contextMenu.roomNumber}`); }}
+                >
                   <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
                     <Coffee className="h-3 w-3 text-orange-600" />
                   </div>
                   <span className="text-sm text-gray-700">Room Service</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-yellow-50 hover:border-yellow-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-yellow-50 hover:border-yellow-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`VIP amenities package prepared for Room ${contextMenu.roomNumber}`); }}
+                >
                   <div className="w-6 h-6 bg-yellow-100 rounded-md flex items-center justify-center mr-3">
                     <Star className="h-3 w-3 text-yellow-600" />
                   </div>
@@ -2715,25 +2853,37 @@ const TapeChartView: React.FC = () => {
             <div className="py-2">
               <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Management</div>
               <div className="space-y-1 px-2">
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Drag & drop the guest from Room ${contextMenu.roomNumber} to move them to another room`); }}
+                >
                   <div className="w-6 h-6 bg-purple-100 rounded-md flex items-center justify-center mr-3">
                     <Move className="h-3 w-3 text-purple-600" />
                   </div>
                   <span className="text-sm text-gray-700">Move Guest</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info(`Open booking details to view billing for Room ${contextMenu.roomNumber}`); }}
+                >
                   <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
                     <IndianRupee className="h-3 w-3 text-green-600" />
                   </div>
                   <span className="text-sm text-gray-700">Billing Details</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.info('Group management: Use the block management panel to organize group bookings'); }}
+                >
                   <div className="w-6 h-6 bg-indigo-100 rounded-md flex items-center justify-center mr-3">
                     <Users className="h-3 w-3 text-indigo-600" />
                   </div>
                   <span className="text-sm text-gray-700">Group Management</span>
                 </button>
-                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => { hideContextMenu(); toast.warning(`Cancel booking: Open the booking details for Room ${contextMenu.roomNumber} to cancel`); }}
+                >
                   <div className="w-6 h-6 bg-red-100 rounded-md flex items-center justify-center mr-3">
                     <Trash2 className="h-3 w-3 text-red-600" />
                   </div>

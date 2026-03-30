@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Phone, Mail, MapPin, Clock, Send, Facebook, Twitter, Instagram, Youtube, MapIcon, Sparkles, Award, Users, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,10 @@ export default function ContactPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+
+  useEffect(() => {
+    document.title = 'Contact Us - The Pentouz';
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -44,7 +48,8 @@ export default function ContactPage() {
       setSubmitted(true);
       setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
     } catch (error: unknown) {
-      setErrors([error.response?.data?.message || 'An error occurred while sending your message. Please try again.']);
+      const err = error as { response?: { data?: { message?: string } } };
+      setErrors([err.response?.data?.message || 'An error occurred while sending your message. Please try again.']);
     } finally {
       setLoading(false);
     }
@@ -423,7 +428,7 @@ export default function ContactPage() {
           </div>
           <div className="border-t border-gray-700 pt-6">
             <p className="text-gray-400">
-              © THE PENTOUZ HOTELS & RESORTS ALL RIGHTS RESERVED, 2024
+              © THE PENTOUZ HOTELS & RESORTS ALL RIGHTS RESERVED, {new Date().getFullYear()}
             </p>
           </div>
         </div>

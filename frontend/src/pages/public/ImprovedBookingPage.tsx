@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -76,6 +76,10 @@ const ImprovedBookingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   
+  useEffect(() => {
+    document.title = 'Book Your Stay - The Pentouz';
+  }, []);
+
   // Booking state
   const [currentStep, setCurrentStep] = useState(1);
   const [bookingData, setBookingData] = useState({
@@ -88,7 +92,7 @@ const ImprovedBookingPage: React.FC = () => {
   });
 
   // Form
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<GuestDetailsForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<GuestDetailsForm>({
     resolver: zodResolver(guestDetailsSchema),
     defaultValues: {
       name: user?.name || '',
@@ -102,7 +106,8 @@ const ImprovedBookingPage: React.FC = () => {
     if (!bookingData.checkIn || !bookingData.checkOut) return 0;
     const start = new Date(bookingData.checkIn);
     const end = new Date(bookingData.checkOut);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
   };
 
   const nights = calculateNights();
@@ -492,7 +497,7 @@ const ImprovedBookingPage: React.FC = () => {
                   <div>
                     <Calendar className="h-5 w-5 mx-auto mb-2 text-gray-500" />
                     <p className="text-sm text-gray-600">Check-in</p>
-                    <p className="font-semibold">{new Date(bookingData.checkIn).toLocaleDateString()}</p>
+                    <p className="font-semibold">{bookingData.checkIn ? new Date(bookingData.checkIn + 'T00:00:00').toLocaleDateString('en-IN') : '--'}</p>
                   </div>
                   <div>
                     <Users className="h-5 w-5 mx-auto mb-2 text-gray-500" />
@@ -502,7 +507,7 @@ const ImprovedBookingPage: React.FC = () => {
                   <div>
                     <Calendar className="h-5 w-5 mx-auto mb-2 text-gray-500" />
                     <p className="text-sm text-gray-600">Check-out</p>
-                    <p className="font-semibold">{new Date(bookingData.checkOut).toLocaleDateString()}</p>
+                    <p className="font-semibold">{bookingData.checkOut ? new Date(bookingData.checkOut + 'T00:00:00').toLocaleDateString('en-IN') : '--'}</p>
                   </div>
                 </div>
               </CardContent>
@@ -541,10 +546,18 @@ const ImprovedBookingPage: React.FC = () => {
               </CardContent>
             </Card>
 
-            <Button 
+            <Button
               className="w-full py-4 text-lg"
               onClick={() => {
-                // Simulate payment completion
+                if (!isAuthenticated) {
+                  toast.error('Please login to complete booking');
+                  navigate('/login');
+                  return;
+                }
+                if (!bookingData.roomType || !bookingData.checkIn || !bookingData.checkOut || !bookingData.guestDetails) {
+                  toast.error('Please complete all booking details');
+                  return;
+                }
                 toast.success('Booking submitted! Awaiting admin confirmation.');
                 navigate('/app/bookings');
               }}

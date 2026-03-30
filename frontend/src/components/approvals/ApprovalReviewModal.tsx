@@ -33,8 +33,9 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
       handleClose();
       onSuccess?.();
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to approve request');
+    onError: (err: unknown) => {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || 'Failed to approve request');
     },
   });
 
@@ -48,8 +49,9 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
       handleClose();
       onSuccess?.();
     },
-    onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to reject request');
+    onError: (err: unknown) => {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || 'Failed to reject request');
     },
   });
 
@@ -93,8 +95,11 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
     onClose();
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return 'N/A';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return 'Invalid date';
+    return d.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -106,19 +111,38 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
   const getRequestTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       price_change: 'Price Change',
-      booking_modification: 'Booking Modification',
-      refund: 'Refund Request',
-      discount: 'Discount Request',
+      rate_adjustment: 'Rate Adjustment',
+      room_type_add: 'Room Type Addition',
+      room_type_delete: 'Room Type Deletion',
     };
     return labels[type] || type;
   };
 
+  const getTargetResourceLabel = (resource: string) => {
+    const labels: Record<string, string> = {
+      room_type: 'Room Type',
+      booking: 'Booking',
+      room: 'Room',
+    };
+    return labels[resource] || resource;
+  };
+
   const renderChanges = () => {
     if (approvalRequest.requestType === 'price_change') {
-      const currentPrice = approvalRequest.currentData.basePrice;
-      const requestedPrice = approvalRequest.requestedData.basePrice;
+      const currentPrice = Number(approvalRequest.requestData?.original?.basePrice);
+      const requestedPrice = Number(approvalRequest.requestData?.proposed?.basePrice);
+
+      if (isNaN(currentPrice) || isNaN(requestedPrice)) {
+        return (
+          <div className="text-sm text-gray-500">
+            Price data unavailable.
+          </div>
+        );
+      }
+
       const change = requestedPrice - currentPrice;
-      const changePercent = ((change / currentPrice) * 100).toFixed(1);
+      const changePercent =
+        currentPrice !== 0 ? ((change / currentPrice) * 100).toFixed(1) : 'N/A';
 
       return (
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -127,7 +151,7 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
             <span className="font-semibold text-lg">${currentPrice.toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-center">
-            <span className="text-2xl text-gray-400">↓</span>
+            <span className="text-2xl text-gray-400">&darr;</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600">Requested Price:</span>
@@ -140,11 +164,13 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
               <span className="text-sm font-medium text-gray-700">Net Change:</span>
               <span
                 className={`font-bold text-lg ${
-                  change > 0 ? 'text-green-600' : 'text-red-600'
+                  change > 0 ? 'text-green-600' : change < 0 ? 'text-red-600' : 'text-gray-600'
                 }`}
               >
-                {change > 0 ? '+' : ''}${change.toFixed(2)} ({change > 0 ? '+' : ''}
-                {changePercent}%)
+                {change > 0 ? '+' : ''}${change.toFixed(2)}
+                {changePercent !== 'N/A' && (
+                  <> ({change > 0 ? '+' : ''}{changePercent}%)</>
+                )}
               </span>
             </div>
           </div>
@@ -152,23 +178,27 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
       );
     }
 
+    const original = approvalRequest.requestData?.original;
+    const proposed = approvalRequest.requestData?.proposed;
+
     return (
       <div className="space-y-3">
-        <div>
-          <p className="text-sm font-medium text-gray-700 mb-2">Current State:</p>
-          <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
-            {JSON.stringify(approvalRequest.currentData, null, 2)}
-          </pre>
-        </div>
-        <div className="flex justify-center">
-          <span className="text-2xl text-gray-400">↓</span>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-700 mb-2">Requested State:</p>
-          <pre className="text-xs bg-blue-50 p-3 rounded overflow-x-auto">
-            {JSON.stringify(approvalRequest.requestedData, null, 2)}
-          </pre>
-        </div>
+        {original && (
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Current State:</p>
+            <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+              {JSON.stringify(original, null, 2)}
+            </pre>
+          </div>
+        )}
+        {proposed && (
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Requested State:</p>
+            <pre className="text-xs bg-blue-50 p-3 rounded overflow-x-auto">
+              {JSON.stringify(proposed, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     );
   };
@@ -187,7 +217,13 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
             <ApprovalBadge status={approvalRequest.status} />
           </div>
           <p className="text-sm text-blue-700">
-            Target: <span className="font-medium">{approvalRequest.targetResource.name}</span>
+            Target:{' '}
+            <span className="font-medium">
+              {getTargetResourceLabel(approvalRequest.targetResource)}
+            </span>
+            <span className="ml-1 text-xs text-blue-500">
+              ({approvalRequest.targetResourceId})
+            </span>
           </p>
         </div>
 
@@ -196,9 +232,11 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
           <div>
             <p className="text-xs text-gray-500">Requested By</p>
             <p className="text-sm font-medium text-gray-900">
-              {approvalRequest.requestedBy.name}
+              {approvalRequest.requestedBy?.name ?? 'Unknown'}
             </p>
-            <p className="text-xs text-gray-500">{approvalRequest.requestedBy.email}</p>
+            {approvalRequest.requestedBy?.email && (
+              <p className="text-xs text-gray-500">{approvalRequest.requestedBy.email}</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-500">Submitted</p>
@@ -216,16 +254,8 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
           {renderChanges()}
         </div>
 
-        {/* Reason */}
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Reason</h4>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <p className="text-sm text-gray-700">{approvalRequest.reason}</p>
-          </div>
-        </div>
-
         {/* Action Selection */}
-        {!action && (
+        {approvalRequest.status === 'pending' && !action && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-700">Select Action:</p>
             <div className="flex gap-3">
@@ -233,13 +263,13 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
                 onClick={() => setAction('approve')}
                 className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
               >
-                ✓ Approve Request
+                Approve Request
               </button>
               <button
                 onClick={() => setAction('reject')}
                 className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
               >
-                ✗ Reject Request
+                Reject Request
               </button>
             </div>
           </div>
@@ -259,8 +289,8 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
                 }`}
               >
                 {action === 'approve'
-                  ? '✓ Approving this request'
-                  : '✗ Rejecting this request'}
+                  ? 'Approving this request'
+                  : 'Rejecting this request'}
               </p>
             </div>
 
@@ -314,7 +344,7 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
               >
                 Back
               </button>
-              <button aria-label="Close"
+              <button
                 onClick={handleSubmit}
                 className={`flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   action === 'approve'

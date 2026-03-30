@@ -213,7 +213,10 @@ const offerSchema = new mongoose.Schema({
 offerSchema.index({ hotelId: 1, isActive: 1 });
 offerSchema.index({ hotelId: 1, category: 1, isActive: 1 });
 offerSchema.index({ minTier: 1, isActive: 1 });
-offerSchema.index({ validUntil: 1 }, { expireAfterSeconds: 0 });
+// FIX: Removed TTL index on validUntil - auto-deleting expired offers would break
+// historical transaction references (orphaned offerId in Loyalty docs).
+// Expired offers should be filtered in queries, not deleted.
+offerSchema.index({ validUntil: 1 });
 
 // Virtual for checking if offer is currently valid
 offerSchema.virtual('isValid').get(function() {

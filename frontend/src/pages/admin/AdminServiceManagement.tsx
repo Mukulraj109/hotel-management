@@ -61,6 +61,8 @@ const AdminServiceManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<HotelService | null>(null);
   const [viewingService, setViewingService] = useState<HotelService | null>(null);
@@ -90,20 +92,24 @@ const AdminServiceManagement: React.FC = () => {
 
   const queryClient = useQueryClient();
 
-  // Fetch services
-  const { data: servicesData, isLoading } = useQuery({
-    queryKey: ['admin-hotel-services', { hotelId: selectedPropertyId, type: typeFilter, search: searchTerm, status: statusFilter }],
+  // Fetch services with pagination
+  const { data: servicesData, isLoading, isError, error: queryError } = useQuery({
+    queryKey: ['admin-hotel-services', { hotelId: selectedPropertyId, type: typeFilter, search: searchTerm, status: statusFilter, page, limit: pageSize }],
     queryFn: () => hotelServicesService.getAdminServices({
-      hotelId: selectedPropertyId,
+      hotelId: selectedPropertyId || undefined,
+      page,
+      limit: pageSize,
       type: typeFilter || undefined,
       search: searchTerm || undefined,
       status: statusFilter || undefined
     }),
     enabled: !!selectedPropertyId,
-    staleTime: 5 * 60 * 1000
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev
   });
 
   const services = servicesData?.services || [];
+  const pagination = servicesData?.pagination;
 
   // Fetch service types
   const { data: serviceTypes } = useQuery({
@@ -342,7 +348,7 @@ const AdminServiceManagement: React.FC = () => {
               type="text"
               placeholder="Search services..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
               className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
@@ -350,7 +356,7 @@ const AdminServiceManagement: React.FC = () => {
           {/* Type Filter */}
           <select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
             className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All Types</option>
@@ -364,7 +370,7 @@ const AdminServiceManagement: React.FC = () => {
           {/* Status Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All Status</option>
@@ -380,6 +386,7 @@ const AdminServiceManagement: React.FC = () => {
                 setSearchTerm('');
                 setTypeFilter('');
                 setStatusFilter('');
+                setPage(1);
               }}
               className="border-gray-300 hover:bg-gray-50"
             >
@@ -390,7 +397,15 @@ const AdminServiceManagement: React.FC = () => {
       </Card>
 
       {/* Services List */}
-      {isLoading ? (
+      {isError ? (
+        <Card className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <div className="flex flex-col items-center py-12">
+            <AlertCircle className="h-12 w-12 text-red-400 mb-4" />
+            <p className="text-lg text-red-600 font-medium">Failed to load services</p>
+            <p className="text-sm text-gray-500 mt-1">{getErrorMessage(queryError)}</p>
+          </div>
+        </Card>
+      ) : isLoading ? (
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>
@@ -402,7 +417,7 @@ const AdminServiceManagement: React.FC = () => {
                 <Star className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 ml-3">
-                Hotel Services ({filteredServices.length})
+                Hotel Services ({pagination?.total ?? filteredServices.length})
               </h2>
             </div>
             
@@ -469,7 +484,7 @@ const AdminServiceManagement: React.FC = () => {
                               {service.name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {(service.description || '').substring(0, 60)}{service.description?.length > 60 ? '...' : ''}
+                              {(service.description || '').substring(0, 60)}{(service.description?.length ?? 0) > 60 ? '...' : ''}
                             </div>
                           </div>
                         </div>
@@ -542,6 +557,58 @@ const AdminServiceManagement: React.FC = () => {
               </tbody>
             </table>
             </div>
+
+            {/* Pagination Controls */}
+            {pagination && pagination.pages > 1 && (
+              <div className="flex items-center justify-between border-t border-gray-200 pt-4 mt-4">
+                <p className="text-sm text-gray-600">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                  {pagination.total} services
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={!pagination.hasPrev}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(pagination.pages, 5) }, (_, i) => {
+                    let pageNum: number;
+                    if (pagination.pages <= 5) {
+                      pageNum = i + 1;
+                    } else if (pagination.page <= 3) {
+                      pageNum = i + 1;
+                    } else if (pagination.page >= pagination.pages - 2) {
+                      pageNum = pagination.pages - 4 + i;
+                    } else {
+                      pageNum = pagination.page - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pageNum === pagination.page ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setPage(pageNum)}
+                        className={pageNum === pagination.page ? 'bg-blue-600 text-white' : ''}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                    disabled={!pagination.hasNext}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       )}

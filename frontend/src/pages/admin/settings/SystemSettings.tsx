@@ -724,7 +724,7 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
                         size="sm"
                         className="text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteApiKey(apiKey._id, apiKey.name)}
-                        disabled={deleteApiKeyMutation.isLoading}
+                        disabled={deleteApiKeyMutation.isPending}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -787,9 +787,9 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
                     <Button
                       type="button"
                       onClick={handleCreateApiKey}
-                      disabled={createApiKeyMutation.isLoading}
+                      disabled={createApiKeyMutation.isPending}
                     >
-                      {createApiKeyMutation.isLoading ? (
+                      {createApiKeyMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       ) : (
                         <Plus className="h-4 w-4 mr-2" />
@@ -856,9 +856,9 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
                 variant="outline"
                 className="flex items-center space-x-2"
                 onClick={() => downloadBackupMutation.mutate()}
-                disabled={downloadBackupMutation.isLoading}
+                disabled={downloadBackupMutation.isPending}
               >
-                {downloadBackupMutation.isLoading ? (
+                {downloadBackupMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4" />
@@ -912,15 +912,15 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
           <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-600">
             <Button
               type="submit"
-              disabled={!isDirty || saveSystemMutation.isLoading || isUpdating}
+              disabled={!isDirty || saveSystemMutation.isPending || isUpdating}
               className="flex items-center space-x-2"
             >
-              {(saveSystemMutation.isLoading || isUpdating) ? (
+              {(saveSystemMutation.isPending || isUpdating) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              <span>{(saveSystemMutation.isLoading || isUpdating) ? 'Saving...' : 'Save Changes'}</span>
+              <span>{(saveSystemMutation.isPending || isUpdating) ? 'Saving...' : 'Save Changes'}</span>
             </Button>
           </div>
         </form>

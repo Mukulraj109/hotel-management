@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ import { api } from '../../services/api';
 import { TemplateEditModal } from '../../components/admin/TemplateEditModal';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
+import { useAuth } from '../../context/AuthContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 
@@ -349,9 +350,10 @@ const TemplatesManagement = () => {
 };
 
 function AdminDailyCheckManagement() {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const { selectedPropertyId } = useProperty();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const [overview, setOverview] = useState<AdminOverview | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
   const [unassignedRooms, setUnassignedRooms] = useState<Room[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -364,67 +366,19 @@ function AdminDailyCheckManagement() {
   // Real-time connection
   const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
-  useEffect(() => {
-    if (selectedPropertyId) {
-      fetchData();
-    }
-
-    // Connect to real-time updates
-    connect().catch(() => { /* Error handled silently */ });
-
-    return () => {
-      disconnect();
-    };
-  }, [selectedPropertyId]);
-
-  // Set up real-time event listeners
-  useEffect(() => {
-    if (!isConnected) return;
-    
-    const handleDailyCheckUpdate = (data: Record<string, unknown>) => {
-      fetchData();
-      toast.success('Daily check data updated in real-time');
-    };
-    
-    const handleDailyCheckCreate = (data: Record<string, unknown>) => {
-      fetchData();
-      toast.success('New daily check assignment created');
-    };
-    
-    const handleDailyCheckComplete = (data: Record<string, unknown>) => {
-      fetchData();
-      toast.success(`Room ${data.roomNumber} daily check completed!`);
-    };
-    
-    // Subscribe to daily check events
-    on('daily-check:assigned', handleDailyCheckCreate);
-    on('daily-check:completed', handleDailyCheckComplete);
-    on('daily-check:status_changed', handleDailyCheckUpdate);
-    
-    return () => {
-      off('daily-check:assigned', handleDailyCheckCreate);
-      off('daily-check:completed', handleDailyCheckComplete);
-      off('daily-check:status_changed', handleDailyCheckUpdate);
-    };
-  }, [isConnected, on, off]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async (showLoading = true) => {
     if (!selectedPropertyId) return;
 
     try {
-      setLoading(true);
-      const [overviewRes, roomsRes, unassignedRes, staffRes] = await Promise.allSettled([
+      if (showLoading) setLoading(true);
+      const [overviewRes, unassignedRes, staffRes] = await Promise.allSettled([
         api.get(`/daily-routine-check/admin/overview`, { params: { hotelId: selectedPropertyId } }),
-        api.get(`/rooms`, { params: { hotelId: selectedPropertyId } }),
         api.get(`/daily-routine-check/admin/unassigned-rooms`, { params: { hotelId: selectedPropertyId } }),
-        api.get(`/admin/users`, { params: { role: 'staff', hotelId: selectedPropertyId } })
+        api.get(`/admin/users`, { params: { role: 'staff', hotelId: selectedPropertyId, limit: 100 } })
       ]);
 
       if (overviewRes.status === 'fulfilled') {
         setOverview(overviewRes.value.data.data);
-      }
-      if (roomsRes.status === 'fulfilled') {
-        setRooms(roomsRes.value.data.data?.rooms || []);
       }
       if (unassignedRes.status === 'fulfilled') {
         setUnassignedRooms(unassignedRes.value.data.data?.rooms || []);
@@ -433,16 +387,57 @@ function AdminDailyCheckManagement() {
         setStaff(staffRes.value.data.data?.users || []);
       }
 
-      const failures = [overviewRes, roomsRes, unassignedRes, staffRes].filter(r => r.status === 'rejected');
-      if (failures.length > 0) {
+      const failures = [overviewRes, unassignedRes, staffRes].filter(r => r.status === 'rejected');
+      if (failures.length > 0 && showLoading) {
         toast.error('Some data failed to load. Try refreshing.');
       }
     } catch (error) {
-      toast.error('Failed to load daily check management data');
+      if (showLoading) toast.error('Failed to load daily check management data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (selectedPropertyId) {
+      fetchData();
+    }
+
+    // Connect to real-time updates
+    // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
+    connect().catch(() => { /* Error handled silently */ });
+  }, [selectedPropertyId, fetchData, connect]);
+
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleDailyCheckUpdate = () => {
+      fetchData(false);
+      toast.success('Daily check data updated in real-time');
+    };
+
+    const handleDailyCheckCreate = () => {
+      fetchData(false);
+      toast.success('New daily check assignment created');
+    };
+
+    const handleDailyCheckComplete = (data: Record<string, unknown>) => {
+      fetchData(false);
+      toast.success(`Room ${data?.roomNumber ?? ''} daily check completed!`);
+    };
+
+    // Subscribe to daily check events
+    on('daily-check:assigned', handleDailyCheckCreate);
+    on('daily-check:completed', handleDailyCheckComplete);
+    on('daily-check:status_changed', handleDailyCheckUpdate);
+
+    return () => {
+      off('daily-check:assigned', handleDailyCheckCreate);
+      off('daily-check:completed', handleDailyCheckComplete);
+      off('daily-check:status_changed', handleDailyCheckUpdate);
+    };
+  }, [isConnected, on, off, fetchData]);
 
   const handleAssignRooms = async () => {
     if (selectedAssignments.length === 0) {
@@ -487,8 +482,8 @@ function AdminDailyCheckManagement() {
     }
   };
 
-  // Calculate filtered statistics based on current filter
-  const getFilteredStats = () => {
+  // Calculate filtered statistics based on current filter (memoized)
+  const filteredStats = useMemo(() => {
     if (!overview?.assignmentSummary) return { assigned: 0, completed: 0, pending: 0, unassigned: 0 };
 
     let totalAssigned = 0;
@@ -507,13 +502,13 @@ function AdminDailyCheckManagement() {
     });
 
     return {
-      assigned: filterStatus === 'all' ? overview.assignedRooms : totalAssigned,
-      completed: filterStatus === 'all' ? overview.completedToday : totalCompleted,
-      pending: filterStatus === 'all' ? overview.pendingChecks : totalPending,
-      unassigned: filterStatus === 'all' ? overview.unassignedRooms :
-                 (filterStatus === 'unassigned' ? overview.unassignedRooms : 0)
+      assigned: filterStatus === 'all' ? (overview.assignedRooms ?? 0) : totalAssigned,
+      completed: filterStatus === 'all' ? (overview.completedToday ?? 0) : totalCompleted,
+      pending: filterStatus === 'all' ? (overview.pendingChecks ?? 0) : totalPending,
+      unassigned: filterStatus === 'all' ? (overview.unassignedRooms ?? 0) :
+                 (filterStatus === 'unassigned' ? (overview.unassignedRooms ?? 0) : 0)
     };
-  };
+  }, [overview, filterStatus]);
 
   if (!selectedPropertyId) {
     return (
@@ -569,7 +564,7 @@ function AdminDailyCheckManagement() {
           {([
             { id: 'overview' as const, label: 'Overview', icon: ClipboardList },
             { id: 'assignments' as const, label: 'Room Assignments', icon: Users },
-            { id: 'templates' as const, label: 'Templates', icon: Settings }
+            ...(isAdmin ? [{ id: 'templates' as const, label: 'Templates', icon: Settings }] : [])
           ]).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -965,7 +960,7 @@ function AdminDailyCheckManagement() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Assigned</p>
                       <p className="text-xl font-semibold text-gray-900">
-                        {getFilteredStats().assigned}
+                        {filteredStats.assigned}
                       </p>
                     </div>
                   </div>
@@ -979,7 +974,7 @@ function AdminDailyCheckManagement() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Completed</p>
                       <p className="text-xl font-semibold text-gray-900">
-                        {getFilteredStats().completed}
+                        {filteredStats.completed}
                       </p>
                     </div>
                   </div>
@@ -993,7 +988,7 @@ function AdminDailyCheckManagement() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Pending</p>
                       <p className="text-xl font-semibold text-gray-900">
-                        {getFilteredStats().pending}
+                        {filteredStats.pending}
                       </p>
                     </div>
                   </div>
@@ -1007,7 +1002,7 @@ function AdminDailyCheckManagement() {
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-600">Unassigned</p>
                       <p className="text-xl font-semibold text-gray-900">
-                        {getFilteredStats().unassigned}
+                        {filteredStats.unassigned}
                       </p>
                     </div>
                   </div>
@@ -1152,8 +1147,8 @@ function AdminDailyCheckManagement() {
         </div>
       )}
 
-      {/* Templates Tab */}
-      {activeTab === 'templates' && (
+      {/* Templates Tab - Admin/Manager only */}
+      {activeTab === 'templates' && isAdmin && (
         <TemplatesManagement />
       )}
     </div>

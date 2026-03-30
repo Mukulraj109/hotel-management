@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Package,
@@ -7,18 +7,14 @@ import {
   AlertTriangle,
   Filter,
   Eye,
-  User,
   IndianRupee,
-  Calendar,
   RefreshCw,
   CheckSquare,
   XCircle,
-  Truck,
   FileText
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/Modal';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
@@ -27,14 +23,14 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import { formatNumber } from '../../utils/dashboardUtils';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
-import { adminSupplyRequestsService, SupplyRequest, SupplyRequestStats, SupplyRequestFilters, SupplyRequestItem } from '../../services/adminSupplyRequestsService';
+import { adminSupplyRequestsService, SupplyRequest, SupplyRequestStats, SupplyRequestFilters } from '../../services/adminSupplyRequestsService';
 import { useRealTime } from '../../services/realTimeService';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 
 export default function AdminSupplyRequests() {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [requests, setRequests] = useState<SupplyRequest[]>([]);
   const [stats, setStats] = useState<SupplyRequestStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,15 +51,17 @@ export default function AdminSupplyRequests() {
     rejectedReason: ''
   });
 
-  // Mock data for development (replace with real API calls)
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const response = await adminSupplyRequestsService.getRequests(filters);
+      const response = await adminSupplyRequestsService.getRequests({
+        ...filters,
+        hotelId: selectedPropertyId || undefined
+      });
       setRequests(response.data.requests || []);
-      setPagination({ 
-        total: response.data.pagination?.total || 0, 
-        pages: response.data.pagination?.pages || 1 
+      setPagination({
+        total: response.data.pagination?.total || 0,
+        pages: response.data.pagination?.pages || 1
       });
     } catch (error) {
       toast.error('Failed to load supply requests');
@@ -74,7 +72,9 @@ export default function AdminSupplyRequests() {
 
   const fetchStats = async () => {
     try {
-      const response = await adminSupplyRequestsService.getStats();
+      const response = await adminSupplyRequestsService.getStats({
+        hotelId: selectedPropertyId || undefined
+      });
       setStats(response.data);
     } catch (error) {
       toast.error('Failed to load supply request statistics');
@@ -87,12 +87,9 @@ export default function AdminSupplyRequests() {
       fetchStats();
 
       // Connect to real-time updates
+      // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
       connect().catch(() => { /* Error handled silently */ });
     }
-
-    return () => {
-      disconnect();
-    };
   }, [selectedPropertyId, filters]);
   
   // Set up real-time event listeners
@@ -227,7 +224,7 @@ export default function AdminSupplyRequests() {
       header: 'Department',
       render: (value: unknown, request: SupplyRequest) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDepartmentColor(request.department)}`}>
-          {request.department.replace('_', ' ')}
+          {request.department.replace(/_/g, ' ')}
         </span>
       )
     },
@@ -543,10 +540,11 @@ export default function AdminSupplyRequests() {
               Failed to load supply requests table
             </div>
           }>
-            <DataTable 
+            <DataTable
               data={requests}
               columns={columns}
               loading={loading}
+              emptyMessage="No supply requests found. Adjust your filters or check back later."
             />
           </ErrorBoundary>
         </CardContent>
@@ -620,7 +618,7 @@ export default function AdminSupplyRequests() {
                   <div className="font-medium">{selectedRequest.requestedBy?.name ?? 'Unknown'}</div>
                   <div className="text-sm text-gray-500">{selectedRequest.requestedBy?.email ?? ''}</div>
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${getDepartmentColor(selectedRequest.department)}`}>
-                    {selectedRequest.department.replace('_', ' ')}
+                    {selectedRequest.department.replace(/_/g, ' ')}
                   </span>
                 </div>
               </div>
@@ -646,7 +644,7 @@ export default function AdminSupplyRequests() {
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="space-y-4">
                   {selectedRequest.items.map((item, index) => (
-                    <div key={`selectedRequest-items-${index}-${item}`} className="flex items-start justify-between p-3 bg-white rounded border">
+                    <div key={`selectedRequest-items-${index}-${item.name}`} className="flex items-start justify-between p-3 bg-white rounded border">
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{item.name}</div>
                         <div className="text-sm text-gray-500">{item.description}</div>

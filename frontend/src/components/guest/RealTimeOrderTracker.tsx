@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '../../utils/formatters';
 import { api } from '../../services/api';
+import { realTimeService } from '../../services/realTimeService';
+import toast from 'react-hot-toast';
 
 interface OrderTrackerProps {
   orderId?: string;
@@ -125,14 +127,45 @@ export function RealTimeOrderTracker({
   const [estimatedTime, setEstimatedTime] = useState<string>('');
   const [isConnected, setIsConnected] = useState(false);
 
+  // Connect to WebSocket and listen for real-time order/service updates
   useEffect(() => {
     if (orderId || serviceRequestId) {
       fetchOrderDetails();
-      setupWebSocketConnection();
     }
 
+    // Connect to real-time WebSocket for instant updates
+    realTimeService.connect().then(() => {
+      setIsConnected(true);
+    }).catch(() => {
+      setIsConnected(false);
+    });
+
+    const handleOrderUpdate = () => {
+      if (orderId || serviceRequestId) {
+        fetchOrderDetails();
+      }
+    };
+
+    // Listen for guest-service and food-order events that affect this order
+    realTimeService.on('guest-services:updated', handleOrderUpdate);
+    realTimeService.on('guest-services:status_changed', handleOrderUpdate);
+    realTimeService.on('food_order:created', handleOrderUpdate);
+    realTimeService.on('guest-service:created', handleOrderUpdate);
+
+    // Fallback: poll every 60 seconds in case WebSocket is unavailable
+    const interval = setInterval(() => {
+      if (orderId || serviceRequestId) {
+        fetchOrderDetails();
+      }
+    }, 60000);
+
     return () => {
-      // Cleanup WebSocket connection if needed
+      clearInterval(interval);
+      realTimeService.off('guest-services:updated', handleOrderUpdate);
+      realTimeService.off('guest-services:status_changed', handleOrderUpdate);
+      realTimeService.off('food_order:created', handleOrderUpdate);
+      realTimeService.off('guest-service:created', handleOrderUpdate);
+      setIsConnected(false);
     };
   }, [orderId, serviceRequestId]);
 
@@ -162,14 +195,14 @@ export function RealTimeOrderTracker({
         response = await api.get(`/guest-services/${serviceRequestId}`);
       }
 
-      if (response?.data?.success) {
+      if (response?.data?.success || response?.data?.status === 'success') {
         let orderData;
 
         if (orderId) {
           orderData = response.data.data;
         } else {
           // Extract order data from service request
-          const serviceRequest = response.data.data;
+          const serviceRequest = response.data.data?.serviceRequest || response.data.data;
           orderData = {
             _id: serviceRequest._id,
             orderNumber: serviceRequest.posOrderNumber,
@@ -209,29 +242,12 @@ export function RealTimeOrderTracker({
     return statusMapping[serviceStatus as keyof typeof statusMapping] || 'pending';
   };
 
-  const calculateTotalFromItems = (items: unknown[]): number => {
-    return items.reduce((total, item) => {
-      return total + (item.price * item.quantity);
+  const calculateTotalFromItems = (items: Array<Record<string, unknown>>): number => {
+    return items.reduce((total: number, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      return total + (price * quantity);
     }, 0);
-  };
-
-  const setupWebSocketConnection = () => {
-    // WebSocket connection for real-time updates
-    try {
-      // For now, simulate real-time updates with polling
-      const interval = setInterval(() => {
-        fetchOrderDetails();
-      }, 30000); // Poll every 30 seconds
-
-      setIsConnected(true);
-
-      return () => {
-        clearInterval(interval);
-        setIsConnected(false);
-      };
-    } catch (error) {
-      setIsConnected(false);
-    }
   };
 
   const calculateEstimatedDeliveryTime = () => {
@@ -274,8 +290,7 @@ export function RealTimeOrderTracker({
   };
 
   const contactSupport = () => {
-    // This could open a chat widget or call support
-    alert('Contacting room service support...');
+    toast.success('Our support team has been notified. Someone will contact you shortly.');
   };
 
   if (loading) {

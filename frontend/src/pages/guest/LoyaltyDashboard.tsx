@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Star, 
-  Gift, 
-  TrendingUp, 
-  Clock, 
+import {
+  Star,
+  Gift,
+  TrendingUp,
+  Clock,
   Award,
-  ChevronRight,
   Zap,
   Percent,
   ArrowUp,
@@ -75,8 +74,9 @@ export default function LoyaltyDashboard() {
       
       // Refetch dashboard data to update points and transactions
       refetch();
-    } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to redeem offer');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to redeem offer');
     } finally {
       setRedeemingOffer(null);
     }
@@ -92,15 +92,21 @@ export default function LoyaltyDashboard() {
 
   if (error || !dashboard) {
     return (
-      <div className="text-center py-8">
-        <p className="text-red-600">Failed to load loyalty dashboard</p>
-        <Button 
-          onClick={() => refetch()} 
-          variant="secondary" 
-          className="mt-4"
-        >
-          Try Again
-        </Button>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Star className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load loyalty dashboard</h2>
+          <p className="text-gray-600 mb-4">
+            {error instanceof Error ? error.message : 'An unexpected error occurred while loading your loyalty data.'}
+          </p>
+          <Button
+            onClick={() => refetch()}
+            variant="secondary"
+            className="mt-2"
+          >
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -128,16 +134,27 @@ export default function LoyaltyDashboard() {
             </div>
           </div>
           <div className="bg-gray-200 rounded-full h-2 mb-4">
-            <div 
+            <div
               className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-              style={{ 
-                width: `${Math.min(100, (dashboard.user.points / 10000) * 100)}%` 
+              style={{
+                width: `${dashboard.user.nextTier
+                  ? Math.min(100, Math.max(0,
+                      (dashboard.user.points + dashboard.user.pointsToNextTier) > 0
+                        ? (dashboard.user.points / (dashboard.user.points + dashboard.user.pointsToNextTier)) * 100
+                        : 0
+                    ))
+                  : 100
+                }%`
               }}
             />
           </div>
-          {dashboard.user.nextTier && (
+          {dashboard.user.nextTier ? (
             <p className="text-sm text-gray-600">
-              {dashboard.user.pointsToNextTier} points to {dashboard.user.nextTier} tier
+              {loyaltyService.formatPoints(dashboard.user.pointsToNextTier)} points to {dashboard.user.nextTier} tier
+            </p>
+          ) : (
+            <p className="text-sm text-green-600 font-medium">
+              You have reached the highest tier!
             </p>
           )}
         </Card>
@@ -262,22 +279,31 @@ export default function LoyaltyDashboard() {
                 {offer.type === 'discount' && (
                   <div className="mb-3">
                     <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                      {offer.discountPercentage ? `${offer.discountPercentage}% off` : `₹${offer.discountAmount} off`}
+                      {offer.discountPercentage
+                        ? `${offer.discountPercentage}% off`
+                        : offer.discountAmount
+                          ? `${formatCurrency(offer.discountAmount)} off`
+                          : 'Discount'}
                     </span>
                   </div>
                 )}
                 
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   className="w-full"
                   onClick={() => handleRedeemOffer(offer._id)}
-                  disabled={redeemingOffer === offer._id}
+                  disabled={redeemingOffer === offer._id || dashboard.user.points < offer.pointsRequired}
+                  title={dashboard.user.points < offer.pointsRequired
+                    ? `You need ${loyaltyService.formatPoints(offer.pointsRequired - dashboard.user.points)} more points`
+                    : 'Redeem this offer'}
                 >
                   {redeemingOffer === offer._id ? (
                     <>
                       <LoadingSpinner size="sm" />
                       Redeeming...
                     </>
+                  ) : dashboard.user.points < offer.pointsRequired ? (
+                    `Need ${loyaltyService.formatPoints(offer.pointsRequired - dashboard.user.points)} more pts`
                   ) : (
                     'Redeem'
                   )}

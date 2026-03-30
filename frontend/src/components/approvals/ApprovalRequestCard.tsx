@@ -15,8 +15,11 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
   onReview,
   onCancel,
 }) => {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return 'N/A';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return 'Invalid date';
+    return d.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -28,19 +31,38 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
   const getRequestTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       price_change: 'Price Change',
-      booking_modification: 'Booking Modification',
-      refund: 'Refund Request',
-      discount: 'Discount Request',
+      rate_adjustment: 'Rate Adjustment',
+      room_type_add: 'Room Type Addition',
+      room_type_delete: 'Room Type Deletion',
     };
     return labels[type] || type;
   };
 
+  const getTargetResourceLabel = (resource: string) => {
+    const labels: Record<string, string> = {
+      room_type: 'Room Type',
+      booking: 'Booking',
+      room: 'Room',
+    };
+    return labels[resource] || resource;
+  };
+
   const renderChanges = () => {
     if (request.requestType === 'price_change') {
-      const currentPrice = request.currentData.basePrice;
-      const requestedPrice = request.requestedData.basePrice;
+      const currentPrice = Number(request.requestData?.original?.basePrice);
+      const requestedPrice = Number(request.requestData?.proposed?.basePrice);
+
+      if (isNaN(currentPrice) || isNaN(requestedPrice)) {
+        return (
+          <div className="text-sm text-gray-500">
+            Price data unavailable.
+          </div>
+        );
+      }
+
       const change = requestedPrice - currentPrice;
-      const changePercent = ((change / currentPrice) * 100).toFixed(1);
+      const changePercent =
+        currentPrice !== 0 ? ((change / currentPrice) * 100).toFixed(1) : 'N/A';
 
       return (
         <div className="space-y-2">
@@ -57,11 +79,13 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
               <span className="text-sm font-medium text-gray-700">Change:</span>
               <span
                 className={`font-semibold ${
-                  change > 0 ? 'text-green-600' : 'text-red-600'
+                  change > 0 ? 'text-green-600' : change < 0 ? 'text-red-600' : 'text-gray-600'
                 }`}
               >
-                {change > 0 ? '+' : ''}${change.toFixed(2)} ({change > 0 ? '+' : ''}
-                {changePercent}%)
+                {change > 0 ? '+' : ''}${change.toFixed(2)}
+                {changePercent !== 'N/A' && (
+                  <> ({change > 0 ? '+' : ''}{changePercent}%)</>
+                )}
               </span>
             </div>
           </div>
@@ -69,23 +93,33 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
       );
     }
 
+    const original = request.requestData?.original;
+    const proposed = request.requestData?.proposed;
+
     return (
       <div className="space-y-2">
-        <div>
-          <p className="text-sm text-gray-600 mb-1">Current:</p>
-          <pre className="text-xs bg-gray-50 p-2 rounded overflow-x-auto">
-            {JSON.stringify(request.currentData, null, 2)}
-          </pre>
-        </div>
-        <div>
-          <p className="text-sm text-gray-600 mb-1">Requested:</p>
-          <pre className="text-xs bg-gray-50 p-2 rounded overflow-x-auto">
-            {JSON.stringify(request.requestedData, null, 2)}
-          </pre>
-        </div>
+        {original && (
+          <div>
+            <p className="text-sm text-gray-600 mb-1">Current:</p>
+            <pre className="text-xs bg-gray-50 p-2 rounded overflow-x-auto">
+              {JSON.stringify(original, null, 2)}
+            </pre>
+          </div>
+        )}
+        {proposed && (
+          <div>
+            <p className="text-sm text-gray-600 mb-1">Requested:</p>
+            <pre className="text-xs bg-gray-50 p-2 rounded overflow-x-auto">
+              {JSON.stringify(proposed, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     );
   };
+
+  const requesterName = request.requestedBy?.name ?? 'Unknown';
+  const requesterEmail = request.requestedBy?.email ?? '';
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
@@ -100,7 +134,12 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
               <ApprovalBadge status={request.status} size="sm" />
             </div>
             <p className="text-sm text-gray-600">
-              Target: <span className="font-medium">{request.targetResource.name}</span>
+              Target: <span className="font-medium">
+                {getTargetResourceLabel(request.targetResource)}
+              </span>
+              <span className="ml-1 text-xs text-gray-400">
+                ({request.targetResourceId})
+              </span>
             </p>
           </div>
         </div>
@@ -116,22 +155,16 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
           {renderChanges()}
         </div>
 
-        {/* Reason */}
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Reason</h4>
-          <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-            {request.reason}
-          </p>
-        </div>
-
         {/* Request Info */}
         <div className="grid grid-cols-2 gap-4 pt-3 border-t">
           <div>
             <p className="text-xs text-gray-500">Requested By</p>
             <p className="text-sm font-medium text-gray-900">
-              {request.requestedBy.name}
+              {requesterName}
             </p>
-            <p className="text-xs text-gray-500">{request.requestedBy.email}</p>
+            {requesterEmail && (
+              <p className="text-xs text-gray-500">{requesterEmail}</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-500">Submitted</p>
@@ -148,14 +181,16 @@ const ApprovalRequestCard: React.FC<ApprovalRequestCardProps> = ({
               <div>
                 <p className="text-xs text-gray-500">Reviewed By</p>
                 <p className="text-sm font-medium text-gray-900">
-                  {request.reviewedBy.name}
+                  {request.reviewedBy.name ?? 'Unknown'}
                 </p>
-                <p className="text-xs text-gray-500">{request.reviewedBy.email}</p>
+                {request.reviewedBy.email && (
+                  <p className="text-xs text-gray-500">{request.reviewedBy.email}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-gray-500">Reviewed At</p>
                 <p className="text-sm font-medium text-gray-900">
-                  {request.reviewedAt && formatDate(request.reviewedAt)}
+                  {formatDate(request.reviewedAt)}
                 </p>
               </div>
             </div>

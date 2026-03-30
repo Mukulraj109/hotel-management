@@ -47,7 +47,7 @@ const AllOffers = React.lazy(() => import('./pages/guest/AllOffers'));
 const LoyaltyTransactions = React.lazy(() => import('./pages/guest/LoyaltyTransactions'));
 const FavoritesPage = React.lazy(() => import('./pages/guest/FavoritesPage'));
 const RecommendationsPage = React.lazy(() => import('./pages/guest/RecommendationsPage'));
-const ContactlessGuestApp = React.lazy(() => import('./components/guest/ContactlessGuestApp').then(m => ({ default: m.ContactlessGuestApp })));
+const ContactlessGuestApp = React.lazy(() => import('./components/guest/ContactlessGuestApp'));
 const HotelServicesDashboard = React.lazy(() => import('./pages/guest/HotelServicesDashboard'));
 const ServiceDetailsPage = React.lazy(() => import('./pages/guest/ServiceDetailsPage'));
 const ServiceBookingPage = React.lazy(() => import('./pages/guest/ServiceBookingPage'));

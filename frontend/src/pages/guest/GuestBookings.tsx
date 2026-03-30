@@ -228,11 +228,11 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
                   Room {room.roomId?.roomNumber || index + 1} - {room.roomId?.type || 'Standard'}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {booking.nights} nights x {formatCurrency(room.rate, booking.currency)}/night
+                  {booking.nights || 0} nights x {formatCurrency(room.rate, booking.currency)}/night
                 </p>
               </div>
               <p className="text-sm font-semibold text-gray-900">
-                {formatCurrency(room.rate * booking.nights, booking.currency)}
+                {formatCurrency((room.rate || 0) * (booking.nights || 0), booking.currency)}
               </p>
             </div>
           ))}
@@ -341,65 +341,87 @@ export default function GuestBookings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const PAGE_LIMIT = 20;
   const [showKeyGenerator, setShowKeyGenerator] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<BookingWithHotel | null>(null);
   const [showModificationModal, setShowModificationModal] = useState(false);
   const [selectedModificationBooking, setSelectedModificationBooking] = useState<BookingWithHotel | null>(null);
   const [showConversationModal, setShowConversationModal] = useState(false);
   const [selectedConversationBooking, setSelectedConversationBooking] = useState<BookingWithHotel | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
-  // Use React Query for data fetching
-  const { data: bookings = [], isLoading: loading, error } = useQuery({
-    queryKey: ['bookings', 'user', user?._id],
+  // Reset page when filter changes
+  const handleFilterChange = (newFilter: string) => {
+    setFilter(newFilter);
+    setPage(1);
+  };
+
+  // Map frontend filter to backend status param
+  const getStatusParam = (f: string): string | undefined => {
+    if (f === 'all') return undefined;
+    if (f === 'upcoming') return 'confirmed,pending';
+    if (f === 'active') return 'checked_in';
+    if (f === 'past') return 'checked_out';
+    if (f === 'cancelled') return 'cancelled,no_show';
+    return f;
+  };
+
+  // Use React Query for data fetching with server-side pagination
+  const { data: queryData, isLoading: loading, error } = useQuery({
+    queryKey: ['bookings', 'user', user?._id, filter, page],
     queryFn: async () => {
-      const response = await bookingService.getUserBookings();
+      const response = await bookingService.getUserBookings({
+        status: getStatusParam(filter),
+        page,
+        limit: PAGE_LIMIT
+      });
       // Handle the actual API response structure
       const bookingsData = response.data?.bookings || response.data || [];
+      const pagination = response.pagination || { page: 1, pages: 1, total: 0 };
       if (Array.isArray(bookingsData)) {
-        return bookingsData as unknown as BookingWithHotel[];
+        return {
+          bookings: bookingsData as BookingWithHotel[],
+          pagination
+        };
       } else {
-        return [];
+        return { bookings: [], pagination: { page: 1, pages: 1, total: 0 } };
       }
     },
     enabled: !!user,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 3,
+    placeholderData: (prev) => prev, // keep previous data while loading
   });
 
-  const filteredBookings = bookings.filter(booking => {
-    if (filter === 'all') return true;
-    if (filter === 'upcoming') {
-      return ['confirmed', 'pending'].includes(booking.status) && 
-             new Date(booking.checkIn) > new Date();
-    }
-    if (filter === 'active') {
-      return ['checked_in'].includes(booking.status);
-    }
-    if (filter === 'past') {
-      return ['checked_out'].includes(booking.status) || 
-             new Date(booking.checkOut) < new Date();
-    }
-    if (filter === 'cancelled') {
-      return ['cancelled', 'no_show'].includes(booking.status);
-    }
-    return booking.status === filter;
-  });
+  const bookings = queryData?.bookings || [];
+  const pagination = queryData?.pagination || { page: 1, pages: 1, total: 0 };
+
+  // Bookings are already server-side filtered; use them directly
+  const filteredBookings = bookings;
 
   const handleCancelBooking = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to cancel this booking?')) return;
-    
+    setConfirmCancelId(bookingId);
+  };
+
+  const confirmCancelBooking = async () => {
+    if (!confirmCancelId) return;
+    const bookingId = confirmCancelId;
+    setConfirmCancelId(null);
+
     try {
       await bookingService.cancelBooking(bookingId);
-      
+
       // Invalidate queries to refresh data immediately
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      
+
       toast.success('Booking cancelled successfully');
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to cancel booking');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to cancel booking');
     }
   };
 
@@ -444,10 +466,25 @@ export default function GuestBookings() {
     setSelectedConversationBooking(null);
   };
 
-  if (loading) {
+  if (loading && bookings.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error && bookings.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load bookings</h2>
+          <p className="text-gray-600 mb-4">{error instanceof Error ? error.message : 'An unexpected error occurred'}</p>
+          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['bookings'] })} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -465,22 +502,22 @@ export default function GuestBookings() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
             {[
-              { id: 'all', label: 'All Bookings', count: bookings.length },
-              { id: 'upcoming', label: 'Upcoming', count: bookings.filter(b => ['confirmed', 'pending'].includes(b.status) && new Date(b.checkIn) > new Date()).length },
-              { id: 'active', label: 'Active', count: bookings.filter(b => b.status === 'checked_in').length },
-              { id: 'past', label: 'Past', count: bookings.filter(b => b.status === 'checked_out' || new Date(b.checkOut) < new Date()).length },
-              { id: 'cancelled', label: 'Cancelled', count: bookings.filter(b => ['cancelled', 'no_show'].includes(b.status)).length }
+              { id: 'all', label: 'All Bookings' },
+              { id: 'upcoming', label: 'Upcoming' },
+              { id: 'active', label: 'Active' },
+              { id: 'past', label: 'Past' },
+              { id: 'cancelled', label: 'Cancelled' }
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setFilter(tab.id)}
+                onClick={() => handleFilterChange(tab.id)}
                 className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                   filter === tab.id
                     ? 'border-yellow-500 text-yellow-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab.label} ({tab.count})
+                {tab.label}{filter === tab.id && pagination.total > 0 ? ` (${pagination.total})` : ''}
               </button>
             ))}
           </nav>
@@ -519,7 +556,35 @@ export default function GuestBookings() {
           })}
         </div>
       )}
-      {/* Old inline card removed - now using GuestBookingCard memo component */}
+      {/* Pagination Controls */}
+      {pagination.pages > 1 && (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-gray-600">
+            Showing {filteredBookings.length} of {pagination.total} bookings
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-700 px-2">
+              Page {page} of {pagination.pages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= pagination.pages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Digital Key Generator Modal */}
       {showKeyGenerator && selectedBooking && (
@@ -584,6 +649,22 @@ export default function GuestBookings() {
           isOpen={showConversationModal}
           onClose={handleConversationModalClose}
         />
+      )}
+
+      {/* Cancel Booking Confirmation Dialog */}
+      {confirmCancelId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+          <Card className="max-w-md w-full p-6">
+            <h3 id="cancel-booking-title" className="text-lg font-semibold text-gray-900 mb-2">Cancel Booking</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to cancel this booking? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setConfirmCancelId(null)}>Keep Booking</Button>
+              <Button variant="ghost" className="text-red-600 hover:bg-red-50" onClick={confirmCancelBooking}>
+                <XCircle className="w-4 h-4 mr-1" /> Cancel Booking
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

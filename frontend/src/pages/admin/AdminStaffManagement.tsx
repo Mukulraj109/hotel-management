@@ -1,20 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
-  Plus,
   Search,
   Edit,
   Trash2,
   UserPlus,
   Users,
-  Mail,
   Phone,
   Shield,
   Eye,
   EyeOff,
-  Filter,
-  MoreHorizontal
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useProperty } from '../../context/PropertyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -24,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
-import { DataTable } from '../../components/dashboard/DataTable';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffService } from '../../services/staffService';
 import { EditUserModal } from '../../components/user/EditUserModal';
@@ -35,7 +32,7 @@ interface StaffMember {
   name: string;
   email: string;
   phone?: string;
-  role: 'staff' | 'admin';
+  role: 'staff' | 'admin' | 'manager' | 'frontdesk' | 'housekeeping';
   isActive: boolean;
   hotelId: {
     _id: string;
@@ -45,19 +42,16 @@ interface StaffMember {
   lastLogin?: string;
 }
 
-interface CreateStaffData {
-  name: string;
-  email: string;
-  phone?: string;
-  password: string;
-  role: 'staff' | 'admin';
-}
+const PAGE_SIZE = 20;
 
-interface UpdateStaffData {
-  name?: string;
-  phone?: string;
-  role?: 'staff' | 'admin';
-  isActive?: boolean;
+/** Simple debounce hook that returns a debounced value */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
 }
 
 export default function AdminStaffManagement() {
@@ -71,57 +65,55 @@ export default function AdminStaffManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [showPassword, setShowPassword] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
   const queryClient = useQueryClient();
 
-  // Form state for create/edit
-  const [formData, setFormData] = useState<CreateStaffData>({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-    role: 'staff'
-  });
+  // Reset to page 1 when filters change
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  }, []);
 
-  // Fetch staff members
+  const handleRoleFilterChange = useCallback((value: string) => {
+    setRoleFilter(value);
+    setCurrentPage(1);
+  }, []);
+
+  const handleStatusFilterChange = useCallback((value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  }, []);
+
+  // Fetch staff members with server-side pagination
   const { data: staffData, isLoading, error } = useQuery({
-    queryKey: ['staff', selectedPropertyId, searchTerm, roleFilter, statusFilter],
+    queryKey: ['staff', selectedPropertyId, debouncedSearch, roleFilter, statusFilter, currentPage],
     queryFn: () => staffService.getStaffMembers({
-      hotelId: selectedPropertyId,
-      search: searchTerm,
-      role: roleFilter === 'all' ? undefined : roleFilter as 'staff' | 'admin',
-      isActive: statusFilter === 'all' ? undefined : statusFilter === 'true'
+      hotelId: selectedPropertyId ?? undefined,
+      search: debouncedSearch || undefined,
+      role: roleFilter === 'all' ? undefined : roleFilter as StaffMember['role'],
+      isActive: statusFilter === 'all' ? undefined : statusFilter === 'true',
+      page: currentPage,
+      limit: PAGE_SIZE,
     }),
     enabled: !!selectedPropertyId,
-    refetchOnMount: 'always', // Always refetch on mount to avoid 304 cache issues
-    refetchOnWindowFocus: true, // Refetch when window regains focus
-    staleTime: 0, // Consider data stale immediately
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    keepPreviousData: true,
   });
 
-  // Create staff mutation
-  const createStaffMutation = useMutation({
-    mutationFn: staffService.createStaffMember,
-    onSuccess: () => {
-      toast.success('Staff member created successfully');
-      setIsCreateModalOpen(false);
-      resetForm();
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
-    },
-    onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } }; message?: string };
-      toast.error(err.response?.data?.message || err.message || 'Failed to create staff member');
-    }
-  });
+  const staffList = staffData?.staff ?? [];
+  const pagination = staffData?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, pages: 1 };
 
-  // Update staff mutation
+  // Update staff mutation (for toggle status)
   const updateStaffMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateStaffData }) =>
+    mutationFn: ({ id, data }: { id: string; data: { isActive?: boolean } }) =>
       staffService.updateStaffMember(id, data),
     onSuccess: () => {
       toast.success('Staff member updated successfully');
-      setIsEditModalOpen(false);
-      setSelectedStaff(null);
       queryClient.invalidateQueries({ queryKey: ['staff'] });
     },
     onError: (error: unknown) => {
@@ -145,35 +137,6 @@ export default function AdminStaffManagement() {
     }
   });
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      password: '',
-      role: 'staff'
-    });
-    setShowPassword(false);
-  };
-
-  const handleCreateStaff = (e: React.FormEvent) => {
-    e.preventDefault();
-    createStaffMutation.mutate(formData);
-  };
-
-  const handleEditStaff = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedStaff) return;
-    
-    const updateData: UpdateStaffData = {
-      name: formData.name,
-      phone: formData.phone,
-      role: formData.role
-    };
-    
-    updateStaffMutation.mutate({ id: selectedStaff._id, data: updateData });
-  };
-
   const handleDeleteStaff = () => {
     if (!selectedStaff) return;
     deleteStaffMutation.mutate(selectedStaff._id);
@@ -181,13 +144,6 @@ export default function AdminStaffManagement() {
 
   const openEditModal = (staff: StaffMember) => {
     setSelectedStaff(staff);
-    setFormData({
-      name: staff.name,
-      email: staff.email,
-      phone: staff.phone || '',
-      password: '',
-      role: staff.role
-    });
     setIsEditModalOpen(true);
   };
 
@@ -203,123 +159,22 @@ export default function AdminStaffManagement() {
     });
   };
 
-  // Base columns shown to all users
-  const baseColumns = [
-    {
-      key: 'name',
-      header: 'Name',
-      render: (value: unknown, row: StaffMember) => (
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-            <Users className="w-4 h-4 text-blue-600" />
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">{row.name}</div>
-            <div className="text-sm text-gray-500">{row.email}</div>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'phone',
-      header: 'Contact',
-      render: (value: unknown, row: StaffMember) => (
-        <div className="text-sm text-gray-600">
-          {row.phone ? (
-            <div className="flex items-center space-x-1">
-              <Phone className="w-3 h-3" />
-              <span>{row.phone}</span>
-            </div>
-          ) : (
-            <span className="text-gray-400">No phone</span>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'role',
-      header: 'Role',
-      render: (value: unknown, row: StaffMember) => (
-        <Badge variant={row.role === 'admin' ? 'destructive' : 'secondary'}>
-          <Shield className="w-3 h-3 mr-1" />
-          {row.role}
-        </Badge>
-      )
-    },
-    {
-      key: 'isActive',
-      header: 'Status',
-      render: (value: unknown, row: StaffMember) => (
-        <Badge variant={row.isActive ? 'default' : 'outline'}>
-          {row.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      )
-    },
-    {
-      key: 'lastLogin',
-      header: 'Last Login',
-      render: (value: unknown, row: StaffMember) => (
-        <div className="text-sm text-gray-600">
-          {row.lastLogin ?
-            new Date(row.lastLogin).toLocaleDateString() :
-            'Never'
-          }
-        </div>
-      )
-    }
-  ];
+  // Pagination helpers
+  const totalPages = pagination.pages;
+  const canGoPrev = currentPage > 1;
+  const canGoNext = currentPage < totalPages;
 
-  // Actions column - only shown to admin/staff, not frontdesk
-  const actionsColumn = {
-    key: 'actions',
-    header: 'Actions',
-    render: (value: unknown, row: StaffMember) => (
-      <div className="flex items-center space-x-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleStaffStatus(row);
-          }}
-          disabled={updateStaffMutation.isPending}
-        >
-          {row.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            openEditModal(row);
-          }}
-        >
-          <Edit className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            openDeleteModal(row);
-          }}
-          className="text-red-600 hover:text-red-700"
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      </div>
-    )
-  };
-
-  // Conditionally add actions column based on user role
-  const columns = isFrontDesk ? baseColumns : [...baseColumns, actionsColumn];
+  // Compute stats from current page data (best available without a dedicated stats endpoint)
+  const activeCount = staffList.filter((s: StaffMember) => s.isActive).length;
+  const adminCount = staffList.filter((s: StaffMember) => s.role === 'admin').length;
+  const regularCount = staffList.filter((s: StaffMember) => s.role === 'staff').length;
 
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="text-red-600 mb-2">Error loading staff members</div>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['staff'] })}>Retry</Button>
         </div>
       </div>
     );
@@ -356,7 +211,7 @@ export default function AdminStaffManagement() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Staff</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {staffData?.pagination?.total || 0}
+                  {pagination.total}
                 </p>
               </div>
             </div>
@@ -370,9 +225,9 @@ export default function AdminStaffManagement() {
                 <Eye className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Staff</p>
+                <p className="text-sm font-medium text-gray-600">Active (this page)</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {staffData?.staff?.filter((s: StaffMember) => s.isActive).length || 0}
+                  {activeCount}
                 </p>
               </div>
             </div>
@@ -386,9 +241,9 @@ export default function AdminStaffManagement() {
                 <Shield className="w-6 h-6 text-purple-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Admins</p>
+                <p className="text-sm font-medium text-gray-600">Admins (this page)</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {staffData?.staff?.filter((s: StaffMember) => s.role === 'admin').length || 0}
+                  {adminCount}
                 </p>
               </div>
             </div>
@@ -402,9 +257,9 @@ export default function AdminStaffManagement() {
                 <Users className="w-6 h-6 text-orange-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Regular Staff</p>
+                <p className="text-sm font-medium text-gray-600">Regular Staff (this page)</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {staffData?.staff?.filter((s: StaffMember) => s.role === 'staff').length || 0}
+                  {regularCount}
                 </p>
               </div>
             </div>
@@ -422,14 +277,14 @@ export default function AdminStaffManagement() {
                 <Input
                   placeholder="Search staff by name or email..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-10"
                 />
               </div>
             </div>
-                         <select
+            <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
+              onChange={(e) => handleRoleFilterChange(e.target.value)}
               className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="all">All Roles</option>
@@ -438,7 +293,7 @@ export default function AdminStaffManagement() {
             </select>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => handleStatusFilterChange(e.target.value)}
               className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="all">All Status</option>
@@ -455,7 +310,7 @@ export default function AdminStaffManagement() {
           <div className="flex items-center justify-between">
             <CardTitle>Staff Members</CardTitle>
             <div className="text-sm text-gray-500">
-              Showing {staffData?.staff?.length || 0} of {staffData?.pagination?.total || 0} staff
+              Showing {staffList.length} of {pagination.total} staff
               {viewMode === 'single' && selectedProperty && (
                 <span className="ml-2 text-blue-600">
                   for {selectedProperty.name}
@@ -469,7 +324,7 @@ export default function AdminStaffManagement() {
             <div className="flex items-center justify-center h-64">
               <LoadingSpinner />
             </div>
-          ) : staffData?.staff?.length === 0 ? (
+          ) : staffList.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <Users className="w-12 h-12 text-gray-300 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-1">No staff members found</h3>
@@ -486,16 +341,160 @@ export default function AdminStaffManagement() {
               )}
             </div>
           ) : (
-            <DataTable
-              columns={columns}
-              data={staffData?.staff || []}
-              pagination={staffData?.pagination}
-            />
+            <>
+              {/* Staff table */}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
+                      {!isFrontDesk && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {staffList.map((staff: StaffMember) => (
+                      <tr key={staff._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <Users className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">{staff.name}</div>
+                              <div className="text-sm text-gray-500">{staff.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-600">
+                            {staff.phone ? (
+                              <div className="flex items-center space-x-1">
+                                <Phone className="w-3 h-3" />
+                                <span>{staff.phone}</span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">No phone</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant={staff.role === 'admin' ? 'destructive' : 'secondary'}>
+                            <Shield className="w-3 h-3 mr-1" />
+                            {staff.role}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant={staff.isActive ? 'default' : 'outline'}>
+                            {staff.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-600">
+                            {staff.lastLogin
+                              ? new Date(staff.lastLogin).toLocaleDateString()
+                              : 'Never'}
+                          </div>
+                        </td>
+                        {!isFrontDesk && (
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleStaffStatus(staff)}
+                                disabled={updateStaffMutation.isPending}
+                              >
+                                {staff.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditModal(staff)}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openDeleteModal(staff)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Server-side pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                  <div className="text-sm text-gray-700">
+                    Page {pagination.page} of {totalPages} ({pagination.total} total)
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={!canGoPrev}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      Previous
+                    </Button>
+                    {/* Page number buttons */}
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      // Show pages around current page
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className="min-w-[36px]"
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={!canGoNext}
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* Create User Modal - Comprehensive version with property access - Only for admin/staff */}
+      {/* Create User Modal - Only for admin/staff */}
       {!isFrontDesk && (
         <CreateUserModal
           isOpen={isCreateModalOpen}
@@ -507,7 +506,7 @@ export default function AdminStaffManagement() {
         />
       )}
 
-      {/* Edit User Modal - Comprehensive version with property access - Only for admin/staff */}
+      {/* Edit User Modal - Only for admin/staff */}
       {!isFrontDesk && selectedStaff && (
         <EditUserModal
           isOpen={isEditModalOpen}

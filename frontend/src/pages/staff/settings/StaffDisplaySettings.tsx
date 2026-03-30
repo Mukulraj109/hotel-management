@@ -44,6 +44,25 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
 
   const watchedValues = watch();
 
+  // Load saved display preferences from backend
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const { data } = await api.get('/staff/display-preferences');
+        const prefs = data?.data;
+        if (prefs) {
+          setValue('theme', prefs.theme || 'light', { shouldDirty: false });
+          setValue('compactView', prefs.compactView ?? false, { shouldDirty: false });
+          setValue('language', prefs.language || 'en', { shouldDirty: false });
+          setValue('quickActions', prefs.quickActions || ['daily-check', 'guest-request'], { shouldDirty: false });
+        }
+      } catch {
+        // Use defaults if preferences not yet saved
+      }
+    };
+    loadPreferences();
+  }, [setValue]);
+
   // Watch for form changes
   useEffect(() => {
     if (onSettingsChange) {
@@ -222,10 +241,10 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveDisplayMutation.isLoading}
+              disabled={!isDirty || saveDisplayMutation.isPending}
               className="flex items-center space-x-2"
             >
-              {saveDisplayMutation.isLoading ? (
+              {saveDisplayMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

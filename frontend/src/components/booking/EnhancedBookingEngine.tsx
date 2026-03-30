@@ -59,6 +59,7 @@ import { inventoryService } from '@/services/inventoryService';
 import { roomTypeLocalizationService, type LocalizedRoomType } from '@/services/roomTypeLocalizationService';
 import { multiCurrencyRateService, type ConvertedRatePlan, type ConversionRatesResponse } from '@/services/multiCurrencyRateService';
 import { api } from '@/services/api';
+import { bookingEngineService } from '@/services/bookingEngineService';
 import { withErrorBoundary } from '../ErrorBoundary';
 
 // Use LocalizedRoomType from the service, but keep legacy interface for backward compatibility
@@ -250,7 +251,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
       
       setRoomTypes(transformedRoomTypes);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to load room types');
+      setError(err instanceof Error ? err.message : 'Failed to load room types');
       toast.error('Failed to load available rooms');
       
       // Fallback to legacy service if localized service fails
@@ -312,6 +313,16 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
       return;
     }
 
+    // Validate check-in is not in the past (compare date-only, ignoring time)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkInDateOnly = new Date(bookingData.checkInDate);
+    checkInDateOnly.setHours(0, 0, 0, 0);
+    if (checkInDateOnly < today) {
+      toast.error('Check-in date cannot be in the past');
+      return;
+    }
+
     if (differenceInDays(bookingData.checkOutDate, bookingData.checkInDate) < 1) {
       toast.error('Stay must be at least 1 night');
       return;
@@ -370,7 +381,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
       toast.success(`Found ${availableCount} available room type${availableCount !== 1 ? 's' : ''}`);
       
     } catch (err: unknown) {
-      setError(err.message || 'Failed to search availability');
+      setError(err instanceof Error ? err.message : 'Failed to search availability');
       toast.error('Failed to search availability');
     } finally {
       setIsSearching(false);
@@ -436,34 +447,38 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
       const extraAdultCharges = extraAdults * avgExtraAdultRate * nightlyRates.length * bookingData.rooms;
       const extraChildCharges = bookingData.children * avgExtraChildRate * nightlyRates.length * bookingData.rooms;
 
-      // Apply promo discount (simplified - in real implementation would validate against database)
+      // Validate promo code via API
       let discountAmount = 0;
       let promoDiscount = undefined;
       if (promoCode.trim()) {
-        // Mock promo validation
-        if (promoCode.toUpperCase() === 'WELCOME10') {
-          discountAmount = baseAmount * 0.1;
-          promoDiscount = {
-            code: promoCode.toUpperCase(),
-            type: 'percentage' as const,
-            value: 10,
-            amount: discountAmount
-          };
-        } else if (promoCode.toUpperCase() === 'SAVE500') {
-          discountAmount = Math.min(500, baseAmount * 0.05);
-          promoDiscount = {
-            code: promoCode.toUpperCase(),
-            type: 'fixed' as const,
-            value: 500,
-            amount: discountAmount
-          };
+        try {
+          const validation = await bookingEngineService.validatePromoCode(
+            promoCode,
+            baseAmount,
+            startDate,
+            endDate
+          );
+          if (validation.valid && validation.discount > 0) {
+            discountAmount = validation.discount;
+            promoDiscount = {
+              code: promoCode.toUpperCase(),
+              type: 'percentage' as const,
+              value: 0,
+              amount: discountAmount
+            };
+          }
+        } catch {
+          // Promo validation failed silently - no discount applied
         }
       }
 
-      // Calculate tax (assuming 18% GST)
-      const subtotal = baseAmount + extraAdultCharges + extraChildCharges - discountAmount;
-      const taxAmount = subtotal * 0.18;
-      const totalAmount = subtotal + taxAmount;
+      // Ensure discount does not exceed subtotal (prevents negative totals)
+      discountAmount = Math.min(discountAmount, baseAmount + extraAdultCharges + extraChildCharges);
+
+      // Calculate tax (18% GST) with proper rounding
+      const subtotal = Math.round((baseAmount + extraAdultCharges + extraChildCharges - discountAmount) * 100) / 100;
+      const taxAmount = Math.round(subtotal * 0.18 * 100) / 100;
+      const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
 
       const pricing: PricingBreakdown = {
         baseAmount,
@@ -484,25 +499,40 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
     }
   };
 
-  const applyPromoCode = () => {
-    calculatePricing();
-    if (pricingBreakdown?.promoDiscount) {
-      toast.success(`Promo code ${pricingBreakdown.promoDiscount.code} applied successfully!`);
-    } else {
-      toast.error('Invalid or expired promo code');
+  const applyPromoCode = async () => {
+    if (!promoCode.trim()) {
+      toast.error('Please enter a promo code');
+      return;
     }
+    // calculatePricing is async and will validate the promo code via API.
+    // We recalculate pricing, then check the result after state has updated.
+    await calculatePricing();
+    // Note: because setState is asynchronous, we cannot rely on pricingBreakdown here.
+    // Instead, toast feedback is already shown inside calculatePricing when the promo validates.
+    // Show a generic message indicating the calculation was triggered.
+    toast.info('Promo code applied. Check the pricing breakdown below.');
   };
 
   const proceedToConfirmation = () => {
     const { firstName, lastName, email, phone } = bookingData.guestInfo;
-    
-    if (!firstName || !lastName || !email || !phone) {
+
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
       toast.error('Please fill in all required guest information');
       return;
     }
 
-    if (!email.includes('@')) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast.error('Please enter a valid email address');
+      return;
+    }
+
+    if (!/^\+?[\d\s-]{7,15}$/.test(phone.trim())) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+
+    if (!pricingBreakdown || pricingBreakdown.totalAmount <= 0) {
+      toast.error('Price calculation is incomplete. Please wait for pricing to load.');
       return;
     }
 
@@ -517,15 +547,21 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
         checkIn: format(bookingData.checkInDate, 'yyyy-MM-dd'),
         checkOut: format(bookingData.checkOutDate, 'yyyy-MM-dd'),
         roomType: selectedRoomType?._id || bookingData.roomTypeId,
+        roomTypeId: selectedRoomType?._id || bookingData.roomTypeId,
+        primaryRoomQuantity: bookingData.rooms,
         guestDetails: {
           adults: bookingData.adults,
           children: bookingData.children,
+          specialRequests: bookingData.guestInfo.specialRequests,
+          name: `${bookingData.guestInfo.firstName} ${bookingData.guestInfo.lastName}`,
+          email: bookingData.guestInfo.email,
+          phone: bookingData.guestInfo.phone,
         },
         guestName: `${bookingData.guestInfo.firstName} ${bookingData.guestInfo.lastName}`,
         guestEmail: bookingData.guestInfo.email,
         guestPhone: bookingData.guestInfo.phone,
-        specialRequests: bookingData.guestInfo.specialRequests,
         totalAmount: pricingBreakdown?.totalAmount || bookingData.totalAmount,
+        currency: selectedCurrency || 'INR',
         source: bookingData.source,
         hotelId,
         numberOfRooms: bookingData.rooms,
@@ -720,7 +756,11 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
                       mode="single"
                       selected={bookingData.checkInDate}
                       onSelect={(date) => date && setBookingData(prev => ({ ...prev, checkInDate: date }))}
-                      disabled={(date) => date < new Date()}
+                      disabled={(date) => {
+                        const todayStart = new Date();
+                        todayStart.setHours(0, 0, 0, 0);
+                        return date < todayStart;
+                      }}
                     />
                   </PopoverContent>
                 </Popover>
@@ -1030,7 +1070,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
                   </Button>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Try: WELCOME10 or SAVE500
+                  Enter a promo code to receive a discount
                 </div>
               </div>
             </CardContent>

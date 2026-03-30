@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import MeetUpRequest from '../models/MeetUpRequest.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -10,8 +11,15 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
  * Filters based on safety levels and supervision needs
  */
 export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 20, status, priority, safetyLevel } = req.query;
+  const { page: rawPage = 1, limit: rawLimit = 20, status, priority, safetyLevel } = req.query;
   const { hotelId } = req.user;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
+  const parsedPage = Math.max(1, parseInt(rawPage) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
   // Build query for meet-ups that require supervision
   const query = {
@@ -23,7 +31,7 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
   // Apply filters
   if (status) query.status = status;
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (parsedPage - 1) * parsedLimit;
 
   // Fetch meet-ups
   let meetUps = await MeetUpRequest.find(query)
@@ -33,7 +41,7 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
     .populate('assignedStaff', 'name email')
     .sort({ proposedDate: 1, createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(parsedLimit).lean();
 
   // Apply post-query filters for supervision priority
   if (priority || safetyLevel) {
@@ -58,13 +66,13 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
     };
 
     return {
-      ...meetUp.toJSON(),
+      ...meetUp,
       supervision: supervisionData
     };
   });
 
   const totalCount = await MeetUpRequest.countDocuments(query);
-  const totalPages = Math.ceil(totalCount / parseInt(limit));
+  const totalPages = parsedLimit > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
 
   res.status(200).json({
     success: true,
@@ -72,11 +80,11 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
     data: {
       meetUps: meetUpsWithSupervision,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: parsedPage,
         totalPages,
         totalItems: totalCount,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1
+        hasNext: parsedPage < totalPages,
+        hasPrev: parsedPage > 1
       }
     }
   });
@@ -128,8 +136,15 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
  * Get staff member's supervision assignments
  */
 export const getStaffAssignments = catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 20, status } = req.query;
+  const { page: rawAssignPage = 1, limit: rawAssignLimit = 20, status } = req.query;
   const { _id: staffId, hotelId } = req.user;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
+  const parsedAssignPage = Math.max(1, parseInt(rawAssignPage) || 1);
+  const parsedAssignLimitVal = Math.min(100, Math.max(1, parseInt(rawAssignLimit) || 20));
 
   const query = {
     hotelId,
@@ -138,7 +153,7 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
 
   if (status) query.supervisionStatus = status;
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (parsedAssignPage - 1) * parsedAssignLimitVal;
 
   const assignments = await MeetUpRequest.find(query)
     .populate('requesterId', 'name email avatar')
@@ -146,7 +161,7 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
     .populate('hotelId', 'name address')
     .sort({ proposedDate: 1, createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(parsedAssignLimitVal).lean();
 
   const assignmentsWithSupervision = assignments.map(meetUp => {
     const supervisionData = {
@@ -157,13 +172,14 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
     };
 
     return {
-      ...meetUp.toJSON(),
+      ...meetUp,
       supervision: supervisionData
     };
   });
 
   const totalCount = await MeetUpRequest.countDocuments(query);
-  const totalPages = Math.ceil(totalCount / parseInt(limit));
+  const parsedAssignLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+  const totalPages = Math.ceil(totalCount / parsedAssignLimit);
 
   res.status(200).json({
     success: true,
@@ -171,11 +187,11 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
     data: {
       assignments: assignmentsWithSupervision,
       pagination: {
-        currentPage: parseInt(page),
+        currentPage: parsedAssignPage,
         totalPages,
         totalItems: totalCount,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1
+        hasNext: parsedAssignPage < totalPages,
+        hasPrev: parsedAssignPage > 1
       }
     }
   });
@@ -231,6 +247,10 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
 export const getSupervisionStats = catchAsync(async (req, res, next) => {
   const { hotelId } = req.user;
   const { period = '7d' } = req.query;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
 
   // Calculate date range based on period
   const now = new Date();
@@ -342,6 +362,11 @@ export const getSupervisionStats = catchAsync(async (req, res, next) => {
  */
 export const getUrgentSupervisionTasks = catchAsync(async (req, res, next) => {
   const { hotelId } = req.user;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
   const now = new Date();
   const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -358,10 +383,10 @@ export const getUrgentSupervisionTasks = catchAsync(async (req, res, next) => {
     .populate('requesterId', 'name email')
     .populate('targetUserId', 'name email')
     .populate('assignedStaff', 'name email')
-    .sort({ proposedDate: 1 }).lean().limit(1000);
+    .sort({ proposedDate: 1 }).limit(50).lean();
 
   const urgentWithPriority = urgentMeetUps.map(meetUp => ({
-    ...meetUp.toJSON(),
+    ...meetUp,
     supervision: {
       priority: calculateSupervisionPriority(meetUp),
       safetyLevel: calculateSafetyLevel(meetUp),
@@ -385,6 +410,10 @@ export const getUrgentSupervisionTasks = catchAsync(async (req, res, next) => {
  */
 export const processSupervisionAlerts = catchAsync(async (req, res, next) => {
   const { hotelId } = req.user;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
 
   try {
     const alertsCreated = await meetUpSupervisionAlertService.processUpcomingMeetUps(hotelId);
@@ -415,6 +444,10 @@ export const processSupervisionAlerts = catchAsync(async (req, res, next) => {
  */
 export const getSupervisionAlertStats = catchAsync(async (req, res, next) => {
   const { hotelId } = req.user;
+
+  if (!hotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
 
   try {
     const stats = await meetUpSupervisionAlertService.getSupervisionAlertStats(hotelId);
@@ -457,13 +490,13 @@ function calculateSupervisionPriority(meetUp) {
   }
 
   // Group size
-  if (meetUp.participants.maxParticipants > 4) {
+  if ((meetUp.participants?.maxParticipants ?? 0) > 4) {
     priorityScore += 1;
     factors.push('Large group');
   }
 
   // Location factors
-  if (meetUp.location.type === 'other' || meetUp.location.type === 'outdoor') {
+  if (meetUp.location?.type === 'other' || meetUp.location?.type === 'outdoor') {
     priorityScore += 1;
     factors.push('Non-standard location');
   }
@@ -532,9 +565,9 @@ function identifyRiskFactors(meetUp) {
   const meetUpHour = new Date(meetUp.proposedDate).getHours();
   if (meetUpHour < 6 || meetUpHour > 22) risks.push('Outside normal hours');
 
-  if (meetUp.participants.maxParticipants > 4) risks.push('Large group size');
-  if (meetUp.location.type === 'other') risks.push('Unspecified location');
-  if (meetUp.location.type === 'outdoor') risks.push('Outdoor location');
+  if ((meetUp.participants?.maxParticipants ?? 0) > 4) risks.push('Large group size');
+  if (meetUp.location?.type === 'other') risks.push('Unspecified location');
+  if (meetUp.location?.type === 'outdoor') risks.push('Outdoor location');
 
   return risks;
 }

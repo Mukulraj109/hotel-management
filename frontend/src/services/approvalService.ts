@@ -1,114 +1,136 @@
 import { api } from './api';
 
+/** Matches the backend ApprovalRequest model shape (after populate). */
 export interface ApprovalRequest {
   _id: string;
-  requestType: 'price_change' | 'booking_modification' | 'refund' | 'discount';
+  requestType: 'price_change' | 'rate_adjustment' | 'room_type_add' | 'room_type_delete';
   requestedBy: {
     _id: string;
     name: string;
     email: string;
+    role?: string;
   };
-  targetResource: {
-    type: string;
-    id: string;
-    name: string;
+  targetResource: 'room_type' | 'booking' | 'room';
+  targetResourceId: string;
+  requestData: {
+    original: Record<string, unknown>;
+    proposed: Record<string, unknown>;
   };
-  currentData: Record<string, unknown>;
-  requestedData: Record<string, unknown>;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: {
     _id: string;
     name: string;
     email: string;
-  };
-  reviewedAt?: string;
+    role?: string;
+  } | null;
+  reviewedAt?: string | null;
   reviewNotes?: string;
+  hotelId: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateApprovalRequestData {
   requestType: string;
-  targetResource: {
-    type: string;
-    id: string;
-    name: string;
+  targetResource: string;
+  targetResourceId: string;
+  requestData: {
+    original: Record<string, unknown>;
+    proposed: Record<string, unknown>;
   };
-  currentData: Record<string, unknown>;
-  requestedData: Record<string, unknown>;
-  reason: string;
 }
 
 export interface ApprovalFilters {
   status?: string;
   requestType?: string;
-  startDate?: string;
-  endDate?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface PaginatedApprovalResponse {
+  data: ApprovalRequest[];
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
 }
 
 export const approvalService = {
   createApprovalRequest: async (data: CreateApprovalRequestData): Promise<ApprovalRequest> => {
-    try {
-      const response = await api.post('/approvals', data);
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+    const response = await api.post('/approvals', data);
+    return response.data?.data?.approvalRequest ?? response.data;
   },
 
-  getMyApprovalRequests: async (filters?: ApprovalFilters): Promise<ApprovalRequest[]> => {
-    try {
-      const response = await api.get('/approvals/my-requests', { params: filters });
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
+  getMyApprovalRequests: async (
+    filters?: ApprovalFilters
+  ): Promise<PaginatedApprovalResponse> => {
+    const params = {
+      page: filters?.page ?? 1,
+      limit: filters?.limit ?? 20,
+      sortBy: filters?.sortBy ?? 'createdAt',
+      sortOrder: filters?.sortOrder ?? 'desc',
+      ...(filters?.status && { status: filters.status }),
+      ...(filters?.requestType && { requestType: filters.requestType }),
+    };
+    const response = await api.get('/approvals/my-requests', { params });
+    // Backend returns a raw array; normalize into paginated envelope
+    const raw = response.data;
+    if (Array.isArray(raw)) {
+      return {
+        data: raw,
+        page: params.page,
+        limit: params.limit,
+        totalCount: raw.length,
+        totalPages: Math.max(1, Math.ceil(raw.length / params.limit)),
+      };
     }
+    return raw;
   },
 
-  getAllApprovalRequests: async (filters?: ApprovalFilters): Promise<ApprovalRequest[]> => {
-    try {
-      const response = await api.get('/approvals', { params: filters });
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
+  getAllApprovalRequests: async (
+    filters?: ApprovalFilters
+  ): Promise<PaginatedApprovalResponse> => {
+    const params = {
+      page: filters?.page ?? 1,
+      limit: filters?.limit ?? 20,
+      sortBy: filters?.sortBy ?? 'createdAt',
+      sortOrder: filters?.sortOrder ?? 'desc',
+      ...(filters?.status && { status: filters.status }),
+      ...(filters?.requestType && { requestType: filters.requestType }),
+    };
+    const response = await api.get('/approvals', { params });
+    const raw = response.data;
+    if (Array.isArray(raw)) {
+      return {
+        data: raw,
+        page: params.page,
+        limit: params.limit,
+        totalCount: raw.length,
+        totalPages: Math.max(1, Math.ceil(raw.length / params.limit)),
+      };
     }
+    return raw;
   },
 
   approveRequest: async (id: string, notes?: string): Promise<ApprovalRequest> => {
-    try {
-      const response = await api.put(`/approvals/${id}/approve`, { notes });
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+    const response = await api.put(`/approvals/${id}/approve`, { reviewNotes: notes });
+    return response.data?.data?.approvalRequest ?? response.data;
   },
 
   rejectRequest: async (id: string, reason: string): Promise<ApprovalRequest> => {
-    try {
-      const response = await api.put(`/approvals/${id}/reject`, { reason });
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+    const response = await api.put(`/approvals/${id}/reject`, { reviewNotes: reason });
+    return response.data?.data?.approvalRequest ?? response.data;
   },
 
-  cancelRequest: async (id: string): Promise<ApprovalRequest> => {
-    try {
-      const response = await api.put(`/approvals/${id}/cancel`);
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+  cancelRequest: async (id: string): Promise<void> => {
+    await api.put(`/approvals/${id}/cancel`);
   },
 
   getPendingCount: async (): Promise<number> => {
-    try {
-      const response = await api.get('/approvals/pending-count');
-      return response.data.count;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+    const response = await api.get('/approvals/pending-count');
+    return response.data.count;
   },
 
   getApprovalStats: async (): Promise<{
@@ -116,12 +138,8 @@ export const approvalService = {
     approved: number;
     rejected: number;
   }> => {
-    try {
-      const response = await api.get('/approvals/stats');
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
-    }
+    const response = await api.get('/approvals/stats');
+    return response.data?.data?.stats ?? response.data;
   },
 };
 

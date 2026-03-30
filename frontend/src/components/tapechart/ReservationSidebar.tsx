@@ -43,6 +43,7 @@ interface Reservation {
 interface ReservationSidebarProps {
   onDragStart: (e: React.DragEvent, reservation: Record<string, unknown>) => void;
   selectedDate: Date;
+  endDate?: Date;
   isCompact?: boolean;
   className?: string;
   refreshTrigger?: number; // Add refresh trigger prop
@@ -53,6 +54,7 @@ interface ReservationSidebarProps {
 const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
   onDragStart,
   selectedDate,
+  endDate: endDateProp,
   isCompact = false,
   className,
   refreshTrigger,
@@ -96,14 +98,17 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
       
       // Get bookings for the selected date range (check-ins and current stays)
       const startDate = format(selectedDate, 'yyyy-MM-dd');
-      const endDatePlusWeek = format(new Date(selectedDate.getTime() + 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
+      const endDatePlusWeek = endDateProp
+        ? format(endDateProp, 'yyyy-MM-dd')
+        : format(new Date(selectedDate.getTime() + 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
       
       const response = await bookingService.getBookings({
-        // Get bookings that are checking in today or are currently staying
-        // Exclude checked-out bookings by default
+        // Get bookings that overlap with the tape chart date range
         status: statusFilter === 'all' ? 'confirmed,pending,checked_in' : statusFilter,
+        startDate: startDate,
+        endDate: endDatePlusWeek,
         page: 1,
-        limit: 100 // Get more bookings for the sidebar
+        limit: 100
       });
       
       if (response.status === 'success' && response.data && Array.isArray(response.data)) {

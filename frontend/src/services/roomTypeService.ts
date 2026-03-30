@@ -1,5 +1,12 @@
 import { api } from './api';
 
+export interface RoomTypeAmenity {
+  code: string;
+  name?: string;
+  category?: string;
+  isHighlight?: boolean;
+}
+
 export interface RoomType {
   _id: string;
   roomTypeId: string;
@@ -8,8 +15,9 @@ export interface RoomType {
   code: string;
   maxOccupancy: number;
   basePrice: number;
+  baseRate?: number;
   description?: string;
-  amenities?: string[];
+  amenities?: Array<string | RoomTypeAmenity>;
   images?: string[];
   size?: {
     squareFeet?: number;
@@ -54,7 +62,7 @@ export interface CreateRoomTypeData {
   maxOccupancy: number;
   basePrice: number;
   description?: string;
-  amenities?: string[];
+  amenities?: Array<string | RoomTypeAmenity>;
   images?: string[];
   size?: {
     squareFeet?: number;

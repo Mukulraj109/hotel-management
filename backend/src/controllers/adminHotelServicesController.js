@@ -118,7 +118,8 @@ export const getAllServices = catchAsync(async (req, res) => {
       .populate('hotelId', 'name address')
       .sort({ featured: -1, createdAt: -1 })
       .skip(skip)
-      .limit(limitNum),
+      .limit(limitNum)
+      .lean(),
     HotelService.countDocuments(query)
   ]);
 

@@ -66,7 +66,11 @@ const ServiceTypeCardInfo = React.memo(({ service }: { service: ServiceType }) =
 ));
 ServiceTypeCardInfo.displayName = 'ServiceTypeCardInfo';
 
-const ServiceTypeManager: React.FC = () => {
+interface ServiceTypeManagerProps {
+  hotelId?: string;
+}
+
+const ServiceTypeManager: React.FC<ServiceTypeManagerProps> = ({ hotelId: propHotelId }) => {
   const { user } = useAuth();
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
@@ -77,8 +81,9 @@ const ServiceTypeManager: React.FC = () => {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'types' | 'templates'>('types');
 
-  // Resolve hotelId to a string — it may be a populated object { _id, name } or a plain string
+  // Use prop hotelId (from property context) or fall back to user's hotelId
   const resolvedHotelId = (() => {
+    if (propHotelId) return propHotelId;
     const raw = user?.hotelId;
     if (!raw) return undefined;
     if (typeof raw === 'string') return raw;
@@ -294,15 +299,16 @@ const ServiceTypeManager: React.FC = () => {
             <Button
               onClick={() => {
                 setEditingService({
-                  type: '',
+                  hotelId: resolvedHotelId || '',
+                  type: 'room_service',
                   name: '',
                   description: '',
-                  category: 'room_service',
                   basePrice: 0,
                   estimatedDuration: 30,
                   slaTime: 60,
                   isActive: true,
-                  variations: []
+                  variations: [],
+                  templates: []
                 });
                 setShowServiceModal(true);
               }}

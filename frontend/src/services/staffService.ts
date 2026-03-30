@@ -55,8 +55,10 @@ class StaffService {
     try {
       const queryParams = new URLSearchParams();
 
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
+      // Always send page and limit for server-side pagination
+      queryParams.append('page', (params.page ?? 1).toString());
+      queryParams.append('limit', (params.limit ?? 20).toString());
+
       if (params.search) queryParams.append('search', params.search);
       if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
@@ -64,9 +66,6 @@ class StaffService {
       // This ensures we only get staff and admin users, never guests
       if (params.role) {
         queryParams.append('role', params.role);
-      } else {
-        // When no specific role is requested, the backend will default to staff/admin only
-        // But we can be explicit to ensure we're getting staff management data
       }
 
       if (params.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
@@ -75,13 +74,16 @@ class StaffService {
 
       // Filter out any guest users that might have slipped through (extra safety)
       const staffRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
-      const staffUsers = response.data.data.users.filter((user: StaffMember) =>
+      const users = Array.isArray(response.data?.data?.users) ? response.data.data.users : [];
+      const staffUsers = users.filter((user: StaffMember) =>
         staffRoles.includes(user.role)
       );
 
+      const paginationData = response.data?.data?.pagination;
+
       return {
         staff: staffUsers,
-        pagination: response.data.data.pagination // Keep original pagination from backend
+        pagination: paginationData ?? { page: 1, limit: 20, total: 0, pages: 1 }
       };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -127,8 +129,8 @@ class StaffService {
     }
   }
 
-  // Get staff statistics
-  async getStaffStats(): Promise<{
+  // Get staff statistics using paginated endpoint (avoids unbounded fetch)
+  async getStaffStats(hotelId?: string): Promise<{
     total: number;
     active: number;
     inactive: number;
@@ -136,20 +138,37 @@ class StaffService {
     regularStaff: number;
   }> {
     try {
-      const response = await api.get('/admin/users');
+      // Use separate paginated calls with limit=1 to get counts efficiently
+      const queryBase = new URLSearchParams();
+      queryBase.append('limit', '1');
+      if (hotelId) queryBase.append('hotelId', hotelId);
 
-      // Filter to only include staff roles, exclude guests
-      const staffRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
-      const staff = response.data.data.users.filter((user: StaffMember) =>
-        staffRoles.includes(user.role)
-      );
+      const activeParams = new URLSearchParams(queryBase);
+      activeParams.append('isActive', 'true');
+
+      const inactiveParams = new URLSearchParams(queryBase);
+      inactiveParams.append('isActive', 'false');
+
+      const adminParams = new URLSearchParams(queryBase);
+      adminParams.append('role', 'admin');
+
+      const staffParams = new URLSearchParams(queryBase);
+      staffParams.append('role', 'staff');
+
+      const [allRes, activeRes, inactiveRes, adminRes, staffRes] = await Promise.all([
+        api.get(`/admin/users?${queryBase.toString()}`),
+        api.get(`/admin/users?${activeParams.toString()}`),
+        api.get(`/admin/users?${inactiveParams.toString()}`),
+        api.get(`/admin/users?${adminParams.toString()}`),
+        api.get(`/admin/users?${staffParams.toString()}`),
+      ]);
 
       return {
-        total: staff.length,
-        active: staff.filter((s: StaffMember) => s.isActive).length,
-        inactive: staff.filter((s: StaffMember) => !s.isActive).length,
-        admins: staff.filter((s: StaffMember) => s.role === 'admin').length,
-        regularStaff: staff.filter((s: StaffMember) => s.role === 'staff').length,
+        total: allRes.data?.data?.pagination?.total ?? 0,
+        active: activeRes.data?.data?.pagination?.total ?? 0,
+        inactive: inactiveRes.data?.data?.pagination?.total ?? 0,
+        admins: adminRes.data?.data?.pagination?.total ?? 0,
+        regularStaff: staffRes.data?.data?.pagination?.total ?? 0,
       };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

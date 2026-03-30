@@ -8,15 +8,17 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// All routes require rate limiting and authentication
+// All routes require rate limiting, authentication, and tenant isolation
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Simple test route
@@ -55,9 +57,10 @@ router.get('/test', (req, res) => {
  *         description: User's checkout inventory billing history
  */
 router.get('/user', catchAsync(async (req, res) => {
-  const { page = 1, limit = 10 } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
   const skip = (page - 1) * limit;
-  
+
   // Get user with billing history
   const user = await User.findById(req.user._id)
     .select('billingHistory')
@@ -66,7 +69,7 @@ router.get('/user', catchAsync(async (req, res) => {
       select: 'bookingNumber checkIn checkOut'
     })
     .populate({
-      path: 'billingHistory.roomId', 
+      path: 'billingHistory.roomId',
       select: 'roomNumber type'
     }).lean();
 
@@ -75,18 +78,19 @@ router.get('/user', catchAsync(async (req, res) => {
   }
 
   // Sort billing history by date (newest first)
-  const sortedHistory = user.billingHistory.sort((a, b) => 
+  const billingHistory = user.billingHistory || [];
+  const sortedHistory = billingHistory.sort((a, b) =>
     new Date(b.createdAt) - new Date(a.createdAt)
   );
 
   // Apply pagination
   const total = sortedHistory.length;
-  const paginatedHistory = sortedHistory.slice(skip, skip + parseInt(limit));
+  const paginatedHistory = sortedHistory.slice(skip, skip + limit);
 
   // Calculate summary
   const summary = {
     totalCharges: sortedHistory.length,
-    totalAmount: sortedHistory.reduce((sum, item) => sum + item.totalAmount, 0),
+    totalAmount: sortedHistory.reduce((sum, item) => sum + (item.totalAmount || 0), 0),
     totalPaid: sortedHistory.filter(item => item.paymentStatus === 'paid').length,
     totalPending: sortedHistory.filter(item => item.paymentStatus === 'pending').length
   };
@@ -97,10 +101,10 @@ router.get('/user', catchAsync(async (req, res) => {
       billingHistory: paginatedHistory,
       summary,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: limit > 0 ? Math.ceil(total / limit) : 0
       }
     }
   });
@@ -201,22 +205,23 @@ router.get('/user', catchAsync(async (req, res) => {
  *                       type: object
  */
 router.get('/', catchAsync(async (req, res) => {
-  try {
     const {
-      page = 1,
-      limit = 20,
       type = 'all',
       status,
       startDate,
       endDate,
       guestId,
-      hotelId,
       search
     } = req.query;
 
+  // Parse and clamp pagination params to prevent unbounded queries
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+
   // Build base query based on user role - hotelId is always mandatory for tenant isolation
+  // SECURITY FIX: Use tenant-scoped hotelId from ensureTenantContext (overrides any client-provided value)
   let baseQuery = {};
-  const targetHotelId = hotelId || req.user.hotelId;
+  const targetHotelId = req.tenantId || req.user.hotelId;
 
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -241,14 +246,14 @@ router.get('/', catchAsync(async (req, res) => {
   const skip = (page - 1) * limit;
   let historyItems = [];
   
-  // Debug: Check what exists in database (scoped to hotel)
-  const totalInvoices = await Invoice.countDocuments({ hotelId: new mongoose.Types.ObjectId(targetHotelId) });
-  const totalPayments = await Payment.countDocuments({ hotelId: new mongoose.Types.ObjectId(targetHotelId) });
-  
+  // Cap the per-sub-query fetch to a reasonable ceiling for in-memory merge
+  const subQueryLimit = Math.min(limit * 3, 100);
+
   logger.debug('Billing history request', {
     userRole: req.user.role,
     type,
-    dbCounts: { totalInvoices, totalPayments }
+    page,
+    limit
   });
 
   // Fetch invoices
@@ -273,7 +278,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber type status totalAmount issueDate items notes bookingId guestId hotelId payments')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(subQueryLimit).lean();
     
     logger.debug('Invoice query result', { count: invoices.length });
 
@@ -324,7 +329,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber totalAmount issueDate payments bookingId guestId hotelId currency')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(subQueryLimit).lean();
     
     logger.debug('Found invoices with payments', { count: invoicesWithPayments.length });
 
@@ -364,7 +369,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber type status totalAmount issueDate bookingId guestId hotelId currency')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(subQueryLimit).lean();
 
     logger.debug('Found refund invoices', { count: refundInvoices.length });
 
@@ -409,7 +414,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('rooms.roomId', 'roomNumber type')
       .select('bookingNumber status paymentStatus totalAmount checkIn checkOut userId hotelId rooms createdAt currency nights')
       .sort('-createdAt')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(subQueryLimit).lean();
 
     logger.debug('Found bookings for billing history', { count: bookings.length });
 
@@ -456,7 +461,7 @@ router.get('/', catchAsync(async (req, res) => {
 
   // Apply pagination
   const total = historyItems.length;
-  const paginatedItems = historyItems.slice(skip, skip + parseInt(limit));
+  const paginatedItems = historyItems.slice(skip, skip + limit);
 
   // Calculate summary statistics
   const summary = {
@@ -483,22 +488,13 @@ router.get('/', catchAsync(async (req, res) => {
       history: paginatedItems,
       summary,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: limit > 0 ? Math.ceil(total / limit) : 0
       }
     }
   });
-  
-  } catch (error) {
-    logger.error('Billing history error', { error: error.message });
-    res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-      details: error.message
-    });
-  }
 }));
 
 /**
@@ -525,11 +521,11 @@ router.get('/', catchAsync(async (req, res) => {
  *         description: Billing statistics and analytics
  */
 router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const { period = 'month', hotelId } = req.query;
-  
-  // Determine hotel ID based on user role
-  const targetHotelId = req.user.role === 'staff' ? req.user.hotelId : hotelId;
-  
+  const { period = 'month' } = req.query;
+
+  // SECURITY FIX: Always use tenant-scoped hotelId from ensureTenantContext
+  const targetHotelId = req.tenantId || req.user.hotelId;
+
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
@@ -694,20 +690,18 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *         description: Export data or download link
  */
 router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const { format = 'csv', startDate, endDate, type = 'all', hotelId } = req.query;
-  
-  // For now, return the data in JSON format that can be processed by frontend
-  // In production, you would implement actual CSV/Excel/PDF generation
-  
-  const targetHotelId = req.user.role === 'staff' ? req.user.hotelId : hotelId;
-  
+  const { format = 'csv', startDate, endDate, type = 'all' } = req.query;
+  const exportLimit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 500));
+
+  // SECURITY FIX: Always use tenant-scoped hotelId from ensureTenantContext
+  const targetHotelId = req.tenantId || req.user.hotelId;
+
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  // Use the same logic as the main endpoint but without pagination
   const baseQuery = { hotelId: new mongoose.Types.ObjectId(targetHotelId) };
-  
+
   const dateFilter = {};
   if (startDate) dateFilter.$gte = new Date(startDate);
   if (endDate) dateFilter.$lte = new Date(endDate);
@@ -726,7 +720,7 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
       .populate('guestId', 'name email phone')
       .populate('hotelId', 'name')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(exportLimit).lean();
 
     invoices.forEach(invoice => {
       exportData.push({
@@ -758,7 +752,7 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
       })
       .populate('hotelId', 'name')
       .sort('-createdAt')
-      .limit(parseInt(req.query.limit) || 50).lean();
+      .limit(exportLimit).lean();
 
     payments.forEach(payment => {
       exportData.push({

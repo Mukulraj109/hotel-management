@@ -4,6 +4,7 @@ import HotelSettings from '../models/HotelSettings.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -13,8 +14,9 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication middleware to all routes
+// Apply authentication, tenant isolation, and property access middleware to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('userPreferences', 'baseAccess'));
 
@@ -113,6 +115,35 @@ router.get('/', catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     data: { preferences }
+  });
+}));
+
+// GET /api/v1/user-preferences/export - Export user preferences
+// NOTE: This must be defined BEFORE /:section to avoid being caught by the param route
+router.get('/export', catchAsync(async (req, res, next) => {
+  const userId = req.user._id;
+
+  const preferences = await UserPreference.getOrCreateForUser(userId, req.user.hotelId);
+
+  // Remove sensitive data before export
+  const exportData = JSON.parse(JSON.stringify(preferences));
+  delete exportData.system; // Don't export system preferences
+  delete exportData._id;
+  delete exportData.__v;
+  delete exportData.createdAt;
+  delete exportData.updatedAt;
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      preferences: exportData,
+      exportedAt: new Date().toISOString(),
+      user: {
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role
+      }
+    }
   });
 }));
 
@@ -284,34 +315,6 @@ router.delete('/', validate(mutationBaselineSchema), catchAsync(async (req, res,
     status: 'success',
     message: 'Preferences reset to defaults',
     data: { preferences }
-  });
-}));
-
-// GET /api/v1/user-preferences/export - Export user preferences
-router.get('/export', catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-
-  const preferences = await UserPreference.getOrCreateForUser(userId, req.user.hotelId);
-
-  // Remove sensitive data before export
-  const exportData = JSON.parse(JSON.stringify(preferences));
-  delete exportData.system; // Don't export system preferences
-  delete exportData._id;
-  delete exportData.__v;
-  delete exportData.createdAt;
-  delete exportData.updatedAt;
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      preferences: exportData,
-      exportedAt: new Date().toISOString(),
-      user: {
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role
-      }
-    }
   });
 }));
 

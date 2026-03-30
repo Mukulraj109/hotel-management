@@ -1,6 +1,6 @@
 // Dashboard Types for Admin Frontend
 export interface ApiResponse<T> {
-  status: string;
+  status: 'success' | 'error';
   data: T;
   message?: string;
 }
@@ -62,7 +62,7 @@ export interface Booking {
   bookingNumber: string;
   checkIn: string;
   checkOut: string;
-  status: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'modified' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
   totalAmount: number;
   userId: {
     _id: string;
@@ -81,16 +81,19 @@ export interface Booking {
 
 export interface Alert {
   id: string;
-  type: 'incident' | 'maintenance' | 'finance' | 'service' | 'system';
+  type: string;
+  category?: string;
   severity: 'low' | 'medium' | 'high' | 'critical' | 'urgent';
   title: string;
   message: string;
-  timestamp?: string; // Keep for backward compatibility
-  createdAt?: string; // Backend sends this
+  timestamp?: string;
+  createdAt?: string;
+  status?: 'active' | 'acknowledged' | 'resolved';
   hotel?: string;
   guest?: string;
   action?: string;
   actionUrl?: string;
+  data?: Record<string, unknown>;
 }
 
 export interface SystemHealth {
@@ -496,6 +499,16 @@ export interface AlertsData {
     high: number;
     medium: number;
     low: number;
+    active: number;
+    acknowledged: number;
+    resolved: number;
+    categories?: Record<string, number>;
+  };
+  filters?: {
+    severity: string;
+    category: string;
+    status: string;
+    limit: number;
   };
   lastUpdated: string;
 }
@@ -524,9 +537,21 @@ export interface SystemHealthData {
     totalUsers: number;
     totalReviews: number;
     totalCommunications: number;
+    totalRequests: number;
     systemUptime: number;
     averageResponseTime: number;
   };
+  resources?: {
+    cpu: number;
+    memory: number;
+    disk: number;
+    network: number;
+  };
+  trends?: {
+    responseTime?: { time: string; api: number; database: number; storage: number }[];
+  };
+  errors?: { timestamp: string; component: string; error: string; severity: string }[];
+  activities?: { timestamp: string; event: string }[];
 }
 
 // Reports Types

@@ -12,6 +12,7 @@ export interface User {
   name: string;
   email: string;
   phone?: string;
+  avatar?: string;
   role: 'guest' | 'staff' | 'admin' | 'manager' | 'frontdesk' | 'housekeeping' | 'travel_agent';
   hotelId?: string | UserPropertyRef;
   properties?: UserPropertyRef[];

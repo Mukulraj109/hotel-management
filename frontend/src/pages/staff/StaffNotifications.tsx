@@ -2,42 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
-  Filter,
   Search,
   Check,
   Trash2,
   Settings,
   Eye,
-  EyeOff,
   ChevronDown,
   ChevronUp,
-  MoreHorizontal,
-  Clock,
   AlertCircle,
-  CheckCircle,
-  XCircle,
-  Star,
   Calendar,
-  Gift,
-  Heart,
-  LogIn,
-  LogOut,
-  MessageSquare,
-  Tag,
-  HelpCircle,
-  Minus,
   Circle,
   AlertTriangle,
-  AlertOctagon,
   Mail,
   MessageCircle,
   Smartphone,
-  Users,
-  Wrench,
-  Bed,
-  Coffee
 } from 'lucide-react';
-import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
+import { notificationService } from '../../services/notificationService';
+import type { Notification, NotificationChannelValue } from '../../services/notificationService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -220,7 +201,7 @@ function StaffNotifications() {
   };
 
   const getNotificationIcon = (notification: Notification) => {
-    const typeInfo = notificationService.getNotificationTypeInfo(notification.type as NotificationType);
+    const typeInfo = notificationService.getNotificationTypeInfo(notification.type);
     const isUnread = notificationService.isUnread(notification);
 
     return (
@@ -253,7 +234,7 @@ function StaffNotifications() {
     }
   };
 
-  const getChannelIcon = (channel: NotificationChannel) => {
+  const getChannelIcon = (channel: NotificationChannelValue | string) => {
     switch (channel) {
       case 'email': return Mail;
       case 'sms': return Smartphone;
@@ -423,7 +404,7 @@ function StaffNotifications() {
                 {unreadCount > 0 && (
                   <Button
                     onClick={handleMarkAllAsRead}
-                    disabled={markAllAsReadMutation.isLoading}
+                    disabled={markAllAsReadMutation.isPending}
                     variant="outline"
                     size="sm"
                   >
@@ -590,7 +571,7 @@ function StaffNotifications() {
                                 {notificationService.isUnread(notification) && (
                                   <Button
                                     onClick={() => handleMarkAsRead(notification._id)}
-                                    disabled={markAsReadMutation.isLoading}
+                                    disabled={markAsReadMutation.isPending}
                                     variant="ghost"
                                     size="sm"
                                     className="text-xs"
@@ -602,7 +583,7 @@ function StaffNotifications() {
 
                                 <Button
                                   onClick={() => handleDeleteNotification(notification._id)}
-                                  disabled={deleteNotificationMutation.isLoading}
+                                  disabled={deleteNotificationMutation.isPending}
                                   variant="ghost"
                                   size="sm"
                                   className="text-xs text-red-600 hover:text-red-700"

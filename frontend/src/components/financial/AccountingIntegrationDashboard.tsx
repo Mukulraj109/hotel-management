@@ -117,7 +117,11 @@ interface CurrencyRate {
   trend: 'up' | 'down' | 'stable';
 }
 
-const AccountingIntegrationDashboard: React.FC = () => {
+interface AccountingIntegrationDashboardProps {
+  readOnly?: boolean;
+}
+
+const AccountingIntegrationDashboard: React.FC<AccountingIntegrationDashboardProps> = ({ readOnly: _readOnly = false }) => {
   const [integrations, setIntegrations] = useState<AccountingIntegration[]>([]);
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [agingReport, setAgingReport] = useState<AgingReport[]>([]);
@@ -629,9 +633,27 @@ const AccountingIntegrationDashboard: React.FC = () => {
 
   const exportFinancialData = async (format: 'excel' | 'pdf' | 'csv') => {
     try {
-      // Mock export functionality
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    if (!isMountedRef.current) return;
+      if (!metrics || transactions.length === 0) {
+        toast.error('No financial data available to export');
+        return;
+      }
+      // Build CSV from real transaction data
+      const lines: string[] = ['Type,Date,Description,Reference,Amount,Status'];
+      transactions.forEach(t => {
+        lines.push(`${t.type},${t.date instanceof Date ? t.date.toISOString().split('T')[0] : t.date},"${(t.description || '').replace(/"/g, '""')}",${t.reference},${t.amount},${t.status}`);
+      });
+      const csvContent = lines.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `financial-transactions-${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'csv' : format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      if (!isMountedRef.current) return;
       toast.success(`Financial data exported as ${format.toUpperCase()}`);
     } catch (error) {
       toast.error('Export failed');
@@ -765,7 +787,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Current Ratio</p>
-                  <p className="text-2xl font-bold">{metrics.currentRatio}</p>
+                  <p className="text-2xl font-bold">{(metrics.currentRatio ?? 0).toFixed(2)}</p>
                 </div>
                 <BarChart3 className="w-6 h-6 text-purple-500" />
               </div>
@@ -909,7 +931,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
                         <span className="capitalize">{transaction.type}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{transaction.date.toLocaleDateString()}</TableCell>
+                    <TableCell>{transaction.date instanceof Date ? transaction.date.toLocaleDateString('en-IN') : new Date(transaction.date).toLocaleDateString('en-IN')}</TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium">{transaction.description}</p>

@@ -5,13 +5,14 @@ import MaintenanceRequest from '../models/MaintenanceRequest.js';
 import WorkflowAction from '../models/WorkflowAction.js';
 import { withTransaction } from '../utils/transactionHelper.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { refToHotelIdString } from '../middleware/propertyAccess.js';
 
 class WorkflowController {
   // Bulk Check-in Operations
   static async bulkCheckIn(req, res) {
     try {
       const { roomIds, guestData, paymentMethod, notes } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
 
       if (!roomIds || !Array.isArray(roomIds) || roomIds.length === 0) {
         return res.status(400).json({
@@ -110,7 +111,7 @@ class WorkflowController {
   static async bulkCheckOut(req, res) {
     try {
       const { roomIds, checkoutTime, paymentStatus, notes } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
 
       if (!roomIds || !Array.isArray(roomIds) || roomIds.length === 0) {
         return res.status(400).json({
@@ -192,7 +193,7 @@ class WorkflowController {
   static async scheduleHousekeeping(req, res) {
     try {
       const { roomIds, floorId, priority, tasks, estimatedDuration, specialInstructions } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
 
       if (!roomIds || !Array.isArray(roomIds) || roomIds.length === 0) {
         return res.status(400).json({
@@ -260,7 +261,7 @@ class WorkflowController {
   static async requestMaintenance(req, res) {
     try {
       const { roomIds, floorId, issueType, priority, description, estimatedCost, scheduledDate } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
 
       if (!roomIds || !Array.isArray(roomIds) || roomIds.length === 0) {
         return res.status(400).json({
@@ -339,7 +340,7 @@ class WorkflowController {
   static async updateRoomStatus(req, res) {
     try {
       const { roomIds, newStatus, reason, notes } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
 
       if (!roomIds || !Array.isArray(roomIds) || roomIds.length === 0) {
         return res.status(400).json({
@@ -400,7 +401,7 @@ class WorkflowController {
   static async getWorkflowActions(req, res) {
     try {
       const { type, status, floorId, dateFrom, dateTo } = req.query;
-      const hotelId = req.user?.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId);
 
       let query = { hotelId };
       if (type) query.type = type;
@@ -435,7 +436,7 @@ class WorkflowController {
   static async getFloorAnalytics(req, res) {
     try {
       const { floorId } = req.params;
-      const hotelId = req.user?.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId);
 
       // Get rooms on the floor
       const rooms = await Room.find({ hotelId, floor: parseInt(floorId) }).lean().limit(1000);
@@ -496,7 +497,7 @@ class WorkflowController {
   static async getPredictiveAnalytics(req, res) {
     try {
       const { period = '30d' } = req.query;
-      const hotelId = req.user?.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId);
 
       // Calculate days based on period
       const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
@@ -586,7 +587,7 @@ class WorkflowController {
   // Generate Upgrade Suggestions
   static async generateUpgradeSuggestions(req, res) {
     try {
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
       const { checkInDate, checkOutDate } = req.query;
 
       // Get current reservations for analysis
@@ -726,7 +727,7 @@ class WorkflowController {
   static async processUpgrade(req, res) {
     try {
       const { upgradeId, action, reason, notes } = req.body;
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
       const userId = req.user?.id || 'system';
 
       if (!upgradeId || !action) {
@@ -783,7 +784,7 @@ class WorkflowController {
   // Get Upgrade Analytics
   static async getUpgradeAnalytics(req, res) {
     try {
-      const hotelId = req.user?.hotelId || req.body.hotelId;
+      const hotelId = refToHotelIdString(req.user?.hotelId || req.body.hotelId);
       const { startDate, endDate } = req.query;
 
       // Get upgrade workflow actions

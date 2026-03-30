@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import '../../styles/admin-guest-services-animations.css';
 import {
@@ -34,11 +34,10 @@ import {
   DollarSign,
   Download,
   FileSpreadsheet,
-  Trash2,
   CheckSquare2,
   Square
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -50,7 +49,6 @@ import GuestInventoryTracker from '../../components/admin/GuestInventoryTracker'
 import ServiceTypeManager from '../../components/admin/ServiceTypeManager';
 import ServiceAnalytics from '../../components/admin/ServiceAnalytics';
 import SLATracker from '../../components/admin/SLATracker';
-import { formatNumber } from '../../utils/dashboardUtils';
 import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
@@ -62,9 +60,19 @@ import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 export default function AdminGuestServices() {
   const { user } = useAuth();
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId, viewMode } = useProperty();
   const [services, setServices] = useState<GuestService[]>([]);
-  const [stats, setStats] = useState<GuestServiceStats | null>(null);
+  const [stats, setStats] = useState<GuestServiceStats>({
+    total: 0,
+    pending: 0,
+    assigned: 0,
+    inProgress: 0,
+    completed: 0,
+    cancelled: 0,
+    avgResponseTime: 0,
+    avgCompletionTime: 0,
+    satisfactionScore: 0
+  });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [filters, setFilters] = useState<GuestServiceFilters>({ page: 1, limit: 20 });
@@ -96,12 +104,12 @@ export default function AdminGuestServices() {
       setLoading(true);
       const response = await adminGuestServicesService.getServices({
         ...filters,
-        propertyId: selectedPropertyId
+        hotelId: selectedPropertyId
       });
-      setServices(response.data.serviceRequests || []);
-      setPagination({ 
-        total: response.data.pagination?.total || 0, 
-        pages: response.data.pagination?.pages || 1 
+      setServices(response.data?.serviceRequests || []);
+      setPagination({
+        total: response.data?.pagination?.total || 0,
+        pages: response.data?.pagination?.pages || 1
       });
     } catch (error) {
       toast.error('Failed to load guest services');
@@ -116,23 +124,24 @@ export default function AdminGuestServices() {
       const response = await adminGuestServicesService.getStats(selectedPropertyId);
       
       // Map backend response to frontend expected format
-      const backendData = response.data;
-      const overall = backendData.overall || {};
-      
-      // Convert avg times from milliseconds to minutes for display
-      const avgResponseMs = overall.totalResponseTime || 0;
-      const avgCompletionMs = overall.totalCompletionTime || 0;
+      // Backend returns { overall: {...}, byServiceType: [...] }
+      const backendData = (response.data || {}) as Record<string, unknown>;
+      const overall = (backendData.overall || {}) as Record<string, number>;
 
-      const mappedStats = {
-        total: overall.totalRequests || 0,
-        pending: overall.pendingCount || 0,
-        assigned: overall.assignedCount || 0,
-        inProgress: overall.inProgressCount || 0,
-        completed: overall.completedCount || 0,
-        cancelled: overall.cancelledCount || 0,
+      // Convert avg times from milliseconds to minutes for display
+      const avgResponseMs = Number(overall.totalResponseTime) || 0;
+      const avgCompletionMs = Number(overall.totalCompletionTime) || 0;
+
+      const mappedStats: GuestServiceStats = {
+        total: Number(overall.totalRequests) || 0,
+        pending: Number(overall.pendingCount) || 0,
+        assigned: Number(overall.assignedCount) || 0,
+        inProgress: Number(overall.inProgressCount) || 0,
+        completed: Number(overall.completedCount) || 0,
+        cancelled: Number(overall.cancelledCount) || 0,
         avgResponseTime: avgResponseMs > 0 ? Math.round(avgResponseMs / 60000) : 0,
         avgCompletionTime: avgCompletionMs > 0 ? Math.round(avgCompletionMs / 60000) : 0,
-        satisfactionScore: overall.avgRating ? Math.round(overall.avgRating * 10) / 10 : 0
+        satisfactionScore: overall.avgRating ? Math.round(Number(overall.avgRating) * 10) / 10 : 0
       };
       
       setStats(mappedStats);
@@ -145,38 +154,40 @@ export default function AdminGuestServices() {
     try {
       // Service will handle hotelId dynamically
       const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId);
-      setAvailableStaff(response.data);
+      setAvailableStaff(response.data || []);
     } catch {
       // Error handled silently
     }
   };
 
+  // Fetch data when filters or property changes
   useEffect(() => {
     if (selectedPropertyId) {
       fetchServices();
       fetchStats();
       fetchAvailableStaff();
     }
-    
-    // Connect to real-time updates
-    connect().catch(() => { /* Error handled silently */ });
-    
-    return () => {
-      disconnect();
-    };
   }, [filters, selectedPropertyId]);
+
+  // Connect to real-time updates once (separate from data fetching)
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
+  useEffect(() => {
+    connect().catch(() => {
+      // WebSocket unavailable -- page still works via manual refresh
+    });
+  }, [connect]);
   
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
     
-    const handleGuestServiceUpdate = (data: Record<string, unknown>) => {
+    const handleGuestServiceUpdate = (_data: Record<string, unknown>) => {
       fetchServices();
       fetchStats();
       toast.success('Guest service data updated in real-time');
     };
-    
-    const handleGuestServiceCreate = (data: Record<string, unknown>) => {
+
+    const handleGuestServiceCreate = (_data: Record<string, unknown>) => {
       fetchServices();
       fetchStats();
       toast.success('New guest service request created');
@@ -302,7 +313,7 @@ export default function AdminGuestServices() {
   const handleExport = async () => {
     try {
       setBulkOperating(true);
-      const blob = await adminGuestServicesService.exportServices(filters, exportFormat);
+      const blob = await adminGuestServicesService.exportServices(filters, exportFormat, selectedPropertyId);
 
       // Create download link
       const url = window.URL.createObjectURL(blob);
@@ -610,12 +621,22 @@ export default function AdminGuestServices() {
 
               <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-3">
                 {/* Real-time connection status */}
-                <div className="flex items-center space-x-2 px-3 py-2 bg-white/70 backdrop-blur-sm rounded-xl shadow-sm">
+                <div
+                  className="flex items-center space-x-2 px-3 py-2 bg-white/70 backdrop-blur-sm rounded-xl shadow-sm cursor-pointer"
+                  onClick={() => {
+                    if (connectionState === 'disconnected') {
+                      connect().catch(() => { /* retry silently */ });
+                    }
+                  }}
+                  title={connectionState === 'disconnected' ? 'Click to retry real-time connection. Data still refreshes via API.' : `Real-time: ${connectionState}`}
+                >
                   <div className={`w-2 h-2 rounded-full ${
                     connectionState === 'connected' ? 'bg-green-500 animate-pulse' :
-                    connectionState === 'connecting' ? 'bg-yellow-500 animate-bounce' : 'bg-red-500'
+                    connectionState === 'connecting' ? 'bg-yellow-500 animate-bounce' : 'bg-gray-400'
                   }`}></div>
-                  <span className="text-xs text-gray-600 capitalize font-medium">{connectionState}</span>
+                  <span className="text-xs text-gray-600 capitalize font-medium">
+                    {connectionState === 'connected' ? 'Live' : connectionState === 'connecting' ? 'Connecting...' : 'Manual Refresh'}
+                  </span>
                 </div>
 
                 <Button
@@ -965,11 +986,19 @@ export default function AdminGuestServices() {
             }>
               <div className="overflow-x-auto">
                 <div className="min-w-full">
-                  <DataTable
-                    data={services}
-                    columns={columns}
-                    loading={loading}
-                  />
+                  {!loading && services.length === 0 ? (
+                    <div className="p-12 text-center">
+                      <Bell className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No Service Requests</h3>
+                      <p className="text-sm text-gray-500">No guest service requests found for the current filters. Requests will appear here when guests submit them.</p>
+                    </div>
+                  ) : (
+                    <DataTable
+                      data={services}
+                      columns={columns}
+                      loading={loading}
+                    />
+                  )}
                 </div>
               </div>
             </ErrorBoundary>
@@ -1014,19 +1043,19 @@ export default function AdminGuestServices() {
           </TabsContent>
 
           <TabsContent value="inventory">
-            <GuestInventoryTracker />
+            <GuestInventoryTracker hotelId={selectedPropertyId} />
           </TabsContent>
 
           <TabsContent value="management">
-            <ServiceTypeManager />
+            <ServiceTypeManager hotelId={selectedPropertyId} />
           </TabsContent>
 
           <TabsContent value="analytics">
-            <ServiceAnalytics />
+            <ServiceAnalytics hotelId={selectedPropertyId} />
           </TabsContent>
 
           <TabsContent value="sla">
-            <SLATracker />
+            <SLATracker hotelId={selectedPropertyId} />
           </TabsContent>
         </Tabs>
 
@@ -1087,12 +1116,12 @@ export default function AdminGuestServices() {
                   Guest Information
                 </label>
                 <div className="space-y-1">
-                  <div className="font-semibold text-gray-900">{selectedService.userId.name}</div>
+                  <div className="font-semibold text-gray-900">{selectedService.userId?.name || 'N/A'}</div>
                   <div className="text-sm text-gray-600 flex items-center">
                     <Mail className="w-3 h-3 mr-1" />
-                    {selectedService.userId.email}
+                    {selectedService.userId?.email || 'N/A'}
                   </div>
-                  {selectedService.userId.phone && (
+                  {selectedService.userId?.phone && (
                     <div className="text-sm text-gray-600 flex items-center">
                       <Phone className="w-3 h-3 mr-1" />
                       {selectedService.userId.phone}
@@ -1161,11 +1190,11 @@ export default function AdminGuestServices() {
                      <div>
                        <div className="font-medium">{formatCurrency(selectedService.actualCost)} (Actual)</div>
                        {selectedService.actualCost !== selectedService.estimatedCost && (
-                         <div className="text-gray-500">Estimated: {formatCurrency(selectedService.estimatedCost)}</div>
+                         <div className="text-gray-500">Estimated: {formatCurrency(selectedService.estimatedCost || 0)}</div>
                        )}
                      </div>
                    ) : (
-                     <div>{formatCurrency(selectedService.estimatedCost)} (Estimated)</div>
+                     <div>{formatCurrency(selectedService.estimatedCost || 0)} (Estimated)</div>
                    )}
                 </div>
               </div>
@@ -1256,8 +1285,8 @@ export default function AdminGuestServices() {
                 {selectedService.status !== 'pending' && (
                   <Button
                     onClick={() => {
-                      const nextStatus = selectedService.status === 'assigned' ? 'in_progress' : 'completed';
-                      handleStatusUpdate(selectedService._id, nextStatus as unknown);
+                      const nextStatus: 'in_progress' | 'completed' = selectedService.status === 'assigned' ? 'in_progress' : 'completed';
+                      handleStatusUpdate(selectedService._id, nextStatus);
                       setShowViewModal(false);
                     }}
                     disabled={updating}

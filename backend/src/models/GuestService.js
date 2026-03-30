@@ -90,7 +90,8 @@ const guestServiceSchema = new mongoose.Schema({
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
-    required: [true, 'Hotel ID is required']
+    required: [true, 'Hotel ID is required'],
+    index: true
   },
   userId: {
     type: mongoose.Schema.ObjectId,
@@ -199,6 +200,10 @@ const guestServiceSchema = new mongoose.Schema({
   specialInstructions: {
     type: String,
     maxlength: [300, 'Special instructions cannot be more than 300 characters']
+  },
+  cancellationReason: {
+    type: String,
+    maxlength: [500, 'Cancellation reason cannot be more than 500 characters']
   },
   rating: {
     type: Number,
@@ -351,7 +356,9 @@ guestServiceSchema.methods.canCancel = function() {
 // Static method to get service statistics
 guestServiceSchema.statics.getServiceStats = async function(hotelId, startDate, endDate) {
   try {
-    const matchQuery = { hotelId };
+    const matchQuery = {
+      hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId
+    };
   
     if (startDate && endDate) {
       matchQuery.createdAt = {
@@ -401,12 +408,13 @@ guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, ho
     const HotelService = mongoose.model('HotelService');
 
     // Try to find a matching hotel service based on service type
+    // NOTE: Do NOT use .lean() here because we call instance method getActiveStaff() below
     const matchingHotelServices = await HotelService.find({
       hotelId,
       type: this.mapServiceTypeToHotelServiceType(serviceRequest.serviceType),
       isActive: true,
       'assignedStaff.isActive': true
-    }).populate('assignedStaff.staffId', 'name email').lean().limit(1000);
+    }).populate('assignedStaff.staffId', 'name email').limit(100);
 
     if (matchingHotelServices.length > 0) {
       // Prefer services with auto-assignment enabled
@@ -414,7 +422,7 @@ guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, ho
         service => service.serviceSettings?.autoAssignRequests
       ) || matchingHotelServices[0];
 
-      // Get available staff from the service
+      // Get available staff from the service (requires Mongoose document, not lean)
       const availableStaff = targetService.getActiveStaff();
 
       if (availableStaff.length > 0) {
@@ -608,6 +616,14 @@ guestServiceSchema.virtual('billingStatus').get(function() {
 });
 
 // NOTIFICATION AUTOMATION HOOKS
+// Capture isNew and modified fields before save (post-save resets these flags)
+guestServiceSchema.pre('save', function(next) {
+  this._wasNew = this.isNew;
+  this._wasStatusModified = this.isModified('status');
+  this._wasAssignedToModified = this.isModified('assignedTo');
+  next();
+});
+
 guestServiceSchema.post('save', async function(doc) {
   try {
     // Get room number from booking
@@ -623,10 +639,10 @@ guestServiceSchema.post('save', async function(doc) {
 
     // Check if this is a VIP guest
     const user = await mongoose.model('User').findById(doc.userId);
-    const isVipGuest = user && (user.loyaltyTier === 'platinum' || user.loyaltyTier === 'diamond');
+    const isVipGuest = user && user.loyalty && (user.loyalty.tier === 'platinum' || user.loyalty.tier === 'diamond');
 
     // 1. New guest service request created
-    if (this.isNew) {
+    if (doc._wasNew) {
       let notificationType = 'guest_service_created';
       let priority = 'medium';
 
@@ -658,7 +674,7 @@ guestServiceSchema.post('save', async function(doc) {
     }
 
     // 2. Service assigned to staff
-    if (doc.isModified('assignedTo') && doc.assignedTo) {
+    if (doc._wasAssignedToModified && doc.assignedTo) {
       await NotificationAutomationService.triggerNotification(
         'guest_service_assigned',
         {
@@ -678,7 +694,7 @@ guestServiceSchema.post('save', async function(doc) {
     }
 
     // 3. Service started (status changed to in_progress)
-    if (doc.isModified('status') && doc.status === 'in_progress') {
+    if (doc._wasStatusModified && doc.status === 'in_progress') {
       await NotificationAutomationService.triggerNotification(
         'guest_service_started',
         {
@@ -695,7 +711,7 @@ guestServiceSchema.post('save', async function(doc) {
     }
 
     // 4. Service completed
-    if (doc.isModified('status') && doc.status === 'completed') {
+    if (doc._wasStatusModified && doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'guest_service_completed',
         {
@@ -712,6 +728,11 @@ guestServiceSchema.post('save', async function(doc) {
         doc.hotelId
       );
     }
+
+    // Clean up transient flags
+    delete doc._wasNew;
+    delete doc._wasStatusModified;
+    delete doc._wasAssignedToModified;
 
   } catch (error) {
     console.error('Error in GuestService notification hook:', error);

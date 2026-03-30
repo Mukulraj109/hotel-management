@@ -20,11 +20,6 @@ const navigation = [
   { name: 'Feedback', href: '/app/feedback', icon: MessageCircle },
 ];
 
-const publicNavigation = [
-  { name: 'Public Website', href: '/', icon: Globe },
-  { name: 'Logout', href: '#', icon: LogOut },
-];
-
 interface GuestSidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -88,7 +83,7 @@ export default function GuestSidebar({ isOpen = false, onClose }: GuestSidebarPr
             </div>
             <div>
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-              <p className="text-xs text-gray-500">{user?.loyalty?.tier} Member</p>
+              <p className="text-xs text-gray-500">{user?.loyalty?.tier || 'Guest'} Member</p>
             </div>
           </div>
           <button 
@@ -111,6 +106,7 @@ export default function GuestSidebar({ isOpen = false, onClose }: GuestSidebarPr
                 <li key={item.name}>
                   <NavLink
                     to={item.href}
+                    end={item.href === '/app' || item.href === '/app/services'}
                     onClick={handleNavClick}
                     className={({ isActive }) =>
                       `flex items-center space-x-3 px-3 lg:px-4 py-2 lg:py-3 rounded-lg text-sm font-medium transition-colors ${

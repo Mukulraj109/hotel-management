@@ -53,12 +53,13 @@ const digitalKeySchema = new mongoose.Schema({
     enum: ['primary', 'temporary', 'emergency'], 
     default: 'primary' 
   },
-  validFrom: { 
-    type: Date, 
+  validFrom: {
+    type: Date,
     required: [true, 'Valid from date is required'],
     validate: {
       validator: function(value) {
-        return value <= new Date();
+        // Allow 1 minute of clock skew tolerance
+        return value <= new Date(Date.now() + 60000);
       },
       message: 'Valid from date cannot be in the future'
     }
@@ -150,11 +151,12 @@ const digitalKeySchema = new mongoose.Schema({
       type: Boolean, 
       default: false 
     },
-    pin: { 
+    pin: {
       type: String,
       validate: {
         validator: function(value) {
-          return !this.securitySettings.requirePin || (value && /^\d{4,6}$/.test(value));
+          // Allow raw PINs (4-6 digits) and hashed PINs (64-char hex from sha256)
+          return !this.securitySettings.requirePin || (value && (/^\d{4,6}$/.test(value) || /^[a-f0-9]{64}$/.test(value)));
         },
         message: 'PIN must be 4-6 digits when required'
       }
@@ -198,7 +200,9 @@ const digitalKeySchema = new mongoose.Schema({
 digitalKeySchema.index({ userId: 1, status: 1 });
 digitalKeySchema.index({ bookingId: 1, status: 1 });
 digitalKeySchema.index({ roomId: 1, status: 1 });
-digitalKeySchema.index({ validUntil: 1 }, { expireAfterSeconds: 0 });
+// Note: NOT a TTL index — expired keys must be retained for audit trails.
+// The pre-save middleware marks them as 'expired' instead of deleting them.
+digitalKeySchema.index({ validUntil: 1 });
 digitalKeySchema.index({ 'sharedWith.expiresAt': 1 });
 digitalKeySchema.index({ keyCode: 1, status: 1 });
 
@@ -239,19 +243,24 @@ digitalKeySchema.statics.findByKeyCode = function(keyCode) {
     .populate('hotelId', 'name address');
 };
 
-digitalKeySchema.statics.getActiveKeysForUser = function(userId) {
-  return this.find({ 
-    userId, 
+digitalKeySchema.statics.getActiveKeysForUser = function(userId, { page = 1, limit = 20 } = {}) {
+  const limitNum = Math.min(100, Math.max(1, limit));
+  return this.find({
+    userId,
     status: 'active',
     validUntil: { $gt: new Date() }
   })
   .populate('bookingId', 'bookingNumber checkIn checkOut')
   .populate('roomId', 'number type floor')
   .populate('hotelId', 'name address')
-  .sort({ validUntil: 1 });
+  .sort({ validUntil: 1 })
+  .skip((page - 1) * limitNum)
+  .limit(limitNum)
+  .lean();
 };
 
-digitalKeySchema.statics.getSharedKeysForUser = function(userId) {
+digitalKeySchema.statics.getSharedKeysForUser = function(userId, { page = 1, limit = 20 } = {}) {
+  const limitNum = Math.min(100, Math.max(1, limit));
   return this.find({
     'sharedWith.userId': userId,
     'sharedWith.isActive': true,
@@ -266,7 +275,10 @@ digitalKeySchema.statics.getSharedKeysForUser = function(userId) {
   .populate('bookingId', 'bookingNumber checkIn checkOut')
   .populate('roomId', 'number type floor')
   .populate('hotelId', 'name address')
-  .sort({ validUntil: 1 });
+  .sort({ validUntil: 1 })
+  .skip((page - 1) * limitNum)
+  .limit(limitNum)
+  .lean();
 };
 
 // Instance methods
@@ -364,6 +376,18 @@ digitalKeySchema.methods.revokeKey = function() {
   return this.save();
 };
 
+// Static helper to hash PINs
+digitalKeySchema.statics.hashPin = function(pin) {
+  return crypto.createHash('sha256').update(pin).digest('hex');
+};
+
+// Instance method to verify PIN
+digitalKeySchema.methods.verifyPin = function(pin) {
+  if (!this.securitySettings.requirePin) return true;
+  const hashedPin = crypto.createHash('sha256').update(pin).digest('hex');
+  return this.securitySettings.pin === hashedPin;
+};
+
 // Pre-save middleware
 digitalKeySchema.pre('save', function(next) {
   // Auto-expire keys
@@ -377,12 +401,17 @@ digitalKeySchema.pre('save', function(next) {
       metadata: {}
     });
   }
-  
+
   // Validate PIN if required
   if (this.securitySettings.requirePin && !this.securitySettings.pin) {
     return next(new Error('PIN is required when PIN requirement is enabled'));
   }
-  
+
+  // Hash PIN before storage if it looks unhashed (raw 4-6 digit PIN)
+  if (this.securitySettings.pin && /^\d{4,6}$/.test(this.securitySettings.pin)) {
+    this.securitySettings.pin = crypto.createHash('sha256').update(this.securitySettings.pin).digest('hex');
+  }
+
   next();
 });
 

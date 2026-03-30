@@ -175,7 +175,8 @@ const AdminBillMessages: React.FC = () => {
         resetForm();
       }
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to create message');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to create message');
     }
   };
 
@@ -192,7 +193,8 @@ const AdminBillMessages: React.FC = () => {
         resetForm();
       }
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update message');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to update message');
     }
   };
 
@@ -208,7 +210,8 @@ const AdminBillMessages: React.FC = () => {
         fetchMessages();
       }
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to delete message');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to delete message');
     }
   };
 
@@ -229,7 +232,8 @@ const AdminBillMessages: React.FC = () => {
         setIsPreviewModalOpen(true);
       }
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to preview message');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to preview message');
     }
   };
 

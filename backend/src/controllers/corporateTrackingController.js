@@ -34,9 +34,10 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const endOfMonth = new Date(currentYear, currentMonth + 1, 0);
   const startOfYear = new Date(currentYear, 0, 1);
 
-  // Total corporate companies
-  const totalCompanies = await CorporateCompany.countDocuments({ isActive: true });
+  // Total corporate companies (filtered by hotelId for tenant isolation)
+  const totalCompanies = await CorporateCompany.countDocuments({ hotelId: req.user.hotelId, isActive: true });
   const newCompaniesThisMonth = await CorporateCompany.countDocuments({
+    hotelId: req.user.hotelId,
     isActive: true,
     createdAt: { $gte: startOfMonth, $lte: endOfMonth }
   });

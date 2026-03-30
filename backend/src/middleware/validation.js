@@ -116,11 +116,13 @@ export const schemas = {
   }),
 
   updateProfile: Joi.object({
-    name: Joi.string().min(2).max(100),
-    phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
+    name: Joi.string().trim().min(2).max(100),
+    phone: Joi.string().pattern(/^\+?[\d\s\-()]{7,20}$/).allow('').messages({
+      'string.pattern.base': 'Please enter a valid phone number'
+    }),
     preferences: Joi.object({
       bedType: Joi.string().valid('single', 'double', 'queen', 'king'),
-      floor: Joi.string(),
+      floor: Joi.string().max(50),
       smokingAllowed: Joi.boolean(),
       other: Joi.string().max(500)
     })
@@ -128,7 +130,16 @@ export const schemas = {
 
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),
-    newPassword: Joi.string().min(6).required()
+    newPassword: Joi.string().min(8).max(128)
+      .pattern(/[A-Z]/, 'uppercase')
+      .pattern(/[0-9]/, 'digit')
+      .pattern(/[!@#$%^&*(),.?":{}|<>]/, 'special character')
+      .required()
+      .messages({
+        'string.min': 'Password must be at least 8 characters',
+        'string.max': 'Password cannot exceed 128 characters',
+        'string.pattern.name': 'Password must contain at least one {#name}'
+      })
   }),
 
   redeemPoints: Joi.object({

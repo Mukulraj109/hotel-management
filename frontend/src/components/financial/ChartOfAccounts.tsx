@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Edit, Trash2, Search, Filter } from 'lucide-react';
+import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import financialService, { ChartOfAccount } from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
@@ -27,7 +27,11 @@ interface AccountFormData {
   description: string;
 }
 
-const ChartOfAccounts: React.FC = () => {
+interface ChartOfAccountsProps {
+  readOnly?: boolean;
+}
+
+const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({ readOnly = false }) => {
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,6 +40,8 @@ const ChartOfAccounts: React.FC = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<ChartOfAccount | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<ChartOfAccount | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [formData, setFormData] = useState<AccountFormData>({
     accountCode: '',
     accountName: '',
@@ -106,8 +112,8 @@ const ChartOfAccounts: React.FC = () => {
           ? flattenAccountTree(treeResponse.data.accountTree)
           : [];
         setAccounts(accountsData);
-      } catch (fallbackError: Record<string, unknown>) {
-        toast.error('Failed to fetch accounts: ' + fallbackError.message);
+      } catch (fallbackError: unknown) {
+        toast.error('Failed to fetch accounts: ' + (fallbackError instanceof Error ? fallbackError.message : 'Unknown error'));
         setAccounts([]);
       }
     } finally {
@@ -199,9 +205,20 @@ const ChartOfAccounts: React.FC = () => {
     });
   };
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterType, filterCategory]);
+
   const filteredAccounts = (Array.isArray(accounts) ? accounts : []).filter(account =>
     account.accountName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     account.accountCode?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / ITEMS_PER_PAGE));
+  const paginatedAccounts = filteredAccounts.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
   );
 
   const getBalanceColor = (account: ChartOfAccount) => {
@@ -234,12 +251,14 @@ const ChartOfAccounts: React.FC = () => {
           <p className="text-gray-600">Manage your accounting structure</p>
         </div>
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          {!readOnly && (
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
               <Plus className="w-4 h-4 mr-2" />
               Add Account
             </Button>
           </DialogTrigger>
+          )}
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>
@@ -436,20 +455,20 @@ const ChartOfAccounts: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAccounts.length === 0 && (
+              {paginatedAccounts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                     No accounts found. Click "+ Add Account" to create your first account.
                   </TableCell>
                 </TableRow>
               )}
-              {filteredAccounts.map((account) => (
+              {paginatedAccounts.map((account) => (
                 <TableRow key={account._id}>
                   <TableCell className="font-mono">{account.accountCode}</TableCell>
                   <TableCell className="font-medium">{account.accountName}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {account.accountType.replace(/_/g, ' ').toUpperCase()}
+                      {(account.accountType || '').replace(/_/g, ' ').toUpperCase()}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">
@@ -464,24 +483,57 @@ const ChartOfAccounts: React.FC = () => {
                     </Badge>
                   </TableCell>
                   <TableCell>
+                    {!readOnly && (
                     <div className="flex space-x-2">
                       <Button size="sm" variant="outline" onClick={() => handleEdit(account)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => setDeleteAccount(account)}
                         disabled={!account.isActive}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          {/* Pagination Controls */}
+          {filteredAccounts.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <p className="text-sm text-gray-600">
+                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+                {Math.min(currentPage * ITEMS_PER_PAGE, filteredAccounts.length)} of{' '}
+                {filteredAccounts.length} accounts
+              </p>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="flex items-center px-3 text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

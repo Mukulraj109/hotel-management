@@ -100,7 +100,8 @@ const AdminRoomPricing: React.FC = () => {
 
       setRooms(Array.isArray(roomsData) ? roomsData : []);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to fetch rooms');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to fetch rooms');
       setRooms([]); // Ensure rooms is always an array
     } finally {
       setLoading(false);
@@ -164,7 +165,8 @@ const AdminRoomPricing: React.FC = () => {
       setTempPrices({});
       toast.success('Room price updated successfully');
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update room price');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to update room price');
     }
   };
 
@@ -234,7 +236,8 @@ const AdminRoomPricing: React.FC = () => {
       fetchRooms();
       toast.success(`Updated prices for ${updates.length} rooms`);
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update room prices');
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(err.response?.data?.message || 'Failed to update room prices');
     }
   };
 
@@ -560,7 +563,7 @@ const AdminRoomPricing: React.FC = () => {
                         <span className="text-sm font-medium text-gray-900">
                           ₹{room.currentRate.toLocaleString()}
                         </span>
-                        {room.currentRate !== room.baseRate && (
+                        {room.currentRate !== room.baseRate && room.baseRate > 0 && (
                           <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${
                             room.currentRate > room.baseRate
                               ? 'bg-green-100 text-green-800'

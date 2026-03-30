@@ -250,6 +250,55 @@ router.get('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) 
 
 /**
  * @swagger
+ * /booking-conversations/stats:
+ *   get:
+ *     summary: Get conversation statistics
+ *     tags: [Booking Conversations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Conversation statistics
+ */
+router.get('/stats', authenticate, ensurePropertyAccess, authorizePolicy('bookingConversations', 'staffAccess'), catchAsync(async (req, res) => {
+  const { hotelId, startDate, endDate } = req.query;
+
+  let targetHotelId;
+  if (req.user.role === 'staff') {
+    targetHotelId = req.user.hotelId;
+  } else {
+    targetHotelId = hotelId || req.user.hotelId;
+  }
+
+  if (!targetHotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const stats = await BookingConversation.getStats(targetHotelId, startDate, endDate);
+
+  res.json({
+    status: 'success',
+    data: { stats }
+  });
+}));
+
+/**
+ * @swagger
  * /booking-conversations/{id}:
  *   get:
  *     summary: Get a specific conversation
@@ -630,55 +679,6 @@ router.patch('/:id/status', authenticate, ensurePropertyAccess, validate(mutatio
   res.json({
     status: 'success',
     message: 'Conversation status updated successfully'
-  });
-}));
-
-/**
- * @swagger
- * /booking-conversations/stats:
- *   get:
- *     summary: Get conversation statistics
- *     tags: [Booking Conversations]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: hotelId
- *         schema:
- *           type: string
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Conversation statistics
- */
-router.get('/stats', authenticate, ensurePropertyAccess, authorizePolicy('bookingConversations', 'staffAccess'), catchAsync(async (req, res) => {
-  const { hotelId, startDate, endDate } = req.query;
-
-  let targetHotelId;
-  if (req.user.role === 'staff') {
-    targetHotelId = req.user.hotelId;
-  } else {
-    targetHotelId = hotelId || req.user.hotelId;
-  }
-
-  if (!targetHotelId) {
-    throw new ApplicationError('Hotel ID is required', 400);
-  }
-
-  const stats = await BookingConversation.getStats(targetHotelId, startDate, endDate);
-
-  res.json({
-    status: 'success',
-    data: { stats }
   });
 }));
 

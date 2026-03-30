@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Sparkles, TrendingUp, Star, Calendar, Users, Gift } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import favoritesService from '../../services/favoritesService';
 import { loyaltyService } from '../../services/loyaltyService';

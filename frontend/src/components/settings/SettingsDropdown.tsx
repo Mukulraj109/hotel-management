@@ -42,9 +42,10 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
   }, [isOpen, onToggle]);
 
   const getSettingsMenuItems = () => {
-    const baseUrl = user?.role === 'admin' ? '/admin' :
+    const baseUrl = user?.role === 'admin' || user?.role === 'manager' ? '/admin' :
                    user?.role === 'staff' ? '/staff' :
-                   user?.role === 'travel_agent' ? '/agent' : '/guest';
+                   user?.role === 'frontdesk' ? '/frontdesk' :
+                   user?.role === 'travel_agent' ? '/travel-agent' : '/app';
 
     const commonItems = [
       {
@@ -68,7 +69,7 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
     ];
 
     // Role-specific items
-    if (user?.role === 'admin') {
+    if (user?.role === 'admin' || user?.role === 'manager') {
       return [
         ...commonItems,
         {
@@ -104,7 +105,47 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
       ];
     }
 
-    // Guest and Travel Agent get basic settings
+    if (user?.role === 'guest') {
+      return [
+        {
+          icon: User,
+          label: 'Profile Settings',
+          description: 'Update your personal information',
+          href: '/app/settings/profile'
+        },
+        {
+          icon: Bell,
+          label: 'Preferences',
+          description: 'Manage your stay preferences',
+          href: '/app/settings/preferences'
+        },
+        {
+          icon: Shield,
+          label: 'Privacy',
+          description: 'Privacy and data settings',
+          href: '/app/settings/privacy'
+        }
+      ];
+    }
+
+    if (user?.role === 'travel_agent') {
+      return [
+        {
+          icon: User,
+          label: 'Profile Settings',
+          description: 'Update your personal information',
+          href: '/travel-agent/profile/edit'
+        },
+        {
+          icon: Palette,
+          label: 'Settings',
+          description: 'Manage your account settings',
+          href: '/travel-agent/settings'
+        }
+      ];
+    }
+
+    // Fallback for other roles
     return commonItems;
   };
 
@@ -118,7 +159,7 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
   return (
     <div className="relative">
       {/* Settings Icon Trigger */}
-      <button aria-label="Toggle"
+      <button aria-label="Settings"
         onClick={onToggle}
         className="p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 relative"
         title="Settings"
@@ -146,7 +187,7 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
           {/* Menu Items */}
           <div className="py-2">
             {menuItems.map((item, index) => (
-              <button aria-label="More options"
+              <button aria-label={item.label}
                 key={`menuItems-${index}-${item.label}`}
                 onClick={() => handleMenuItemClick(item.href)}
                 className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center space-x-3"

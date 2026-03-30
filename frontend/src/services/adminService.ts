@@ -7,6 +7,7 @@ interface ApiResponse<T> {
   results?: number;
   pagination?: {
     current: number;
+    page?: number;
     pages: number;
     total: number;
   };
@@ -65,9 +66,15 @@ class AdminService {
     }
   }
 
-  async getHousekeepingStats(): Promise<ApiResponse<{ stats: unknown[] }>> {
+  async getHousekeepingStats(hotelId?: string): Promise<ApiResponse<{ stats: unknown[] }>> {
     try {
-      const response = await api.get('/housekeeping/stats');
+      const params = new URLSearchParams();
+      if (hotelId) {
+        params.append('hotelId', hotelId);
+      }
+      const queryString = params.toString();
+      const url = queryString ? `/housekeeping/stats?${queryString}` : '/housekeeping/stats';
+      const response = await api.get(url);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -91,9 +98,15 @@ class AdminService {
     }
   }
 
-  async getInventoryStats(): Promise<ApiResponse<{ stats: { total: number; lowStock: number; outOfStock: number; totalValue: number; categories: Record<string, number> } }>> {
+  async getInventoryStats(hotelId?: string): Promise<ApiResponse<{ stats: { total: number; lowStock: number; outOfStock: number; totalValue: number; categories: Record<string, number> } }>> {
     try {
-      const response = await api.get('/inventory/stats');
+      const params = new URLSearchParams();
+      if (hotelId) {
+        params.append('hotelId', hotelId);
+      }
+      const queryString = params.toString();
+      const url = queryString ? `/inventory/stats?${queryString}` : '/inventory/stats';
+      const response = await api.get(url);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -418,17 +431,29 @@ class AdminService {
       adults: number;
       children: number;
       specialRequests?: string;
+      name?: string;
+      email?: string;
+      phone?: string;
     };
     totalAmount: number;
     currency?: string;
-    paymentStatus?: 'pending' | 'paid';
-    status?: 'pending' | 'confirmed';
-    roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
-    // Payment information for walk-in bookings
+    paymentStatus?: 'pending' | 'paid' | 'partially_paid';
+    status?: 'pending' | 'confirmed' | 'checked_in';
+    roomType?: 'single' | 'double' | 'suite' | 'deluxe';
+    // Payment information for walk-in bookings (legacy singular fields)
     paymentMethod?: 'cash' | 'card' | 'upi' | 'bank_transfer';
     advanceAmount?: number;
     paymentReference?: string;
     paymentNotes?: string;
+    // Payment information for walk-in bookings (new array-based fields)
+    paymentMethods?: Array<{ method: string; amount: number; reference?: string; notes?: string }>;
+    paidAmount?: number;
+    remainingAmount?: number;
+    // Additional walk-in fields
+    source?: string;
+    checkInTime?: string;
+    idempotencyKey?: string;
+    [key: string]: unknown;
   }): Promise<ApiResponse<{ booking: AdminBooking }>> {
     try {
       const payload = {
@@ -494,7 +519,7 @@ class AdminService {
     }
   }
 
-  async getUsers(filters: { search?: string; role?: string } = {}): Promise<ApiResponse<{ users: unknown[] }>> {
+  async getUsers(filters: { search?: string; role?: string; hotelId?: string } = {}): Promise<ApiResponse<{ users: unknown[] }>> {
     try {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {

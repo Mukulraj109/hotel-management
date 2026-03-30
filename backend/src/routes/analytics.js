@@ -60,15 +60,15 @@ router.get('/reports/status/:reportId', authorize(['admin', 'manager']), getRepo
 router.get('/reports/cached/:cacheKey', authorize(['admin', 'manager']), getCachedReport);
 
 // Report management
-router.get('/reports/templates', authorize(['admin', 'manager']), getReportTemplates);
+router.get('/reports/templates', authorize(['admin', 'manager', 'frontdesk']), getReportTemplates);
 router.delete('/reports/cache/:reportType?', authorize(['admin']), validate(mutationBaselineSchema), clearReportCache);
 router.delete('/dashboard/cache/:cacheKey?', authorize(['admin']), validate(mutationBaselineSchema), clearDashboardCache);
 router.post('/reports/schedule', authorize(['admin']), validate(mutationBaselineSchema), scheduleReport);
 router.get('/reports/export/:reportId/:format', authorize(['admin', 'manager']), exportReport);
 
 // Dashboard and real-time metrics
-router.get('/dashboard/metrics', authorize(['admin', 'manager', 'staff']), getDashboardMetrics);
-router.get('/kpis/realtime', authorize(['admin', 'manager', 'staff']), getRealtimeKPIs);
+router.get('/dashboard/metrics', authorize(['admin', 'manager', 'staff', 'frontdesk']), getDashboardMetrics);
+router.get('/kpis/realtime', authorize(['admin', 'manager', 'staff', 'frontdesk']), getRealtimeKPIs);
 router.get('/staff/operational', authorize(['staff']), getStaffOperationalMetrics);
 
 // Advanced analytics endpoints
@@ -187,10 +187,10 @@ router.post('/booking-channels', authorize(['admin', 'manager']), validate(mutat
 router.post('/booking-channels/roi', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getChannelROI);
 
 // Enhanced Analytics Endpoints for Profitability Dashboard
-router.get('/room-type-profitability', authorize(['admin', 'manager']), getRoomTypeProfitability);
+router.get('/room-type-profitability', authorize(['admin', 'manager', 'frontdesk']), getRoomTypeProfitability);
 router.get('/revenue-forecast', authorize(['admin', 'manager']), getRevenueForecast);
 router.get('/smart-recommendations', authorize(['admin', 'manager']), getSmartRecommendations);
-router.get('/profitability-metrics', authorize(['admin', 'manager']), getProfitabilityMetrics);
+router.get('/profitability-metrics', authorize(['admin', 'manager', 'frontdesk']), getProfitabilityMetrics);
 
 // Hotel Metrics for Multi-Property Manager
 router.get('/hotel/:hotelId/metrics', authorize(['admin', 'manager', 'staff']), getHotelMetrics);

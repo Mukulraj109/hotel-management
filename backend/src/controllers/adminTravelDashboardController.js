@@ -248,9 +248,27 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
   const revenueData = finalFinancialData;
   const commissionData = finalFinancialData;
 
-  // Calculate growth metrics (simplified - would need previous period data for accurate calculation)
+  // Calculate growth metrics using previous period comparison
   const agentGrowth = activeAgents > 0 ? ((activeAgents - pendingApprovals) / activeAgents * 100) : 0;
-  const revenueGrowth = revenueData.totalRevenue > 0 ? 12.5 : 0; // Placeholder - would calculate from previous period
+
+  // Compute previous period revenue for growth comparison
+  const previousPeriodStart = new Date(startDate);
+  previousPeriodStart.setDate(previousPeriodStart.getDate() - days);
+  let previousBookingQuery = { isActive: true, createdAt: { $gte: previousPeriodStart, $lt: startDate } };
+  if (hotelId && hotelId !== 'all') {
+    previousBookingQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+  } else if (req.user.hotelId) {
+    previousBookingQuery.hotelId = req.user.hotelId;
+  }
+
+  const previousFinancial = await TravelAgentBooking.aggregate([
+    { $match: previousBookingQuery },
+    { $group: { _id: null, totalRevenue: { $sum: '$pricing.totalAmount' } } }
+  ]);
+  const previousRevenue = previousFinancial[0]?.totalRevenue || 0;
+  const revenueGrowth = previousRevenue > 0
+    ? ((revenueData.totalRevenue - previousRevenue) / previousRevenue * 100)
+    : 0;
 
   const responseData = {
     overview: {

@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -69,11 +70,14 @@ const storage = multer.diskStorage({
     // Generate secure filename
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const fileExtension = path.extname(file.originalname).toLowerCase();
-    const sanitizedOriginalName = file.originalname
+    // Remove the extension from the original name before sanitizing to avoid double extensions
+    const baseName = path.basename(file.originalname, fileExtension);
+    const sanitizedBaseName = baseName
       .replace(/[^a-zA-Z0-9.-]/g, '_')
-      .replace(/_{2,}/g, '_');
+      .replace(/_{2,}/g, '_')
+      .substring(0, 100); // Cap filename length
 
-    const fileName = `doc-${uniqueSuffix}-${sanitizedOriginalName}${fileExtension}`;
+    const fileName = `doc-${uniqueSuffix}-${sanitizedBaseName}${fileExtension}`;
     cb(null, fileName);
   }
 });
@@ -107,8 +111,9 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// All routes require authentication
+// All routes require authentication, tenant isolation, and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('documentUpload', 'baseAccess'));
 
@@ -350,23 +355,44 @@ router.get('/', catchAsync(async (req, res) => {
     status,
     category,
     userType,
-    limit = 50,
+    limit = 20,
     skip = 0,
     sortBy = '-createdAt'
   } = req.query;
 
+  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+  const parsedSkip = parseInt(skip) || 0;
+
   const documents = await Document.getDocumentsByUser(req.user._id, {
+    hotelId: req.user.hotelId,
     status,
     category,
     userType,
-    limit: parseInt(limit),
-    skip: parseInt(skip),
+    limit: parsedLimit,
+    skip: parsedSkip,
     sortBy
   });
+
+  // Build the same filter to get totalCount
+  const countFilter = {
+    userId: req.user._id,
+    hotelId: req.user.hotelId,
+    isActive: true,
+    isDeleted: false
+  };
+  if (status) countFilter.status = status;
+  if (category) countFilter.category = category;
+  if (userType) countFilter.userType = userType;
+
+  const totalCount = await Document.countDocuments(countFilter);
 
   res.json({
     status: 'success',
     results: documents.length,
+    totalCount,
+    totalPages: Math.ceil(totalCount / parsedLimit),
+    page: Math.floor(parsedSkip / parsedLimit) + 1,
+    limit: parsedLimit,
     data: { documents }
   });
 }));
@@ -387,9 +413,12 @@ router.get('/admin/queue',
       userType = 'guest',
       status = 'pending',
       propertyId,
-      limit = 50,
+      limit = 20,
       skip = 0
     } = req.query;
+
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const parsedSkip = parseInt(skip) || 0;
 
     const hotelId = propertyId || req.user.hotelId;
     const baseFilter = {
@@ -412,8 +441,8 @@ router.get('/admin/queue',
       .populate('departmentId', 'name')
       .populate('bookingId', 'confirmationNumber')
       .sort('-createdAt')
-      .skip(parseInt(skip))
-      .limit(parseInt(limit))
+      .skip(parsedSkip)
+      .limit(parsedLimit)
       .lean();
 
     const [total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs] = await Promise.all([
@@ -453,16 +482,19 @@ router.get('/pending-verifications',
       userType,
       departmentId,
       priority,
-      limit = 100,
+      limit = 20,
       skip = 0
     } = req.query;
+
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const parsedSkip = parseInt(skip) || 0;
 
     const documents = await Document.getPendingVerifications(req.user.hotelId, {
       userType,
       departmentId,
       priority,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
+      limit: parsedLimit,
+      skip: parsedSkip
     });
 
     res.json({
@@ -489,15 +521,17 @@ router.get('/analytics', catchAsync(async (req, res) => {
   const days = parseInt(period.replace(/[^0-9]/g, '')) || 30;
   startDate.setDate(startDate.getDate() - days);
 
+  // Always enforce tenant isolation via hotelId
   const hotelId = propertyId || req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
   const matchQuery = {
+    hotelId: new mongoose.Types.ObjectId(String(hotelId)),
     createdAt: { $gte: startDate, $lte: endDate },
     isActive: true,
     isDeleted: { $ne: true }
   };
-  if (hotelId && mongoose.Types.ObjectId.isValid(String(hotelId))) {
-    matchQuery.hotelId = new mongoose.Types.ObjectId(String(hotelId));
-  }
   if (userType && userType !== 'all') {
     matchQuery.userType = userType;
   }
@@ -567,7 +601,10 @@ router.get('/:id', catchAsync(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     throw new ApplicationError(`Invalid document ID: ${req.params.id}`, 400);
   }
-  const document = await Document.findById(req.params.id)
+  const document = await Document.findOne({
+    _id: req.params.id,
+    hotelId: req.user.hotelId
+  })
     .populate('userId', 'name email role')
     .populate('uploadedBy', 'name email')
     .populate('verificationDetails.verifiedBy', 'name email')
@@ -604,7 +641,10 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/:id/download', catchAsync(async (req, res) => {
-  const document = await Document.findById(req.params.id).select('+filePath');
+  const document = await Document.findOne({
+    _id: req.params.id,
+    hotelId: req.user.hotelId
+  }).select('+filePath');
 
   if (!document) {
     throw new ApplicationError('Document not found', 404);
@@ -616,9 +656,16 @@ router.get('/:id/download', catchAsync(async (req, res) => {
   }
 
   const filePath = document.filePath;
+  const uploadsBase = path.resolve(process.cwd(), 'uploads');
+
+  // Prevent path traversal -- ensure file is within the uploads directory
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(uploadsBase)) {
+    throw new ApplicationError('Invalid file path', 400);
+  }
 
   // Check if file exists
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(resolvedPath)) {
     throw new ApplicationError('Document file not found', 404);
   }
 
@@ -639,12 +686,17 @@ router.get('/:id/download', catchAsync(async (req, res) => {
     '.webp': 'image/webp'
   };
 
+  // Sanitize filename for Content-Disposition header to prevent header injection
+  const sanitizedName = document.originalName
+    .replace(/[^\w.\-() ]/g, '_')
+    .substring(0, 255);
   res.setHeader('Content-Type', contentTypeMap[ext] || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="${document.originalName}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
   res.setHeader('Cache-Control', 'private, no-cache');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
   // Stream the file
-  const fileStream = fs.createReadStream(filePath);
+  const fileStream = fs.createReadStream(resolvedPath);
   fileStream.pipe(res);
 }));
 
@@ -663,7 +715,10 @@ router.patch('/:id/verify',
   catchAsync(async (req, res) => {
     const { comments, confidenceLevel = 5 } = req.body;
 
-    const document = await Document.findById(req.params.id);
+    const document = await Document.findOne({
+      _id: req.params.id,
+      hotelId: req.user.hotelId
+    });
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -703,7 +758,10 @@ router.patch('/:id/reject',
       throw new ApplicationError('Rejection reason is required', 400);
     }
 
-    const document = await Document.findById(req.params.id);
+    const document = await Document.findOne({
+      _id: req.params.id,
+      hotelId: req.user.hotelId
+    });
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -737,7 +795,10 @@ router.patch('/:id/request-renewal',
   authorizePolicy('documentUpload', 'managerAccess'),
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
-    const document = await Document.findById(req.params.id);
+    const document = await Document.findOne({
+      _id: req.params.id,
+      hotelId: req.user.hotelId
+    });
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -768,8 +829,8 @@ router.patch('/:id/request-renewal',
 router.patch('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { description, tags, category, documentType, expiryDate } = req.body;
 
-  // Build ownership query
-  const ownershipQuery = { _id: req.params.id };
+  // Build ownership query with tenant isolation
+  const ownershipQuery = { _id: req.params.id, hotelId: req.user.hotelId };
   if (req.user.role !== 'admin') {
     ownershipQuery.userId = req.user._id;
   }
@@ -825,8 +886,8 @@ router.patch('/:id', validate(mutationBaselineSchema), catchAsync(async (req, re
  *     tags: [Documents]
  */
 router.delete('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  // Build ownership query
-  const ownershipQuery = { _id: req.params.id };
+  // Build ownership query with tenant isolation
+  const ownershipQuery = { _id: req.params.id, hotelId: req.user.hotelId };
   if (req.user.role !== 'admin') {
     ownershipQuery.userId = req.user._id;
   }
@@ -881,20 +942,27 @@ router.get('/staff/:staffId',
   authorizePolicy('documentUpload', 'managerAccess'),
   catchAsync(async (req, res) => {
     const { staffId } = req.params;
-    const { status, category, limit = 50, skip = 0 } = req.query;
+    const { status, category, limit = 20, skip = 0 } = req.query;
 
-    // Verify the user is actually a staff member
-    const staffUser = await User.findById(staffId).lean();
+    // Verify the user is actually a staff member within the same hotel
+    const staffUser = await User.findOne({
+      _id: staffId,
+      hotelId: req.user.hotelId
+    }).lean();
     if (!staffUser || staffUser.role !== 'staff') {
       throw new ApplicationError('Staff member not found', 404);
     }
 
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const parsedSkip = parseInt(skip) || 0;
+
     const documents = await Document.getDocumentsByUser(staffId, {
+      hotelId: req.user.hotelId,
       userType: 'staff',
       status,
       category,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
+      limit: parsedLimit,
+      skip: parsedSkip
     });
 
     res.json({
@@ -926,20 +994,27 @@ router.get('/guest/:guestId',
   authorizePolicy('documentUpload', 'staffAccess'),
   catchAsync(async (req, res) => {
     const { guestId } = req.params;
-    const { status, category, bookingId, limit = 50, skip = 0 } = req.query;
+    const { status, category, bookingId, limit = 20, skip = 0 } = req.query;
 
-    // Verify the user exists
-    const guestUser = await User.findById(guestId).lean();
+    // Verify the user exists within the same hotel
+    const guestUser = await User.findOne({
+      _id: guestId,
+      hotelId: req.user.hotelId
+    }).lean();
     if (!guestUser) {
       throw new ApplicationError('Guest not found', 404);
     }
 
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const parsedSkip = parseInt(skip) || 0;
+
     let query = {
+      hotelId: req.user.hotelId,
       userType: 'guest',
       status,
       category,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
+      limit: parsedLimit,
+      skip: parsedSkip
     };
 
     if (bookingId) {

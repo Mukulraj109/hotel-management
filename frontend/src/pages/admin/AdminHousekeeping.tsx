@@ -97,7 +97,7 @@ const HousekeepingTaskRow = React.memo(({ task, columns, onSelect }: {
   <tr role="button" tabIndex={0}
     className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 border-b border-gray-100"
     onClick={() => onSelect(task)}
-   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onSelect(task); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(task); } }}>
     {columns.map((column, colIndex) => {
       const value = column.key === 'actions' ? null : task[column.key as keyof HousekeepingTask];
       return (
@@ -166,7 +166,11 @@ function AdminHousekeeping() {
       setTasks(response.data.tasks || []);
       
       if (response.pagination) {
-        setPagination(response.pagination);
+        setPagination({
+          current: response.pagination.current ?? response.pagination.page ?? 1,
+          pages: response.pagination.pages ?? 1,
+          total: response.pagination.total ?? 0
+        });
       }
     } catch (error: unknown) {
 
@@ -202,25 +206,26 @@ function AdminHousekeeping() {
 
       if (Array.isArray(statsData)) {
         statsData.forEach((stat: Record<string, unknown>) => {
-          transformedStats.total += stat.count;
+          const count = typeof stat.count === 'number' ? stat.count : 0;
+          transformedStats.total += count;
           switch (stat._id) {
             case 'pending':
-              transformedStats.pending = stat.count;
+              transformedStats.pending = count;
               break;
             case 'assigned':
-              transformedStats.assigned = stat.count;
+              transformedStats.assigned = count;
               break;
             case 'in_progress':
-              transformedStats.inProgress = stat.count;
+              transformedStats.inProgress = count;
               break;
             case 'completed':
-              transformedStats.completed = stat.count;
+              transformedStats.completed = count;
               break;
             case 'cancelled':
-              transformedStats.cancelled = stat.count;
+              transformedStats.cancelled = count;
               break;
           }
-          if (stat.avgDuration) {
+          if (typeof stat.avgDuration === 'number' && stat.avgDuration > 0) {
             transformedStats.avgDuration = stat.avgDuration;
           }
         });
@@ -292,24 +297,28 @@ function AdminHousekeeping() {
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
 
-  // Load data on mount and filter changes
+  // Load tasks and stats on filter changes
   useEffect(() => {
     if (selectedPropertyId) {
       fetchTasks();
       fetchStats();
-      fetchStaffMembers();
-      fetchRooms();
     }
   }, [filters, selectedPropertyId]);
 
-  // Real-time connection setup (run once on mount)
+  // Load staff and rooms only when property changes (not on every filter change)
   useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
+    if (selectedPropertyId) {
+      fetchStaffMembers();
+      fetchRooms();
+    }
+  }, [selectedPropertyId]);
+
+  // Real-time connection setup (run once on mount)
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
+  useEffect(() => {
+    connect().catch(() => { /* WebSocket unavailable -- page still works via manual refresh */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only connect/disconnect once on mount/unmount
+  }, []); // Empty deps - only connect once on mount
 
   // Set up real-time event listeners
   useEffect(() => {
@@ -369,14 +378,14 @@ function AdminHousekeeping() {
 
       // Validate task ID format (24 character hex string)
       if (!/^[0-9a-fA-F]{24}$/.test(taskId)) {
-        alert('Invalid task ID format. Please try refreshing the page.');
+        toast.error('Invalid task ID format. Please try refreshing the page.');
         return;
       }
 
       const selectedStaff = staffMembers.find(staff => staff._id === staffId);
 
       if (!selectedStaff) {
-        alert('Selected staff member not found. Please try again.');
+        toast.error('Selected staff member not found. Please try again.');
         return;
       }
 
@@ -415,6 +424,7 @@ function AdminHousekeeping() {
       const supplies = Array.isArray(taskData.supplies) ? taskData.supplies : [];
       const cleanedTaskData = {
         ...taskData,
+        hotelId: selectedPropertyId,
         supplies: supplies.filter((supply: Record<string, unknown>) => supply.name && String(supply.name).trim() !== '')
       };
 
@@ -505,8 +515,8 @@ function AdminHousekeeping() {
       header: 'Task',
       render: (value: string, row: HousekeepingTask) => (
         <div>
-          <div className="font-medium">{value}</div>
-          <div className="text-sm text-gray-500">{row.taskType.replace('_', ' ')}</div>
+          <div className="font-medium">{value || 'Untitled'}</div>
+          <div className="text-sm text-gray-500">{row.taskType ? row.taskType.replace('_', ' ') : 'Unknown'}</div>
         </div>
       )
     },
@@ -588,7 +598,7 @@ function AdminHousekeeping() {
       render: (value: number) => (
         <div className="flex items-center">
           <Clock className="h-4 w-4 text-gray-400 mr-1" />
-          <span>{value} min</span>
+          <span>{value != null ? `${value} min` : 'N/A'}</span>
         </div>
       ),
       align: 'center' as const
@@ -598,7 +608,7 @@ function AdminHousekeeping() {
       header: 'Created',
       render: (value: string) => (
         <div className="text-sm">
-          {format(parseISO(value), 'MMM dd, yyyy')}
+          {value ? format(parseISO(value), 'MMM dd, yyyy') : 'N/A'}
         </div>
       )
     },
@@ -781,107 +791,7 @@ function AdminHousekeeping() {
         </div>
       )}
 
-      {/* Quick Filters */}
-      {showFilters && (
-        <Card className="bg-white border-0 shadow-xl">
-          <CardHeader className="pb-3 bg-gradient-to-r from-gray-50 to-blue-50 rounded-t-lg">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Filter className="h-5 w-5 text-blue-600" />
-              </div>
-              <CardTitle className="text-lg font-semibold text-gray-900">Quick Filters</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Status
-                </label>
-                <select
-                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
-                  value={filters.status || ''}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined, page: 1 })}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  Task Type
-                </label>
-                <select
-                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all duration-200"
-                  value={filters.taskType || ''}
-                  onChange={(e) => setFilters({ ...filters, taskType: e.target.value || undefined, page: 1 })}
-                >
-                  <option value="">All Types</option>
-                  <option value="cleaning">Cleaning</option>
-                  <option value="maintenance">Maintenance</option>
-                  <option value="inspection">Inspection</option>
-                  <option value="deep_clean">Deep Clean</option>
-                  <option value="checkout_clean">Checkout Clean</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                  Priority
-                </label>
-                <select
-                  className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all duration-200"
-                  value={filters.priority || ''}
-                  onChange={(e) => setFilters({ ...filters, priority: e.target.value || undefined, page: 1 })}
-                >
-                  <option value="">All Priorities</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  Room Number
-                </label>
-                <Input
-                  type="text"
-                  placeholder="Enter room number"
-                  value={filters.roomId || ''}
-                  onChange={(e) => setFilters({ ...filters, roomId: e.target.value || undefined, page: 1 })}
-                  className="border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-                  Assigned To
-                </label>
-                <Input
-                  type="text"
-                  required
-                  placeholder="Enter staff name"
-                  value={filters.assignedToUserId || ''}
-                  onChange={(e) => setFilters({ ...filters, assignedToUserId: e.target.value || undefined, page: 1 })}
-                  className="border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Quick Filters section removed -- was duplicate of Advanced Filters below */}
 
       {/* Advanced Filters */}
       <Card className="mb-4 shadow-lg">
@@ -1297,25 +1207,31 @@ function AdminHousekeeping() {
                   )}
                 </Button>
                 <div className="hidden sm:flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-                    const pageNumber = i + 1;
-                    return (
-                      <Button
-                        key={pageNumber}
-                        variant={pagination.current === pageNumber ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setFilters({ ...filters, page: pageNumber })}
-                        disabled={loading}
-                        className={`text-sm min-w-[40px] transition-all duration-200 ${
-                          pagination.current === pageNumber 
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' 
-                            : 'hover:bg-gray-100'
-                        }`}
-                      >
-                        {pageNumber}
-                      </Button>
-                    );
-                  })}
+                  {(() => {
+                    const maxVisible = 5;
+                    let start = Math.max(1, pagination.current - Math.floor(maxVisible / 2));
+                    const end = Math.min(pagination.pages, start + maxVisible - 1);
+                    start = Math.max(1, end - maxVisible + 1);
+                    return Array.from({ length: end - start + 1 }, (_, i) => {
+                      const pageNumber = start + i;
+                      return (
+                        <Button
+                          key={pageNumber}
+                          variant={pagination.current === pageNumber ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => setFilters({ ...filters, page: pageNumber })}
+                          disabled={loading}
+                          className={`text-sm min-w-[40px] transition-all duration-200 ${
+                            pagination.current === pageNumber
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                              : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {pageNumber}
+                        </Button>
+                      );
+                    });
+                  })()}
                 </div>
                 <div className="sm:hidden text-sm text-gray-500 bg-white px-3 py-2 rounded-lg border shadow-sm">
                   {pagination.current} / {pagination.pages}
@@ -1359,7 +1275,7 @@ function AdminHousekeeping() {
             <div className="border-b border-gray-200 pb-3 sm:pb-4">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">{selectedTask.title}</h3>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                 {selectedTask.roomId ? `Room ${selectedTask.roomId?.roomNumber}` : 'No room assigned'} - {selectedTask.taskType?.replace('_', ' ')}
+                 {selectedTask.roomId?.roomNumber ? `Room ${selectedTask.roomId.roomNumber}` : 'No room assigned'} - {selectedTask.taskType?.replace('_', ' ') || 'Unknown'}
                </p>
              </div>
           )}
@@ -1376,7 +1292,7 @@ function AdminHousekeeping() {
                       : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                   onClick={() => setSelectedStaffId(staff._id)}
-                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedStaffId(staff._id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedStaffId(staff._id); } }}>
                   <User className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 mr-3" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 text-sm sm:text-base truncate">{staff.name}</div>
@@ -1626,7 +1542,7 @@ function AdminHousekeeping() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900">{selectedTask.title}</h3>
-                  <p className="text-xs sm:text-sm text-gray-500">{selectedTask.taskType.replace('_', ' ')}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">{selectedTask.taskType ? selectedTask.taskType.replace('_', ' ') : 'Unknown'}</p>
                 </div>
                 <StatusBadge status={selectedTask.status} variant="pill" />
               </div>
@@ -1639,10 +1555,10 @@ function AdminHousekeeping() {
                   <label className="block text-xs sm:text-sm font-medium text-gray-700">Room</label>
                    <div className="flex items-center mt-1">
                     <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 mr-1 sm:mr-2" />
-                     {selectedTask.roomId ? (
+                     {selectedTask.roomId?.roomNumber ? (
                        <>
                         <span className="font-medium text-sm sm:text-base">{selectedTask.roomId.roomNumber}</span>
-                        <span className="text-gray-500 ml-1 sm:ml-2 text-xs sm:text-sm">({selectedTask.roomId.type})</span>
+                        <span className="text-gray-500 ml-1 sm:ml-2 text-xs sm:text-sm">({selectedTask.roomId.type || 'N/A'})</span>
                        </>
                      ) : (
                       <span className="text-gray-500 text-sm sm:text-base">No room assigned</span>
@@ -1702,7 +1618,7 @@ function AdminHousekeeping() {
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700">Created</label>
                   <div className="mt-1 text-xs sm:text-sm text-gray-900">
-                    {format(parseISO(selectedTask.createdAt), 'MMM dd, yyyy HH:mm')}
+                    {selectedTask.createdAt ? format(parseISO(selectedTask.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'}
                   </div>
                 </div>
 
@@ -1710,7 +1626,7 @@ function AdminHousekeeping() {
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700">Started</label>
                     <div className="mt-1 text-xs sm:text-sm text-gray-900">
-                      {format(parseISO(selectedTask.startedAt), 'MMM dd, yyyy HH:mm')}
+                      {(() => { try { return format(parseISO(selectedTask.startedAt), 'MMM dd, yyyy HH:mm'); } catch { return 'Invalid date'; } })()}
                     </div>
                   </div>
                 )}
@@ -1719,7 +1635,7 @@ function AdminHousekeeping() {
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700">Completed</label>
                     <div className="mt-1 text-xs sm:text-sm text-gray-900">
-                      {format(parseISO(selectedTask.completedAt), 'MMM dd, yyyy HH:mm')}
+                      {(() => { try { return format(parseISO(selectedTask.completedAt), 'MMM dd, yyyy HH:mm'); } catch { return 'Invalid date'; } })()}
                     </div>
                   </div>
                 )}

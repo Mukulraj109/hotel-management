@@ -23,8 +23,8 @@ const PII_FIELDS = [
 // Fields that should be masked (partially visible) rather than removed
 const MASKABLE_FIELDS = ['email', 'phone', 'passport', 'nationalId', 'creditCardNumber'];
 
-// Roles allowed to view full PII
-const PII_AUTHORIZED_ROLES = ['admin', 'manager', 'staff'];
+// Roles allowed to view full PII (frontdesk needs PII for check-in/check-out workflows)
+const PII_AUTHORIZED_ROLES = ['admin', 'manager', 'staff', 'frontdesk'];
 
 /**
  * Mask a PII value to show only partial information
@@ -59,13 +59,18 @@ function maskValue(field, value) {
 }
 
 /**
- * Recursively mask PII fields in an object
+ * Recursively mask PII fields in an object.
+ * Tracks visited objects to avoid infinite recursion on circular references.
  */
-function maskPIIInObject(obj, mask = true) {
+function maskPIIInObject(obj, mask = true, seen = new WeakSet()) {
   if (!obj || typeof obj !== 'object') return obj;
 
+  // Prevent infinite recursion on circular references
+  if (seen.has(obj)) return '[Circular]';
+  seen.add(obj);
+
   if (Array.isArray(obj)) {
-    return obj.map(item => maskPIIInObject(item, mask));
+    return obj.map(item => maskPIIInObject(item, mask, seen));
   }
 
   const result = {};
@@ -77,7 +82,7 @@ function maskPIIInObject(obj, mask = true) {
         result[key] = value;
       }
     } else if (value && typeof value === 'object') {
-      result[key] = maskPIIInObject(value, mask);
+      result[key] = maskPIIInObject(value, mask, seen);
     } else {
       result[key] = value;
     }
@@ -116,22 +121,43 @@ export function piiResponseFilter(req, res, next) {
  * Records when PII data is accessed, who accessed it, and from where.
  * This is required for GDPR compliance (Article 30 - Records of Processing Activities).
  */
+/**
+ * Check if an object (or its nested children) contains any PII field keys.
+ * Uses a shallow walk (max depth 6) instead of JSON.stringify to avoid
+ * serializing potentially huge response bodies.
+ */
+const PII_LOG_FIELDS = new Set(['email', 'phone', 'passport', 'nationalId', 'address', 'dateOfBirth']);
+
+function findPIIKeys(obj, maxDepth = 6, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > maxDepth) return [];
+  const found = [];
+  const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
+  for (const [key, value] of entries) {
+    if (typeof key === 'string' && PII_LOG_FIELDS.has(key)) {
+      found.push(key);
+    }
+    if (value && typeof value === 'object' && found.length < PII_LOG_FIELDS.size) {
+      found.push(...findPIIKeys(value, maxDepth, depth + 1));
+    }
+    if (found.length >= PII_LOG_FIELDS.size) break; // all found, stop early
+  }
+  return [...new Set(found)];
+}
+
 export function piiAccessLogger(req, res, next) {
   const originalJson = res.json.bind(res);
 
   res.json = function(body) {
-    // Check if response contains PII
+    // Check if response contains PII using efficient key walk
     if (body && typeof body === 'object') {
-      const containsPII = JSON.stringify(body).match(
-        /"(email|phone|passport|nationalId|address|dateOfBirth)"\s*:/
-      );
+      const piiFields = findPIIKeys(body);
 
-      if (containsPII) {
+      if (piiFields.length > 0) {
         logger.info('PII data accessed', {
           userId: req.user?.id,
           userRole: req.user?.role,
           endpoint: `${req.method} ${req.originalUrl}`,
-          piiFieldsPresent: containsPII[1],
+          piiFieldsPresent: piiFields,
           ipAddress: req.ip,
           timestamp: new Date().toISOString()
         });

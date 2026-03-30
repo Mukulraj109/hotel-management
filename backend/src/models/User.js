@@ -348,7 +348,7 @@ const userSchema = new mongoose.Schema({
     },
     tier: {
       type: String,
-      enum: ['bronze', 'silver', 'gold', 'platinum'],
+      enum: ['bronze', 'silver', 'gold', 'platinum', 'diamond'],
       default: 'bronze'
     }
   },
@@ -526,8 +526,9 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 // Update loyalty tier based on points
 userSchema.methods.updateLoyaltyTier = function() {
   const points = this.loyalty.points;
-  
-  if (points >= 10000) this.loyalty.tier = 'platinum';
+
+  if (points >= 25000) this.loyalty.tier = 'diamond';
+  else if (points >= 10000) this.loyalty.tier = 'platinum';
   else if (points >= 5000) this.loyalty.tier = 'gold';
   else if (points >= 1000) this.loyalty.tier = 'silver';
   else this.loyalty.tier = 'bronze';

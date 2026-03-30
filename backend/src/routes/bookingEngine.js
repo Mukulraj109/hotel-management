@@ -13,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true);
 router.post('/widgets', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.createBookingWidget);
 router.get('/widgets', authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'manager', 'frontdesk']), bookingEngineController.getBookingWidgets);
 router.put('/widgets/:id', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.updateBookingWidget);
+router.delete('/widgets/:id', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.deleteBookingWidget);
 router.get('/widgets/:widgetId/code', bookingEngineController.getWidgetCode);
 router.post('/widgets/:widgetId/booking', validate(mutationBaselineSchema), bookingEngineController.processWidgetBooking);
 
@@ -35,6 +36,7 @@ router.put('/crm/guests/:id', validate(mutationBaselineSchema), authenticate, au
 // Email Campaign Routes
 router.post('/campaigns', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.createEmailCampaign);
 router.get('/campaigns', authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'manager', 'frontdesk']), bookingEngineController.getEmailCampaigns);
+router.put('/campaigns/:id', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.updateEmailCampaign);
 router.post('/campaigns/:campaignId/send', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'frontdesk']), bookingEngineController.sendEmailCampaign);
 router.get('/campaigns/:id/analytics', authenticate, authorizePolicy('bookingEngine', 'baseAccess'), ensurePropertyAccess, authorize(['admin', 'marketing_manager', 'manager', 'frontdesk']), bookingEngineController.getCampaignAnalytics);
 

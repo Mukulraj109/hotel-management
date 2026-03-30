@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -11,8 +12,9 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// All routes require authentication
+// All routes require authentication + tenant isolation
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -134,11 +136,14 @@ router.post('/process-checkout', authorizePolicy('housekeepingAutomation', 'staf
  */
 router.get('/tasks', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
-  const { status, priority, taskType, roomId, assignedTo } = req.query;
+  const { status, priority, taskType, roomId, assignedTo, page = 1, limit = 20 } = req.query;
+
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
 
   // Import models
   const Housekeeping = (await import('../models/Housekeeping.js')).default;
-  
+
   const filter = { hotelId };
   if (status) filter.status = status;
   if (priority) filter.priority = priority;
@@ -146,17 +151,28 @@ router.get('/tasks', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAc
   if (roomId) filter.roomId = roomId;
   if (assignedTo) filter.assignedTo = assignedTo;
 
-  const tasks = await Housekeeping.find(filter)
-    .populate('roomId', 'roomNumber type floor')
-    .populate('assignedTo', 'name email')
-    .populate('assignedToUserId', 'name email') // For backward compatibility
-    .sort({ priority: 1, createdAt: -1 }).lean().limit(1000);
+  const skip = (parsedPage - 1) * parsedLimit;
+
+  const [tasks, totalCount] = await Promise.all([
+    Housekeeping.find(filter)
+      .populate('roomId', 'roomNumber type floor')
+      .populate('assignedTo', 'name email')
+      .populate('assignedToUserId', 'name email') // For backward compatibility
+      .sort({ priority: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    Housekeeping.countDocuments(filter)
+  ]);
 
   res.status(200).json({
     status: 'success',
-    data: { 
+    data: {
       tasks,
-      totalCount: tasks.length
+      page: parsedPage,
+      limit: parsedLimit,
+      totalCount,
+      totalPages: totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0
     }
   });
 }));
@@ -457,21 +473,39 @@ router.put('/tasks/:taskId/complete', authorizePolicy('housekeepingAutomation', 
  */
 router.get('/available-staff', authorizePolicy('housekeepingAutomation', 'managerFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
+  const { page = 1, limit = 50 } = req.query;
+
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 50));
 
   // Import models
   const User = (await import('../models/User.js')).default;
-  
-  const staff = await User.find({
+
+  const filter = {
     hotelId,
     role: { $in: ['housekeeping', 'staff'] },
     isActive: true
-  }).select('_id name email role').lean().limit(1000);
+  };
+
+  const skip = (parsedPage - 1) * parsedLimit;
+
+  const [staff, totalCount] = await Promise.all([
+    User.find(filter)
+      .select('_id name email role')
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    User.countDocuments(filter)
+  ]);
 
   res.status(200).json({
     status: 'success',
-    data: { 
+    data: {
       staff,
-      totalCount: staff.length
+      page: parsedPage,
+      limit: parsedLimit,
+      totalCount,
+      totalPages: totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0
     }
   });
 }));
@@ -573,12 +607,12 @@ router.post('/auto-assign', authorizePolicy('housekeepingAutomation', 'managerFr
     filter.priority = { $in: priorities };
   }
 
-  const pendingTasks = await Housekeeping.find(filter).sort({ priority: 1, createdAt: 1 }).lean().limit(1000);
+  const pendingTasks = await Housekeeping.find(filter).sort({ priority: 1, createdAt: 1 }).limit(200).lean();
   const availableStaff = await User.find({
     hotelId,
     role: { $in: ['housekeeping', 'staff'] },
     isActive: true
-  }).select('_id name email').lean().limit(1000);
+  }).select('_id name email').limit(200).lean();
 
   if (availableStaff.length === 0) {
     throw new ApplicationError('No available staff found for assignment', 400);

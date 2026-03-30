@@ -103,7 +103,7 @@ export const RBAC_POLICIES = {
   },
   enhancedBookings: {
     baseAccess: AUTHENTICATED_ROLES,
-    priceAdjustAccess: ['admin', 'manager', 'staff'],
+    priceAdjustAccess: ['admin', 'manager', 'staff', 'frontdesk'],
     priceReverseAccess: ['admin', 'manager']
   },
   personalization: {
@@ -269,7 +269,7 @@ export const RBAC_POLICIES = {
   },
   revenueManagement: {
     manageAccess: ['admin', 'revenue_manager'],
-    readAccess: ['admin', 'revenue_manager', 'manager']
+    readAccess: ['admin', 'revenue_manager', 'manager', 'frontdesk']
   },
   channelManager: {
     manageAccess: ['admin', 'channel_manager', 'frontdesk'],
@@ -308,7 +308,7 @@ export const RBAC_POLICIES = {
     staffAccess: ['admin', 'manager', 'staff']
   },
   phoneExtensions: {
-    staffAccess: ['admin', 'manager', 'front_desk', 'maintenance'],
+    staffAccess: ['admin', 'manager', 'frontdesk', 'maintenance'],
     manageAccess: ['admin', 'manager'],
     usageAccess: ['admin', 'manager', 'system', 'maintenance'],
     maintenanceAccess: ['admin', 'manager', 'maintenance'],
@@ -332,7 +332,7 @@ export const RBAC_POLICIES = {
     staffAccess: ['admin', 'manager', 'staff']
   },
   laundry: {
-    staffFrontdeskAccess: ['admin', 'manager', 'housekeeping', 'front_desk'],
+    staffFrontdeskAccess: ['admin', 'manager', 'housekeeping', 'frontdesk'],
     housekeepingAccess: ['admin', 'manager', 'housekeeping'],
     managerAccess: ['admin', 'manager']
   },
@@ -351,7 +351,7 @@ export const RBAC_POLICIES = {
   currency: {
     manageAccess: ['admin', 'revenue_manager'],
     adminAccess: ['admin'],
-    batchAccess: ['admin', 'revenue_manager', 'front_desk']
+    batchAccess: ['admin', 'revenue_manager', 'frontdesk']
   },
   dailyRoutineCheck: {
     staffFrontdeskAccess: ['staff', 'admin', 'frontdesk'],
@@ -466,7 +466,7 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   inventoryManagement: {
-    readAccess: ['admin', 'manager', 'front_desk'],
+    readAccess: ['admin', 'manager', 'frontdesk'],
     manageAccess: ['admin', 'manager']
   },
   staffAlerts: {
@@ -505,12 +505,12 @@ export const RBAC_POLICIES = {
   audit: {
     adminAccess: ['admin'],
     staffAccess: ['admin', 'staff', 'audit', 'compliance'],
-    frontdeskAccess: ['admin', 'staff', 'audit', 'front-desk'],
+    frontdeskAccess: ['admin', 'staff', 'audit', 'frontdesk'],
     managementAccess: ['admin', 'staff', 'audit', 'management'],
     complianceAccess: ['admin', 'compliance']
   },
   availability: {
-    staffAccess: ['admin', 'manager', 'front_desk'],
+    staffAccess: ['admin', 'manager', 'frontdesk'],
     manageAccess: ['admin', 'manager']
   },
   health: {

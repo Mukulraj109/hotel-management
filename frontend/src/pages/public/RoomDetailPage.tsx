@@ -1,14 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  Users, 
-  Wifi, 
-  Coffee, 
-  Tv, 
-  Wind, 
+import {
   ArrowLeft,
-  Calendar,
-  MapPin,
   Star,
   ChevronLeft,
   ChevronRight,
@@ -145,6 +138,10 @@ export default function RoomDetailPage() {
     return ROOM_TYPES[roomType] ?? null;
   }, [type, catalog]);
 
+  useEffect(() => {
+    document.title = room ? `${room.name} - The Pentouz` : 'Room Details - The Pentouz';
+  }, [room]);
+
   if (!room) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -162,7 +159,8 @@ export default function RoomDetailPage() {
     if (!bookingDates.checkIn || !bookingDates.checkOut) return 0;
     const start = new Date(bookingDates.checkIn);
     const end = new Date(bookingDates.checkOut);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
   };
 
   const nights = calculateNights();
@@ -433,11 +431,11 @@ export default function RoomDetailPage() {
                   <div className="space-y-3">
                     <div className="flex items-center text-sm text-gray-600">
                       <Phone className="h-4 w-4 mr-2" />
-                      <span>+91 98765 43210</span>
+                      <a href="tel:+918884449930" className="hover:text-blue-600 transition-colors">+91 8884449930</a>
                     </div>
                     <div className="flex items-center text-sm text-gray-600">
                       <Mail className="h-4 w-4 mr-2" />
-                      <span>reservations@hotel.com</span>
+                      <a href="mailto:sales@pentouz.com" className="hover:text-blue-600 transition-colors">sales@pentouz.com</a>
                     </div>
                   </div>
                 </CardContent>

@@ -2,6 +2,7 @@ import express from 'express';
 import enhancedBookingController from '../controllers/enhancedBookingController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -10,6 +11,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('enhancedBookings', 'baseAccess'));
 
@@ -489,6 +491,33 @@ router.post('/:id/adjust-price', authenticate, ensurePropertyAccess, authorizePo
  */
 router.post('/:id/adjustments/:adjustmentId/reverse', authenticate, ensurePropertyAccess, authorizePolicy('enhancedBookings', 'priceReverseAccess'), validate(mutationBaselineSchema), async (req, res) => {
   await enhancedBookingController.reversePriceAdjustment(req, res);
+});
+
+/**
+ * @swagger
+ * /bookings/enhanced/{id}:
+ *   get:
+ *     summary: Get a single enhanced booking by ID
+ *     tags: [Enhanced Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Booking details retrieved successfully
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Booking not found
+ */
+router.get('/:id', authenticate, ensurePropertyAccess, async (req, res) => {
+  await enhancedBookingController.getBookingById(req, res);
 });
 
 /**

@@ -17,9 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useStaffPerformance } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatPercentage, formatDuration } from '../../../utils/dashboardUtils';
 
 export default function StaffPerformance() {
+  const { selectedPropertyId, properties } = useProperty();
+
   const [filters, setFilters] = useState({
     hotelId: '',
     department: '',
@@ -27,8 +30,10 @@ export default function StaffPerformance() {
     period: 'month',
   });
 
+  const activeHotelId = filters.hotelId || selectedPropertyId || '';
+
   const staffQuery = useStaffPerformance(
-    filters.hotelId,
+    activeHotelId,
     filters.department,
     filters.staffId
   );
@@ -51,7 +56,7 @@ export default function StaffPerformance() {
           <ExportButton
             endpoint="staff-performance"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               department: filters.department,
               period: filters.period,
             }}
@@ -76,8 +81,7 @@ export default function StaffPerformance() {
             type: 'select',
             options: [
               { value: '', label: 'All Hotels' },
-              { value: 'hotel1', label: 'Grand Hotel' },
-              { value: 'hotel2', label: 'Business Center' },
+              ...properties.map((p) => ({ value: p._id, label: p.name })),
             ],
           },
           {
@@ -111,48 +115,50 @@ export default function StaffPerformance() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Total Staff"
-          value={data?.overview.totalStaff || 0}
+          value={data?.overview?.totalStaff || 0}
           trend={{
-            value: 2,
-            direction: 'up',
+            value: data?.overview?.newHires || 0,
+            direction: (data?.overview?.newHires || 0) > 0 ? 'up' : 'neutral',
             label: 'new hires'
           }}
           color="blue"
           loading={staffQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Active Today"
-          value={data?.overview.activeToday || 0}
+          value={data?.overview?.activeToday || 0}
           trend={{
-            value: 92,
+            value: data?.overview?.totalStaff
+              ? Number(((data.overview.activeToday || 0) / data.overview.totalStaff * 100).toFixed(1))
+              : 0,
             direction: 'neutral',
             label: 'attendance rate'
           }}
           color="green"
           loading={staffQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Tasks Completed"
-          value={data?.overview.completedTasksToday || 0}
-          suffix={`/${data?.overview.totalTasksToday || 0}`}
+          value={data?.overview?.completedTasksToday || 0}
+          suffix={`/${data?.overview?.totalTasksToday || 0}`}
           trend={{
-            value: 15,
-            direction: 'up',
+            value: data?.overview?.taskCompletionTrend || 0,
+            direction: (data?.overview?.taskCompletionTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs yesterday'
           }}
           color="purple"
           loading={staffQuery.isLoading}
         />
-        
+
         <MetricCard
           title="Performance Score"
-          value={data?.overview.averagePerformanceScore || 0}
+          value={data?.overview?.averagePerformanceScore || 0}
           suffix="/100"
           trend={{
-            value: 3.5,
-            direction: 'up',
+            value: data?.overview?.performanceTrend || 0,
+            direction: (data?.overview?.performanceTrend || 0) >= 0 ? 'up' : 'down',
             label: 'vs last week'
           }}
           color="yellow"
@@ -191,11 +197,14 @@ export default function StaffPerformance() {
           height="400px"
         >
           <DonutChart
-            data={data?.taskDistribution?.map(item => ({
-              name: item.taskType,
-              value: item.total,
-              percentage: (item.total / (data.taskDistribution.reduce((sum, t) => sum + t.total, 0))) * 100
-            })) || []}
+            data={data?.taskDistribution?.map(item => {
+              const totalAllTasks = data.taskDistribution.reduce((sum, t) => sum + t.total, 0);
+              return {
+                name: item.taskType,
+                value: item.total,
+                percentage: totalAllTasks > 0 ? (item.total / totalAllTasks) * 100 : 0
+              };
+            }) || []}
             height={350}
             centerContent={
               <div>
@@ -258,11 +267,11 @@ export default function StaffPerformance() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Task Completion</span>
                     <span className="text-sm font-medium">
-                      {formatPercentage((dept.tasks.completedTasks / dept.tasks.totalTasks) * 100)}
+                      {formatPercentage(dept.tasks.totalTasks > 0 ? (dept.tasks.completedTasks / dept.tasks.totalTasks) * 100 : 0)}
                     </span>
                   </div>
                   <ProgressBar
-                    value={(dept.tasks.completedTasks / dept.tasks.totalTasks) * 100}
+                    value={dept.tasks.totalTasks > 0 ? (dept.tasks.completedTasks / dept.tasks.totalTasks) * 100 : 0}
                     color="blue"
                     size="sm"
                   />
@@ -350,34 +359,34 @@ export default function StaffPerformance() {
         loading={staffQuery.isLoading}
         height="400px"
       >
-        <LineChart
-          data={[
-            { date: '2024-01-01', completed: 45, pending: 12, total: 57 },
-            { date: '2024-01-02', completed: 52, pending: 8, total: 60 },
-            { date: '2024-01-03', completed: 48, pending: 15, total: 63 },
-            { date: '2024-01-04', completed: 55, pending: 10, total: 65 },
-            { date: '2024-01-05', completed: 60, pending: 7, total: 67 },
-          ]}
-          xDataKey="date"
-          lines={[
-            {
-              dataKey: 'completed',
-              name: 'Completed Tasks',
-              color: '#10b981',
-            },
-            {
-              dataKey: 'pending',
-              name: 'Pending Tasks',
-              color: '#f59e0b',
-            },
-            {
-              dataKey: 'total',
-              name: 'Total Tasks',
-              color: '#3b82f6',
-            }
-          ]}
-          height={350}
-        />
+        {(data?.taskTrends && data.taskTrends.length > 0) ? (
+          <LineChart
+            data={data.taskTrends}
+            xDataKey="date"
+            lines={[
+              {
+                dataKey: 'completed',
+                name: 'Completed Tasks',
+                color: '#10b981',
+              },
+              {
+                dataKey: 'pending',
+                name: 'Pending Tasks',
+                color: '#f59e0b',
+              },
+              {
+                dataKey: 'total',
+                name: 'Total Tasks',
+                color: '#3b82f6',
+              }
+            ]}
+            height={350}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-[350px] text-gray-500">
+            No task performance data available yet
+          </div>
+        )}
       </ChartCard>
 
       {/* Detailed Staff Table */}
@@ -472,7 +481,7 @@ export default function StaffPerformance() {
           <ExportButton
             endpoint="staff-performance"
             params={{
-              hotelId: filters.hotelId,
+              hotelId: activeHotelId,
               department: filters.department,
               detailed: 'true',
             }}

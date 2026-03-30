@@ -13,6 +13,10 @@ export default function HomePage() {
 
   const HOTEL_ID = DEFAULT_PUBLIC_HOTEL_ID;
 
+  useEffect(() => {
+    document.title = 'The Pentouz - Luxury Hotels & Resorts';
+  }, []);
+
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },
     { icon: Car, name: 'Parking' },
@@ -340,7 +344,7 @@ export default function HomePage() {
                   </div>
                   <div className="text-center">
                     <div className="text-3xl font-bold text-blue-600 mb-2">
-                      {reviewSummary ? Math.round(((reviewSummary.ratingDistribution[4] + reviewSummary.ratingDistribution[5]) / reviewSummary.totalReviews) * 100) : '0'}%
+                      {reviewSummary && reviewSummary.totalReviews > 0 ? Math.round(((reviewSummary.ratingDistribution[4] + reviewSummary.ratingDistribution[5]) / reviewSummary.totalReviews) * 100) : '0'}%
                     </div>
                     <div className="text-sm text-gray-600">Recommend</div>
                   </div>

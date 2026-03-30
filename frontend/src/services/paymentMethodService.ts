@@ -490,7 +490,7 @@ class PaymentMethodService {
     }
   }
 
-  async calculateFees(paymentMethodId: string, amount: number, currency = 'USD') {
+  async calculateFees(paymentMethodId: string, amount: number, currency = 'INR') {
     try {
       const params = new URLSearchParams({ 
         amount: amount.toString(),
@@ -504,7 +504,7 @@ class PaymentMethodService {
     }
   }
 
-  async validatePaymentMethodUsage(paymentMethodId: string, amount: number, currency = 'USD', dateTime?: Date): Promise<{ success: boolean; data: PaymentMethodValidation }> {
+  async validatePaymentMethodUsage(paymentMethodId: string, amount: number, currency = 'INR', dateTime?: Date): Promise<{ success: boolean; data: PaymentMethodValidation }> {
     try {
       const params = new URLSearchParams({ 
         amount: amount.toString(),
@@ -626,8 +626,8 @@ class PaymentMethodService {
       .join(' ');
   }
 
-  formatCurrency(amount: number, currency = 'USD'): string {
-    return new Intl.NumberFormat('en-US', {
+  formatCurrency(amount: number, currency = 'INR'): string {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 2,
@@ -636,25 +636,31 @@ class PaymentMethodService {
   }
 
   calculateTotalWithFees(amount: number, paymentMethod: PaymentMethod): number {
-    const fee = paymentMethod.fees.fixed + (amount * paymentMethod.fees.percentage / 100);
-    
-    let finalFee = fee;
-    if (paymentMethod.fees.minimumFee > 0 && fee < paymentMethod.fees.minimumFee) {
-      finalFee = paymentMethod.fees.minimumFee;
+    // Use integer arithmetic (paisa) to avoid floating-point precision errors
+    const amountPaisa = Math.round(amount * 100);
+    const fixedPaisa = Math.round(paymentMethod.fees.fixed * 100);
+    const feePaisa = fixedPaisa + Math.round(amountPaisa * paymentMethod.fees.percentage / 100);
+
+    let finalFeePaisa = feePaisa;
+    const minFeePaisa = Math.round(paymentMethod.fees.minimumFee * 100);
+    const maxFeePaisa = Math.round(paymentMethod.fees.maximumFee * 100);
+
+    if (minFeePaisa > 0 && feePaisa < minFeePaisa) {
+      finalFeePaisa = minFeePaisa;
     }
-    if (paymentMethod.fees.maximumFee > 0 && fee > paymentMethod.fees.maximumFee) {
-      finalFee = paymentMethod.fees.maximumFee;
+    if (maxFeePaisa > 0 && feePaisa > maxFeePaisa) {
+      finalFeePaisa = maxFeePaisa;
     }
 
     switch (paymentMethod.fees.feeCalculation) {
       case 'add_to_total':
-        return amount + finalFee;
+        return (amountPaisa + finalFeePaisa) / 100;
       case 'deduct_from_amount':
         return amount;
       case 'separate_charge':
         return amount;
       default:
-        return amount + finalFee;
+        return (amountPaisa + finalFeePaisa) / 100;
     }
   }
 

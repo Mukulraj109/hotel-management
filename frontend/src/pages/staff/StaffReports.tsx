@@ -25,12 +25,10 @@ export default function StaffReports() {
   }, []);
 
   // Real-time connection setup
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
+    connect().catch(() => { /* WebSocket unavailable */ });
+  }, [connect]);
 
   // Set up real-time event listeners
   useEffect(() => {

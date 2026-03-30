@@ -19,6 +19,12 @@ const ensureTenantContext = (req, res, next) => {
   const hotelId = req.user.hotelId || req.user.hotel;
   const hotelIdStr = refToHotelIdString(hotelId);
   if (!hotelIdStr) {
+    // Guest users may not have a hotelId — they access data via their userId.
+    // Allow them through; controllers must filter by userId for guests.
+    if (req.user.role === 'guest') {
+      req.tenantId = null;
+      return next();
+    }
     return res.status(403).json({
       success: false,
       error: { code: 'NO_TENANT', message: 'User is not associated with any property' },
@@ -74,10 +80,17 @@ const verifyResourceOwnership = (Model, idParam = 'id') => {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });
       }
 
-      const resourceHotelId = refToHotelIdString(resource.hotelId || resource.hotel) || '';
-      const userHotelId = String(req.tenantId || '');
+      const resourceHotelId = refToHotelIdString(resource.hotelId || resource.hotel);
+      const userHotelId = req.tenantId ? String(req.tenantId) : null;
 
-      if (resourceHotelId && resourceHotelId !== userHotelId) {
+      // If resource has a hotelId, it MUST match the user's tenant.
+      // If resource has no hotelId, only allow access if user also has no tenant (guest).
+      if (resourceHotelId) {
+        if (resourceHotelId !== userHotelId) {
+          return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });
+        }
+      } else if (userHotelId) {
+        // Resource has no hotelId but user is tenant-scoped — deny to prevent orphan access
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });
       }
 
@@ -105,7 +118,10 @@ const tenantFilter = (req, additionalFilters = {}) => {
  * Apply before any bulk update/delete endpoints.
  */
 const requireTenantInBulkOps = (req, res, next) => {
-  if (req.method === 'DELETE' || (req.method === 'PUT' && req.path.includes('bulk'))) {
+  const isBulkMutation =
+    req.method === 'DELETE' ||
+    ((req.method === 'PUT' || req.method === 'PATCH') && req.path.includes('bulk'));
+  if (isBulkMutation) {
     if (!req.body?.hotelId && !req.query?.hotelId) {
       return res.status(400).json({
         success: false,

@@ -176,7 +176,9 @@ export const getAvailableRooms = catchAsync(async (req, res) => {
 
   const rooms = await Room.find(query)
     .select('roomNumber type capacity amenities description baseRate')
-    .sort({ capacity: 1, roomNumber: 1 }).lean().limit(1000);
+    .sort({ capacity: 1, roomNumber: 1 })
+    .limit(100)
+    .lean();
 
   res.json({
     success: true,
@@ -589,14 +591,19 @@ export const getRoomSchedule = catchAsync(async (req, res) => {
     .populate('meetingRoomBooking.roomId', 'roomNumber type capacity')
     .populate('requesterId', 'name email')
     .populate('targetUserId', 'name email')
-    .select('title proposedTime meetingRoomBooking requesterId targetUserId status').lean().limit(1000);
+    .select('title proposedTime meetingRoomBooking requesterId targetUserId status')
+    .limit(100)
+    .lean();
 
-  // Group by room
+  // Group by room - filter out meetups with missing room data
   const schedule = meetUps.reduce((acc, meetUp) => {
-    const roomId = meetUp.meetingRoomBooking.roomId._id.toString();
+    const roomData = meetUp.meetingRoomBooking?.roomId;
+    if (!roomData || !roomData._id) return acc;
+
+    const roomId = roomData._id.toString();
     if (!acc[roomId]) {
       acc[roomId] = {
-        room: meetUp.meetingRoomBooking.roomId,
+        room: roomData,
         bookings: []
       };
     }
@@ -614,7 +621,7 @@ export const getRoomSchedule = catchAsync(async (req, res) => {
 
   // Sort bookings by start time
   Object.values(schedule).forEach(roomSchedule => {
-    roomSchedule.bookings.sort((a, b) => a.timeSlot.start.localeCompare(b.timeSlot.start));
+    roomSchedule.bookings.sort((a, b) => (a.timeSlot?.start || '').localeCompare(b.timeSlot?.start || ''));
   });
 
   res.json({

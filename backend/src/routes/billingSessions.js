@@ -2,6 +2,7 @@ import express from 'express';
 import billingSessionController from '../controllers/billingSessionController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 import { validateFinancial, billingSessionSchema } from '../middleware/financialValidation.js';
@@ -11,9 +12,10 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// All routes require rate limiting and authentication
+// All routes require rate limiting, authentication, and tenant isolation
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

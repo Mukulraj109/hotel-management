@@ -144,7 +144,8 @@ const TravelAgentSettings: React.FC = () => {
       {/* Tab Navigation */}
       <div className="flex space-x-1 mb-6">
         {tabs.map((tab) => (
-          <button aria-label="Close"
+          <button
+            aria-label={tab.name}
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2 rounded-md font-medium transition-colors flex items-center space-x-2 ${
@@ -568,11 +569,26 @@ const TravelAgentSettings: React.FC = () => {
         <div className="flex justify-end space-x-4 pt-6 border-t">
           <button
             type="button"
+            onClick={() => {
+              setValue('bookingPreferences.autoConfirm', false);
+              setValue('bookingPreferences.defaultCommission', 10);
+              setValue('bookingPreferences.paymentTerms', 'immediate');
+              setValue('bookingPreferences.minimumStayRequirement', 1);
+              setSelectedRoomTypes([]);
+              setValue('notifications.commissionUpdates', true);
+              setValue('notifications.rateChanges', true);
+              setValue('notifications.bookingConfirmations', true);
+              setValue('notifications.cancellationAlerts', true);
+              setValue('notifications.paymentNotifications', true);
+              setValue('notifications.promotionalOffers', false);
+              setValue('notifications.systemMaintenance', true);
+              setValue('communicationChannel', 'email');
+            }}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
           >
             Reset to Defaults
           </button>
-          <button aria-label="Settings"
+          <button aria-label="Save settings"
             type="submit"
             disabled={isLoading}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

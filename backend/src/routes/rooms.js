@@ -156,10 +156,12 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
       logger.debug('Occupied room IDs identified', { count: occupiedRoomIds.length });
 
       // For admin requests, show all rooms but mark availability based on booking conflicts only
-      // For walk-in bookings, only check booking conflicts, not room status
+      // Room.status 'occupied' just means a guest is currently checked in — it doesn't block future bookings
+      // Only 'out_of_order' and 'maintenance' should block bookings
       rooms = allRooms.map(room => {
         const isOccupied = occupiedRoomIds.includes(room._id.toString());
-        const isAvailable = !isOccupied && (room.status === 'vacant' || room.status === 'dirty');
+        const isBlocked = room.status === 'out_of_order' || room.status === 'maintenance';
+        const isAvailable = !isOccupied && !isBlocked;
 
         return {
           ...room,

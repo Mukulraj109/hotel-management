@@ -2,17 +2,16 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { 
-  billingHistoryService, 
-  BillingHistoryItem, 
+import {
+  billingHistoryService,
+  BillingHistoryItem,
   BillingHistoryFilters
 } from '../../services/billingHistoryService';
-import { Download, Receipt, CreditCard, RefreshCw, Calendar } from 'lucide-react';
+import { Download, Receipt, CreditCard, RefreshCw, Calendar, AlertCircle } from 'lucide-react';
 
 // Quick Stats Component for Guest View
 interface QuickStatsProps {
@@ -21,7 +20,6 @@ interface QuickStatsProps {
     totalInvoices: number;
     totalPayments: number;
     totalRefunds: number;
-    totalBookings: number;
   };
   isLoading: boolean;
 }
@@ -121,8 +119,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ item, onClick }) => {
             {item.type === 'refund' ? '+' : ''}
             {billingHistoryService.formatCurrency(item.amount, item.currency)}
           </div>
-          <Badge 
-            variant={billingHistoryService.getStatusColor(item.status, item.type) as unknown}
+          <Badge
+            variant={billingHistoryService.getStatusColor(item.status, item.type) as 'green' | 'blue' | 'orange' | 'red' | 'gray' | 'yellow' | 'purple'}
             className="text-xs"
           >
             {item.status}
@@ -143,19 +141,74 @@ interface GuestDetailModalProps {
 const GuestDetailModal: React.FC<GuestDetailModalProps> = ({ item, isOpen, onClose }) => {
   if (!item) return null;
 
+  const handleDownloadReceipt = async () => {
+    try {
+      const receiptContent = [
+        '='.repeat(48),
+        '              TRANSACTION RECEIPT',
+        '='.repeat(48),
+        '',
+        `Type:            ${item.type.toUpperCase()}`,
+        `Date:            ${billingHistoryService.formatDate(item.date)}`,
+        `Amount:          ${billingHistoryService.formatCurrency(item.amount, item.currency)}`,
+        `Status:          ${item.status}`,
+        '',
+        item.invoiceNumber ? `Invoice #:       ${item.invoiceNumber}` : '',
+        item.bookingNumber ? `Booking #:       ${item.bookingNumber}` : '',
+        item.paymentMethod ? `Payment Method:  ${item.paymentMethod}` : '',
+        item.transactionId ? `Transaction ID:  ${item.transactionId}` : '',
+        item.refundReason ? `Refund Reason:   ${item.refundReason}` : '',
+        '',
+        `Description:     ${item.description}`,
+        '',
+        '-'.repeat(48),
+        item.amountPaid !== undefined ? `Amount Paid:     ${billingHistoryService.formatCurrency(item.amountPaid, item.currency)}` : '',
+        item.amountRemaining !== undefined ? `Amount Due:      ${billingHistoryService.formatCurrency(item.amountRemaining, item.currency)}` : '',
+        '-'.repeat(48),
+        '',
+        `Generated:       ${billingHistoryService.formatDate(new Date().toISOString())}`,
+        '='.repeat(48),
+      ].filter(Boolean).join('\n');
+
+      const blob = new Blob([receiptContent], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt-${item.invoiceNumber || item.transactionId || item.id}-${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Receipt download failed silently - user can retry
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Transaction Details">
       <div className="space-y-4">
-        <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-          {item.type === 'invoice' && <Receipt className="h-6 w-6 text-blue-500" />}
-          {item.type === 'payment' && <CreditCard className="h-6 w-6 text-green-500" />}
-          {item.type === 'refund' && <RefreshCw className="h-6 w-6 text-purple-500" />}
-          <div>
-            <div className="font-medium capitalize">{item.type}</div>
-            <Badge variant={billingHistoryService.getStatusColor(item.status, item.type) as unknown}>
-              {item.status}
-            </Badge>
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center space-x-3">
+            {item.type === 'invoice' && <Receipt className="h-6 w-6 text-blue-500" />}
+            {item.type === 'payment' && <CreditCard className="h-6 w-6 text-green-500" />}
+            {item.type === 'refund' && <RefreshCw className="h-6 w-6 text-purple-500" />}
+            {item.type === 'booking' && <Calendar className="h-6 w-6 text-orange-500" />}
+            <div>
+              <div className="font-medium capitalize">{item.type}</div>
+              <Badge variant={billingHistoryService.getStatusColor(item.status, item.type) as 'green' | 'blue' | 'orange' | 'red' | 'gray' | 'yellow' | 'purple'}>
+                {item.status}
+              </Badge>
+            </div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadReceipt}
+            className="flex items-center gap-1"
+          >
+            <Download className="h-4 w-4" />
+            Receipt
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -257,6 +310,8 @@ export default function GuestBillingHistory() {
   const {
     data: historyData,
     isLoading,
+    isError,
+    error,
     refetch
   } = useQuery({
     queryKey: ['guest-billing-history', filters],
@@ -287,7 +342,7 @@ export default function GuestBillingHistory() {
   };
 
   const handleTypeFilter = (type: string) => {
-    setFilters({ ...filters, type: type as unknown, page: 1 });
+    setFilters({ ...filters, type: type as BillingHistoryFilters['type'], page: 1 });
   };
 
   const handleItemClick = (item: BillingHistoryItem) => {
@@ -296,7 +351,7 @@ export default function GuestBillingHistory() {
   };
 
   const loadMore = () => {
-    setFilters({ ...filters, page: filters.page! + 1, limit: (filters.limit || 10) + 10 });
+    setFilters({ ...filters, page: (filters.page || 1) + 1 });
   };
 
   // Calculate quick stats from the summary
@@ -370,7 +425,18 @@ export default function GuestBillingHistory() {
 
       {/* Transaction List */}
       <div className="space-y-4">
-        {isLoading && filters.page === 1 ? (
+        {isError ? (
+          <Card className="p-8 text-center">
+            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load billing history</h3>
+            <p className="text-gray-500 mb-4">
+              {error instanceof Error ? error.message : 'An unexpected error occurred while fetching your billing data.'}
+            </p>
+            <Button variant="outline" onClick={() => refetch()}>
+              Try Again
+            </Button>
+          </Card>
+        ) : isLoading && filters.page === 1 ? (
           <div className="flex justify-center py-8">
             <LoadingSpinner />
           </div>

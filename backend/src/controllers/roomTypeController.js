@@ -118,8 +118,8 @@ class RoomTypeController {
   async getRoomType(req, res) {
     try {
       const { id } = req.params;
-      
-      const roomType = await RoomType.findById(id).lean();
+
+      const roomType = await RoomType.findById(id);
 
       if (!roomType) {
         return res.status(404).json({
@@ -128,8 +128,10 @@ class RoomTypeController {
         });
       }
 
-      // Get additional stats
-      const totalRooms = await roomType.getTotalRooms();
+      // Get additional stats - getTotalRooms is an instance method, requires non-lean document
+      const totalRooms = typeof roomType.getTotalRooms === 'function'
+        ? await roomType.getTotalRooms()
+        : await Room.countDocuments({ roomTypeId: roomType._id, hotelId: roomType.hotelId });
       const roomTypeData = roomType.toObject();
       roomTypeData.totalRooms = totalRooms;
 
@@ -221,7 +223,7 @@ class RoomTypeController {
   async updateRoomType(req, res) {
     try {
       const { id } = req.params;
-      
+
       const existingRoomType = await RoomType.findById(id).lean();
       if (!existingRoomType) {
         return res.status(404).json({
@@ -230,13 +232,23 @@ class RoomTypeController {
         });
       }
 
-      const oldValues = existingRoomType.toObject();
-      
+      // lean() returns a plain object, no need for .toObject()
+      const oldValues = { ...existingRoomType };
+
       // Map basePrice to baseRate for backend compatibility
       const updateData = { ...req.body };
       if (updateData.basePrice !== undefined) {
         updateData.baseRate = updateData.basePrice;
         delete updateData.basePrice;
+      }
+
+      // Map maxOccupancy to specifications.maxOccupancy for backend model compatibility
+      if (updateData.maxOccupancy !== undefined) {
+        if (!updateData.specifications) {
+          updateData.specifications = { ...existingRoomType.specifications };
+        }
+        updateData.specifications.maxOccupancy = Number(updateData.maxOccupancy);
+        delete updateData.maxOccupancy;
       }
       
       const roomType = await RoomType.findByIdAndUpdate(
@@ -301,8 +313,9 @@ class RoomTypeController {
         });
       }
 
-      const oldValues = roomType.toObject();
-      
+      // lean() returns a plain object, no need for .toObject()
+      const oldValues = { ...roomType };
+
       // Actually delete the room type instead of just deactivating
       await RoomType.findByIdAndDelete(id);
 
@@ -1058,8 +1071,9 @@ class RoomTypeController {
         });
       }
 
-      const oldValues = existingRoomType.toObject();
-      
+      // lean() returns a plain object, no need for .toObject()
+      const oldValues = { ...existingRoomType };
+
       // Update room type
       const updatedData = { ...req.body };
       delete updatedData.updateTranslations;
@@ -1150,10 +1164,10 @@ class RoomTypeController {
       const roomTypes = await RoomType.find(filter)
         .sort({ name: 1 }).lean().limit(1000);
 
-      // Apply localization if needed
+      // Apply localization if needed (lean() returns plain objects, spread instead of .toObject())
       const localizedRoomTypes = roomTypes.map(roomType => {
-        const localized = roomType.toObject();
-        
+        const localized = { ...roomType };
+
         // If language is not EN, try to get translated content
         if (language !== 'EN' && roomType.content?.translations) {
           const translation = roomType.content.translations.find(t => t.language === language);
@@ -1163,7 +1177,7 @@ class RoomTypeController {
             if (translation.shortDescription) localized.shortDescription = translation.shortDescription;
           }
         }
-        
+
         return localized;
       });
 

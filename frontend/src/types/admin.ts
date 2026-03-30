@@ -199,8 +199,8 @@ export interface AdminBooking {
   checkIn: string;
   checkOut: string;
   nights: number;
-  status: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
-  paymentStatus: 'pending' | 'paid' | 'refunded' | 'failed';
+  status: 'pending' | 'confirmed' | 'modified' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
+  paymentStatus: 'pending' | 'paid' | 'partially_paid' | 'refunded' | 'failed';
   totalAmount: number;
   currency: string;
   stripePaymentId?: string;
@@ -214,7 +214,48 @@ export interface AdminBooking {
     price: number;
     quantity: number;
   }[];
-  source: 'direct' | 'booking_com' | 'expedia' | 'airbnb';
+  extraPersons?: {
+    personId?: string;
+    name: string;
+    type: 'adult' | 'child';
+    age?: number;
+    isActive: boolean;
+  }[];
+  extraPersonCharges?: {
+    personId: string;
+    baseCharge: number;
+    totalCharge: number;
+    currency: string;
+    description: string;
+    isPaid?: boolean;
+    paidAmount?: number;
+  }[];
+  settlementTracking?: {
+    status: string;
+    finalAmount?: number;
+    outstandingBalance: number;
+    refundAmount?: number;
+    adjustments?: {
+      type: string;
+      amount: number;
+      description: string;
+      appliedAt: string;
+    }[];
+  };
+  paymentDetails?: {
+    totalPaid: number;
+    remainingAmount: number;
+    paymentMethods?: {
+      method: string;
+      amount: number;
+      reference?: string;
+      notes?: string;
+    }[];
+  };
+  originalAmount?: number;
+  discountAmount?: number;
+  surchargeAmount?: number;
+  source: 'direct' | 'walk_in' | 'booking_com' | 'expedia' | 'airbnb';
   roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
   cancellationReason?: string;
   checkInTime?: string;
@@ -230,6 +271,7 @@ export interface BookingFilters {
   checkOut?: string;
   source?: string;
   hotelId?: string;
+  search?: string;
   page?: number;
   limit?: number;
 }

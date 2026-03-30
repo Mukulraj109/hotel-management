@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -16,7 +16,6 @@ import {
   X,
   Save,
   Users,
-  FileText,
   TrendingUp,
   IndianRupee,
   BarChart3,
@@ -163,9 +162,9 @@ const initialFormData: CompanyFormData = {
 };
 
 // API functions
-const fetchCorporateCompanies = async (): Promise<{ companies: CorporateCompany[] }> => {
+const fetchCorporateCompanies = async (page = 1, limit = 100): Promise<{ companies: CorporateCompany[] }> => {
   try {
-    const response = await api.get('/corporate/companies');
+    const response = await api.get(`/corporate/companies?page=${page}&limit=${limit}`);
     return response.data.data;
   } catch (error: unknown) {
     throw error instanceof Error ? error : new Error('Failed to fetch corporate companies');
@@ -562,7 +561,7 @@ function CorporateCompanyManagement() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Credit Utilization</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {metricsData.data.overview.averageUtilization.toFixed(1)}%
+                  {(metricsData.data.overview.averageUtilization ?? 0).toFixed(1)}%
                 </p>
                 <p className="text-sm text-gray-500">
                   {formatCurrency(metricsData.data.overview.totalUsedCredit)} used
@@ -731,7 +730,7 @@ function CorporateCompanyManagement() {
                       formatter={(value: number, name: string, props: Record<string, unknown>) => {
                         const item = props.payload;
                         if (name === 'usedCredit') {
-                          return [`${formatCurrency(value)} (${item.utilizationRate.toFixed(1)}%)`, 'Used Credit'];
+                          return [`${formatCurrency(value)} (${(item.utilizationRate ?? 0).toFixed(1)}%)`, 'Used Credit'];
                         }
                         return [formatCurrency(value), 'Available Credit'];
                       }}
@@ -759,7 +758,6 @@ function CorporateCompanyManagement() {
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <input
           type="text"
-          required
           placeholder="Search companies by name, email, or GST number..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}

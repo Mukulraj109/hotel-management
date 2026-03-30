@@ -5,6 +5,8 @@ import { api } from './api';
 export interface GuestService {
   _id: string;
   serviceType: 'room_service' | 'housekeeping' | 'maintenance' | 'concierge' | 'transport' | 'spa' | 'laundry' | 'other';
+  serviceVariation?: string;
+  serviceVariations?: string[];
   title: string;
   description: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
@@ -51,6 +53,7 @@ export interface GuestServiceFilters {
   assignedTo?: string;
   userId?: string;
   bookingId?: string;
+  hotelId?: string;
   page?: number;
   limit?: number;
 }
@@ -129,7 +132,7 @@ class AdminGuestServicesService {
     const queryParams = new URLSearchParams();
 
     // Use provided hotelId (from selected property) or fall back to user's primary
-    const hotelId = (filters as Record<string, unknown>).hotelId as string || await this.getUserHotelId();
+    const hotelId = filters.hotelId || await this.getUserHotelId();
     queryParams.append('hotelId', hotelId);
 
     Object.entries(filters).forEach(([key, value]) => {
@@ -207,8 +210,7 @@ class AdminGuestServicesService {
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);
     const endpoint = `/available-staff?${queryParams.toString()}`;
-    const response = await this.apiRequest(endpoint);
-    return response as ApiResponse<Array<{ _id: string; name: string; email: string; department: string }>>;
+    return this.apiRequest(endpoint);
   }
 
   // Get guest satisfaction ratings for completed services
@@ -259,13 +261,17 @@ class AdminGuestServicesService {
   }
 
   // Export services data for reporting
-  async exportServices(filters?: GuestServiceFilters, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
+  async exportServices(filters?: GuestServiceFilters, format: 'csv' | 'excel' = 'csv', hotelId?: string): Promise<Blob> {
     try {
       const queryParams = new URLSearchParams();
 
+      // Ensure hotelId is included for tenant isolation
+      const resolvedHotelId = hotelId || await this.getUserHotelId();
+      queryParams.append('hotelId', resolvedHotelId);
+
       if (filters) {
         Object.entries(filters).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
+          if (value !== undefined && value !== null && key !== 'hotelId' && key !== 'propertyId') {
             queryParams.append(key, value.toString());
           }
         });

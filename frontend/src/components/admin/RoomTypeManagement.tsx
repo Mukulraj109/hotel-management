@@ -3,10 +3,8 @@ import {
   Plus,
   Edit,
   Trash2,
-  Settings,
   Users,
   Bed,
-  Eye,
   Upload,
   Link,
   AlertCircle,
@@ -40,7 +38,11 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRoomType, setSelectedRoomType] = useState<RoomType | null>(null);
   const [formData, setFormData] = useState<Partial<CreateRoomTypeData>>({});
-  const [migrationStatus, setMigrationStatus] = useState<unknown>(null);
+  const [migrationStatus, setMigrationStatus] = useState<{
+    currentStatus: { hasRoomTypes: boolean; hasInventoryRecords: boolean; roomsWithoutRoomTypes: number };
+    migrationSteps: Array<{ step: string; completed: boolean; action: string }>;
+    nextActions: string[];
+  } | null>(null);
 
   // Multi-property support
   const { selectedPropertyId, properties } = useProperty();
@@ -89,7 +91,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
       setRoomTypes(roomTypesArray);
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch room types');
+      const message = err instanceof Error ? err.message : 'Failed to fetch room types';
+      setError(message);
       setRoomTypes([]); // Set empty array on error
     } finally {
       setLoading(false);
@@ -141,7 +144,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
         setApplyToScope('single');
       } else {
         // Single property update
-        const newRoomType = await roomTypeService.createRoomType(roomTypeData as CreateRoomTypeData);
+        await roomTypeService.createRoomType(roomTypeData as CreateRoomTypeData);
         toast.success('Room type created successfully');
       }
 
@@ -151,8 +154,9 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
       setFormData({});
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to create room type');
-      toast.error(err.message || 'Failed to create room type');
+      const message = err instanceof Error ? err.message : 'Failed to create room type';
+      setError(message);
+      toast.error(message);
     }
   };
 
@@ -193,7 +197,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
         setApplyToScope('single');
       } else {
         // Single property update
-        const updatedRoomType = await roomTypeService.updateRoomType(
+        await roomTypeService.updateRoomType(
           selectedRoomType._id,
           updateData
         );
@@ -207,8 +211,9 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
       setFormData({});
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to update room type');
-      toast.error(err.message || 'Failed to update room type');
+      const message = err instanceof Error ? err.message : 'Failed to update room type';
+      setError(message);
+      toast.error(message);
     }
   };
 
@@ -237,7 +242,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
       await fetchRoomTypes();
       setError(null);
     } catch (err: unknown) {
-      setError(err.message || 'Failed to delete room type');
+      const message = err instanceof Error ? err.message : 'Failed to delete room type';
+      setError(message);
     }
   };
 

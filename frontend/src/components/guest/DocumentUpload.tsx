@@ -88,8 +88,8 @@ export default function DocumentUpload({
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedDocumentType, setSelectedDocumentType] = useState('');
   const [description, setDescription] = useState('');
-  const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const [showRequirements, setShowRequirements] = useState(false);
+  const [loadingDocs, setLoadingDocs] = useState(true);
 
   // Fetch document requirements on component mount
   useEffect(() => {
@@ -110,13 +110,16 @@ export default function DocumentUpload({
 
   const fetchUserDocuments = async () => {
     try {
-      const params: Record<string, unknown> = { userType };
+      setLoadingDocs(true);
+      const params: Record<string, unknown> = { userType, limit: 50, skip: 0 };
       if (bookingId) params.bookingId = bookingId;
 
       const { data } = await api.get('/documents', { params });
-      setDocuments(data.data.documents);
+      setDocuments(data.data.documents || []);
     } catch {
-      // Error handled silently
+      // Non-critical: the document list will just be empty
+    } finally {
+      setLoadingDocs(false);
     }
   };
 
@@ -130,7 +133,7 @@ export default function DocumentUpload({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
@@ -138,15 +141,15 @@ export default function DocumentUpload({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFiles(e.dataTransfer.files);
     }
-  }, []);
+  };
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(e.target.files);
     }
     // Reset input value to allow uploading same file again
     e.target.value = '';
-  }, []);
+  };
 
   const handleFiles = async (files: FileList) => {
     if (!selectedCategory || !selectedDocumentType) {
@@ -486,39 +489,57 @@ export default function DocumentUpload({
       </Card>
 
       {/* Uploaded Documents */}
-      {documents.length > 0 && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Your Documents ({documents.length})
-          </h3>
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Your Documents ({documents.length})
+        </h3>
 
+        {loadingDocs ? (
           <div className="space-y-4">
-            {documents.map(document => (
-              <div key={document._id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="animate-pulse flex items-center space-x-4 p-4 border border-gray-100 rounded-lg">
+                <div className="w-8 h-8 bg-gray-200 rounded" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-1/3" />
+                  <div className="h-3 bg-gray-100 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="text-center py-8">
+            <DocumentTextIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">No documents uploaded yet. Use the form above to upload your first document.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {documents.map(doc => (
+              <div key={doc._id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                 <div className="flex items-center space-x-4">
                   <DocumentTextIcon className="w-8 h-8 text-gray-600" />
                   <div>
-                    <h4 className="font-medium text-gray-900">{document.originalName}</h4>
+                    <h4 className="font-medium text-gray-900">{doc.originalName}</h4>
                     <p className="text-sm text-gray-600">
-                      {document.documentType} • {formatFileSize(document.fileSize)} •
-                      {new Date(document.createdAt).toLocaleDateString()}
+                      {doc.documentType} • {formatFileSize(doc.fileSize)} •{' '}
+                      {new Date(doc.createdAt).toLocaleDateString()}
                     </p>
-                    {document.description && (
-                      <p className="text-sm text-gray-500 mt-1">{document.description}</p>
+                    {doc.description && (
+                      <p className="text-sm text-gray-500 mt-1">{doc.description}</p>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center space-x-3">
-                  <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(document.status)}`}>
-                    {getStatusIcon(document.status)}
-                    <span className="capitalize">{document.status.replace('_', ' ')}</span>
+                  <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(doc.status)}`}>
+                    {getStatusIcon(doc.status)}
+                    <span className="capitalize">{doc.status.replace('_', ' ')}</span>
                   </div>
 
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => viewDocument(document)}
+                    onClick={() => viewDocument(doc)}
+                    title="Preview document"
                   >
                     <EyeIcon className="w-4 h-4" />
                   </Button>
@@ -526,7 +547,8 @@ export default function DocumentUpload({
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => deleteDocument(document._id)}
+                    onClick={() => deleteDocument(doc._id)}
+                    title="Delete document"
                   >
                     <XMarkIcon className="w-4 h-4" />
                   </Button>
@@ -534,8 +556,8 @@ export default function DocumentUpload({
               </div>
             ))}
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
     </div>
   );
 }

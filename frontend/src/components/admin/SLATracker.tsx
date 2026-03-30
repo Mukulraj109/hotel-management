@@ -72,7 +72,11 @@ interface ServiceRequest {
   };
 }
 
-const SLATracker: React.FC = () => {
+interface SLATrackerProps {
+  hotelId?: string;
+}
+
+const SLATracker: React.FC<SLATrackerProps> = ({ hotelId: propHotelId }) => {
   const { user } = useAuth();
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [alerts, setAlerts] = useState<SLAAlert[]>([]);
@@ -81,8 +85,9 @@ const SLATracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
 
-  // Resolve hotelId to string — it may be a populated object { _id, name }
+  // Use prop hotelId (from property context) or fall back to user's hotelId
   const resolvedHotelId = (() => {
+    if (propHotelId) return propHotelId;
     const raw = user?.hotelId;
     if (!raw) return undefined;
     if (typeof raw === 'string') return raw;
@@ -506,7 +511,7 @@ const SLATracker: React.FC = () => {
               <tbody>
                 {activeRequests.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                       <p className="text-sm">No active service requests at this time</p>
                     </td>
                   </tr>

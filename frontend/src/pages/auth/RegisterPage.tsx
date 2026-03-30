@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -23,6 +23,10 @@ export default function RegisterPage() {
   
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = 'Create Account - The Pentouz';
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -83,7 +87,8 @@ export default function RegisterPage() {
       await register(registrationData);
       navigate('/');
     } catch (error: unknown) {
-      const errorMessage = error.response?.data?.message || 'Registration failed. Please try again.';
+      const err = error as { response?: { data?: { message?: string } } };
+      const errorMessage = err.response?.data?.message || 'Registration failed. Please try again.';
       setErrors([errorMessage]);
     } finally {
       setLoading(false);
@@ -200,7 +205,7 @@ export default function RegisterPage() {
             </div>
 
             {/* Submit Button */}
-            <button aria-label="View"
+            <button
               type="submit"
               disabled={loading}
               className={`w-full py-3 px-4 rounded-lg text-white font-medium transition-all duration-200 ${

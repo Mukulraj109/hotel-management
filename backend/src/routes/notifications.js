@@ -1,10 +1,12 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 import NotificationPreference from '../models/NotificationPreference.js';
 import NotificationTemplate from '../models/NotificationTemplate.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -18,8 +20,9 @@ import logger from '../utils/logger.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication and property access middleware to all routes
+// Apply authentication, tenant isolation, and property access middleware to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('notifications', 'baseAccess'));
 
@@ -27,9 +30,16 @@ router.use(authorizePolicy('notifications', 'baseAccess'));
 router.get('/', catchAsync(async (req, res, next) => {
   const { page = 1, limit = 20, status, type, unreadOnly = false } = req.query;
   const userId = req.user._id;
-  
-  // Build query
+  const hotelId = req.user.hotelId;
+
+  // Enforce max limit to prevent unbounded queries
+  const safeLimit = Math.min(parseInt(limit) || 20, 100);
+
+  // Build query with tenant isolation
   const query = { userId };
+  if (hotelId) {
+    query.hotelId = hotelId;
+  }
   
   if (status) {
     query.status = status;
@@ -45,52 +55,61 @@ router.get('/', catchAsync(async (req, res, next) => {
   }
   
   // Calculate pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  
+  const safePage = Math.max(1, parseInt(page) || 1);
+  const skip = (safePage - 1) * safeLimit;
+
   // Get notifications with populated metadata
-  const notifications = await Notification.find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .populate('metadata.bookingId', 'bookingNumber checkIn checkOut roomNumber')
-    .populate('metadata.serviceBookingId', 'bookingDate numberOfPeople serviceId')
-    .populate('metadata.paymentId', 'amount currency status')
-    .populate('metadata.loyaltyTransactionId', 'points type description').lean();
-  
-  // Get total count for pagination
-  const total = await Notification.countDocuments(query);
-  
-  // Get unread count
-  const unreadCount = await Notification.getUnreadCount(userId);
+  const [notifications, total, unreadCount, totalCount, weeklyCount, highPriorityCount] = await Promise.all([
+    Notification.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate('metadata.bookingId', 'bookingNumber checkIn checkOut roomNumber')
+      .populate('metadata.serviceBookingId', 'bookingDate numberOfPeople serviceId')
+      .populate('metadata.paymentId', 'amount currency status')
+      .populate('metadata.loyaltyTransactionId', 'points type description')
+      .lean(),
 
-  // Get total count (all notifications for user)
-  const totalCount = await Notification.countDocuments({ userId });
+    // Get total count for pagination
+    Notification.countDocuments(query),
 
-  // Get weekly count (notifications from last 7 days)
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  const weeklyCount = await Notification.countDocuments({
-    userId,
-    createdAt: { $gte: weekStart }
-  });
+    // Get unread count with tenant isolation
+    Notification.getUnreadCount(userId, hotelId),
 
-  // Get high priority count (urgent and high priority notifications)
-  const highPriorityCount = await Notification.countDocuments({
-    userId,
-    priority: { $in: ['high', 'urgent'] },
-    status: { $in: ['pending', 'sent', 'delivered'] },
-    readAt: { $exists: false }
-  });
+    // Get total count (all notifications for user in this hotel)
+    Notification.countDocuments(hotelId ? { userId, hotelId } : { userId }),
+
+    // Get weekly count (notifications from last 7 days)
+    (() => {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      const weekQuery = { userId, createdAt: { $gte: weekStart } };
+      if (hotelId) weekQuery.hotelId = hotelId;
+      return Notification.countDocuments(weekQuery);
+    })(),
+
+    // Get high priority count (urgent and high priority notifications)
+    (() => {
+      const hpQuery = {
+        userId,
+        priority: { $in: ['high', 'urgent'] },
+        status: { $in: ['pending', 'sent', 'delivered'] },
+        readAt: { $exists: false }
+      };
+      if (hotelId) hpQuery.hotelId = hotelId;
+      return Notification.countDocuments(hpQuery);
+    })()
+  ]);
 
   res.status(200).json({
     status: 'success',
     data: {
       notifications,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit)),
+        currentPage: safePage,
+        totalPages: Math.ceil(total / safeLimit),
         totalItems: total,
-        itemsPerPage: parseInt(limit)
+        itemsPerPage: safeLimit
       },
       unreadCount,
       totalCount,
@@ -103,8 +122,9 @@ router.get('/', catchAsync(async (req, res, next) => {
 // GET /api/v1/notifications/unread-count - Get unread notification count
 router.get('/unread-count', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
+  const hotelId = req.user.hotelId;
 
-  const unreadCount = await Notification.getUnreadCount(userId);
+  const unreadCount = await Notification.getUnreadCount(userId, hotelId);
 
   res.status(200).json({
     status: 'success',
@@ -116,15 +136,22 @@ router.get('/unread-count', catchAsync(async (req, res, next) => {
 router.get('/summary', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const userRole = req.user.role;
+  const hotelId = req.user.hotelId;
+
+  // Build base match filter with tenant isolation
+  const baseMatch = { userId };
+  if (hotelId) {
+    baseMatch.hotelId = new mongoose.Types.ObjectId(hotelId);
+  }
 
   // Get unread count
-  const unreadCount = await Notification.getUnreadCount(userId);
+  const unreadCount = await Notification.getUnreadCount(userId, hotelId);
 
   // Get priority counts
   const priorityCounts = await Notification.aggregate([
     {
       $match: {
-        userId,
+        ...baseMatch,
         readAt: { $exists: false }
       }
     },
@@ -145,7 +172,7 @@ router.get('/summary', catchAsync(async (req, res, next) => {
   const categoryCounts = await Notification.aggregate([
     {
       $match: {
-        userId,
+        ...baseMatch,
         readAt: { $exists: false }
       }
     },
@@ -179,16 +206,14 @@ router.get('/summary', catchAsync(async (req, res, next) => {
 
   const [todayCount, weekCount, lastNotification] = await Promise.all([
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       createdAt: { $gte: todayStart }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       createdAt: { $gte: weekStart }
     }),
-    Notification.findOne({
-      userId
-    }).sort({ createdAt: -1 }).select('createdAt')
+    Notification.findOne(baseMatch).sort({ createdAt: -1 }).select('createdAt').lean()
   ]);
 
   res.status(200).json({
@@ -209,7 +234,14 @@ router.get('/summary', catchAsync(async (req, res, next) => {
 // GET /api/v1/notifications/personal-overview - Get personal notification overview
 router.get('/personal-overview', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
+  const hotelId = req.user.hotelId;
   const { timeRange = 7 } = req.query;
+
+  // Build base match filter with tenant isolation
+  const baseMatch = { userId };
+  if (hotelId) {
+    baseMatch.hotelId = new mongoose.Types.ObjectId(hotelId);
+  }
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - parseInt(timeRange));
@@ -217,16 +249,16 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
   // Get basic stats
   const [totalSent, totalRead, urgentCount] = await Promise.all([
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       createdAt: { $gte: startDate }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       readAt: { $exists: true },
       createdAt: { $gte: startDate }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       priority: 'urgent',
       createdAt: { $gte: startDate }
     })
@@ -238,13 +270,12 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
 
   const [todaySent, todayRead] = await Promise.all([
     Notification.countDocuments({
-      userId,
+      ...baseMatch,
       createdAt: { $gte: todayStart }
     }),
     Notification.countDocuments({
-      userId,
-      readAt: { $exists: true },
-      readAt: { $gte: todayStart }
+      ...baseMatch,
+      readAt: { $exists: true, $gte: todayStart }
     })
   ]);
 
@@ -254,7 +285,7 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
   const weeklyTrend = await Notification.aggregate([
     {
       $match: {
-        userId,
+        ...baseMatch,
         createdAt: { $gte: startDate }
       }
     },
@@ -283,7 +314,7 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
   const topCategories = await Notification.aggregate([
     {
       $match: {
-        userId,
+        ...baseMatch,
         createdAt: { $gte: startDate }
       }
     },
@@ -317,7 +348,7 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
   const responseTimeResult = await Notification.aggregate([
     {
       $match: {
-        userId,
+        ...baseMatch,
         readAt: { $exists: true },
         createdAt: { $gte: startDate }
       }
@@ -373,33 +404,40 @@ router.get('/personal-overview', catchAsync(async (req, res, next) => {
 // Legacy summary endpoint - keeping for backward compatibility
 router.get('/summary-legacy', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
+  const hotelId = req.user.hotelId;
+
+  // Build base query with tenant isolation
+  const baseQuery = { userId };
+  if (hotelId) {
+    baseQuery.hotelId = hotelId;
+  }
 
   // Get counts by category
   const [bookingCount, paymentCount, serviceCount, systemCount] = await Promise.all([
     Notification.countDocuments({
-      userId,
+      ...baseQuery,
       'metadata.category': 'booking',
       readAt: { $exists: false }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseQuery,
       'metadata.category': 'payment',
       readAt: { $exists: false }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseQuery,
       'metadata.category': 'service',
       readAt: { $exists: false }
     }),
     Notification.countDocuments({
-      userId,
+      ...baseQuery,
       'metadata.category': 'system',
       readAt: { $exists: false }
     })
   ]);
 
   // Get recent notifications
-  const recentNotifications = await Notification.find({ userId })
+  const recentNotifications = await Notification.find(baseQuery)
     .sort({ createdAt: -1 })
     .limit(5)
     .select('type title message createdAt readAt priority').lean();
@@ -696,17 +734,23 @@ router.get('/channels', catchAsync(async (req, res, next) => {
 router.get('/:id([0-9a-fA-F]{24})', catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
-  
-  const notification = await Notification.findOne({ _id: id, userId })
+  const hotelId = req.user.hotelId;
+
+  const findQuery = { _id: id, userId };
+  if (hotelId) {
+    findQuery.hotelId = hotelId;
+  }
+
+  const notification = await Notification.findOne(findQuery)
     .populate('metadata.bookingId', 'bookingNumber checkIn checkOut roomNumber')
     .populate('metadata.serviceBookingId', 'bookingDate numberOfPeople serviceId')
     .populate('metadata.paymentId', 'amount currency status')
     .populate('metadata.loyaltyTransactionId', 'points type description').lean();
-  
+
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
   }
-  
+
   res.status(200).json({
     status: 'success',
     data: { notification }
@@ -717,15 +761,21 @@ router.get('/:id([0-9a-fA-F]{24})', catchAsync(async (req, res, next) => {
 router.patch('/:id([0-9a-fA-F]{24})/read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
-  
-  const notification = await Notification.findOne({ _id: id, userId });
-  
+  const hotelId = req.user.hotelId;
+
+  const findQuery = { _id: id, userId };
+  if (hotelId) {
+    findQuery.hotelId = hotelId;
+  }
+
+  const notification = await Notification.findOne(findQuery);
+
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
   }
-  
+
   await notification.markAsRead();
-  
+
   res.status(200).json({
     status: 'success',
     message: 'Notification marked as read'
@@ -736,8 +786,9 @@ router.patch('/:id([0-9a-fA-F]{24})/read', validate(mutationBaselineSchema), cat
 router.post('/mark-read', validate(schemas.markNotificationsRead), catchAsync(async (req, res, next) => {
   const { notificationIds } = req.body;
   const userId = req.user._id;
-  
-  const result = await Notification.markAsRead(userId, notificationIds);
+  const hotelId = req.user.hotelId;
+
+  const result = await Notification.markAsRead(userId, notificationIds, hotelId);
   
   res.status(200).json({
     status: 'success',
@@ -749,8 +800,9 @@ router.post('/mark-read', validate(schemas.markNotificationsRead), catchAsync(as
 // POST /api/v1/notifications/mark-all-read - Mark all notifications as read
 router.post('/mark-all-read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
-  
-  const result = await Notification.markAllAsRead(userId);
+  const hotelId = req.user.hotelId;
+
+  const result = await Notification.markAllAsRead(userId, hotelId);
   
   res.status(200).json({
     status: 'success',
@@ -763,8 +815,14 @@ router.post('/mark-all-read', validate(mutationBaselineSchema), catchAsync(async
 router.delete('/:id([0-9a-fA-F]{24})', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
-  
-  const notification = await Notification.findOneAndDelete({ _id: id, userId });
+  const hotelId = req.user.hotelId;
+
+  const deleteQuery = { _id: id, userId };
+  if (hotelId) {
+    deleteQuery.hotelId = hotelId;
+  }
+
+  const notification = await Notification.findOneAndDelete(deleteQuery);
   
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
@@ -838,9 +896,20 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
 
   await testNotification.save();
 
-  // TODO: Implement actual notification sending logic here
-  // For now, just mark as sent
+  // Mark as sent and emit real-time event for in-app delivery
   await testNotification.markAsSent(channel);
+
+  // Emit real-time notification to user via SSE/WebSocket
+  notificationEmitter.emit(`user:${userId}`, {
+    id: testNotification._id,
+    type: testNotification.type,
+    title: testNotification.title,
+    message: testNotification.message,
+    priority: testNotification.priority,
+    channels: testNotification.channels,
+    metadata: testNotification.metadata,
+    createdAt: testNotification.createdAt
+  });
 
   res.status(200).json({
     status: 'success',
@@ -1066,11 +1135,17 @@ router.get('/stream', authenticate, (req, res) => {
 router.delete('/bulk', validate(schemas.deleteNotifications), catchAsync(async (req, res, next) => {
   const { notificationIds } = req.body;
   const userId = req.user._id;
+  const hotelId = req.user.hotelId;
 
-  const result = await Notification.deleteMany({
+  const deleteQuery = {
     _id: { $in: notificationIds },
     userId
-  });
+  };
+  if (hotelId) {
+    deleteQuery.hotelId = hotelId;
+  }
+
+  const result = await Notification.deleteMany(deleteQuery);
 
   res.status(200).json({
     status: 'success',

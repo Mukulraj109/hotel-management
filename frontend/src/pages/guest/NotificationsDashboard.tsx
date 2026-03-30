@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  Bell, 
-  Filter, 
-  Search, 
-  Check, 
-  Trash2, 
-  Settings, 
-  Eye, 
-  EyeOff,
+import {
+  Bell,
+  Filter,
+  Search,
+  Check,
+  Trash2,
+  Eye,
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
@@ -39,7 +37,6 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
@@ -55,6 +52,7 @@ function NotificationsDashboard() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
+  const [confirmDeleteNotifId, setConfirmDeleteNotifId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
@@ -63,8 +61,8 @@ function NotificationsDashboard() {
   const markAsReadMutation = useMutation({
     mutationFn: notificationService.markAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('Notification marked as read');
     },
     onError: (error) => {
@@ -75,8 +73,8 @@ function NotificationsDashboard() {
   const markMultipleAsReadMutation = useMutation({
     mutationFn: notificationService.markMultipleAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       setSelectedNotifications([]);
       toast.success('Notifications marked as read');
     },
@@ -88,8 +86,8 @@ function NotificationsDashboard() {
   const markAllAsReadMutation = useMutation({
     mutationFn: notificationService.markAllAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('All notifications marked as read');
     },
     onError: (error) => {
@@ -100,8 +98,8 @@ function NotificationsDashboard() {
   const deleteNotificationMutation = useMutation({
     mutationFn: notificationService.deleteNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('Notification deleted');
     },
     onError: (error) => {
@@ -112,7 +110,7 @@ function NotificationsDashboard() {
   const updatePreferencesMutation = useMutation({
     mutationFn: notificationService.updatePreferences,
     onSuccess: () => {
-      queryClient.invalidateQueries(['notificationPreferences']);
+      queryClient.invalidateQueries({ queryKey: ['notificationPreferences'] });
       toast.success('Preferences updated successfully');
     },
     onError: (error) => {
@@ -124,7 +122,7 @@ function NotificationsDashboard() {
     mutationFn: ({ channel, type, enabled }: { channel: string; type: string; enabled: boolean }) =>
       notificationService.updateTypeSetting(channel, type, enabled),
     onSuccess: () => {
-      queryClient.invalidateQueries(['notificationPreferences']);
+      queryClient.invalidateQueries({ queryKey: ['notificationPreferences'] });
       toast.success('Notification setting updated');
     },
     onError: (error) => {
@@ -353,8 +351,13 @@ function NotificationsDashboard() {
 
   // Handle delete notification
   const handleDeleteNotification = (notificationId: string) => {
-    if (window.confirm('Are you sure you want to delete this notification?')) {
-      deleteNotificationMutation.mutate(notificationId);
+    setConfirmDeleteNotifId(notificationId);
+  };
+
+  const confirmDeleteNotification = () => {
+    if (confirmDeleteNotifId) {
+      deleteNotificationMutation.mutate(confirmDeleteNotifId);
+      setConfirmDeleteNotifId(null);
     }
   };
 
@@ -397,10 +400,20 @@ function NotificationsDashboard() {
 
   if (notificationsError) {
     return (
-      <div className="text-center py-8">
-        <AlertCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading notifications</h3>
-        <p className="text-gray-600">Please try again later.</p>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading notifications</h3>
+          <p className="text-gray-600 mb-4">
+            {notificationsError instanceof Error ? notificationsError.message : 'An unexpected error occurred while loading your notifications.'}
+          </p>
+          <Button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['notifications'] })}
+            variant="outline"
+          >
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -675,7 +688,7 @@ function NotificationCard({
   getIconComponent
 }: NotificationCardProps) {
   const [showActions, setShowActions] = useState(false);
-  const typeInfo = notificationService.getNotificationTypeInfo(notification.type as unknown);
+  const typeInfo = notificationService.getNotificationTypeInfo(notification.type);
   const priorityInfo = notificationService.getPriorityInfo(notification.priority);
   const statusInfo = notificationService.getStatusInfo(notification.status);
   const isUnread = notificationService.isUnread(notification);
@@ -864,8 +877,9 @@ function NotificationPreferences({
           {notificationChannels.map((channel) => {
             const IconComponent = getChannelIcon(channel.id);
             return (
-              <button aria-label="Close"
+              <button
                 key={channel.id}
+                aria-label={`${channel.name} notification settings`}
                 onClick={() => setActiveChannel(channel.id)}
                 className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm flex items-center space-x-2 whitespace-nowrap flex-shrink-0 ${
                   activeChannel === channel.id
@@ -885,7 +899,9 @@ function NotificationPreferences({
       {notificationChannels.map((channel) => {
         if (activeChannel !== channel.id) return null;
 
-        const channelPrefs = preferences[channel.id as keyof NotificationPreference] as unknown;
+        // Map channel id to preference key (backend uses 'inApp' not 'in_app')
+        const prefKey = channel.id === 'in_app' ? 'inApp' : channel.id;
+        const channelPrefs = preferences[prefKey as keyof NotificationPreference] as unknown;
         const isEnabled = channelPrefs?.enabled;
 
         return (
@@ -901,7 +917,7 @@ function NotificationPreferences({
                   type="checkbox"
                   checked={isEnabled}
                   onChange={(e) => onUpdatePreferences({
-                    channel: channel.id,
+                    channel: prefKey,
                     settings: { enabled: e.target.checked }
                   })}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -922,7 +938,7 @@ function NotificationPreferences({
                       type={channel.id === 'email' ? 'email' : 'tel'}
                       value={channelPrefs[channel.id === 'email' ? 'address' : 'number'] || ''}
                       onChange={(e) => onUpdatePreferences({
-                        channel: channel.id,
+                        channel: prefKey,
                         settings: { [channel.id === 'email' ? 'address' : 'number']: e.target.value }
                       })}
                       placeholder={channel.id === 'email' ? 'Enter email address' : 'Enter phone number'}
@@ -939,7 +955,7 @@ function NotificationPreferences({
                     <select
                       value={channelPrefs.frequency || 'immediate'}
                       onChange={(e) => onUpdatePreferences({
-                        channel: channel.id,
+                        channel: prefKey,
                         settings: { frequency: e.target.value }
                       })}
                       className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -962,7 +978,7 @@ function NotificationPreferences({
                           type="checkbox"
                           checked={channelPrefs.quietHours?.enabled || false}
                           onChange={(e) => onUpdatePreferences({
-                            channel: channel.id,
+                            channel: prefKey,
                             settings: {
                               quietHours: {
                                 ...channelPrefs.quietHours,
@@ -983,7 +999,7 @@ function NotificationPreferences({
                             type="time"
                             value={channelPrefs.quietHours.start || '22:00'}
                             onChange={(e) => onUpdatePreferences({
-                              channel: channel.id,
+                              channel: prefKey,
                               settings: {
                                 quietHours: {
                                   ...channelPrefs.quietHours,
@@ -999,7 +1015,7 @@ function NotificationPreferences({
                             type="time"
                             value={channelPrefs.quietHours.end || '08:00'}
                             onChange={(e) => onUpdatePreferences({
-                              channel: channel.id,
+                              channel: prefKey,
                               settings: {
                                 quietHours: {
                                   ...channelPrefs.quietHours,
@@ -1022,7 +1038,7 @@ function NotificationPreferences({
                         type="checkbox"
                         checked={channelPrefs.sound || false}
                         onChange={(e) => onUpdatePreferences({
-                          channel: channel.id,
+                          channel: prefKey,
                           settings: { sound: e.target.checked }
                         })}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1034,7 +1050,7 @@ function NotificationPreferences({
                         type="checkbox"
                         checked={channelPrefs.vibration || false}
                         onChange={(e) => onUpdatePreferences({
-                          channel: channel.id,
+                          channel: prefKey,
                           settings: { vibration: e.target.checked }
                         })}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1046,7 +1062,7 @@ function NotificationPreferences({
                         type="checkbox"
                         checked={channelPrefs.showBadge || false}
                         onChange={(e) => onUpdatePreferences({
-                          channel: channel.id,
+                          channel: prefKey,
                           settings: { showBadge: e.target.checked }
                         })}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1065,7 +1081,7 @@ function NotificationPreferences({
                         <input
                           type="checkbox"
                           checked={channelPrefs.types?.[type.type as string] !== false}
-                          onChange={(e) => onUpdateTypeSetting(channel.id, type.type, e.target.checked)}
+                          onChange={(e) => onUpdateTypeSetting({ channel: prefKey, type: type.type, enabled: e.target.checked })}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <span className="ml-2 text-sm text-gray-700">{type.label}</span>

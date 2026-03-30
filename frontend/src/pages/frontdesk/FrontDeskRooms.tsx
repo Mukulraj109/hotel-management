@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef} from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
-import { useAdminRooms, useRoomMetrics, useUpdateRoomStatus, useBulkUpdateStatus } from '../../hooks/useRooms';
+import { useAdminRooms, useUpdateRoomStatus, useBulkUpdateStatus } from '../../hooks/useRooms';
 import { useBulkCheckIn, useBulkCheckOut, useScheduleHousekeeping, useRequestMaintenance, useUpdateRoomStatus as useWorkflowRoomStatus } from '../../hooks/useWorkflow';
-import { MetricCard, RefreshButton, ChartCard, BarChart } from '../../components/dashboard';
+import { MetricCard, RefreshButton, ChartCard } from '../../components/dashboard';
 import { WorkflowModal } from '../../components/admin/WorkflowModal';
 import { PredictiveAnalyticsDashboard } from '../../components/analytics/PredictiveAnalyticsDashboard';
 import { PerformanceBenchmarking } from '../../components/analytics/PerformanceBenchmarking';
@@ -12,11 +12,11 @@ import { formatPercentage } from '../../utils/dashboardUtils';
 import { Room } from '../../services/roomsService';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { realTimeService } from '../../services/realTimeService';
 
 function FrontDeskRooms() {
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
-  const [refreshKey, setRefreshKey] = useState(0);
   const [selectedFloor, setSelectedFloor] = useState<number | null>(null);
   
   // Filter and action states
@@ -64,11 +64,6 @@ function FrontDeskRooms() {
     enabled: !!hotelId,
     refetchInterval: realTimeEnabled ? autoRefreshInterval : false,
     staleTime: 0, // Force fresh data on every request
-  });
-  
-  // Disable separate metrics query to reduce API calls since we calculate from rooms data
-  const metricsQuery = useRoomMetrics(hotelId, { 
-    enabled: false, // Disabled - we calculate metrics from rooms data
   });
   
   // Mutation hooks
@@ -166,9 +161,9 @@ function FrontDeskRooms() {
     }
   };
   
-  const isLoading = roomsQuery.isLoading || metricsQuery.isLoading;
+  const isLoading = roomsQuery.isLoading;
 
-  const error = roomsQuery.error || metricsQuery.error;
+  const error = roomsQuery.error;
 
   // Filter rooms based on selected filters
   const filteredRooms = useMemo(() => {
@@ -250,21 +245,53 @@ function FrontDeskRooms() {
 
   // Handle query errors for connection status
   useEffect(() => {
-    if (roomsQuery.error || metricsQuery.error) {
+    if (roomsQuery.error) {
       setConnectionStatus('disconnected');
-    } else if (roomsQuery.isLoading || metricsQuery.isLoading) {
+    } else if (roomsQuery.isLoading) {
       setConnectionStatus('reconnecting');
     } else {
       setConnectionStatus('connected');
     }
-  }, [roomsQuery.error, metricsQuery.error, roomsQuery.isLoading, metricsQuery.isLoading]);
+  }, [roomsQuery.error, roomsQuery.isLoading]);
+
+  // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
+  useEffect(() => {
+    realTimeService.connect().catch(() => { /* WebSocket unavailable -- page still works via polling */ });
+  }, []);
+
+  // Socket.io: listen for room_status_changed and booking events to refetch rooms immediately
+  useEffect(() => {
+    const handleRoomStatusChanged = () => {
+      // Immediately refetch rooms when a guest checks in/out or room status changes
+      roomsQuery.refetch();
+      setLastUpdateTime(new Date());
+    };
+
+    const handleBookingEvent = () => {
+      // Booking changes (check-in, check-out, cancel) may affect room status
+      roomsQuery.refetch();
+      setLastUpdateTime(new Date());
+    };
+
+    realTimeService.on('room_status_changed', handleRoomStatusChanged);
+    realTimeService.on('booking:created', handleBookingEvent);
+    realTimeService.on('booking:updated', handleBookingEvent);
+    realTimeService.on('booking_cancelled', handleBookingEvent);
+
+    return () => {
+      realTimeService.off('room_status_changed', handleRoomStatusChanged);
+      realTimeService.off('booking:created', handleBookingEvent);
+      realTimeService.off('booking:updated', handleBookingEvent);
+      realTimeService.off('booking_cancelled', handleBookingEvent);
+    };
+  }, [hotelId]);
 
   // Auto-reconnect when back online
   const handleReconnect = useCallback(() => {
     setConnectionStatus('reconnecting');
     roomsQuery.refetch();
-    metricsQuery.refetch();
-  }, [roomsQuery, metricsQuery]);
+  }, [roomsQuery]);
 
   // Calculate metrics from rooms data if metrics API doesn't exist
   const calculateMetrics = () => {
@@ -357,9 +384,7 @@ function FrontDeskRooms() {
   };
 
   const floorData = calculateFloorData();
-  
-  // Debug logging for floorData
-  
+
   // Throttled refresh to prevent API spam
   const [lastRefreshTime, setLastRefreshTime] = useState(0);
   const handleRefresh = () => {
@@ -370,12 +395,9 @@ function FrontDeskRooms() {
     }
 
     setLastRefreshTime(now);
-    setRefreshKey(prev => prev + 1);
-    
-    // Force invalidate and refetch
+
+    // Force invalidate and refetch rooms data (metrics are calculated from rooms)
     roomsQuery.refetch();
-    fetchAnalyticsData();
-    // Don't refetch metrics since it's disabled and we calculate from rooms data
   };
 
   // Room selection handlers
@@ -437,7 +459,7 @@ function FrontDeskRooms() {
 
   // Monitor for rate limit errors and auto-disable real-time updates
   useEffect(() => {
-    if ((roomsQuery.error as unknown)?.message?.includes('429') || (roomsQuery.error as unknown)?.message?.includes('Too Many Requests')) {
+    if ((roomsQuery.error as Error | null)?.message?.includes('429') || (roomsQuery.error as Error | null)?.message?.includes('Too Many Requests')) {
       setRealTimeEnabled(false);
       setConnectionStatus('disconnected');
     }
@@ -455,10 +477,9 @@ function FrontDeskRooms() {
       
       // Close modal and clear selection
       handleCloseStatusModal();
-      
-      // Show success feedback
+      toast.success('Room status updated successfully');
     } catch (error) {
-      alert(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -469,10 +490,9 @@ function FrontDeskRooms() {
     setIsPerformingAction(true);
     try {
       await updateRoomStatus.mutateAsync({ id: roomId, status: newStatus });
-      // Show success feedback (you can add a toast notification here)
+      toast.success('Room status updated');
     } catch (error) {
-      // Show error feedback (you can add a toast notification here)
-      alert(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -488,8 +508,9 @@ function FrontDeskRooms() {
         status: newStatus
       });
       handleClearSelection();
-    } catch {
-      // Error handled silently
+      toast.success(`${selectedRooms.size} room(s) updated to ${newStatus}`);
+    } catch (error) {
+      toast.error(`Failed to update rooms: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -504,19 +525,45 @@ function FrontDeskRooms() {
     handleClearSelection();
   };
 
+  if (isLoading && !roomsQuery.data) {
+    return (
+      <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+        <PropertyBreadcrumb items={['Rooms']} />
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Room Management</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage and monitor all hotel rooms</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-24 mb-3" />
+              <div className="h-8 bg-gray-200 rounded w-16" />
+            </div>
+          ))}
+        </div>
+        <div className="text-center py-12 text-gray-500">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4" />
+          Loading room data...
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="p-6">
         <div className="text-center py-12">
           <div className="text-red-500 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load room data</h3>
           <p className="text-gray-500 mb-4">There was an error loading the room information.</p>
-          <button 
+          <button
             onClick={handleRefresh}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
@@ -540,11 +587,11 @@ function FrontDeskRooms() {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Analytics Toggle */}
-          <button aria-label="Close"
+          <button aria-label={showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
             onClick={() => setShowAnalytics(!showAnalytics)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              showAnalytics 
-                ? 'bg-blue-600 text-white' 
+              showAnalytics
+                ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -595,7 +642,7 @@ function FrontDeskRooms() {
           </div>
 
           {/* Rate Limit Warning */}
-          {((roomsQuery.error as unknown)?.message?.includes('429') || (roomsQuery.error as unknown)?.message?.includes('Too Many Requests')) && (
+          {((roomsQuery.error as Error | null)?.message?.includes('429') || (roomsQuery.error as Error | null)?.message?.includes('Too Many Requests')) && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
               <div className="flex items-start">
                 <div className="flex-shrink-0">
@@ -734,7 +781,7 @@ function FrontDeskRooms() {
             <div className="space-y-4">
               {/* Selection Controls */}
               <div className="flex space-x-2">
-                <button aria-label="Filter"
+                <button aria-label={selectedRooms.size === filteredRooms.length ? 'Deselect All Rooms' : 'Select All Rooms'}
                   onClick={handleSelectAll}
                   className="flex-1 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
                 >
@@ -903,7 +950,7 @@ function FrontDeskRooms() {
           title="Rooms by Floor"
           subtitle="Total room count per floor"
           loading={isLoading}
-          error={(roomsQuery.error as unknown)?.message || undefined}
+          error={(roomsQuery.error as Error | null)?.message || undefined}
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
@@ -918,7 +965,7 @@ function FrontDeskRooms() {
               {/* Custom Chart */}
               <div className="w-full h-full flex items-end justify-between px-4 pb-8">
                 {floorData.map((floor, index) => {
-                  const maxRooms = Math.max(...floorData.map(f => f.totalRooms));
+                  const maxRooms = Math.max(...floorData.map(f => f.totalRooms), 1);
                   const barHeight = (floor.totalRooms / maxRooms) * 200; // Max height of 200px
                   
                   return (
@@ -974,13 +1021,18 @@ function FrontDeskRooms() {
               </div>
               
               {/* Y-axis labels */}
-              <div className="absolute left-2 top-16 bottom-8 flex flex-col justify-between text-xs text-gray-500">
-                <span>12</span>
-                <span>9</span>
-                <span>6</span>
-                <span>3</span>
-                <span>0</span>
-              </div>
+              {(() => {
+                const maxRooms = Math.max(...floorData.map(f => f.totalRooms), 1);
+                return (
+                  <div className="absolute left-2 top-16 bottom-8 flex flex-col justify-between text-xs text-gray-500">
+                    <span>{maxRooms}</span>
+                    <span>{Math.round(maxRooms * 0.75)}</span>
+                    <span>{Math.round(maxRooms * 0.5)}</span>
+                    <span>{Math.round(maxRooms * 0.25)}</span>
+                    <span>0</span>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
@@ -998,13 +1050,6 @@ function FrontDeskRooms() {
                 >
                   Refresh Data
                 </button>
-                <button
-                  onClick={() => {
-                  }}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-                >
-                  Debug Info
-                </button>
               </div>
             </div>
           )}
@@ -1015,7 +1060,7 @@ function FrontDeskRooms() {
           title="Floor Status Breakdown"
           subtitle={selectedFloor ? `Floor ${selectedFloor} details` : 'Select a floor to view details'}
           loading={isLoading}
-          error={(roomsQuery.error as unknown)?.message}
+          error={(roomsQuery.error as Error | null)?.message}
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
@@ -1284,10 +1329,7 @@ function FrontDeskRooms() {
               selectedFloor={selectedFloor || undefined}
             />
           ) : (
-            <PerformanceBenchmarking 
-              hotelId={hotelId} 
-              selectedFloor={selectedFloor || undefined}
-            />
+            <PerformanceBenchmarking />
           )}
         </div>
       )}
@@ -1372,8 +1414,8 @@ function FrontDeskRooms() {
                 borderColor: 'border-purple-500',
                 icon: '📅',
                 label: 'Reserved',
-                count: filteredRooms.filter(r => getRoomStatus(r) === 'reserved').length || 0,
-                percentage: metrics?.totalRooms ? ((filteredRooms.filter(r => getRoomStatus(r) === 'reserved').length / metrics.totalRooms) * 100).toFixed(1) : '0'
+                count: metrics?.reservedRooms || 0,
+                percentage: metrics?.totalRooms ? ((metrics.reservedRooms / metrics.totalRooms) * 100).toFixed(1) : '0'
               },
               {
                 color: 'bg-gradient-to-r from-yellow-400 to-yellow-600',
@@ -1536,21 +1578,21 @@ function FrontDeskRooms() {
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* Floor Summary */}
-                <div className="mt-4 pt-3 border-t border-gray-200">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="text-gray-600">
-                      Occupancy: {floor.totalRooms > 0 ? ((floor.occupied / floor.totalRooms) * 100).toFixed(1) : 0}%
-                    </div>
-                    <div className="flex space-x-4 text-xs">
-                      <span className="text-green-600">Available: {floor.available}</span>
-                      <span className="text-red-600">Occupied: {floor.occupied}</span>
-                      <span className="text-purple-600">Reserved: {floorRooms.filter(r => getRoomStatus(r) === 'reserved').length}</span>
-                      <span className="text-yellow-600">Cleaning: {floor.dirty}</span>
-                      <span className="text-orange-600">Maintenance: {floor.maintenance}</span>
-                      <span className="text-gray-600">OOO: {floor.outOfOrder}</span>
+                  {/* Floor Summary */}
+                  <div className="mt-4 pt-3 border-t border-gray-200">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-gray-600">
+                        Occupancy: {floor.totalRooms > 0 ? ((floor.occupied / floor.totalRooms) * 100).toFixed(1) : 0}%
+                      </div>
+                      <div className="flex flex-wrap space-x-4 text-xs">
+                        <span className="text-green-600">Available: {floor.available}</span>
+                        <span className="text-red-600">Occupied: {floor.occupied}</span>
+                        <span className="text-purple-600">Reserved: {floorRooms.filter(r => getRoomStatus(r) === 'reserved').length}</span>
+                        <span className="text-yellow-600">Cleaning: {floor.dirty}</span>
+                        <span className="text-orange-600">Maintenance: {floor.maintenance}</span>
+                        <span className="text-gray-600">OOO: {floor.outOfOrder}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1644,7 +1686,7 @@ function FrontDeskRooms() {
                     Rooms: {roomsQuery.dataUpdatedAt ? new Date(roomsQuery.dataUpdatedAt).toLocaleTimeString() : 'Loading...'}
                   </div>
                   <div className="text-xs text-gray-500">
-                    Metrics: {metricsQuery.dataUpdatedAt ? new Date(metricsQuery.dataUpdatedAt).toLocaleTimeString() : 'Loading...'}
+                    Metrics: Computed from room data
                   </div>
                 </div>
               </div>
@@ -1686,12 +1728,9 @@ function FrontDeskRooms() {
         </div>
       )}
 
-      {/* Debug Information (temporary) */}
-      
-
       {/* Room Status Change Modal */}
       {showStatusModal && selectedRoomForStatus && (
-        <div aria-hidden="true" 
+        <div
           className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
           onClick={handleCloseStatusModal}
         >

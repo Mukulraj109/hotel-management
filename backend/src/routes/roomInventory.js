@@ -282,15 +282,36 @@ router.post('/templates', authorizePolicy('roomInventory', 'staffAccess'), valid
  */
 router.get('/rooms/:roomId', catchAsync(async (req, res) => {
   const { roomId } = req.params;
-  const hotelId = req.user.hotelId;
 
-  const roomInventory = await RoomInventory.findOne({ 
-    roomId, 
-    hotelId 
-  })
-  .populate('items.itemId')
-  .populate('templateId')
-  .populate('currentBookingId').lean();
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Invalid room ID format', 400);
+  }
+
+  // Build query - always filter by roomId
+  const query = { roomId: new mongoose.Types.ObjectId(roomId) };
+
+  // For non-guest roles, enforce hotelId tenant isolation
+  // For guests, verify they have an active booking for this room
+  if (req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  } else if (req.user.role === 'guest') {
+    // Verify the guest has a current booking for this room
+    const Booking = mongoose.model('Booking');
+    const hasAccess = await Booking.findOne({
+      userId: req.user._id,
+      'rooms.roomId': new mongoose.Types.ObjectId(roomId),
+      status: { $in: ['confirmed', 'checked_in'] }
+    }).select('_id hotelId').lean();
+    if (!hasAccess) {
+      throw new ApplicationError('Room inventory not found', 404);
+    }
+    query.hotelId = hasAccess.hotelId;
+  }
+
+  const roomInventory = await RoomInventory.findOne(query)
+    .populate('items.itemId')
+    .populate('templateId')
+    .populate('currentBookingId').lean();
 
   if (!roomInventory) {
     throw new ApplicationError('Room inventory not found', 404);

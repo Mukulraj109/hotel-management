@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -10,8 +11,9 @@ import { validate } from '../middleware/validation.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// All routes require authentication
+// All routes require authentication + tenant isolation
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -119,11 +121,19 @@ router.get('/assess-room/:roomId', authorizePolicy('inventoryAutomation', 'staff
   const { roomId } = req.params;
   const { roomCondition } = req.query;
 
+  // Verify room belongs to this hotel
+  const Room = (await import('../models/Room.js')).default;
+  const room = await Room.findOne({ _id: roomId, hotelId }).lean();
+  if (!room) {
+    throw new ApplicationError('Room not found', 404);
+  }
+
   // Import inventory automation service
   const { default: inventoryAutomationService } = await import('../services/inventoryAutomationService.js');
-  
+
   const assessment = await inventoryAutomationService.assessRoomInventory(roomId, {
-    roomCondition
+    roomCondition,
+    hotelId
   });
 
   res.status(200).json({
@@ -199,44 +209,59 @@ router.get('/statistics', authorizePolicy('inventoryAutomation', 'managerAccess'
  */
 router.get('/rooms-needing-attention', authorizePolicy('inventoryAutomation', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
-  const { priority, status } = req.query;
+  const { priority, status, page = 1, limit = 20 } = req.query;
+
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
 
   // Import models
   const RoomInventory = (await import('../models/RoomInventory.js')).default;
-  
+
   const filter = { hotelId, isActive: true };
   if (status) filter.status = status;
 
-  const rooms = await RoomInventory.find(filter)
-    .populate('roomId', 'roomNumber type floor')
-    .populate('currentBookingId', 'bookingNumber checkIn checkOut')
-    .sort({ lastInspectionDate: 1 }).lean().limit(1000);
-
-  // Filter by priority if specified
-  let filteredRooms = rooms;
+  // Apply priority-based conditionScore filter at the DB level
   if (priority) {
-    filteredRooms = rooms.filter(room => {
-      const conditionScore = room.conditionScore || 0;
-      switch (priority) {
-        case 'urgent':
-          return conditionScore < 30 || room.maintenanceRequired;
-        case 'high':
-          return conditionScore < 50;
-        case 'medium':
-          return conditionScore < 70;
-        case 'low':
-          return conditionScore >= 70;
-        default:
-          return true;
-      }
-    });
+    switch (priority) {
+      case 'urgent':
+        filter.$or = [
+          { conditionScore: { $lt: 30 } },
+          { maintenanceRequired: true }
+        ];
+        break;
+      case 'high':
+        filter.conditionScore = { $lt: 50 };
+        break;
+      case 'medium':
+        filter.conditionScore = { $lt: 70 };
+        break;
+      case 'low':
+        filter.conditionScore = { $gte: 70 };
+        break;
+    }
   }
+
+  const skip = (parsedPage - 1) * parsedLimit;
+
+  const [rooms, totalCount] = await Promise.all([
+    RoomInventory.find(filter)
+      .populate('roomId', 'roomNumber type floor')
+      .populate('currentBookingId', 'bookingNumber checkIn checkOut')
+      .sort({ lastInspectionDate: 1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    RoomInventory.countDocuments(filter)
+  ]);
 
   res.status(200).json({
     status: 'success',
-    data: { 
-      rooms: filteredRooms,
-      totalCount: filteredRooms.length
+    data: {
+      rooms,
+      page: parsedPage,
+      limit: parsedLimit,
+      totalCount,
+      totalPages: totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0
     }
   });
 }));
@@ -262,24 +287,34 @@ router.get('/rooms-needing-attention', authorizePolicy('inventoryAutomation', 's
  *         description: Room not found
  */
 router.get('/replacement-items/:roomId', authorizePolicy('inventoryAutomation', 'staffAccess'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
   const { roomId } = req.params;
+
+  // Verify room belongs to this hotel
+  const Room = (await import('../models/Room.js')).default;
+  const room = await Room.findOne({ _id: roomId, hotelId }).lean();
+  if (!room) {
+    throw new ApplicationError('Room not found', 404);
+  }
 
   // Import inventory automation service
   const { default: inventoryAutomationService } = await import('../services/inventoryAutomationService.js');
-  
+
   // First assess the room
-  const assessment = await inventoryAutomationService.assessRoomInventory(roomId);
-  
+  const assessment = await inventoryAutomationService.assessRoomInventory(roomId, {
+    hotelId
+  });
+
   // Then identify replacement items
   const replacementItems = await inventoryAutomationService.identifyReplacementItems(
     roomId,
     assessment,
-    {}
+    { hotelId }
   );
 
   res.status(200).json({
     status: 'success',
-    data: { 
+    data: {
       assessment: assessment.summary,
       replacementItems
     }

@@ -87,8 +87,41 @@ router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensureP
     categories,
     visitType,
     stayDate,
-    images
+    images,
+    isAnonymous
   } = req.body;
+
+  // Validate required fields
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+  if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+    throw new ApplicationError('Rating must be an integer between 1 and 5', 400);
+  }
+  if (!title || !title.trim()) {
+    throw new ApplicationError('Review title is required', 400);
+  }
+  if (!content || !content.trim()) {
+    throw new ApplicationError('Review content is required', 400);
+  }
+
+  // Validate category ratings if provided
+  if (categories) {
+    const validCategories = ['cleanliness', 'service', 'location', 'value', 'amenities'];
+    for (const [key, value] of Object.entries(categories)) {
+      if (!validCategories.includes(key)) {
+        throw new ApplicationError(`Invalid category: ${key}`, 400);
+      }
+      if (value !== undefined && value !== null && (value < 1 || value > 5 || !Number.isInteger(value))) {
+        throw new ApplicationError(`Category rating for ${key} must be an integer between 1 and 5`, 400);
+      }
+    }
+  }
+
+  // Validate visitType if provided
+  if (visitType && !['business', 'leisure', 'family', 'couple', 'solo'].includes(visitType)) {
+    throw new ApplicationError('Invalid visit type', 400);
+  }
 
   // Verify hotel exists
   const hotel = await Hotel.findById(hotelId).lean();
@@ -131,13 +164,14 @@ router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensureP
     userId: req.user._id,
     bookingId,
     rating,
-    title,
-    content,
+    title: title.trim(),
+    content: content.trim(),
     categories,
     visitType,
     stayDate,
     images: images || [],
-    guestName: req.user.name
+    isAnonymous: !!isAnonymous,
+    guestName: isAnonymous ? 'Anonymous Guest' : req.user.name
   });
 
   await review.populate([
@@ -188,12 +222,9 @@ router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensureP
  */
 router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
   const { hotelId } = req.params;
-  const {
-    page = 1,
-    limit = 10,
-    rating,
-    sortBy = 'newest'
-  } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+  const { rating, sortBy = 'newest' } = req.query;
 
   logger.debug('Reviews API request', { hotelId, page, limit, rating, sortBy });
 
@@ -204,7 +235,10 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
   };
 
   if (rating) {
-    query.rating = parseInt(rating);
+    const parsedRating = parseInt(rating);
+    if (parsedRating >= 1 && parsedRating <= 5) {
+      query.rating = parsedRating;
+    }
   }
 
   // Sort options
@@ -231,9 +265,11 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
       .populate('hotelId', 'name address')
       .populate('userId', 'name')
       .populate('bookingId', 'bookingNumber checkIn checkOut')
+      .populate('response.respondedBy', 'name role')
       .sort(sortOption)
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limit)
+      .lean(),
     Review.countDocuments(query),
     Review.getHotelRatingSummary(hotelId)
   ]);
@@ -246,8 +282,8 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
       reviews,
       summary,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         pages: Math.ceil(total / limit)
       }
@@ -271,7 +307,7 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
  *       200:
  *         description: Hotel rating summary
  */
-router.get('/hotel/:hotelId/summary', catchAsync(async (req, res) => {
+router.get('/hotel/:hotelId/summary', optionalAuth, catchAsync(async (req, res) => {
   const { hotelId } = req.params;
   
   const summary = await Review.getHotelRatingSummary(hotelId);
@@ -318,21 +354,26 @@ router.get('/hotel/:hotelId/summary', catchAsync(async (req, res) => {
  *         description: Pending reviews
  */
 router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const {
-    page = 1,
-    limit = 20
-  } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
   const skip = (page - 1) * limit;
 
+  // Tenant isolation: scope pending reviews to the admin's hotel
+  const filter = { moderationStatus: 'pending' };
+  if (req.user.hotelId) {
+    filter.hotelId = req.user.hotelId;
+  }
+
   const [reviews, total] = await Promise.all([
-    Review.find({ moderationStatus: 'pending' })
+    Review.find(filter)
       .populate('hotelId', 'name')
       .populate('userId', 'name email')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
-    Review.countDocuments({ moderationStatus: 'pending' })
+      .limit(limit)
+      .lean(),
+    Review.countDocuments(filter)
   ]);
 
   res.json({
@@ -340,8 +381,8 @@ router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, c
     data: {
       reviews,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         pages: Math.ceil(total / limit)
       }
@@ -373,21 +414,20 @@ router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, c
  *         description: User's reviews
  */
 router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
-  const {
-    page = 1,
-    limit = 10
-  } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
   const skip = (page - 1) * limit;
 
   const [reviews, total] = await Promise.all([
     Review.find({ userId: req.user._id })
       .populate('hotelId', 'name address')
-      .populate('bookingId', 'bookingNumber')
-      .populate('response.respondedBy', 'name')
+      .populate('bookingId', 'bookingNumber checkIn checkOut')
+      .populate('response.respondedBy', 'name role')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limit)
+      .lean(),
     Review.countDocuments({ userId: req.user._id })
   ]);
 
@@ -396,8 +436,8 @@ router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(as
     data: {
       reviews,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         pages: Math.ceil(total / limit)
       }
@@ -421,7 +461,7 @@ router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(as
  *       200:
  *         description: Review details
  */
-router.get('/:id', catchAsync(async (req, res) => {
+router.get('/:id', optionalAuth, catchAsync(async (req, res) => {
   const review = await Review.findById(req.params.id)
     .populate('hotelId', 'name address')
     .populate('userId', 'name')
@@ -470,7 +510,12 @@ router.get('/:id', catchAsync(async (req, res) => {
 router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { content } = req.body;
 
-  const review = await Review.findById(req.params.id).lean();
+  if (!content || !content.trim()) {
+    throw new ApplicationError('Response content is required', 400);
+  }
+
+  // Do NOT use .lean() here -- we need the Mongoose document instance for .addResponse()
+  const review = await Review.findById(req.params.id);
   if (!review) {
     throw new ApplicationError('Review not found', 404);
   }
@@ -509,7 +554,7 @@ router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAcce
  *       200:
  *         description: Review marked as helpful
  */
-router.post('/:id/helpful', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/helpful', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const review = await Review.findByIdAndUpdate(
     req.params.id,
     { $inc: { helpfulVotes: 1 } },
@@ -552,7 +597,7 @@ router.post('/:id/helpful', validate(mutationBaselineSchema), catchAsync(async (
  *       200:
  *         description: Review reported successfully
  */
-router.post('/:id/report', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/report', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
   const review = await Review.findByIdAndUpdate(
@@ -613,9 +658,19 @@ router.post('/:id/report', validate(mutationBaselineSchema), catchAsync(async (r
 router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { status, notes } = req.body;
 
-  const review = await Review.findById(req.params.id).lean();
+  if (!status || !['approved', 'rejected', 'pending'].includes(status)) {
+    throw new ApplicationError('Valid moderation status is required (approved, rejected, pending)', 400);
+  }
+
+  // Do NOT use .lean() here -- we need the Mongoose document instance for .moderate()
+  const review = await Review.findById(req.params.id);
   if (!review) {
     throw new ApplicationError('Review not found', 404);
+  }
+
+  // Tenant isolation: admin can only moderate reviews for their hotel
+  if (req.user.hotelId && review.hotelId.toString() !== req.user.hotelId.toString()) {
+    throw new ApplicationError('You can only moderate reviews for your hotel', 403);
   }
 
   await review.moderate(status, notes);

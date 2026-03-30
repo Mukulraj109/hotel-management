@@ -230,6 +230,22 @@ const BookingEngineWidget: React.FC = () => {
       return;
     }
 
+    // Validate check-in is not in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkInDateOnly = new Date(bookingData.checkIn);
+    checkInDateOnly.setHours(0, 0, 0, 0);
+    if (checkInDateOnly < today) {
+      toast.error('Check-in date cannot be in the past');
+      return;
+    }
+
+    // Validate checkout is after checkin
+    if (differenceInDays(bookingData.checkOut, bookingData.checkIn) < 1) {
+      toast.error('Check-out date must be at least 1 night after check-in');
+      return;
+    }
+
     setIsSearching(true);
     try {
       // Real API call to search rooms
@@ -331,14 +347,16 @@ const BookingEngineWidget: React.FC = () => {
     }
 
     const nights = differenceInDays(bookingData.checkOut, bookingData.checkIn);
+    if (nights < 1) return;
+
     const roomRate = bookingData.selectedRoom.discountedRate || bookingData.selectedRoom.currentRate || bookingData.selectedRoom.baseRate;
-    let subtotal = roomRate * nights * bookingData.rooms;
+    let subtotal = Math.round(roomRate * nights * bookingData.rooms * 100) / 100;
 
     // Apply promo code discount
     let promoDiscount = 0;
     if (bookingData.appliedPromo) {
       if (bookingData.appliedPromo.type === 'percentage') {
-        promoDiscount = (subtotal * bookingData.appliedPromo.discount.value) / 100;
+        promoDiscount = Math.round((subtotal * bookingData.appliedPromo.discount.value) / 100 * 100) / 100;
         if (bookingData.appliedPromo.discount.maxAmount) {
           promoDiscount = Math.min(promoDiscount, bookingData.appliedPromo.discount.maxAmount);
         }
@@ -347,18 +365,25 @@ const BookingEngineWidget: React.FC = () => {
       }
     }
 
+    // Ensure discount cannot exceed subtotal
+    promoDiscount = Math.min(promoDiscount, subtotal);
+
     // Add upsells
-    const upsellTotal = bookingData.selectedUpsells.reduce((sum, upsell) => 
+    const upsellTotal = bookingData.selectedUpsells.reduce((sum, upsell) =>
       sum + upsell.discountedPrice, 0
     );
 
-    const originalUpsellTotal = bookingData.selectedUpsells.reduce((sum, upsell) => 
+    const originalUpsellTotal = bookingData.selectedUpsells.reduce((sum, upsell) =>
       sum + upsell.originalPrice, 0
     );
 
-    const originalTotal = (bookingData.selectedRoom.baseRate * nights * bookingData.rooms) + originalUpsellTotal;
-    const finalTotal = subtotal - promoDiscount + upsellTotal;
-    const totalSavings = originalTotal - finalTotal;
+    const originalTotal = Math.round((bookingData.selectedRoom.baseRate * nights * bookingData.rooms + originalUpsellTotal) * 100) / 100;
+
+    // Calculate tax (18% GST)
+    const taxableAmount = Math.round((subtotal - promoDiscount + upsellTotal) * 100) / 100;
+    const taxAmount = Math.round(taxableAmount * 0.18 * 100) / 100;
+    const finalTotal = Math.round((taxableAmount + taxAmount) * 100) / 100;
+    const totalSavings = Math.max(0, Math.round((originalTotal - finalTotal) * 100) / 100);
 
     setBookingData(prev => ({
       ...prev,
@@ -386,6 +411,67 @@ const BookingEngineWidget: React.FC = () => {
 </script>
     `.trim();
     setWidgetCode(code);
+  };
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const validateGuestInfo = (): boolean => {
+    const { firstName, lastName, email, phone } = bookingData.guestInfo;
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
+      toast.error('Please fill in all required guest fields');
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+    if (!/^\+?[\d\s-]{7,15}$/.test(phone.trim())) {
+      toast.error('Please enter a valid phone number');
+      return false;
+    }
+    return true;
+  };
+
+  const submitBooking = async () => {
+    if (!bookingData.selectedRoom || !bookingData.checkIn || !bookingData.checkOut) {
+      toast.error('Missing booking details. Please go back and complete all steps.');
+      return;
+    }
+
+    if (!validateGuestInfo()) return;
+
+    setIsSubmitting(true);
+    try {
+      const nights = differenceInDays(bookingData.checkOut, bookingData.checkIn);
+      const response = await bookingService.createBooking({
+        checkIn: format(bookingData.checkIn, 'yyyy-MM-dd'),
+        checkOut: format(bookingData.checkOut, 'yyyy-MM-dd'),
+        roomIds: [bookingData.selectedRoom._id],
+        guestDetails: {
+          adults: bookingData.adults,
+          children: bookingData.children,
+          specialRequests: bookingData.guestInfo.specialRequests,
+          name: `${bookingData.guestInfo.firstName} ${bookingData.guestInfo.lastName}`,
+          email: bookingData.guestInfo.email,
+          phone: bookingData.guestInfo.phone,
+        },
+        guestName: `${bookingData.guestInfo.firstName} ${bookingData.guestInfo.lastName}`,
+        guestEmail: bookingData.guestInfo.email,
+        guestPhone: bookingData.guestInfo.phone,
+        totalAmount: bookingData.totalAmount,
+        currency: widgetSettings.displayCurrency,
+        source: 'direct',
+        numberOfRooms: bookingData.rooms,
+      } as any);
+
+      toast.success('Booking confirmed successfully!');
+      setCurrentStep(4);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : 'Booking failed. Please try again.';
+      toast.error(errMsg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getAmenityIcon = (amenity: string) => {
@@ -427,7 +513,11 @@ const BookingEngineWidget: React.FC = () => {
                   mode="single"
                   selected={bookingData.checkIn || undefined}
                   onSelect={(date) => setBookingData(prev => ({ ...prev, checkIn: date || null }))}
-                  disabled={(date) => date < new Date()}
+                  disabled={(date) => {
+                    const todayStart = new Date();
+                    todayStart.setHours(0, 0, 0, 0);
+                    return date < todayStart;
+                  }}
                 />
               </PopoverContent>
             </Popover>
@@ -852,12 +942,22 @@ const BookingEngineWidget: React.FC = () => {
           <Button variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
             Back to Rooms
           </Button>
-          <Button 
-            onClick={() => setCurrentStep(4)} 
+          <Button
+            onClick={submitBooking}
             className="flex-1"
-            disabled={!bookingData.guestInfo.firstName || !bookingData.guestInfo.lastName || !bookingData.guestInfo.email || !bookingData.guestInfo.phone}
+            disabled={isSubmitting || !bookingData.guestInfo.firstName || !bookingData.guestInfo.lastName || !bookingData.guestInfo.email || !bookingData.guestInfo.phone}
           >
-            Continue to Payment
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Confirming Booking...
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4 mr-2" />
+                Confirm & Pay
+              </>
+            )}
           </Button>
         </div>
       </CardContent>
@@ -894,8 +994,8 @@ const BookingEngineWidget: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Theme</Label>
-                    <Select value={widgetSettings.theme} onValueChange={(value: Record<string, unknown>) => 
-                      setWidgetSettings(prev => ({ ...prev, theme: value }))
+                    <Select value={widgetSettings.theme} onValueChange={(value: string) =>
+                      setWidgetSettings(prev => ({ ...prev, theme: value as 'light' | 'dark' | 'brand' }))
                     }>
                       <SelectTrigger>
                         <SelectValue />
@@ -910,8 +1010,8 @@ const BookingEngineWidget: React.FC = () => {
                   
                   <div>
                     <Label>Position</Label>
-                    <Select value={widgetSettings.position} onValueChange={(value: Record<string, unknown>) => 
-                      setWidgetSettings(prev => ({ ...prev, position: value }))
+                    <Select value={widgetSettings.position} onValueChange={(value: string) =>
+                      setWidgetSettings(prev => ({ ...prev, position: value as 'floating' | 'embedded' | 'popup' }))
                     }>
                       <SelectTrigger>
                         <SelectValue />

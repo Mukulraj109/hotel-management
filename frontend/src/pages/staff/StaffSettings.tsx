@@ -125,7 +125,8 @@ export default function StaffSettings() {
                 const Icon = tab.icon;
 
                 return (
-                  <button aria-label="Close"
+                  <button
+                    aria-label={tab.label}
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
                     className={`

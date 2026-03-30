@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  Star, 
-  Clock, 
-  MapPin, 
-  Users, 
+import {
+  Star,
+  Clock,
+  MapPin,
+  Users,
   Calendar,
   Phone,
   Mail,
   Heart,
   HeartOff,
-  ChevronLeft,
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
@@ -22,6 +21,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const ServiceDetailsPage: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
@@ -169,11 +169,11 @@ const ServiceDetailsPage: React.FC = () => {
                   </div>
                 </div>
                 
-                <button aria-label="Toggle"
+                <button aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                   onClick={toggleFavorite}
                   className={`p-3 rounded-full transition-colors ${
-                    isFavorite 
-                      ? 'bg-red-50 text-red-500 hover:bg-red-100' 
+                    isFavorite
+                      ? 'bg-red-50 text-red-500 hover:bg-red-100'
                       : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-red-500'
                   }`}
                 >
@@ -342,4 +342,4 @@ const ServiceDetailsPage: React.FC = () => {
   );
 };
 
-export default ServiceDetailsPage;
+export default withErrorBoundary(ServiceDetailsPage, { level: 'page' });

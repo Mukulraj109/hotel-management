@@ -215,7 +215,8 @@ offerFavoriteSchema.statics.getPopularOffers = async function(options = {}) {
       limit = 10,
       category,
       minFavorites = 1,
-      timeframe // 'week', 'month', 'year' or specific date
+      timeframe, // 'week', 'month', 'year' or specific date
+      hotelId
     } = options;
 
     const pipeline = [
@@ -230,6 +231,11 @@ offerFavoriteSchema.statics.getPopularOffers = async function(options = {}) {
       { $unwind: '$offer' },
       { $match: { 'offer.isActive': true } }
     ];
+
+    // FIX: Add hotelId filter for tenant isolation
+    if (hotelId) {
+      pipeline.push({ $match: { 'offer.hotelId': new mongoose.Types.ObjectId(hotelId) } });
+    }
 
     // Add time filter if specified
     if (timeframe) {
@@ -298,8 +304,8 @@ offerFavoriteSchema.statics.getPopularOffers = async function(options = {}) {
 
 offerFavoriteSchema.statics.getUserRecommendations = async function(userId, options = {}) {
   try {
-    const { limit = 5, excludeFavorites = true } = options;
-  
+    const { limit = 5, excludeFavorites = true, hotelId } = options;
+
     // Get user's favorite categories and types
     const userPreferences = await this.aggregate([
       { $match: { userId: new mongoose.Types.ObjectId(userId) } },
@@ -333,23 +339,28 @@ offerFavoriteSchema.statics.getUserRecommendations = async function(userId, opti
       }));
     }
 
+    // FIX: Add hotelId filter for tenant isolation and valid date range filter
+    const baseMatch = {
+      isActive: true,
+      $or: [
+        { category: { $in: preferences.favoriteCategories } },
+        { type: { $in: preferences.favoriteTypes } },
+        {
+          pointsRequired: {
+            $gte: (preferences.avgPointsRange || 0) * 0.7,
+            $lte: (preferences.avgPointsRange || 10000) * 1.3
+          }
+        }
+      ]
+    };
+
+    if (hotelId) {
+      baseMatch.hotelId = new mongoose.Types.ObjectId(hotelId);
+    }
+
     // Build recommendation pipeline
     const pipeline = [
-      {
-        $match: {
-          isActive: true,
-          $or: [
-            { category: { $in: preferences.favoriteCategories } },
-            { type: { $in: preferences.favoriteTypes } },
-            {
-              pointsRequired: {
-                $gte: preferences.avgPointsRange * 0.7,
-                $lte: preferences.avgPointsRange * 1.3
-              }
-            }
-          ]
-        }
-      }
+      { $match: baseMatch }
     ];
 
     // Exclude already favorited offers if requested
@@ -442,14 +453,10 @@ offerFavoriteSchema.pre('save', async function(next) {
   }
 });
 
-// Post-save middleware for analytics
-offerFavoriteSchema.post('save', async function(doc) {
-  try {
-    // Could trigger analytics events here
-    console.log(`Offer ${doc.offerId} favorited by user ${doc.userId}`);
-  } catch (error) {
-    throw new Error(`${error.message}`);
-  }
+// Post-save middleware for analytics (non-blocking, does not throw)
+offerFavoriteSchema.post('save', function(doc) {
+  // Analytics hook - could emit events to an analytics service
+  // Intentionally silent to avoid breaking the save operation
 });
 
 export default mongoose.model('OfferFavorite', offerFavoriteSchema);

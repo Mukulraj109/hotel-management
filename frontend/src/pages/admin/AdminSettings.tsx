@@ -24,7 +24,7 @@ interface TabItem {
   id: string;
   label: string;
   icon: React.ElementType;
-  component: React.ComponentType;
+  component: React.ComponentType<{ onSettingsChange?: (hasChanges: boolean) => void }>;
 }
 
 export default function AdminSettings() {

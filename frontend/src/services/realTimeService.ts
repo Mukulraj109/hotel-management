@@ -38,12 +38,14 @@ class EventEmitter {
 
 export interface RealTimeEvent {
   type: string;
-  entity: string;
-  action: 'created' | 'updated' | 'deleted' | 'status_changed';
-  data: unknown;
-  timestamp: string;
+  entity?: string;
+  action?: 'created' | 'updated' | 'deleted' | 'status_changed';
+  data?: unknown;
+  timestamp?: string;
   userId?: string;
   hotelId?: string;
+  /** Extra fields from socket events (e.g. roomId, status, bookingId) */
+  [key: string]: unknown;
 }
 
 export interface RealTimeConfig {
@@ -211,11 +213,11 @@ class RealTimeService extends EventEmitter {
         });
 
         this.socket.on('room_status_changed', (data: { roomId: string; status: string; bookingId?: string; event?: string }) => {
-          this.handleRealTimeEvent({ type: 'room_status_changed', ...data } as unknown as RealTimeEvent);
+          this.handleRealTimeEvent({ type: 'room_status_changed', ...data });
         });
 
         this.socket.on('booking_cancelled', (data: { bookingId: string; rooms?: unknown[] }) => {
-          this.handleRealTimeEvent({ type: 'booking_cancelled', ...data } as unknown as RealTimeEvent);
+          this.handleRealTimeEvent({ type: 'booking_cancelled', ...data });
         });
 
         // Start connection
@@ -343,13 +345,26 @@ class RealTimeService extends EventEmitter {
 
   private handleRealTimeEvent(eventData: RealTimeEvent): void {
     this.log('Real-time event:', eventData);
-    
+
     // Emit general event
     this.emit('event', eventData);
-    
-    // Emit specific events
-    this.emit(`${eventData.entity}:${eventData.action}`, eventData.data);
-    this.emit(`${eventData.entity}:*`, eventData);
+
+    // Emit specific events (e.g., 'booking:created')
+    if (eventData.entity && eventData.action) {
+      this.emit(`${eventData.entity}:${eventData.action}`, eventData.data);
+    }
+    // Also emit the entity name alone so listeners for events without colon
+    // (e.g., 'room_status_changed', 'booking_cancelled') still fire
+    if (eventData.entity) {
+      this.emit(eventData.entity, eventData.data);
+    }
+    // Emit the raw type field if present and different from entity
+    if (eventData.type && eventData.type !== eventData.entity && eventData.type !== `${eventData.entity}:${eventData.action}`) {
+      this.emit(eventData.type, eventData.data);
+    }
+    if (eventData.entity) {
+      this.emit(`${eventData.entity}:*`, eventData);
+    }
     this.emit('*', eventData);
   }
 
@@ -511,16 +526,24 @@ export const useRealTime = () => {
     };
   }, []);
 
+  // Memoize all callbacks so consumers don't get new refs every render
+  const connect = React.useCallback(() => realTimeService.connect(), []);
+  const disconnect = React.useCallback(() => realTimeService.disconnect(), []);
+  const subscribe = React.useCallback((subscription: string) => realTimeService.subscribe(subscription), []);
+  const unsubscribe = React.useCallback((subscription: string) => realTimeService.unsubscribe(subscription), []);
+  const on = React.useCallback((event: string, callback: (...args: unknown[]) => void) => realTimeService.on(event, callback), []);
+  const off = React.useCallback((event: string, callback: (...args: unknown[]) => void) => realTimeService.off(event, callback), []);
+
   return {
     connectionState,
     reconnectAttempts,
-    connect: () => realTimeService.connect(),
-    disconnect: () => realTimeService.disconnect(),
-    subscribe: (subscription: string) => realTimeService.subscribe(subscription),
-    unsubscribe: (subscription: string) => realTimeService.unsubscribe(subscription),
-    on: (event: string, callback: (...args: unknown[]) => void) => realTimeService.on(event, callback),
-    off: (event: string, callback: (...args: unknown[]) => void) => realTimeService.off(event, callback),
-    isConnected: realTimeService.isConnectedToServer(),
+    connect,
+    disconnect,
+    subscribe,
+    unsubscribe,
+    on,
+    off,
+    isConnected: connectionState === 'connected',
   };
 };
 

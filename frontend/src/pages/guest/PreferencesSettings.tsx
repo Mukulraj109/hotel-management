@@ -49,12 +49,21 @@ const PreferencesSettings: React.FC = () => {
   const onSubmit = async (data: PreferencesFormData) => {
     setIsLoading(true);
     try {
-      await api.put('/settings/guest/settings', {
-        ...data.stay,
-        ...data.communication,
-        dietaryRestrictions: dietaryOptions,
-        specialRequests: data.specialRequests
-      });
+      const guestPreferences = {
+        stayPreferences: {
+          roomType: data.stay.roomType,
+          floor: data.stay.floor,
+          bedType: data.stay.bedType,
+          smoking: data.stay.smoking,
+          dietaryRestrictions: dietaryOptions,
+        },
+        communication: {
+          preferredChannel: data.communication.preferredChannel,
+          marketingConsent: data.communication.marketingConsent,
+        },
+      };
+
+      await api.put('/user-preferences/guest', guestPreferences);
 
       showToast('Preferences updated successfully', 'success');
     } catch (error) {
@@ -72,9 +81,14 @@ const PreferencesSettings: React.FC = () => {
     );
   };
 
+  // Values must match backend Joi schema (lowercase)
   const availableDietaryRestrictions = [
-    'Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free', 'Nut-Free',
-    'Kosher', 'Halal', 'Low-Sodium', 'Low-Sugar', 'Keto'
+    { value: 'vegetarian', label: 'Vegetarian' },
+    { value: 'vegan', label: 'Vegan' },
+    { value: 'gluten-free', label: 'Gluten-Free' },
+    { value: 'dairy-free', label: 'Dairy-Free' },
+    { value: 'halal', label: 'Halal' },
+    { value: 'kosher', label: 'Kosher' },
   ];
 
   return (
@@ -104,11 +118,10 @@ const PreferencesSettings: React.FC = () => {
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">No preference</option>
-                <option value="standard">Standard Room</option>
-                <option value="deluxe">Deluxe Room</option>
-                <option value="suite">Suite</option>
-                <option value="family">Family Room</option>
-                <option value="accessible">Accessible Room</option>
+                <option value="Standard">Standard Room</option>
+                <option value="Deluxe">Deluxe Room</option>
+                <option value="Suite">Suite</option>
+                <option value="Executive">Executive Room</option>
               </select>
             </div>
 
@@ -120,11 +133,9 @@ const PreferencesSettings: React.FC = () => {
                 {...register('stay.floor')}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">No preference</option>
-                <option value="low">Lower floors (1-3)</option>
-                <option value="mid">Middle floors (4-7)</option>
-                <option value="high">Higher floors (8+)</option>
-                <option value="ground">Ground floor</option>
+                <option value="Any">Any Floor</option>
+                <option value="High">Higher Floors</option>
+                <option value="Low">Lower Floors</option>
               </select>
             </div>
 
@@ -137,11 +148,10 @@ const PreferencesSettings: React.FC = () => {
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">No preference</option>
-                <option value="single">Single Bed</option>
-                <option value="double">Double Bed</option>
-                <option value="queen">Queen Bed</option>
-                <option value="king">King Bed</option>
-                <option value="twin">Twin Beds</option>
+                <option value="Single">Single Bed</option>
+                <option value="Double">Double Bed</option>
+                <option value="Twin">Twin Beds</option>
+                <option value="King">King Bed</option>
               </select>
             </div>
           </div>
@@ -169,16 +179,16 @@ const PreferencesSettings: React.FC = () => {
             Dietary Restrictions
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {availableDietaryRestrictions.map((restriction) => (
-              <label key={restriction} className="flex items-center space-x-2 cursor-pointer">
+              <label key={restriction.value} className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={dietaryOptions.includes(restriction)}
-                  onChange={() => toggleDietaryRestriction(restriction)}
+                  checked={dietaryOptions.includes(restriction.value)}
+                  onChange={() => toggleDietaryRestriction(restriction.value)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700">{restriction}</span>
+                <span className="text-sm text-gray-700">{restriction.label}</span>
               </label>
             ))}
           </div>
@@ -248,11 +258,21 @@ const PreferencesSettings: React.FC = () => {
         <div className="flex justify-end space-x-4 pt-6 border-t">
           <button
             type="button"
+            onClick={() => {
+              setValue('stay.roomType', '');
+              setValue('stay.floor', 'Any');
+              setValue('stay.bedType', '');
+              setValue('stay.smoking', false);
+              setDietaryOptions([]);
+              setValue('communication.preferredChannel', 'email');
+              setValue('communication.marketingConsent', false);
+              setValue('specialRequests', '');
+            }}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
           >
             Reset to Defaults
           </button>
-          <button aria-label="Save"
+          <button aria-label="Save preferences"
             type="submit"
             disabled={isLoading}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

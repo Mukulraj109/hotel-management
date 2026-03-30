@@ -2,6 +2,7 @@
  * Format amount in Indian Rupees with proper formatting
  */
 export const formatIndianCurrency = (amount: number): string => {
+  if (amount == null || isNaN(amount)) return '\u20B90';
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -14,6 +15,7 @@ export const formatIndianCurrency = (amount: number): string => {
  * Format amount with Indian number system (lakhs, crores)
  */
 export const formatIndianAmount = (amount: number): string => {
+  if (amount == null || isNaN(amount)) return '0';
   return new Intl.NumberFormat('en-IN').format(amount);
 };
 

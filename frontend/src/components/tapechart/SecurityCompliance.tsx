@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/utils/toast';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { useAuth } from '@/context/AuthContext';
 import { securityMonitoringService } from '@/services/securityMonitoringService';
 import type { AuditLogEntry, ThreatAlert as ThreatAlertType } from '@/services/securityMonitoringService';
 import {
@@ -94,6 +95,9 @@ interface ComplianceCheck {
 }
 
 export const SecurityCompliance: React.FC = () => {
+  const { user } = useAuth();
+  const canAccessSecurityMonitoring = user?.role === 'admin';
+
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
     mfaEnabled: true,
     mfaMethod: 'authenticator',
@@ -174,6 +178,13 @@ export const SecurityCompliance: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      // Security monitoring endpoints require audit:read permission (admin only).
+      // Non-admin roles (frontdesk, staff, etc.) skip these calls to avoid 403 errors.
+      if (!canAccessSecurityMonitoring) {
+        setLoading(false);
+        return;
+      }
+
       const [auditRes, alertRes, dashboardRes] = await Promise.all([
         securityMonitoringService.getAuditLogs({ limit: 50 }),
         securityMonitoringService.getThreatAlerts({ status: 'all', limit: 50 }),
@@ -215,7 +226,7 @@ export const SecurityCompliance: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canAccessSecurityMonitoring]);
 
   useEffect(() => {
     loadSecurityData();
@@ -296,6 +307,10 @@ export const SecurityCompliance: React.FC = () => {
   };
 
   const exportAuditLogs = async () => {
+    if (!canAccessSecurityMonitoring) {
+      toast.error('Insufficient permissions to export audit logs');
+      return;
+    }
     try {
       await securityMonitoringService.exportSecurityReport({
         format: 'json',
@@ -310,6 +325,10 @@ export const SecurityCompliance: React.FC = () => {
   };
 
   const runComplianceCheck = async (standard: string) => {
+    if (!canAccessSecurityMonitoring) {
+      toast.error('Insufficient permissions to run compliance checks');
+      return;
+    }
     toast.info(`Running ${standard} compliance check...`);
     try {
       const dashboard = await securityMonitoringService.getSecurityDashboard();
@@ -323,6 +342,10 @@ export const SecurityCompliance: React.FC = () => {
   };
 
   const resolveThreat = async (threatId: string) => {
+    if (!canAccessSecurityMonitoring) {
+      toast.error('Insufficient permissions to resolve threats');
+      return;
+    }
     try {
       await securityMonitoringService.updateAlertStatus(threatId, { status: 'resolved' });
       setSecurityThreats(prev =>

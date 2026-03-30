@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Copy, Eye, BarChart3, Calendar, Target, Percent, IndianRupee } from 'lucide-react';
+import { Plus, Edit, Copy, BarChart3, Calendar, Target, Percent, IndianRupee } from 'lucide-react';
 import { bookingEngineService, PromoCode, CreatePromoCodeData } from '@/services/bookingEngineService';
 
 interface CreatePromoFormData {
@@ -39,7 +39,6 @@ const PromoCodeManager: React.FC = () => {
   const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
 
@@ -75,8 +74,8 @@ const PromoCodeManager: React.FC = () => {
       setLoading(true);
       const data = await bookingEngineService.getPromoCodes();
       setPromoCodes(data);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load promo codes:', error);
     } finally {
       setLoading(false);
     }
@@ -121,9 +120,8 @@ const PromoCodeManager: React.FC = () => {
       fetchPromoCodes();
       setIsCreateModalOpen(false);
       resetForm();
-      alert('Promo code created successfully!');
     } catch (error) {
-      alert('Error creating promo code');
+      console.error('Error creating promo code:', error);
     }
   };
 
@@ -167,9 +165,8 @@ const PromoCodeManager: React.FC = () => {
       setIsEditModalOpen(false);
       setSelectedPromo(null);
       resetForm();
-      alert('Promo code updated successfully!');
     } catch (error) {
-      alert('Error updating promo code');
+      console.error('Error updating promo code:', error);
     }
   };
 
@@ -391,7 +388,6 @@ const PromoCodeManager: React.FC = () => {
                             variant="outline"
                             onClick={() => {
                               navigator.clipboard.writeText(promo.code);
-                              alert('Promo code copied to clipboard!');
                             }}
                           >
                             <Copy className="w-4 h-4" />
@@ -537,7 +533,7 @@ const PromoCodeForm: React.FC<{
 
         <div>
           <Label htmlFor="type">Discount Type</Label>
-          <Select value={formData.type} onValueChange={(value: Record<string, unknown>) => setFormData({ ...formData, type: value })}>
+          <Select value={formData.type} onValueChange={(value: string) => setFormData({ ...formData, type: value as 'percentage' | 'fixed_amount' | 'free_night' | 'upgrade' })}>
             <SelectTrigger>
               <SelectValue placeholder="Select discount type" />
             </SelectTrigger>

@@ -53,6 +53,8 @@ function DigitalKeysDashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [confirmRevokeKeyId, setConfirmRevokeKeyId] = useState<string | null>(null);
+  const [confirmRevokeShare, setConfirmRevokeShare] = useState<{ keyId: string; userIdOrEmail: string } | null>(null);
 
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
@@ -106,9 +108,9 @@ function DigitalKeysDashboard() {
         
         const message = statusMessages[updatedKey.status as keyof typeof statusMessages];
         if (message) {
-          toast.info(message, {
+          toast(message, {
             duration: 4000,
-            icon: updatedKey.status === 'revoked' ? '🚫' : 
+            icon: updatedKey.status === 'revoked' ? '🚫' :
                   updatedKey.status === 'expired' ? '⏰' : '🚪'
           });
         }
@@ -141,7 +143,7 @@ function DigitalKeysDashboard() {
       queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
       queryClient.invalidateQueries({ queryKey: ['shared-keys'] });
       
-      toast.info(`Share access revoked for Room ${key.roomId?.number || 'N/A'}`, {
+      toast(`Share access revoked for Room ${key.roomId?.number || 'N/A'}`, {
         duration: 4000,
         icon: '❌'
       });
@@ -201,21 +203,20 @@ function DigitalKeysDashboard() {
     }),
     retry: 2,
     staleTime: 5 * 60 * 1000,
-    onError: (error: unknown) => {
-      toast.error('Failed to load digital keys');
-    }
   });
 
-  const { data: sharedKeysData, isLoading: sharedKeysLoading } = useQuery({
+  const { data: sharedKeysData, isLoading: sharedKeysLoading, error: sharedKeysError } = useQuery({
     queryKey: ['shared-keys', currentPage],
     queryFn: () => digitalKeyService.getSharedKeys({ page: currentPage }),
-    enabled: activeTab === 'shared-keys'
+    enabled: activeTab === 'shared-keys',
+    retry: 2,
   });
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
     queryKey: ['key-stats'],
     queryFn: () => digitalKeyService.getStats(),
-    enabled: activeTab === 'stats'
+    enabled: activeTab === 'stats',
+    retry: 2,
   });
 
   // Mutations
@@ -292,14 +293,24 @@ function DigitalKeysDashboard() {
   };
 
   const handleRevokeKey = (keyId: string) => {
-    if (window.confirm('Are you sure you want to revoke this key? This action cannot be undone.')) {
-      revokeKeyMutation.mutate(keyId);
+    setConfirmRevokeKeyId(keyId);
+  };
+
+  const confirmRevokeKeyAction = () => {
+    if (confirmRevokeKeyId) {
+      revokeKeyMutation.mutate(confirmRevokeKeyId);
+      setConfirmRevokeKeyId(null);
     }
   };
 
   const handleRevokeShare = (keyId: string, userIdOrEmail: string) => {
-    if (window.confirm('Are you sure you want to revoke access for this user?')) {
-      revokeShareMutation.mutate({ keyId, userIdOrEmail });
+    setConfirmRevokeShare({ keyId, userIdOrEmail });
+  };
+
+  const confirmRevokeShareAction = () => {
+    if (confirmRevokeShare) {
+      revokeShareMutation.mutate(confirmRevokeShare);
+      setConfirmRevokeShare(null);
     }
   };
 
@@ -361,7 +372,7 @@ function DigitalKeysDashboard() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as unknown)}
+              onClick={() => setActiveTab(tab.id as 'my-keys' | 'shared-keys' | 'stats')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'
@@ -428,7 +439,7 @@ function DigitalKeysDashboard() {
               <p className="text-gray-600 mb-4">
                 There was a problem loading your digital keys. Please try again.
               </p>
-              <Button onClick={() => queryClient.invalidateQueries(['digital-keys'])}>
+              <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['digital-keys'] })}>
                 Try Again
               </Button>
             </Card>
@@ -518,6 +529,17 @@ function DigitalKeysDashboard() {
         <div className="grid gap-6">
           {sharedKeysLoading ? (
             <LoadingSpinner />
+          ) : sharedKeysError ? (
+            <Card className="p-8 text-center">
+              <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Shared Keys</h3>
+              <p className="text-gray-600 mb-4">
+                There was a problem loading shared keys. Please try again.
+              </p>
+              <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['shared-keys'] })}>
+                Try Again
+              </Button>
+            </Card>
           ) : sharedKeysData?.keys.length === 0 ? (
             <Card className="p-8 text-center">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -544,6 +566,17 @@ function DigitalKeysDashboard() {
         <div className="grid gap-6">
           {statsLoading ? (
             <LoadingSpinner />
+          ) : statsError ? (
+            <Card className="p-8 text-center">
+              <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Statistics</h3>
+              <p className="text-gray-600 mb-4">
+                There was a problem loading your key statistics. Please try again.
+              </p>
+              <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['key-stats'] })}>
+                Try Again
+              </Button>
+            </Card>
           ) : stats ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
@@ -571,7 +604,15 @@ function DigitalKeysDashboard() {
                 color="bg-orange-100 text-orange-600"
               />
             </div>
-          ) : null}
+          ) : (
+            <Card className="p-8 text-center">
+              <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No statistics available</h3>
+              <p className="text-gray-600">
+                Statistics will appear here once you start using digital keys.
+              </p>
+            </Card>
+          )}
         </div>
       )}
 
@@ -598,6 +639,38 @@ function DigitalKeysDashboard() {
           digitalKey={selectedKey}
           onClose={() => setShowLogsModal(false)}
         />
+      )}
+
+      {/* Revoke Key Confirmation Dialog */}
+      {confirmRevokeKeyId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="revoke-key-title">
+          <Card className="max-w-md w-full p-6">
+            <h3 id="revoke-key-title" className="text-lg font-semibold text-gray-900 mb-2">Revoke Digital Key</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to revoke this key? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setConfirmRevokeKeyId(null)}>Cancel</Button>
+              <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={confirmRevokeKeyAction}>
+                <Trash2 className="w-4 h-4 mr-1" /> Revoke Key
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Revoke Share Confirmation Dialog */}
+      {confirmRevokeShare && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="revoke-share-title">
+          <Card className="max-w-md w-full p-6">
+            <h3 id="revoke-share-title" className="text-lg font-semibold text-gray-900 mb-2">Revoke Shared Access</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to revoke access for this user?</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setConfirmRevokeShare(null)}>Cancel</Button>
+              <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={confirmRevokeShareAction}>
+                Revoke Access
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
@@ -820,7 +893,7 @@ interface SharedKeyCardProps {
 
 function SharedKeyCard({ digitalKey, onViewDetails }: SharedKeyCardProps) {
   const typeInfo = digitalKeyService.getKeyTypeInfo(digitalKey.type);
-  const statusInfo = digitalKeyService.getStatusInfo(digitalKey);
+  const statusInfo = digitalKeyService.getStatusInfo(digitalKey.status);
 
   return (
     <Card className="p-6">
@@ -833,7 +906,7 @@ function SharedKeyCard({ digitalKey, onViewDetails }: SharedKeyCardProps) {
             </h3>
             <p className="text-sm text-gray-600">{digitalKey.hotelId.name}</p>
             <p className="text-xs text-gray-500">
-              Shared by {digitalKey.userId}
+              Shared by {typeof digitalKey.userId === 'object' ? digitalKey.userId.name || digitalKey.userId.email || 'Unknown' : 'Unknown'}
             </p>
           </div>
         </div>
@@ -1193,9 +1266,9 @@ function KeyLogsModal({ digitalKey, onClose }: KeyLogsModalProps) {
         
         {isLoading ? (
           <LoadingSpinner />
-        ) : (
+        ) : logsData?.logs && logsData.logs.length > 0 ? (
           <div className="space-y-3">
-            {logsData?.logs.map((log, index) => {
+            {logsData.logs.map((log, index) => {
               const actionInfo = digitalKeyService.getActionInfo(log.action);
               return (
                 <div key={`logs-${index}`} className="flex items-center gap-3 p-3 border rounded-lg">
@@ -1216,6 +1289,14 @@ function KeyLogsModal({ digitalKey, onClose }: KeyLogsModalProps) {
                 </div>
               );
             })}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <History className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No access logs yet</h3>
+            <p className="text-gray-600">
+              Activity for this key will be recorded here.
+            </p>
           </div>
         )}
       </Card>

@@ -86,8 +86,8 @@ const EmailCampaignManager: React.FC = () => {
       setLoading(true);
       const data = await bookingEngineService.getEmailCampaigns();
       setCampaigns(data);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load email campaigns:', error);
     } finally {
       setLoading(false);
     }
@@ -144,9 +144,8 @@ const EmailCampaignManager: React.FC = () => {
       fetchCampaigns();
       setIsCreateModalOpen(false);
       resetForm();
-      alert('Campaign created successfully!');
     } catch (error) {
-      alert('Error creating campaign');
+      console.error('Error creating campaign:', error);
     }
   };
 
@@ -192,9 +191,8 @@ const EmailCampaignManager: React.FC = () => {
       setIsEditModalOpen(false);
       setSelectedCampaign(null);
       resetForm();
-      alert('Campaign updated successfully!');
     } catch (error) {
-      alert('Error updating campaign');
+      console.error('Error updating campaign:', error);
     }
   };
 
@@ -213,11 +211,10 @@ const EmailCampaignManager: React.FC = () => {
 
   const handleSendCampaign = async (campaignId: string) => {
     try {
-      // This would call the send campaign endpoint
-      alert('Campaign sent successfully!');
+      await bookingEngineService.sendEmailCampaign(campaignId);
       fetchCampaigns();
     } catch (error) {
-      alert('Error sending campaign');
+      console.error('Error sending campaign:', error);
     }
   };
 

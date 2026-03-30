@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { Button } from '../../components/ui/button';
@@ -8,11 +8,10 @@ import { Textarea } from '../../components/ui/textarea';
 import { Modal } from '../../components/ui/Modal';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { adminService } from '../../services/adminService';
-import { bookingEditingService } from '../../services/bookingEditingService';
 import { api } from '../../services/api';
 import { paymentService } from '../../services/paymentService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
-import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
+import { formatCurrency, formatNumber } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
 import WalkInBooking from '../admin/WalkInBooking';
 import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
@@ -24,14 +23,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { realTimeService } from '../../services/realTimeService';
 import {
   Calendar,
-  Coins,
-  Users,
   TrendingUp,
   Filter,
   Eye,
-  Edit,
   X,
   CheckCircle,
   Clock,
@@ -89,7 +86,7 @@ function FrontDeskBookings() {
   // Room assignment state
   const [showRoomAssignmentModal, setShowRoomAssignmentModal] = useState(false);
   const [selectedBookingForRoomAssignment, setSelectedBookingForRoomAssignment] = useState<AdminBooking | null>(null);
-  const [availableRoomsForAssignment, setAvailableRoomsForAssignment] = useState<unknown[]>([]);
+  const [availableRoomsForAssignment, setAvailableRoomsForAssignment] = useState<Array<{ _id: string; roomNumber: string; type: string; baseRate: number; currentRate?: number; floor?: string; maxOccupancy?: number; amenities?: string[] }>>([]);
   const [selectedRoomNumbers, setSelectedRoomNumbers] = useState<{ [key: string]: string }>({});
 
   // Price adjustment modal state
@@ -103,13 +100,18 @@ function FrontDeskBookings() {
   // Settlement modal state
   const [showSettlementModal, setShowSettlementModal] = useState(false);
   const [selectedBookingForSettlement, setSelectedBookingForSettlement] = useState<AdminBooking | null>(null);
-  const [settlementData, setSettlementData] = useState<unknown>(null);
+  const [settlementData, setSettlementData] = useState<{
+    finalAmount: number;
+    outstandingBalance: number;
+    refundAmount: number;
+    adjustments?: Array<{ type?: string; amount: number; description?: string }>;
+  } | null>(null);
 
   // Manual booking form state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
-  const [availableRooms, setAvailableRooms] = useState<unknown[]>([]);
-  const [users, setUsers] = useState<unknown[]>([]);
+  const [availableRooms, setAvailableRooms] = useState<Array<{ _id: string; roomNumber: string; type: string; baseRate: number; currentRate?: number; floor?: string; maxOccupancy?: number; amenities?: string[] }>>([]);
+  const [users, setUsers] = useState<Array<{ _id: string; name: string; email: string; phone?: string }>>([]);
   const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -159,22 +161,27 @@ function FrontDeskBookings() {
 
       // Set pagination with fallback values
       if (response.pagination) {
-        setPagination(response.pagination);
+        setPagination({
+          current: response.pagination.page ?? response.pagination.current ?? (bookingFilters.page || 1),
+          pages: response.pagination.pages ?? 1,
+          total: response.pagination.total ?? bookingsData.length
+        });
       } else {
         // Calculate pagination if not provided
         setPagination({
           current: bookingFilters.page || 1,
-          pages: Math.ceil(bookingsData.length / (bookingFilters.limit || 50)),
+          pages: Math.ceil(bookingsData.length / (bookingFilters.limit || 50)) || 1,
           total: bookingsData.length
         });
       }
 
     } catch (error: unknown) {
-
-      if (error.response?.status === 429) {
+      const axiosErr = error as { response?: { status?: number } };
+      if (axiosErr?.response?.status === 429) {
+        toast.error('Too many requests. Please wait a moment and try again.');
       }
       setBookings([]);
-      setPagination({ current: 1, pages: 0, total: 0 });
+      setPagination({ current: 1, pages: 1, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -200,7 +207,46 @@ function FrontDeskBookings() {
   useEffect(() => {
     fetchBookings();
     fetchStats();
-  }, [filters]);
+  }, [filters, selectedPropertyId]);
+
+  // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
+  useEffect(() => {
+    realTimeService.connect().catch(() => { /* WebSocket unavailable -- page still works */ });
+  }, []);
+
+  // Real-time: listen for booking events so guest actions (create, cancel, modify) reflect immediately
+  useEffect(() => {
+    const handleBookingCreated = () => {
+      fetchBookings();
+      fetchStats();
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    };
+    const handleBookingUpdated = () => {
+      fetchBookings();
+      fetchStats();
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    };
+    const handleBookingCancelled = () => {
+      fetchBookings();
+      fetchStats();
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    };
+
+    realTimeService.on('booking:created', handleBookingCreated);
+    realTimeService.on('booking:updated', handleBookingUpdated);
+    realTimeService.on('booking_cancelled', handleBookingCancelled);
+    realTimeService.on('booking:modification_requested', handleBookingUpdated);
+    realTimeService.on('booking:payment_updated', handleBookingUpdated);
+
+    return () => {
+      realTimeService.off('booking:created', handleBookingCreated);
+      realTimeService.off('booking:updated', handleBookingUpdated);
+      realTimeService.off('booking_cancelled', handleBookingCancelled);
+      realTimeService.off('booking:modification_requested', handleBookingUpdated);
+      realTimeService.off('booking:payment_updated', handleBookingUpdated);
+    };
+  }, [selectedPropertyId]);
 
   // Handle status update
   const handleStatusUpdate = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show') => {
@@ -240,10 +286,11 @@ function FrontDeskBookings() {
     try {
       setUpdating(true);
       await adminService.cancelBooking(bookingId, reason);
+      toast.success('Booking cancelled successfully');
       await fetchBookings();
       await fetchStats();
     } catch {
-      // Error handled silently
+      toast.error('Failed to cancel booking');
     } finally {
       setUpdating(false);
     }
@@ -289,8 +336,8 @@ function FrontDeskBookings() {
         checkOutDate
       );
       
-      let availableRooms = response.data.rooms;
-      
+      const availableRooms = (response.data.rooms || []) as typeof availableRoomsForAssignment;
+
       setAvailableRoomsForAssignment(availableRooms);
       setSelectedRoomNumbers({});
       setShowRoomAssignmentModal(true);
@@ -399,7 +446,7 @@ function FrontDeskBookings() {
   };
 
   // Handle payment collection and check-in
-  const handlePaymentCollection = async (paymentDetails: { paymentMethods: unknown[] } | null) => {
+  const handlePaymentCollection = async (paymentDetails: { paymentMethods: Array<{ method: string; amount: number; reference?: string }> } | null) => {
     if (!selectedBookingForPayment) return;
 
     try {
@@ -480,8 +527,8 @@ function FrontDeskBookings() {
 
       // If fully paid, proceed with direct checkout
       await processCheckOut(booking, false); // false = don't bypass
-    } catch {
-      // Error handled silently
+    } catch (error: unknown) {
+      toast.error('Failed to initiate checkout');
     }
   };
 
@@ -547,10 +594,11 @@ function FrontDeskBookings() {
       await fetchBookings();
       await fetchStats();
     } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { code?: string; message?: string; error?: { code?: string; message?: string } } } };
 
       // Check if error is due to outstanding balance
-      const errorCode = error.response?.data?.code || error.response?.data?.error?.code;
-      const errorMessage = error.response?.data?.message || error.response?.data?.error?.message;
+      const errorCode = axiosErr?.response?.data?.code || axiosErr?.response?.data?.error?.code;
+      const errorMessage = axiosErr?.response?.data?.message || axiosErr?.response?.data?.error?.message;
 
       if (errorCode === 'OUTSTANDING_BALANCE' || errorMessage?.includes('outstanding balance')) {
         // Extract balance from error message
@@ -571,14 +619,13 @@ function FrontDeskBookings() {
   };
 
   // Handle checkout payment collection (BEFORE actual checkout)
-  const handleCheckOutPaymentCollection = async (paymentDetails: { paymentMethods: unknown[] }) => {
-    if (!selectedBookingForCheckOut) return;
+  const handleCheckOutPaymentCollection = async (paymentDetails: { paymentMethods: Array<{ method: string; amount: number; reference?: string }>; isPartialPayment: boolean } | null) => {
+    if (!selectedBookingForCheckOut || !paymentDetails) return;
 
     try {
       setUpdating(true);
 
       const totalAmount = paymentDetails.paymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
-
 
       // Process payment using the settlement payment endpoint with paymentMethods array
       const response = await api.post(`/bookings/${selectedBookingForCheckOut._id}/settlement/payment`, {
@@ -586,28 +633,56 @@ function FrontDeskBookings() {
         amount: totalAmount
       });
 
-      toast.success('Payment collected successfully!');
+      const updatedBookingFromResponse = response.data?.data?.booking;
+      const updatedPaymentDetails = updatedBookingFromResponse?.paymentDetails || response.data?.booking?.paymentDetails;
 
-      // Close the checkout payment modal
-      setShowCheckOutPaymentModal(false);
+      if (paymentDetails.isPartialPayment) {
+        // PARTIAL PAYMENT: Record payment only, do NOT checkout
+        toast.success(`Partial payment of ${totalAmount.toLocaleString()} collected. Remaining balance will be due at checkout.`);
 
-      // Fetch updated booking to get new totalPaid
-      await fetchBookings();
+        // Close the checkout payment modal
+        setShowCheckOutPaymentModal(false);
 
-      // Find the updated booking
-      const updatedBookings = bookings;
-      const updatedBooking = updatedBookings.find(b => b._id === selectedBookingForCheckOut._id);
+        // Refresh booking data to reflect updated payment
+        await fetchBookings();
+        await fetchStats();
 
-      // Now proceed with checkout using the updated booking
-      if (updatedBooking) {
-        await processCheckOut(updatedBooking);
+        // Invalidate queries to update UI everywhere
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['bookings'] });
+
+        // Update selected booking if the detail panel is open
+        if (selectedBooking && selectedBooking._id === selectedBookingForCheckOut._id && updatedBookingFromResponse) {
+          setSelectedBooking(updatedBookingFromResponse);
+        }
+
+        // Clear checkout payment state
+        setSelectedBookingForCheckOut(null);
       } else {
-        // Fallback to original booking
-        await processCheckOut(selectedBookingForCheckOut);
-      }
+        // FULL PAYMENT: Record payment then proceed with checkout
+        toast.success('Payment collected successfully!');
 
-      // Clear checkout payment state
-      setSelectedBookingForCheckOut(null);
+        // Close the checkout payment modal
+        setShowCheckOutPaymentModal(false);
+
+        // Use payment response to build updated booking data for checkout
+        const bookingForCheckout = {
+          ...selectedBookingForCheckOut,
+          ...(updatedPaymentDetails ? { paymentDetails: updatedPaymentDetails } : {})
+        };
+
+        // Proceed with checkout
+        await processCheckOut(bookingForCheckout);
+
+        // Refresh data after checkout
+        await fetchBookings();
+        await fetchStats();
+
+        // Clear checkout payment state
+        setSelectedBookingForCheckOut(null);
+      }
 
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to process payment');
@@ -648,7 +723,8 @@ function FrontDeskBookings() {
       setSelectedBookingForSettlement(null);
       setSettlementData(null);
     } catch (error: unknown) {
-      const message = error.response?.data?.message || 'Failed to process refund';
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const message = axiosErr?.response?.data?.message || 'Failed to process refund';
       toast.error(message);
     } finally {
       setUpdating(false);
@@ -709,19 +785,24 @@ function FrontDeskBookings() {
   // Handle price adjustment success
   const handlePriceAdjustmentSuccess = async () => {
     try {
-      await fetchBookings();
-      await fetchStats();
-
-      // Update the selected booking in the modal if it's the same booking
+      // If the details modal is open for the same booking, fetch it directly
+      // to avoid stale state from the bookings list (React state updates are async)
       if (selectedBooking && selectedBookingForPriceAdjustment && selectedBooking._id === selectedBookingForPriceAdjustment._id) {
-        // Fetch updated booking data
-        const updatedBooking = bookings.find(b => b._id === selectedBooking._id);
-        if (updatedBooking) {
-          setSelectedBooking(updatedBooking);
+        try {
+          const response = await adminService.getBookingById(selectedBooking._id);
+          const updatedBooking = response.data?.booking || response.data;
+          if (updatedBooking) {
+            setSelectedBooking(updatedBooking);
+          }
+        } catch {
+          // Fall through to list refresh
         }
       }
+
+      await fetchBookings();
+      await fetchStats();
     } catch {
-      // Error handled silently
+      toast.error('Failed to refresh booking data after price adjustment');
     }
   };
 
@@ -729,7 +810,7 @@ function FrontDeskBookings() {
   const fetchAvailableRooms = async (hotelId: string, checkIn: string, checkOut: string) => {
     try {
       const response = await adminService.getAvailableRooms(hotelId, checkIn, checkOut);
-      setAvailableRooms(response.data.rooms);
+      setAvailableRooms((response.data.rooms || []) as typeof availableRooms);
     } catch (error) {
       setAvailableRooms([]);
     }
@@ -739,7 +820,7 @@ function FrontDeskBookings() {
   const fetchUsers = async (search: string = '') => {
     try {
       const response = await adminService.getUsers({ search, role: 'guest' });
-      setUsers(response.data.users);
+      setUsers((response.data.users || []) as typeof users);
     } catch (error) {
       setUsers([]);
     }
@@ -769,12 +850,13 @@ function FrontDeskBookings() {
         status: 'pending'
       });
       setShowCreateModal(false);
-      
+      toast.success('Booking created successfully');
+
       // Refresh bookings and stats
       await fetchBookings();
       await fetchStats();
     } catch {
-      // Error handled silently
+      toast.error('Failed to create booking');
     } finally {
       setCreating(false);
     }
@@ -788,11 +870,19 @@ function FrontDeskBookings() {
 
     const checkInDate = new Date(createForm.checkIn);
     const checkOutDate = new Date(createForm.checkOut);
+    if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+      return 0;
+    }
     const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
+    // Guard against zero or negative nights (checkout before/same as checkin)
+    if (nights <= 0 || isNaN(nights)) {
+      return 0;
+    }
+
     const selectedRooms = availableRooms.filter(room => createForm.roomIds.includes(room._id));
     const roomsTotal = selectedRooms.reduce((total, room) => total + (room.currentRate || 0), 0);
-    
+
     return roomsTotal * nights;
   };
 
@@ -981,8 +1071,9 @@ function FrontDeskBookings() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleStatusUpdate(row._id, 'checked_out')}
+              onClick={() => handleCheckOut(row)}
               disabled={updating}
+              title="Check Out"
             >
               <UserX className="h-4 w-4 text-gray-600" />
             </Button>
@@ -1184,6 +1275,7 @@ function FrontDeskBookings() {
               <Button
                 variant="outline"
                 className="whitespace-nowrap border-2 hover:border-blue-500 hover:bg-blue-50"
+                onClick={() => toast('Export feature coming soon', { icon: 'ℹ️' })}
               >
                 Export
               </Button>
@@ -1195,7 +1287,7 @@ function FrontDeskBookings() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
                 Showing <span className="font-medium text-gray-900">
-                  {((pagination.current - 1) * (filters.limit || 50)) + 1}
+                  {pagination.total > 0 ? ((pagination.current - 1) * (filters.limit || 50)) + 1 : 0}
                 </span> to <span className="font-medium text-gray-900">
                   {Math.min(pagination.current * (filters.limit || 50), pagination.total)}
                 </span> of <span className="font-medium text-gray-900">{pagination.total}</span> bookings
@@ -1348,7 +1440,7 @@ function FrontDeskBookings() {
               <div className="space-y-2">
                 {selectedBooking.rooms && selectedBooking.rooms.length > 0 ? (
                   selectedBooking.rooms.map((room, index) => (
-                    <div key={room.roomId} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div key={room.roomId?._id || `room-${index}`} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                       <div>
                         <p className="text-sm font-medium">{room.roomId?.roomNumber || 'Room number not available'}</p>
                         <p className="text-sm text-gray-600">{room.roomId?.type || 'Room type not available'}</p>
@@ -1435,7 +1527,7 @@ function FrontDeskBookings() {
                 </div>
 
                 {/* Show price adjustment indicator if booking has adjustments */}
-                {selectedBooking.originalAmount && selectedBooking.originalAmount !== selectedBooking.totalAmount && (
+                {selectedBooking.priceAdjustments?.length > 0 && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <DollarSign className="h-4 w-4 text-blue-600" />
@@ -1445,7 +1537,7 @@ function FrontDeskBookings() {
                       <div className="flex justify-between">
                         <span className="text-gray-600">Original Price:</span>
                         <span className="line-through text-gray-500">
-                          {formatCurrency(selectedBooking.originalAmount, selectedBooking.currency)}
+                          {formatCurrency(selectedBooking.originalAmount || selectedBooking.priceAdjustments?.[0]?.previousAmount || selectedBooking.totalAmount, selectedBooking.currency)}
                         </span>
                       </div>
                       {selectedBooking.discountAmount && selectedBooking.discountAmount > 0 && (
@@ -1892,7 +1984,7 @@ function FrontDeskBookings() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="text-sm text-gray-600">Guest: </span>
-                  <span className="font-medium">{selectedBookingForRoomAssignment.userId.name}</span>
+                  <span className="font-medium">{selectedBookingForRoomAssignment.userId?.name || 'Unknown Guest'}</span>
                 </div>
                 <div>
                   <span className="text-sm text-gray-600">Dates: </span>
@@ -1919,10 +2011,10 @@ function FrontDeskBookings() {
                   </div>
                 ) : (
                   selectedBookingForRoomAssignment.rooms.map((room, index) => (
-                    <div key={`selectedBookingForRoomAssignment-rooms-${index}-${room.type}`} className="flex justify-between items-center">
+                    <div key={`selectedBookingForRoomAssignment-rooms-${index}-${room.roomId?.type || 'unknown'}`} className="flex justify-between items-center">
                       <div>
-                        <div className="font-medium">Room {room.roomId.roomNumber}</div>
-                        <div className="text-sm text-gray-600 capitalize">{room.roomId.type}</div>
+                        <div className="font-medium">Room {room.roomId?.roomNumber || 'N/A'}</div>
+                        <div className="text-sm text-gray-600 capitalize">{room.roomId?.type || 'Unknown'}</div>
                       </div>
                       <div className="text-right">
                         <div className="font-medium">{formatCurrency(room.rate, selectedBookingForRoomAssignment.currency)}/night</div>
@@ -2020,25 +2112,27 @@ function FrontDeskBookings() {
                     )
                   ) : (
                     // Handle existing bookings with specific rooms already assigned (traditional re-assignment)
-                    selectedBookingForRoomAssignment.rooms.map((bookingRoom, index) => (
-                      <div key={bookingRoom.roomId} className="border border-gray-200 rounded-lg p-4">
-                        <h5 className="font-medium text-gray-900 mb-2">
-                          Assign {bookingRoom.roomId.type} Room
+                    selectedBookingForRoomAssignment.rooms.map((bookingRoom, index) => {
+                      const bkRoomType = bookingRoom.roomId?.type || 'unknown';
+                      return (
+                      <div key={bookingRoom.roomId?._id || `booking-room-${index}`} className="border border-gray-200 rounded-lg p-4">
+                        <h5 className="font-medium text-gray-900 mb-2 capitalize">
+                          Assign {bkRoomType} Room
                         </h5>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                           {availableRoomsForAssignment
-                            .filter(room => room.type === bookingRoom.roomId.type)
+                            .filter(room => room.type === bkRoomType)
                             .map((room) => (
                               <button
                                 key={room._id}
                                 className={`p-3 border rounded-lg text-sm transition-colors ${
-                                  selectedRoomNumbers[bookingRoom.roomId.type] === room.roomNumber
+                                  selectedRoomNumbers[bkRoomType] === room.roomNumber
                                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                                     : 'border-gray-300 hover:border-gray-400'
                                 }`}
                                 onClick={() => setSelectedRoomNumbers(prev => ({
                                   ...prev,
-                                  [bookingRoom.roomId.type]: room.roomNumber
+                                  [bkRoomType]: room.roomNumber
                                 }))}
                               >
                                 <div className="font-semibold">{room.roomNumber}</div>
@@ -2048,13 +2142,13 @@ function FrontDeskBookings() {
                             ))
                           }
                         </div>
-                        {availableRoomsForAssignment.filter(room => room.type === bookingRoom.roomId.type).length === 0 && (
+                        {availableRoomsForAssignment.filter(room => room.type === bkRoomType).length === 0 && (
                           <div className="text-center py-4 text-gray-500">
-                            No available {bookingRoom.roomId.type} rooms
+                            No available {bkRoomType} rooms
                           </div>
                         )}
                       </div>
-                    ))
+                    );})
                   )}
                 </div>
               </div>
@@ -2126,7 +2220,8 @@ function FrontDeskBookings() {
             setSelectedBookingForCheckOut(null);
           }}
           onConfirm={handleCheckOutPaymentCollection}
-          totalAmount={selectedBookingForCheckOut.totalAmount - (selectedBookingForCheckOut.paymentDetails?.totalPaid || 0)}
+          totalAmount={selectedBookingForCheckOut.totalAmount}
+          paidAmount={selectedBookingForCheckOut.paymentDetails?.totalPaid || 0}
           currency={selectedBookingForCheckOut.currency}
           bookingNumber={selectedBookingForCheckOut.bookingNumber}
           mode="checkout"
@@ -2147,7 +2242,12 @@ function FrontDeskBookings() {
         return (
           <Modal
             isOpen={showBypassCheckoutDialog}
-            onClose={null}
+            onClose={() => {
+              setShowBypassCheckoutDialog(false);
+              setSelectedBookingForBypass(null);
+              setBypassReason('');
+              setBypassConfirmed(false);
+            }}
             noPadding={true}
           >
             <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto overflow-hidden">
@@ -2192,7 +2292,7 @@ function FrontDeskBookings() {
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     {reasonTemplates.map((template) => (
-                      <button aria-label="Close"
+                      <button aria-label={`Select reason: ${template}`}
                         key={template}
                         onClick={() => setBypassReason(template)}
                         className={`px-4 py-3 text-sm border-2 rounded-lg text-left transition-all duration-200 ${
@@ -2303,9 +2403,9 @@ Date/Time: ${new Date().toLocaleString('en-IN', {
   dateStyle: 'medium',
   timeStyle: 'short'
 })}
-Staff: ${user?.firstName} ${user?.lastName} (${user?.email})
+Staff: ${user?.name || 'Unknown'} (${user?.email || 'N/A'})
 Booking: #${selectedBookingForBypass.bookingNumber}
-Guest: ${selectedBookingForBypass.guestName}
+Guest: ${selectedBookingForBypass.userId?.name || 'Unknown Guest'}
 Outstanding: ₹${outstandingBalance.toLocaleString('en-IN')}
 Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}`}
                   </pre>
@@ -2395,10 +2495,10 @@ Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}
                 <div className="mt-4">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Adjustments:</h4>
                   <div className="space-y-1">
-                    {settlementData.adjustments.map((adj: Record<string, unknown>, index: number) => (
+                    {settlementData.adjustments.map((adj, index) => (
                       <div key={`adj-${index}-${adj.type || ''}`} className="flex justify-between text-sm py-1">
-                        <span className="text-gray-600">{adj.description || adj.type}</span>
-                        <span className="text-gray-900">₹{adj.amount.toLocaleString()}</span>
+                        <span className="text-gray-600">{adj.description || adj.type || 'Adjustment'}</span>
+                        <span className="text-gray-900">₹{(adj.amount || 0).toLocaleString()}</span>
                       </div>
                     ))}
                   </div>

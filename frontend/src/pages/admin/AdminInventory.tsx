@@ -44,6 +44,7 @@ import { adminService } from '../../services/adminService';
 import { InventoryItem } from '../../types/admin';
 import { formatNumber, formatCurrency } from '../../utils/dashboardUtils';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import toast from 'react-hot-toast';
 
 interface InventoryFilters {
   category?: string;
@@ -63,7 +64,7 @@ interface InventoryStats {
 }
 
 function AdminInventory() {
-  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { selectedPropertyId } = useProperty();
 
   // State
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -155,18 +156,18 @@ function AdminInventory() {
         ...filters,
         hotelId: selectedPropertyId
       });
-      setItems(response.data.items);
+      setItems(response.data.items || []);
       // Backend returns { page, limit, total, pages } — map `page` to `current`
       const pag = response.pagination as unknown as { page?: number; current?: number; pages: number; total: number } | undefined;
       if (pag) {
         setPagination({
           current: pag.current ?? pag.page ?? 1,
-          pages: pag.pages,
-          total: pag.total
+          pages: pag.pages ?? 1,
+          total: pag.total ?? 0
         });
       }
     } catch {
-      // Error handled silently
+      toast.error('Failed to load inventory items');
     } finally {
       setLoading(false);
     }
@@ -176,7 +177,7 @@ function AdminInventory() {
   const fetchStats = async () => {
     if (!selectedPropertyId) return;
     try {
-      const response = await adminService.getInventoryStats();
+      const response = await adminService.getInventoryStats(selectedPropertyId);
       setStats(response.data.stats);
     } catch {
       // Fallback: if endpoint unavailable, at least show pagination total
@@ -189,6 +190,10 @@ function AdminInventory() {
       });
     }
   };
+
+  // Safely compute isLowStock (fallback if virtual not serialized by backend)
+  const itemIsLowStock = (item: InventoryItem): boolean =>
+    item.isLowStock ?? item.quantity <= item.minimumThreshold;
 
   // Load data on mount and filter changes
   useEffect(() => {
@@ -209,9 +214,10 @@ function AdminInventory() {
     try {
       setUpdating(true);
       await adminService.updateInventoryItem(itemId, updates);
+      toast.success('Inventory item updated successfully');
       await Promise.all([fetchItems(), fetchStats()]);
     } catch {
-      // Error handled silently
+      toast.error('Failed to update inventory item');
     } finally {
       setUpdating(false);
     }
@@ -221,11 +227,12 @@ function AdminInventory() {
   const handleCreateItem = async (itemData: Partial<InventoryItem>) => {
     try {
       setUpdating(true);
-      await adminService.createInventoryItem(itemData);
+      await adminService.createInventoryItem({ ...itemData, hotelId: selectedPropertyId });
+      toast.success('Inventory item created successfully');
       await Promise.all([fetchItems(), fetchStats()]);
       setShowCreateModal(false);
     } catch {
-      // Error handled silently
+      toast.error('Failed to create inventory item');
     } finally {
       setUpdating(false);
     }
@@ -247,11 +254,12 @@ function AdminInventory() {
         lastRestocked: new Date().toISOString()
       });
 
+      toast.success('Item restocked successfully');
       await Promise.all([fetchItems(), fetchStats()]);
       setShowRestockModal(false);
       setRestockData({ quantity: 0, costPerUnit: 0 });
     } catch {
-      // Error handled silently
+      toast.error('Failed to restock item');
     } finally {
       setUpdating(false);
     }
@@ -263,9 +271,10 @@ function AdminInventory() {
     try {
       setUpdating(true);
       await adminService.deleteInventoryItem(itemId);
+      toast.success('Inventory item deleted successfully');
       await Promise.all([fetchItems(), fetchStats()]);
     } catch {
-      // Error handled silently
+      toast.error('Failed to delete inventory item');
     } finally {
       setUpdating(false);
     }
@@ -354,11 +363,12 @@ function AdminInventory() {
       });
       
       await Promise.all(promises);
+      toast.success(`${selectedItems.length} items restocked successfully`);
       await Promise.all([fetchItems(), fetchStats()]);
       setSelectedItems([]);
       setShowBulkModal(false);
     } catch {
-      // Error handled silently
+      toast.error('Failed to perform bulk restock');
     } finally {
       setUpdating(false);
     }
@@ -366,6 +376,11 @@ function AdminInventory() {
 
   const handleBulkExport = () => {
     const selectedData = items.filter(item => selectedItems.includes(item._id));
+    if (selectedData.length === 0) {
+      setSelectedItems([]);
+      setShowBulkModal(false);
+      return;
+    }
     const csvData = selectedData.map(item => ({
       Name: item.name,
       SKU: item.sku,
@@ -375,7 +390,7 @@ function AdminInventory() {
       'Cost Per Unit': item.costPerUnit || 0,
       'Min Threshold': item.minimumThreshold,
       'Max Capacity': item.maximumCapacity,
-      'Low Stock': item.isLowStock ? 'Yes' : 'No',
+      'Low Stock': (item.isLowStock ?? item.quantity <= item.minimumThreshold) ? 'Yes' : 'No',
       'Last Restocked': item.lastRestocked ? format(parseISO(item.lastRestocked), 'MMM dd, yyyy') : 'Never',
       'Supplier': item.supplier?.name || '',
       'Location': item.location ? `${item.location.building || ''} ${item.location.floor || ''} ${item.location.room || ''}`.trim() : ''
@@ -393,7 +408,7 @@ function AdminInventory() {
     a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
-    
+
     setSelectedItems([]);
     setShowBulkModal(false);
   };
@@ -441,7 +456,7 @@ function AdminInventory() {
         }
         acc[item.supplier.name].items += 1;
         acc[item.supplier.name].totalValue += (item.costPerUnit || 0) * item.quantity;
-        if (item.isLowStock) {
+        if (itemIsLowStock(item)) {
           acc[item.supplier.name].lowStockItems += 1;
         }
       }
@@ -449,7 +464,7 @@ function AdminInventory() {
     }, {} as { [key: string]: { items: number; totalValue: number; lowStockItems: number } });
 
     const lowStockAlerts = items
-      .filter(item => item.isLowStock)
+      .filter(item => itemIsLowStock(item))
       .map(item => ({
         id: item._id,
         name: item.name,
@@ -475,7 +490,7 @@ function AdminInventory() {
       summary: {
         totalItems: stats?.total ?? items.length,
         totalValue: stats?.totalValue ?? items.reduce((sum, item) => sum + (item.costPerUnit || 0) * item.quantity, 0),
-        lowStockItems: stats?.lowStock ?? items.filter(item => item.isLowStock).length,
+        lowStockItems: stats?.lowStock ?? items.filter(item => itemIsLowStock(item)).length,
         outOfStockItems: stats?.outOfStock ?? items.filter(item => item.quantity === 0).length
       },
       categoryBreakdown: Object.entries(stats?.categories ?? analyticsData.categoryDistribution).map(([category, count]) => ({
@@ -579,13 +594,6 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
     return colors[category as keyof typeof colors] || 'bg-gray-500';
   };
 
-  const getStockLevelColor = (item: InventoryItem) => {
-    const percentage = item.maximumCapacity > 0 ? (item.quantity / item.maximumCapacity) * 100 : 0;
-    if (percentage <= 20) return 'text-red-600';
-    if (percentage <= 50) return 'text-yellow-600';
-    return 'text-green-600';
-  };
-
   const getUrgencyIcon = (urgency: string) => {
     switch (urgency) {
       case 'critical':
@@ -644,14 +652,14 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
               <span className="font-medium">{value} {row.unit}</span>
-              {row.isLowStock && (
+              {itemIsLowStock(row) && (
                 <AlertTriangle className="h-4 w-4 text-yellow-500" />
               )}
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
+              <div
                 className={`h-2 rounded-full ${
-                  row.isLowStock ? 'bg-yellow-500' : 'bg-green-500'
+                  itemIsLowStock(row) ? 'bg-yellow-500' : 'bg-green-500'
                 }`}
                 style={{ 
                   width: `${row.maximumCapacity > 0 ? Math.min((value / row.maximumCapacity) * 100, 100) : 0}%`
@@ -741,6 +749,21 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
       align: 'center' as const
     }
   ];
+
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
+        <div className="p-6 max-w-7xl mx-auto">
+          <PropertyBreadcrumb items={['Inventory']} />
+          <div className="text-center py-12">
+            <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+            <p className="text-gray-500">Please select a property to view inventory management.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 relative overflow-hidden">
@@ -1124,7 +1147,8 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                 ].map((tab) => {
                   const Icon = tab.icon;
                   return (
-                    <button aria-label="Close"
+                    <button
+                      aria-label={tab.name}
                       key={tab.id}
                       onClick={() => setActiveAnalyticsTab(tab.id as typeof activeAnalyticsTab)}
                       className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -1170,18 +1194,18 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                     </CardContent>
                   </Card>
 
-                  {/* Category Distribution */}
+                  {/* Category Distribution - prefer server-side stats when available */}
                   <Card>
                     <CardHeader>
                       <CardTitle>Category Distribution</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {Object.entries(analyticsData.categoryDistribution).map(([category, count]) => (
+                        {Object.entries(stats?.categories ?? analyticsData.categoryDistribution).map(([category, count]) => (
                           <div key={category} className="flex items-center justify-between">
                             <div className="flex items-center">
                               <div className={`w-3 h-3 rounded-full mr-2 ${getCategoryColor(category)}`}></div>
-                              <span className="text-sm capitalize">{category}</span>
+                              <span className="text-sm capitalize">{category.replace('_', ' ')}</span>
                             </div>
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium">{count}</span>
@@ -1616,7 +1640,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                     setShowEditModal(false);
                   }
                 }}
-                disabled={updating || !formData.name || !formData.sku || formData.costPerUnit < 0 || formData.maximumCapacity < 0}
+                disabled={updating || !formData.name.trim() || !formData.sku.trim() || formData.costPerUnit < 0 || formData.maximumCapacity < 1 || formData.minimumThreshold < 0 || formData.maximumCapacity < formData.minimumThreshold}
               >
                 <Save className="h-4 w-4 mr-2" />
                 {showCreateModal ? 'Create Item' : 'Update Item'}
@@ -1656,7 +1680,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                   <div className="flex items-center mt-1">
                     <Package className="h-4 w-4 text-gray-400 mr-2" />
                     <span className="font-medium">{selectedItem.quantity} {selectedItem.unit}</span>
-                    {selectedItem.isLowStock && (
+                    {itemIsLowStock(selectedItem) && (
                       <AlertTriangle className="h-4 w-4 text-yellow-500 ml-2" />
                     )}
                   </div>
@@ -1668,7 +1692,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                     <div className="w-full bg-gray-200 rounded-full h-3">
                       <div 
                         className={`h-3 rounded-full ${
-                          selectedItem.isLowStock ? 'bg-yellow-500' : 'bg-green-500'
+                          itemIsLowStock(selectedItem) ? 'bg-yellow-500' : 'bg-green-500'
                         }`}
                         style={{ 
                           width: `${selectedItem.maximumCapacity > 0 ? Math.min((selectedItem.quantity / selectedItem.maximumCapacity) * 100, 100) : 0}%`

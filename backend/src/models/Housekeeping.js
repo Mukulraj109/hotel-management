@@ -195,8 +195,17 @@ housekeepingSchema.post('save', async function(doc) {
       );
     }
 
-    // 4. Cleaning completed
+    // 4. Cleaning completed — update room status to vacant/clean
     if (doc.isModified('status') && doc.status === 'completed') {
+      // Update the room status back to vacant (clean and available)
+      try {
+        await mongoose.model('Room').findByIdAndUpdate(doc.roomId, {
+          $set: { status: 'vacant', lastCleaned: new Date() }
+        });
+      } catch (roomUpdateErr) {
+        console.error('Failed to update room status after cleaning:', roomUpdateErr.message);
+      }
+
       await NotificationAutomationService.triggerNotification(
         'cleaning_completed',
         {

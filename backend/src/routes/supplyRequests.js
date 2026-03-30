@@ -154,8 +154,6 @@ router.post('/', authorizePolicy('supplyRequests', 'staffAccess'), validate(muta
  */
 router.get('/', catchAsync(async (req, res) => {
   const {
-    page = 1,
-    limit = 20,
     status,
     department,
     priority,
@@ -165,17 +163,21 @@ router.get('/', catchAsync(async (req, res) => {
     endDate
   } = req.query;
 
+  const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
   const query = {};
 
-  // Role-based filtering
-  if (req.user.role === 'staff') {
-    query.hotelId = req.user.hotelId;
-    // Staff can only see their own requests or requests they can approve
-    if (req.user.role !== 'manager') {
-      query.requestedBy = req.user._id;
-    }
-  } else if (req.user.role === 'admin' && req.query.hotelId) {
+  // Tenant isolation: always scope by hotelId
+  if (req.user.role === 'admin' && req.query.hotelId) {
     query.hotelId = req.query.hotelId;
+  } else if (req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
+
+  // Staff (non-manager) can only see their own requests
+  if (req.user.role === 'staff') {
+    query.requestedBy = req.user._id;
   }
 
   // Apply filters
@@ -198,16 +200,17 @@ router.get('/', catchAsync(async (req, res) => {
     query.status = { $in: ['pending', 'approved', 'ordered', 'partial_received'] };
   }
 
-  const skip = (page - 1) * limit;
-  
+  const skip = (pageNum - 1) * limitNum;
+
   const [requests, total] = await Promise.all([
     SupplyRequest.find(query)
       .populate('hotelId', 'name')
-      .populate('requestedBy', 'name department')
+      .populate('requestedBy', 'name email department')
       .populate('approvedBy', 'name')
       .sort('-createdAt')
       .skip(skip)
-      .limit(parseInt(limit)),
+      .limit(limitNum)
+      .lean(),
     SupplyRequest.countDocuments(query)
   ]);
 
@@ -216,10 +219,10 @@ router.get('/', catchAsync(async (req, res) => {
     data: {
       requests,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / limitNum) || 1
       }
     }
   });
@@ -763,8 +766,8 @@ router.post('/:id/items/:itemIndex/receive', authorizePolicy('supplyRequests', '
   const { receivedQuantity, condition, actualCost, invoiceNumber, notes } = req.body;
   const { itemIndex } = req.params;
   
-  const supplyRequest = await SupplyRequest.findById(req.params.id).lean();
-  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);
   }

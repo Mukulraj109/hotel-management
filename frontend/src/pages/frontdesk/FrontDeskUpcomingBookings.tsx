@@ -6,29 +6,24 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { adminService } from '../../services/adminService';
 import { AdminBooking } from '../../types/admin';
-import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
-import { format, parseISO, isToday, isTomorrow, addDays } from 'date-fns';
+import { formatCurrency } from '../../utils/dashboardUtils';
+import { format, parseISO, isToday, isTomorrow, isValid } from 'date-fns';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
-import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { realTimeService } from '../../services/realTimeService';
 import {
   Calendar,
   Users,
   Clock,
   CheckCircle,
   Eye,
-  UserCheck,
-  Filter,
   RefreshCw,
   CalendarDays,
-  MapPin,
   Phone,
   Mail,
   CreditCard,
-  Building,
   Search,
   Edit
 } from 'lucide-react';
@@ -40,7 +35,6 @@ interface UpcomingBookingsStats {
 }
 
 function FrontDeskUpcomingBookings() {
-  const { user } = useAuth();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<UpcomingBookingsStats>({
     todayArrivals: 0,
@@ -76,7 +70,12 @@ function FrontDeskUpcomingBookings() {
 
       setBookings(response.data || []);
       setStats(response.stats || { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 });
-      setPagination(response.pagination || { current: 1, pages: 1, total: 0 });
+      const paginationData = response.pagination;
+      setPagination({
+        current: paginationData?.page ?? paginationData?.current ?? 1,
+        pages: paginationData?.pages ?? 1,
+        total: paginationData?.total ?? 0
+      });
     } catch (error) {
       toast.error('Failed to load upcoming bookings');
     } finally {
@@ -86,6 +85,31 @@ function FrontDeskUpcomingBookings() {
 
   useEffect(() => {
     fetchUpcomingBookings();
+  }, [filters.days, filters.page]);
+
+  // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
+  // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
+  useEffect(() => {
+    realTimeService.connect().catch(() => { /* WebSocket unavailable -- page still works */ });
+  }, []);
+
+  // Real-time: listen for booking events so guest actions reflect immediately
+  useEffect(() => {
+    const handleBookingEvent = () => {
+      fetchUpcomingBookings();
+    };
+
+    realTimeService.on('booking:created', handleBookingEvent);
+    realTimeService.on('booking:updated', handleBookingEvent);
+    realTimeService.on('booking_cancelled', handleBookingEvent);
+    realTimeService.on('booking:modification_requested', handleBookingEvent);
+
+    return () => {
+      realTimeService.off('booking:created', handleBookingEvent);
+      realTimeService.off('booking:updated', handleBookingEvent);
+      realTimeService.off('booking_cancelled', handleBookingEvent);
+      realTimeService.off('booking:modification_requested', handleBookingEvent);
+    };
   }, [filters.days, filters.page]);
 
   // Filter bookings by search term and remove invalid entries
@@ -107,12 +131,29 @@ function FrontDeskUpcomingBookings() {
       );
     });
 
+  // Safely format a date string; returns fallback on invalid input
+  const safeFormatDate = (dateStr: string | undefined | null, formatStr: string, fallback = 'N/A'): string => {
+    if (!dateStr) return fallback;
+    try {
+      const date = parseISO(dateStr);
+      if (!isValid(date)) return fallback;
+      return format(date, formatStr);
+    } catch {
+      return fallback;
+    }
+  };
+
   // Get arrival date info
   const getArrivalInfo = (checkIn: string) => {
-    const date = parseISO(checkIn);
-    if (isToday(date)) return { label: 'Today', color: 'bg-red-100 text-red-800' };
-    if (isTomorrow(date)) return { label: 'Tomorrow', color: 'bg-orange-100 text-orange-800' };
-    return { label: format(date, 'MMM dd'), color: 'bg-gray-100 text-gray-800' };
+    try {
+      const date = parseISO(checkIn);
+      if (!isValid(date)) return { label: 'N/A', color: 'bg-gray-100 text-gray-800' };
+      if (isToday(date)) return { label: 'Today', color: 'bg-red-100 text-red-800' };
+      if (isTomorrow(date)) return { label: 'Tomorrow', color: 'bg-orange-100 text-orange-800' };
+      return { label: format(date, 'MMM dd'), color: 'bg-gray-100 text-gray-800' };
+    } catch {
+      return { label: 'N/A', color: 'bg-gray-100 text-gray-800' };
+    }
   };
 
   // Table columns for upcoming bookings
@@ -132,7 +173,7 @@ function FrontDeskUpcomingBookings() {
               {info.label}
             </span>
             <span className="text-xs text-gray-500 mt-1">
-              {format(parseISO(booking.checkIn), 'MMM dd, yyyy')}
+              {safeFormatDate(booking.checkIn, 'MMM dd, yyyy')}
             </span>
           </div>
         );
@@ -153,7 +194,7 @@ function FrontDeskUpcomingBookings() {
             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
               <Users className="h-3 w-3" />
               <span>{booking.guestDetails?.adults || 1} adults</span>
-              {booking.guestDetails?.children > 0 && (
+              {(booking.guestDetails?.children ?? 0) > 0 && (
                 <span>, {booking.guestDetails.children} children</span>
               )}
               {booking.extraPersons && booking.extraPersons.length > 0 && (
@@ -233,8 +274,7 @@ function FrontDeskUpcomingBookings() {
             </span>
             <StatusBadge
               status={booking.paymentStatus || 'unknown'}
-              variant={booking.paymentStatus === 'paid' ? 'success' :
-                       booking.paymentStatus === 'pending' ? 'warning' : 'error'}
+              showIcon
             />
           </div>
         );
@@ -251,8 +291,7 @@ function FrontDeskUpcomingBookings() {
         return (
           <StatusBadge
             status={booking.status || 'unknown'}
-            variant={booking.status === 'confirmed' ? 'success' :
-                     booking.status === 'pending' ? 'warning' : 'default'}
+            showIcon
           />
         );
       }
@@ -317,14 +356,14 @@ function FrontDeskUpcomingBookings() {
                   <span className="text-xs text-gray-600 whitespace-nowrap">Extra charges:</span>
                   {hasUnpaidCharges ? (
                     <span className="bg-red-50 text-red-700 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                      ₹{totalUnpaidCharges.toLocaleString()} Due
+                      {formatCurrency(totalUnpaidCharges, booking.currency || 'INR')} Due
                     </span>
                   ) : (
                     (() => {
                       const totalPaidAmount = extraPersonCharges.reduce((sum, charge) => sum + (charge.paidAmount || 0), 0);
                       return (
                         <span className="bg-green-50 text-green-700 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                          ₹{totalPaidAmount.toLocaleString()} Paid ✓
+                          {formatCurrency(totalPaidAmount, booking.currency || 'INR')} Paid
                         </span>
                       );
                     })()
@@ -338,7 +377,7 @@ function FrontDeskUpcomingBookings() {
                       setSelectedBookingForEdit(booking);
                       setIsEditModalOpen(true);
                     }}
-                    title={`Pay ₹${totalUnpaidCharges.toLocaleString()} for extra person charges`}
+                    title={`Pay ${formatCurrency(totalUnpaidCharges, booking.currency || 'INR')} for extra person charges`}
                   >
                     <CreditCard className="h-3 w-3 mr-1" />
                     Proceed Payment
@@ -360,11 +399,11 @@ function FrontDeskUpcomingBookings() {
                       <span className="text-xs text-gray-600 whitespace-nowrap">Settlement:</span>
                       {hasSettlement ? (
                         <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                          ₹{settlement.outstandingBalance.toLocaleString()} Outstanding
+                          {formatCurrency(settlement.outstandingBalance, booking.currency || 'INR')} Outstanding
                         </span>
                       ) : (
                         <span className="bg-green-50 text-green-700 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                          ₹{settlement?.finalAmount?.toLocaleString() || 0} Settled ✓
+                          {formatCurrency(settlement?.finalAmount ?? 0, booking.currency || 'INR')} Settled
                         </span>
                       )}
                     </div>
@@ -376,7 +415,7 @@ function FrontDeskUpcomingBookings() {
                           setSelectedBookingForEdit(booking);
                           setIsEditModalOpen(true);
                         }}
-                        title={`Pay ₹${settlement.outstandingBalance.toLocaleString()} settlement amount`}
+                        title={`Pay ${formatCurrency(settlement.outstandingBalance, booking.currency || 'INR')} settlement amount`}
                       >
                         <CreditCard className="h-3 w-3 mr-1" />
                         Pay Settlement
@@ -554,19 +593,19 @@ function FrontDeskUpcomingBookings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Name:</span>
-                    <p className="font-medium">{selectedBooking.userId?.name}</p>
+                    <p className="font-medium">{selectedBooking.userId?.name || 'Unknown'}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Email:</span>
-                    <p className="font-medium">{selectedBooking.userId?.email}</p>
+                    <p className="font-medium">{selectedBooking.userId?.email || 'N/A'}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Phone:</span>
-                    <p className="font-medium">{selectedBooking.userId?.phone}</p>
+                    <p className="font-medium">{selectedBooking.userId?.phone || 'N/A'}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Booking Number:</span>
-                    <p className="font-medium">{selectedBooking.bookingNumber}</p>
+                    <p className="font-medium">{selectedBooking.bookingNumber || 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -577,21 +616,21 @@ function FrontDeskUpcomingBookings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Check-in:</span>
-                    <p className="font-medium">{format(parseISO(selectedBooking.checkIn), 'PPP')}</p>
+                    <p className="font-medium">{safeFormatDate(selectedBooking.checkIn, 'PPP')}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Check-out:</span>
-                    <p className="font-medium">{format(parseISO(selectedBooking.checkOut), 'PPP')}</p>
+                    <p className="font-medium">{safeFormatDate(selectedBooking.checkOut, 'PPP')}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Nights:</span>
-                    <p className="font-medium">{selectedBooking.nights}</p>
+                    <p className="font-medium">{selectedBooking.nights ?? 'N/A'}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Guests:</span>
                     <p className="font-medium">
                       {selectedBooking.guestDetails?.adults || 1} adults
-                      {selectedBooking.guestDetails?.children > 0 && `, ${selectedBooking.guestDetails.children} children`}
+                      {(selectedBooking.guestDetails?.children ?? 0) > 0 && `, ${selectedBooking.guestDetails.children} children`}
                     </p>
                   </div>
                 </div>
@@ -600,12 +639,12 @@ function FrontDeskUpcomingBookings() {
               {/* Room Information */}
               <div>
                 <h3 className="font-semibold text-gray-900 mb-3">Room Information</h3>
-                {selectedBooking.rooms?.length > 0 ? (
+                {(selectedBooking.rooms?.length ?? 0) > 0 ? (
                   <div className="space-y-2">
                     {selectedBooking.rooms.map((room, idx) => (
                       <div key={idx} className="flex justify-between items-center bg-gray-50 p-3 rounded">
-                        <span className="font-medium">{room.roomId?.roomNumber}</span>
-                        <span className="text-gray-600">{formatCurrency(room.rate, selectedBooking.currency)}/night</span>
+                        <span className="font-medium">{room.roomId?.roomNumber || `Room ${idx + 1}`}</span>
+                        <span className="text-gray-600">{formatCurrency(room.rate ?? 0, selectedBooking.currency || 'INR')}/night</span>
                       </div>
                     ))}
                   </div>
@@ -620,22 +659,20 @@ function FrontDeskUpcomingBookings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Total Amount:</span>
-                    <p className="font-medium text-lg">{formatCurrency(selectedBooking.totalAmount, selectedBooking.currency)}</p>
+                    <p className="font-medium text-lg">{formatCurrency(selectedBooking.totalAmount ?? 0, selectedBooking.currency || 'INR')}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Payment Status:</span>
                     <StatusBadge
-                      status={selectedBooking.paymentStatus}
-                      variant={selectedBooking.paymentStatus === 'paid' ? 'success' :
-                               selectedBooking.paymentStatus === 'pending' ? 'warning' : 'error'}
+                      status={selectedBooking.paymentStatus || 'unknown'}
+                      showIcon
                     />
                   </div>
                   <div>
                     <span className="text-gray-600">Booking Status:</span>
                     <StatusBadge
-                      status={selectedBooking.status}
-                      variant={selectedBooking.status === 'confirmed' ? 'success' :
-                               selectedBooking.status === 'pending' ? 'warning' : 'default'}
+                      status={selectedBooking.status || 'unknown'}
+                      showIcon
                     />
                   </div>
                 </div>

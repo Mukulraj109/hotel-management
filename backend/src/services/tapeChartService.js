@@ -16,6 +16,38 @@ const {
   RoomAssignmentRules 
 } = TapeChart;
 
+/**
+ * Safely convert a value to a mongoose ObjectId string.
+ * Handles ObjectId instances, populated objects with _id, and plain strings.
+ * Returns the string representation or null if invalid.
+ */
+function safeObjectIdString(val) {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    return mongoose.Types.ObjectId.isValid(val) ? val : null;
+  }
+  if (val instanceof mongoose.Types.ObjectId || val?.constructor?.name === 'ObjectId') {
+    return val.toString();
+  }
+  if (typeof val === 'object' && val._id != null) {
+    return safeObjectIdString(val._id);
+  }
+  return null;
+}
+
+/**
+ * Safely create a new mongoose ObjectId from a value.
+ * Validates and normalizes the input first.
+ * Throws a descriptive error if the value is not a valid ObjectId.
+ */
+function toObjectId(val, fieldName = 'id') {
+  const str = safeObjectIdString(val);
+  if (!str) {
+    throw new Error(`Invalid ${fieldName}: expected a valid 24-character hex ObjectId but received ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`);
+  }
+  return new mongoose.Types.ObjectId(str);
+}
+
 class TapeChartService {
   // Room Configuration Management
   async createRoomConfiguration(configData) {
@@ -553,7 +585,7 @@ class TapeChartService {
     }
   }
 
-  async getTapeChartViews(userId) {
+  async getTapeChartViews(userId, hotelId) {
     try {
       let views = await TapeChartView.find({
         $or: [
@@ -623,16 +655,47 @@ class TapeChartService {
   }
 
   // Generate Tape Chart Data
-  async generateTapeChartData(viewId, dateRange) {
+  async generateTapeChartData(viewId, dateRange, hotelId) {
     try {
-      const view = await TapeChartView.findById(viewId).lean();
+      // Validate viewId — frontend may send synthetic IDs like 'default-week' or 'fallback-view'
+      const isValidViewId = mongoose.Types.ObjectId.isValid(viewId);
+      let view = null;
+      if (isValidViewId) {
+        view = await TapeChartView.findById(viewId).lean();
+      }
+      // If view not found (invalid id or missing in DB), use a default config
       if (!view) {
-        throw new Error('Tape chart view not found');
+        view = {
+          _id: viewId,
+          viewName: 'Default View',
+          viewType: 'daily',
+          dateRange: { defaultDays: 7 },
+          displaySettings: {
+            showWeekends: true,
+            colorCoding: {
+              available: '#10B981',
+              occupied: '#EF4444',
+              reserved: '#F59E0B',
+              maintenance: '#8B5CF6',
+              out_of_order: '#6B7280',
+              dirty: '#F97316',
+              clean: '#06B6D4'
+            },
+            roomSorting: 'floor',
+            showGuestNames: true,
+          },
+          filters: {},
+          isSystemDefault: true
+        };
       }
 
       const startDate = new Date(dateRange.startDate);
       const endDate = new Date(dateRange.endDate);
-      
+
+      // Build hotelId filter for tenant isolation
+      const hotelIdStr = safeObjectIdString(hotelId);
+      const hotelFilter = hotelIdStr ? { hotelId: hotelIdStr } : {};
+
       // Get room configurations
       let roomConfigs = await this.getRoomConfigurations({
         isActive: true,
@@ -641,7 +704,7 @@ class TapeChartService {
 
       // If no room configurations exist, create them from existing rooms
       if (!roomConfigs || roomConfigs.length === 0) {
-        const rooms = await Room.find({ isActive: true }).sort({ roomNumber: 1 }).lean().limit(1000);
+        const rooms = await Room.find({ ...hotelFilter, isActive: true }).sort({ roomNumber: 1 }).lean().limit(1000);
         roomConfigs = [];
 
         for (const room of rooms) {
@@ -673,6 +736,7 @@ class TapeChartService {
 
       // Get ALL bookings for the date range (don't filter by status in database)
       const allBookings = await Booking.find({
+        ...hotelFilter,
         $or: [
           {
             checkIn: { $gte: startDate, $lte: endDate }
@@ -690,11 +754,11 @@ class TapeChartService {
       .populate('userId', 'name email phone').lean().limit(1000);
 
       
-      // Filter bookings by status in application logic - INCLUDE ALL ACTIVE statuses for TapeChart
+      // Filter bookings by status — only show ACTIVE bookings on tape chart
+      // Checked-out bookings should NOT occupy grid cells (room is now available)
       const bookings = allBookings.filter(booking => {
-        // Include all non-cancelled bookings for tape chart display
-        const isValidStatus = ['confirmed', 'checked_in', 'pending', 'modified', 'checked_out'].includes(booking.status);
-        return isValidStatus;
+        const isActiveStatus = ['confirmed', 'checked_in', 'pending', 'modified'].includes(booking.status);
+        return isActiveStatus;
       });
 
 
@@ -727,6 +791,7 @@ class TapeChartService {
       const roomNumbers = roomConfigs.filter(c => c.roomNumber).map(c => c.roomNumber);
       const roomIds = roomConfigs.filter(c => c.roomId).map(c => c.roomId);
       const allRooms = await Room.find({
+        ...hotelFilter,
         $or: [
           ...(roomNumbers.length > 0 ? [{ roomNumber: { $in: roomNumbers } }] : []),
           ...(roomIds.length > 0 ? [{ _id: { $in: roomIds } }] : [])
@@ -736,43 +801,105 @@ class TapeChartService {
       const roomByNumber = new Map(allRooms.map(r => [r.roomNumber, r]));
       const roomById = new Map(allRooms.map(r => [r._id.toString(), r]));
 
+      // Track rooms with stale "occupied" status for batch DB correction
+      let staleOccupiedRoomIds = [];
+
       // Process each room
       for (const config of roomConfigs) {
         const room = roomByNumber.get(config.roomNumber) || roomById.get(config.roomId?.toString());
         if (!room) continue;
 
-        const roomBookings = bookings.filter(b => b.rooms && b.rooms.some(r => r.roomId && r.roomId._id.toString() === room._id.toString()));
-        const roomBlocks = blocks.filter(b => b.rooms.some(r => r.roomId.toString() === room._id.toString()));
+        // Sync config roomType with actual Room model to prevent stale data
+        if (room.type && config.roomType !== room.type) {
+          config.roomType = room.type;
+        }
+
+        // Match bookings to this room — handle both populated objects and raw ObjectIds,
+        // and fall back to roomNumber matching for resilience
+        const roomIdStr = room._id.toString();
+        const roomNum = room.roomNumber || config.roomNumber;
+        const roomBookings = bookings.filter(b => b.rooms && b.rooms.some(r => {
+          // Match by roomId (populated object or raw ObjectId)
+          if (r.roomId) {
+            if (typeof r.roomId === 'object' && r.roomId._id) {
+              if (r.roomId._id.toString() === roomIdStr) return true;
+              // Also match by populated roomNumber
+              if (roomNum && r.roomId.roomNumber === roomNum) return true;
+            } else {
+              if (r.roomId.toString() === roomIdStr) return true;
+            }
+          }
+          // Fallback: match by roomNumber field on the booking room entry
+          if (roomNum && r.roomNumber === roomNum) return true;
+          return false;
+        }));
+        const roomBlocks = blocks.filter(b => b.rooms.some(r => {
+          if (!r.roomId) return false;
+          if (typeof r.roomId === 'object' && r.roomId._id) {
+            return r.roomId._id.toString() === roomIdStr;
+          }
+          return r.roomId.toString() === roomIdStr;
+        }));
         
+
+        // Determine if the room has an active (checked_in) booking covering today
+        const now = new Date();
+        const todayStartForStatus = new Date();
+        todayStartForStatus.setUTCHours(0, 0, 0, 0);
+
+        const hasActiveBookingToday = roomBookings.some(booking => {
+          if (booking.status === 'checked_out' || booking.status === 'cancelled') return false;
+          if (!['checked_in'].includes(booking.status)) return false;
+          const checkIn = new Date(booking.checkIn);
+          const checkOut = new Date(booking.checkOut);
+          return checkIn <= now && checkOut >= todayStartForStatus;
+        });
+
+        // Fix stale status: if room.status is "occupied" but no active booking covers today,
+        // the status is stale and should be treated as "available"
+        let correctedCurrentStatus = this.mapRoomStatusToTapeChart(room.status);
+        if (room.status === 'occupied' && !hasActiveBookingToday) {
+          correctedCurrentStatus = 'available';
+          // Track this room for batch DB correction
+          staleOccupiedRoomIds.push(room._id);
+        }
 
         const roomData = {
           config,
           room,
           timeline: [],
-          currentStatus: this.mapRoomStatusToTapeChart(room.status),
+          currentStatus: correctedCurrentStatus,
           bookings: roomBookings,
           blocks: roomBlocks
         };
 
-        // Generate timeline for date range
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        // Generate timeline for date range (use UTC methods to avoid timezone drift)
+        for (let d = new Date(startDate); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0];
+          // Normalize loop date to UTC midnight for reliable comparison
+          const dayStart = new Date(d);
+          dayStart.setUTCHours(0, 0, 0, 0);
+
           const dayBooking = roomData.bookings.find(b => {
             const bookingCheckIn = new Date(b.checkIn);
             const bookingCheckOut = new Date(b.checkOut);
 
-            // Set times to handle date comparisons properly
-            bookingCheckIn.setHours(0, 0, 0, 0);
-            bookingCheckOut.setHours(23, 59, 59, 999);
+            // Normalize to UTC to avoid timezone mismatch with ISO date strings
+            bookingCheckIn.setUTCHours(0, 0, 0, 0);
+            bookingCheckOut.setUTCHours(23, 59, 59, 999);
 
             // Include both check-in and check-out dates in the booking display
             // For Sep 23-25 booking: show on Sep 23, 24, and 25
-            return bookingCheckIn <= d && bookingCheckOut >= d;
+            return bookingCheckIn <= dayStart && bookingCheckOut >= dayStart;
           });
 
-          const dayBlock = roomData.blocks.find(b =>
-            new Date(b.startDate) <= d && new Date(b.endDate) >= d
-          );
+          const dayBlock = roomData.blocks.find(b => {
+            const blockStart = new Date(b.startDate);
+            const blockEnd = new Date(b.endDate);
+            blockStart.setUTCHours(0, 0, 0, 0);
+            blockEnd.setUTCHours(23, 59, 59, 999);
+            return blockStart <= dayStart && blockEnd >= dayStart;
+          });
 
           let status = 'available';
           let guestName = null;
@@ -783,7 +910,9 @@ class TapeChartService {
             status = dayBooking.status === 'checked_in' ? 'occupied' : 'reserved';
             guestName = dayBooking.userId?.name || 'Unknown Guest';
             bookingId = dayBooking._id;
-            rate = dayBooking.totalAmount / ((new Date(dayBooking.checkOut) - new Date(dayBooking.checkIn)) / (1000 * 60 * 60 * 24));
+            const stayDurationMs = new Date(dayBooking.checkOut) - new Date(dayBooking.checkIn);
+            const stayNights = stayDurationMs / (1000 * 60 * 60 * 24);
+            rate = stayNights > 0 ? dayBooking.totalAmount / stayNights : dayBooking.totalAmount || 0;
           } else if (dayBlock) {
             status = 'blocked';
             guestName = dayBlock.groupName;
@@ -801,9 +930,9 @@ class TapeChartService {
             gender: dayBooking ? this.inferGuestGender(dayBooking.userId?.name) : null,
             bookingType: dayBooking ? this.inferBookingType(dayBooking) : null,
             aiPrediction: status === 'available' ? {
-              demandLevel: this.calculateDemandLevel(d, bookings),
-              profitabilityScore: this.calculateProfitabilityScore(room, d),
-              recommendedRate: this.calculateRecommendedRate(room, d),
+              demandLevel: this.calculateDemandLevel(dayStart, bookings),
+              profitabilityScore: this.calculateProfitabilityScore(room, dayStart),
+              recommendedRate: this.calculateRecommendedRate(room, dayStart),
               confidence: 85 // Static confidence for now
             } : null,
             preferences: dayBooking ? this.extractGuestPreferences(dayBooking) : null,
@@ -813,41 +942,11 @@ class TapeChartService {
 
         chartData.rooms.push(roomData);
 
-        // Update summary based on the actual current room status
-        const mappedStatus = this.mapRoomStatusToTapeChart(room.status);
-        
-        // Check if room has current booking to override status
-        let finalStatus = mappedStatus;
-        const now = new Date();
-        const todayStart = new Date();
-        todayStart.setUTCHours(0, 0, 0, 0);
-
-        const hasCurrentBooking = roomBookings.some(booking => {
-          const checkIn = new Date(booking.checkIn);
-          const checkOut = new Date(booking.checkOut);
-
-          // A booking is current if:
-          // 1. It has an ACTIVE status (not checked_out or cancelled) - PRIORITY
-          // 2. It's within the current date range (checkIn <= now AND checkOut >= start of today)
-          const hasActiveStatus = ['checked_in'].includes(booking.status);
-          const isWithinDateRange = checkIn <= now && checkOut >= todayStart; // Use start of day like Admin Dashboard
-          
-          // If status is checked_out or cancelled, it's never current regardless of dates
-          // This handles manual checkouts even before the scheduled checkout time
-          if (booking.status === 'checked_out' || booking.status === 'cancelled') {
-            return false;
-          }
-          
-          const isCurrentBooking = hasActiveStatus && isWithinDateRange;
-          
-          
-          if (isCurrentBooking) {
-          }
-          
-          return isCurrentBooking;
-        });
-        
-        if (hasCurrentBooking) {
+        // Update summary based on booking-aware corrected status
+        // Use correctedCurrentStatus which already accounts for stale "occupied" rooms,
+        // and override to 'occupied' only if there is a verified active booking today
+        let finalStatus = correctedCurrentStatus;
+        if (hasActiveBookingToday) {
           finalStatus = 'occupied';
         }
 
@@ -869,6 +968,20 @@ class TapeChartService {
             chartData.summary.dirtyRooms++;
             break;
         }
+      }
+
+      // Self-healing: batch-update stale "occupied" rooms back to "vacant" in the DB
+      // Fire-and-forget to avoid blocking the response
+      if (staleOccupiedRoomIds.length > 0) {
+        logger.info(`Fixing ${staleOccupiedRoomIds.length} stale occupied room(s): ${staleOccupiedRoomIds.map(id => id.toString()).join(', ')}`);
+        Room.updateMany(
+          { _id: { $in: staleOccupiedRoomIds } },
+          { $set: { status: 'vacant' } }
+        ).then(result => {
+          logger.info(`Self-healed ${result.modifiedCount} stale occupied room(s) to vacant`);
+        }).catch(err => {
+          logger.error('Failed to self-heal stale occupied rooms:', err);
+        });
       }
 
       // Recalculate available rooms based on corrected occupied count
@@ -1885,7 +1998,7 @@ class TapeChartService {
       // Count room blocks that will be released in the next 7 days
       const { RoomBlock } = TapeChart;
       const upcomingReleases = await RoomBlock.countDocuments({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         releaseDate: { $gte: date, $lte: sevenDaysFromNow },
         status: 'active'
       });
@@ -1900,7 +2013,7 @@ class TapeChartService {
   async getWaitlistCount(hotelId) {
     try {
       const count = await WaitingList.countDocuments({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         status: { $in: ['waiting', 'active'] }
       });
       return count;
@@ -1914,14 +2027,14 @@ class TapeChartService {
     try {
       // Get available rooms for the requested dates
       const waitlistEntries = await WaitingList.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         status: { $in: ['waiting', 'active'] }
       }).lean().limit(1000);
 
       // Batch: get counts for all room types at once using aggregation
       const roomTypes = [...new Set(waitlistEntries.map(e => e.roomType))];
       const vacantCounts = await Room.aggregate([
-        { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), type: { $in: roomTypes }, status: 'vacant' } },
+        { $match: { hotelId: toObjectId(hotelId, 'hotelId'), type: { $in: roomTypes }, status: 'vacant' } },
         { $group: { _id: '$type', count: { $sum: 1 } } }
       ]);
       const vacantByType = new Map(vacantCounts.map(v => [v._id, v.count]));
@@ -1944,7 +2057,7 @@ class TapeChartService {
     try {
       // Get current bookings for today that could be upgraded
       const todayBookings = await Booking.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         checkIn: { $lte: date },
         checkOut: { $gte: date },
         status: { $in: ['confirmed', 'checked_in'] }
@@ -1952,7 +2065,7 @@ class TapeChartService {
 
       // Get available higher-tier rooms for upgrades
       const availableUpgradeRooms = await Room.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         status: 'vacant'
       }).lean().limit(1000);
 
@@ -2000,7 +2113,7 @@ class TapeChartService {
       endDate.setHours(23, 59, 59, 999);
 
       const bookings = await Booking.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         checkIn: { $lte: endDate },
         checkOut: { $gte: startDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
@@ -2024,7 +2137,7 @@ class TapeChartService {
       const adr = await this.calculateADR(hotelId, date);
 
       const totalRooms = await Room.countDocuments({
-        hotelId: new mongoose.Types.ObjectId(hotelId)
+        hotelId: toObjectId(hotelId, 'hotelId')
       });
 
       const startDate = new Date(date);
@@ -2033,7 +2146,7 @@ class TapeChartService {
       endDate.setHours(23, 59, 59, 999);
 
       const occupiedRooms = await Booking.countDocuments({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         checkIn: { $lte: endDate },
         checkOut: { $gte: startDate },  // Include bookings checking out on start date
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
@@ -2051,7 +2164,7 @@ class TapeChartService {
     try {
       // Get recent bookings and room status changes
       const recentBookings = await Booking.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
+        hotelId: toObjectId(hotelId, 'hotelId'),
         createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } // Last 2 hours
       }).sort({ createdAt: -1 }).limit(5).populate('userId', 'username email').lean();
 

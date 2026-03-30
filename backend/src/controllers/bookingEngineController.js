@@ -11,9 +11,10 @@ export const createBookingWidget = async (req, res) => {
   try {
     const widgetData = {
       ...req.body,
-      widgetId: uuidv4()
+      widgetId: uuidv4(),
+      hotelId: req.user?.hotelId
     };
-    
+
     const widget = new BookingWidget(widgetData);
     await widget.save();
     
@@ -37,8 +38,10 @@ export const createBookingWidget = async (req, res) => {
 
 export const getBookingWidgets = async (req, res) => {
   try {
-    const widgets = await BookingWidget.find({ isActive: true })
-      .sort({ createdAt: -1 }).lean().limit(1000);
+    const filter = { isActive: true };
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
+    const widgets = await BookingWidget.find(filter)
+      .sort({ createdAt: -1 }).lean().limit(100);
     
     res.json({
       success: true,
@@ -54,8 +57,10 @@ export const getBookingWidgets = async (req, res) => {
 
 export const updateBookingWidget = async (req, res) => {
   try {
-    const widget = await BookingWidget.findByIdAndUpdate(
-      req.params.id,
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const widget = await BookingWidget.findOneAndUpdate(
+      findFilter,
       req.body,
       { new: true, runValidators: true }
     );
@@ -85,12 +90,39 @@ export const updateBookingWidget = async (req, res) => {
   }
 };
 
+export const deleteBookingWidget = async (req, res) => {
+  try {
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const widget = await BookingWidget.findOneAndDelete(findFilter);
+
+    if (!widget) {
+      return res.status(404).json({
+        success: false,
+        message: 'Widget not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Widget deleted successfully'
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 export const getWidgetCode = async (req, res) => {
   try {
     const { widgetId } = req.params;
     const { theme, language, currency } = req.query;
-    
-    const widget = await BookingWidget.findOne({ widgetId }).lean();
+
+    const findFilter = { widgetId };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const widget = await BookingWidget.findOne(findFilter).lean();
     if (!widget) {
       return res.status(404).json({
         success: false,
@@ -125,6 +157,7 @@ export const createPromoCode = async (req, res) => {
 
     const promoData = {
       codeId: req.body.codeId || uuidv4(),
+      hotelId: req.user?.hotelId,
       code: code.toUpperCase(),
       name,
       description,
@@ -176,12 +209,13 @@ export const getPromoCodes = async (req, res) => {
   try {
     const { isActive, type } = req.query;
     const filter = {};
-    
+
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
     if (isActive !== undefined) filter.isActive = isActive === 'true';
     if (type) filter.type = type;
-    
+
     const promoCodes = await PromoCode.find(filter)
-      .sort({ createdAt: -1 }).lean().limit(1000);
+      .sort({ createdAt: -1 }).lean().limit(100);
     
     res.json({
       success: true,
@@ -198,12 +232,13 @@ export const getPromoCodes = async (req, res) => {
 export const validatePromoCode = async (req, res) => {
   try {
     const { code, bookingValue, checkInDate, checkOutDate } = req.body;
-    
+
     const validation = await bookingEngineService.validatePromoCode(
       code,
       bookingValue,
       new Date(checkInDate),
-      new Date(checkOutDate)
+      new Date(checkOutDate),
+      req.user?.hotelId
     );
     
     res.json({
@@ -220,8 +255,10 @@ export const validatePromoCode = async (req, res) => {
 
 export const updatePromoCode = async (req, res) => {
   try {
-    const promoCode = await PromoCode.findByIdAndUpdate(
-      req.params.id,
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const promoCode = await PromoCode.findOneAndUpdate(
+      findFilter,
       req.body,
       { new: true, runValidators: true }
     );
@@ -250,7 +287,8 @@ export const getGuestCRM = async (req, res) => {
   try {
     const { segment, search, sortBy = 'lifetimeValue' } = req.query;
     const filter = {};
-    
+
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
     if (segment) filter['segmentation.segment'] = segment;
     
     if (search) {
@@ -282,15 +320,17 @@ export const getGuestCRM = async (req, res) => {
 
 export const getGuestProfile = async (req, res) => {
   try {
-    const guest = await GuestCRM.findById(req.params.id).lean();
-    
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const guest = await GuestCRM.findOne(findFilter).lean();
+
     if (!guest) {
       return res.status(404).json({
         success: false,
         message: 'Guest not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: guest
@@ -305,8 +345,10 @@ export const getGuestProfile = async (req, res) => {
 
 export const updateGuestProfile = async (req, res) => {
   try {
-    const guest = await GuestCRM.findByIdAndUpdate(
-      req.params.id,
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const guest = await GuestCRM.findOneAndUpdate(
+      findFilter,
       req.body,
       { new: true, runValidators: true }
     );
@@ -335,9 +377,10 @@ export const createEmailCampaign = async (req, res) => {
   try {
     const campaignData = {
       ...req.body,
-      campaignId: uuidv4()
+      campaignId: uuidv4(),
+      hotelId: req.user?.hotelId
     };
-    
+
     const campaign = new EmailCampaign(campaignData);
     await campaign.save();
     
@@ -357,12 +400,13 @@ export const getEmailCampaigns = async (req, res) => {
   try {
     const { status, type } = req.query;
     const filter = {};
-    
+
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
     if (status) filter.status = status;
     if (type) filter.type = type;
-    
+
     const campaigns = await EmailCampaign.find(filter)
-      .sort({ createdAt: -1 }).lean().limit(1000);
+      .sort({ createdAt: -1 }).lean().limit(100);
     
     res.json({
       success: true,
@@ -370,6 +414,35 @@ export const getEmailCampaigns = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const updateEmailCampaign = async (req, res) => {
+  try {
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const campaign = await EmailCampaign.findOneAndUpdate(
+      findFilter,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: campaign
+    });
+  } catch (error) {
+    res.status(400).json({
       success: false,
       message: error.message
     });
@@ -451,8 +524,10 @@ export const createLoyaltyProgram = async (req, res) => {
 
 export const getLoyaltyPrograms = async (req, res) => {
   try {
-    const programs = await LoyaltyProgram.find({ isActive: true })
-      .sort({ createdAt: -1 }).lean().limit(1000);
+    const filter = { isActive: true };
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
+    const programs = await LoyaltyProgram.find(filter)
+      .sort({ createdAt: -1 }).lean().limit(100);
     
     res.json({
       success: true,
@@ -518,12 +593,13 @@ export const getLandingPages = async (req, res) => {
   try {
     const { type, isActive } = req.query;
     const filter = {};
-    
+
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
     if (type) filter.type = type;
     if (isActive !== undefined) filter.isActive = isActive === 'true';
-    
+
     const pages = await LandingPage.find(filter)
-      .sort({ createdAt: -1 }).lean().limit(1000);
+      .sort({ createdAt: -1 }).lean().limit(100);
     
     res.json({
       success: true,
@@ -581,11 +657,12 @@ export const getReviews = async (req, res) => {
   try {
     const { platform, rating, sentiment } = req.query;
     const filter = {};
-    
+
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
     if (platform) filter.platform = platform;
     if (rating) filter['content.rating'] = { $gte: parseInt(rating) };
     if (sentiment) filter['sentiment.label'] = sentiment;
-    
+
     const reviews = await ReviewManagement.find(filter)
       .sort({ createdAt: -1 })
       .limit(100).lean();
@@ -605,9 +682,11 @@ export const getReviews = async (req, res) => {
 export const respondToReview = async (req, res) => {
   try {
     const { response } = req.body;
-    
-    const review = await ReviewManagement.findByIdAndUpdate(
-      req.params.id,
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+
+    const review = await ReviewManagement.findOneAndUpdate(
+      findFilter,
       {
         response: {
           content: response,
@@ -641,9 +720,11 @@ export const respondToReview = async (req, res) => {
 export const moderateReview = async (req, res) => {
   try {
     const { status, reason } = req.body;
-    
-    const review = await ReviewManagement.findByIdAndUpdate(
-      req.params.id,
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+
+    const review = await ReviewManagement.findOneAndUpdate(
+      findFilter,
       {
         'moderation.status': status,
         'moderation.moderatedBy': req.user.id,
@@ -678,9 +759,12 @@ export const getMarketingDashboard = async (req, res) => {
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
-    
+    const hotelId = req.user?.hotelId;
+
     // Widget performance
-    const widgets = await BookingWidget.find({ isActive: true }).lean().limit(1000);
+    const widgetFilter = { isActive: true };
+    if (hotelId) widgetFilter.hotelId = hotelId;
+    const widgets = await BookingWidget.find(widgetFilter).lean().limit(100);
     const widgetStats = widgets.reduce((acc, widget) => {
       acc.totalImpressions += widget.performance.impressions || 0;
       acc.totalClicks += widget.performance.clicks || 0;
@@ -689,9 +773,9 @@ export const getMarketingDashboard = async (req, res) => {
     }, { totalImpressions: 0, totalClicks: 0, totalConversions: 0 });
     
     // Email campaign stats
-    const campaigns = await EmailCampaign.find({
-      createdAt: { $gte: thirtyDaysAgo }
-    }).lean().limit(1000);
+    const campaignFilter = { createdAt: { $gte: thirtyDaysAgo } };
+    if (hotelId) campaignFilter.hotelId = hotelId;
+    const campaigns = await EmailCampaign.find(campaignFilter).lean().limit(100);
     
     const emailStats = campaigns.reduce((acc, campaign) => {
       acc.totalSent += campaign.tracking.sent || 0;
@@ -702,7 +786,6 @@ export const getMarketingDashboard = async (req, res) => {
     }, { totalSent: 0, totalOpens: 0, totalClicks: 0, totalConversions: 0 });
     
     // Guest segmentation - scoped to hotel
-    const hotelId = req.user?.hotelId;
     const hotelMatch = hotelId ? { $match: { hotelId } } : { $match: {} };
     const guestSegments = await GuestCRM.aggregate([
       hotelMatch,
@@ -1181,6 +1264,7 @@ export default {
   createBookingWidget,
   getBookingWidgets,
   updateBookingWidget,
+  deleteBookingWidget,
   getWidgetCode,
   createPromoCode,
   getPromoCodes,
@@ -1191,6 +1275,7 @@ export default {
   updateGuestProfile,
   createEmailCampaign,
   getEmailCampaigns,
+  updateEmailCampaign,
   sendEmailCampaign,
   getCampaignAnalytics,
   createLoyaltyProgram,

@@ -47,7 +47,17 @@ export interface FavoriteStats {
 
 export interface PopularOffer {
   offerId: string;
-  offer: unknown;
+  offer: {
+    _id: string;
+    title: string;
+    description: string;
+    pointsRequired: number;
+    type: string;
+    category: string;
+    validUntil?: string;
+    discountPercentage?: number;
+    discountAmount?: number;
+  };
   favoriteCount: number;
   uniqueUsers: number;
   popularityScore: number;

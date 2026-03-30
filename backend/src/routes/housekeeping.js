@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Housekeeping from '../models/Housekeeping.js';
+import Room from '../models/Room.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -11,6 +12,7 @@ import logger from '../utils/logger.js';
 import { validateStatusTransition, HOUSEKEEPING_TRANSITIONS } from '../utils/statusTransitions.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import websocketService from '../services/websocketService.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -213,6 +215,24 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeepin
 
   logger.debug('Housekeeping task created', { taskId: task._id });
 
+  // Real-time WebSocket notification for new housekeeping task
+  try {
+    await websocketService.broadcastToHotel(hotelId, 'housekeeping:task_created', {
+      task,
+      createdBy: req.user?._id
+    });
+    // Notify assigned staff member if one was specified
+    if (taskData.assignedToUserId || taskData.assignedTo) {
+      const assigneeId = taskData.assignedToUserId || taskData.assignedTo;
+      await websocketService.sendToUser(assigneeId.toString(), 'housekeeping:task_assigned', {
+        task,
+        assignedToName: req.user?.name
+      });
+    }
+  } catch (wsError) {
+    logger.warn('Failed to send housekeeping WebSocket notification', { error: wsError.message });
+  }
+
   res.status(201).json({
     status: 'success',
     data: { task }
@@ -328,7 +348,52 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     throw new ApplicationError('Housekeeping task not found', 404);
   }
 
+  // When task is completed, update room status to vacant (clean)
+  if (updateData.status === 'completed' && task.roomId) {
+    const roomId = task.roomId._id || task.roomId;
+    await Room.findByIdAndUpdate(roomId, {
+      $set: { status: 'vacant', lastCleaned: new Date() }
+    });
+    logger.info('Room status updated to vacant after cleaning completed', {
+      taskId: task._id,
+      roomId: roomId.toString()
+    });
+  }
+
   logger.debug('Housekeeping task updated', { taskId: task._id });
+
+  // Real-time WebSocket notification for housekeeping task update
+  try {
+    const eventName = updateData.status
+      ? 'housekeeping:status_changed'
+      : 'housekeeping:task_updated';
+    await websocketService.broadcastToHotel(hotelId, eventName, {
+      task,
+      status: updateData.status,
+      updatedBy: req.user?._id
+    });
+
+    // If task is completed, also broadcast room status change
+    if (updateData.status === 'completed' && task.roomId) {
+      await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
+        roomId: task.roomId._id || task.roomId,
+        status: 'vacant',
+        taskId: task._id,
+        event: 'housekeeping_completed'
+      });
+    }
+
+    // Notify assigned staff member if assignment changed
+    if (updateData.assignedToUserId || updateData.assignedTo) {
+      const assigneeId = updateData.assignedToUserId || updateData.assignedTo;
+      await websocketService.sendToUser(assigneeId.toString(), 'housekeeping:task_assigned', {
+        task,
+        assignedToName: req.user?.name
+      });
+    }
+  } catch (wsError) {
+    logger.warn('Failed to send housekeeping update WebSocket notification', { error: wsError.message });
+  }
 
   res.json({
     status: 'success',
@@ -411,6 +476,38 @@ router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'inspection.inspectedBy', select: 'name' }
   ]);
+
+  // Real-time WebSocket notification for inspection result
+  try {
+    await websocketService.broadcastToHotel(hotelId, 'housekeeping:status_changed', {
+      task,
+      status: task.status,
+      inspectionPassed: passed,
+      inspectedBy: req.user?._id
+    });
+
+    // Notify assigned staff member about inspection result
+    const assigneeId = task.assignedToUserId || task.assignedTo;
+    if (assigneeId) {
+      await websocketService.sendToUser(assigneeId.toString(), 'housekeeping:task_updated', {
+        task,
+        inspectionPassed: passed,
+        message: passed ? 'Room inspection passed' : 'Room inspection failed - re-cleaning required'
+      });
+    }
+
+    // If inspection passed, broadcast room status change
+    if (passed && task.roomId) {
+      await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
+        roomId: task.roomId._id || task.roomId,
+        status: 'clean',
+        taskId: task._id,
+        event: 'inspection_passed'
+      });
+    }
+  } catch (wsError) {
+    logger.warn('Failed to send housekeeping inspection WebSocket notification', { error: wsError.message });
+  }
 
   res.json({
     status: 'success',

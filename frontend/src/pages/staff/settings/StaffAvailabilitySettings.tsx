@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../../../services/api';
 import { useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
@@ -28,10 +28,18 @@ interface StaffAvailabilitySettingsProps {
 }
 
 export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps = {}) {
+  const [workInfo, setWorkInfo] = useState({
+    todayStatus: 'Loading...',
+    hoursWorked: '--',
+    tasksCompleted: '--',
+    nextBreak: '--'
+  });
+
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { isDirty }
   } = useForm<StaffAvailabilityFormData>({
     defaultValues: {
@@ -44,6 +52,41 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
   });
 
   const watchedValues = watch();
+
+  // Load saved availability preferences from backend
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const { data } = await api.get('/staff/availability');
+        const prefs = data?.data;
+        if (prefs) {
+          setValue('status', prefs.status || 'available', { shouldDirty: false });
+          setValue('autoStatusChange', prefs.autoStatusChange ?? true, { shouldDirty: false });
+          setValue('breakReminder', prefs.breakReminder ?? true, { shouldDirty: false });
+          setValue('breakDuration', prefs.breakDuration ?? 15, { shouldDirty: false });
+          setValue('maxTasksPerHour', prefs.maxTasksPerHour ?? 8, { shouldDirty: false });
+        }
+        // Load work info summary if available
+        if (data?.data?.workInfo) {
+          setWorkInfo({
+            todayStatus: data.data.workInfo.todayStatus || 'Off Shift',
+            hoursWorked: data.data.workInfo.hoursWorked || '0h 0m',
+            tasksCompleted: String(data.data.workInfo.tasksCompleted ?? 0),
+            nextBreak: data.data.workInfo.nextBreak || 'N/A'
+          });
+        }
+      } catch {
+        // Use defaults if preferences not yet saved
+        setWorkInfo({
+          todayStatus: 'N/A',
+          hoursWorked: 'N/A',
+          tasksCompleted: 'N/A',
+          nextBreak: 'N/A'
+        });
+      }
+    };
+    loadPreferences();
+  }, [setValue]);
 
   // Watch for form changes
   useEffect(() => {
@@ -243,19 +286,19 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium text-gray-700">Today's Status:</span>
-                <span className="ml-2 text-green-600">On Shift</span>
+                <span className="ml-2 text-green-600">{workInfo.todayStatus}</span>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Hours Worked:</span>
-                <span className="ml-2 text-gray-900">6h 30m</span>
+                <span className="ml-2 text-gray-900">{workInfo.hoursWorked}</span>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Tasks Completed:</span>
-                <span className="ml-2 text-gray-900">12</span>
+                <span className="ml-2 text-gray-900">{workInfo.tasksCompleted}</span>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Next Break:</span>
-                <span className="ml-2 text-gray-900">In 45 minutes</span>
+                <span className="ml-2 text-gray-900">{workInfo.nextBreak}</span>
               </div>
             </div>
           </div>
@@ -275,10 +318,10 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
           <div className="flex justify-end pt-4 border-t border-gray-200">
             <Button
               type="submit"
-              disabled={!isDirty || saveAvailabilityMutation.isLoading}
+              disabled={!isDirty || saveAvailabilityMutation.isPending}
               className="flex items-center space-x-2"
             >
-              {saveAvailabilityMutation.isLoading ? (
+              {saveAvailabilityMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />

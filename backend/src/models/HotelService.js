@@ -286,6 +286,11 @@ hotelServiceSchema.index({ hotelId: 1, featured: 1 });
 hotelServiceSchema.index({ type: 1, isActive: 1 });
 hotelServiceSchema.index({ 'rating.average': -1 });
 
+// Virtual alias: `available` maps to `isActive` for frontend compatibility
+hotelServiceSchema.virtual('available').get(function() {
+  return this.isActive;
+});
+
 // Virtual for formatted price
 hotelServiceSchema.virtual('formattedPrice').get(function() {
   return `${this.currency} ${this.price.toLocaleString()}`;
@@ -316,13 +321,17 @@ hotelServiceSchema.virtual('operatingHoursDisplay').get(function() {
 });
 
 // Static method to get services by type
-hotelServiceSchema.statics.getServicesByType = async function(hotelId, type) {
+hotelServiceSchema.statics.getServicesByType = async function(hotelId, type, { page = 1, limit = 20 } = {}) {
   try {
+    const limitNum = Math.min(100, Math.max(1, limit));
     return await this.find({
       hotelId,
       type,
       isActive: true
-    }).sort({ featured: -1, 'rating.average': -1 }).lean().limit(1000);
+    }).sort({ featured: -1, 'rating.average': -1 })
+      .skip((page - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }
@@ -335,7 +344,7 @@ hotelServiceSchema.statics.getFeaturedServices = async function(hotelId) {
       hotelId,
       featured: true,
       isActive: true
-    }).sort({ 'rating.average': -1 }).lean().limit(1000);
+    }).sort({ 'rating.average': -1 }).lean().limit(20);
   } catch (error) {
     throw new Error(`${error.message}`);
   }
@@ -374,7 +383,8 @@ hotelServiceSchema.methods.updateRating = async function(newRating) {
   try {
     const totalRating = this.rating.average * this.rating.count + newRating;
     this.rating.count += 1;
-    this.rating.average = totalRating / this.rating.count;
+    // Round to 2 decimal places to prevent floating-point drift
+    this.rating.average = Math.round((totalRating / this.rating.count) * 100) / 100;
     return await this.save();
   } catch (error) {
     throw new Error(`${error.message}`);
@@ -447,14 +457,18 @@ hotelServiceSchema.methods.hasAdequateStaffing = function() {
 };
 
 // Static method to get services assigned to staff member
-hotelServiceSchema.statics.getServicesForStaff = async function(staffId, hotelId) {
+hotelServiceSchema.statics.getServicesForStaff = async function(staffId, hotelId, { page = 1, limit = 20 } = {}) {
   try {
+    const limitNum = Math.min(100, Math.max(1, limit));
     return await this.find({
       hotelId,
       'assignedStaff.staffId': staffId,
       'assignedStaff.isActive': true,
       isActive: true
-    }).populate('assignedStaff.staffId', 'name email department').lean().limit(1000);
+    }).populate('assignedStaff.staffId', 'name email department')
+      .skip((page - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }

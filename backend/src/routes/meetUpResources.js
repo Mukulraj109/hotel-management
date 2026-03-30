@@ -10,8 +10,10 @@ import {
   getBookingDetails,
   getRoomSchedule
 } from '../controllers/meetUpResourceController.js';
+import MeetUpRequest from '../models/MeetUpRequest.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -19,8 +21,9 @@ import Joi from 'joi';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication to all routes
+// Apply authentication, tenant isolation, and property access to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('meetUpResources', 'baseAccess'));
 
@@ -49,16 +52,21 @@ router.get('/room-schedule/:hotelId', getRoomSchedule);
 // Admin-only routes
 router.get('/admin/all-bookings', authorizePolicy('meetUpResources', 'adminAccess'), async (req, res) => {
   try {
-    const { page = 1, limit = 20, hotelId, date, status } = req.query;
+    const { hotelId, date, status } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
 
-    let query = {
-      'meetingRoomBooking.roomId': { $exists: true }
-    };
-
-    if (hotelId && hotelId !== 'all') {
-      query.hotelId = hotelId;
+    // Mandatory hotel filtering for tenant isolation
+    const resolvedHotelId = (hotelId && hotelId !== 'all') ? hotelId : (req.body?.hotelId || req.user?.hotelId);
+    if (!resolvedHotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
     }
+
+    let query = {
+      'meetingRoomBooking.roomId': { $exists: true },
+      hotelId: resolvedHotelId
+    };
 
     if (date) {
       const targetDate = new Date(date);
@@ -79,7 +87,7 @@ router.get('/admin/all-bookings', authorizePolicy('meetUpResources', 'adminAcces
       .populate('hotelId', 'name')
       .sort({ proposedDate: -1 })
       .skip(skip)
-      .limit(parseInt(limit)).lean();
+      .limit(limit).lean();
 
     const total = await MeetUpRequest.countDocuments(query);
 
@@ -88,7 +96,7 @@ router.get('/admin/all-bookings', authorizePolicy('meetUpResources', 'adminAcces
       data: {
         bookings: meetUps,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: page,
           totalPages: Math.ceil(total / limit),
           totalItems: total,
           hasNext: skip + meetUps.length < total,
@@ -121,14 +129,17 @@ router.get('/admin/booking-analytics', authorizePolicy('meetUpResources', 'admin
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // Mandatory hotel filtering for tenant isolation
+    const resolvedAnalyticsHotelId = (hotelId && hotelId !== 'all') ? hotelId : (req.body?.hotelId || req.user?.hotelId);
+    if (!resolvedAnalyticsHotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
+
     let baseQuery = {
       'meetingRoomBooking.roomId': { $exists: true },
-      createdAt: { $gte: startDate }
+      createdAt: { $gte: startDate },
+      hotelId: resolvedAnalyticsHotelId
     };
-
-    if (hotelId && hotelId !== 'all') {
-      baseQuery.hotelId = hotelId;
-    }
 
     const [
       totalBookings,

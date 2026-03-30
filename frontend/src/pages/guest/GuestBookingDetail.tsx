@@ -137,17 +137,21 @@ const getStatusIcon = (status: string) => {
   }
 };
 
-const formatCurrency = (amount: number, currency: string = 'INR') => {
+const formatCurrency = (amount: number | undefined | null, currency: string = 'INR') => {
+  const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: currency,
+    currency: currency || 'INR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
-  }).format(amount);
+  }).format(safeAmount);
 };
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-IN', {
+const formatDate = (dateString: string | undefined | null) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Invalid date';
+  return date.toLocaleDateString('en-IN', {
     weekday: 'short',
     year: 'numeric',
     month: 'short',
@@ -155,8 +159,11 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatDateTime = (dateString: string) => {
-  return new Date(dateString).toLocaleString('en-IN', {
+const formatDateTime = (dateString: string | undefined | null) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Invalid date';
+  return date.toLocaleString('en-IN', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -191,17 +198,23 @@ function GuestBookingDetail() {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/bookings/enhanced/${id}`);
+      // Try the enhanced endpoint first; fall back to standard bookings endpoint
+      let response;
+      try {
+        response = await api.get(`/bookings/enhanced/${id}`);
+      } catch {
+        response = await api.get(`/bookings/${id}`);
+      }
 
-      if (response.data && response.data.data) {
-        setBooking(response.data.data);
-      } else if (response.data) {
-        setBooking(response.data);
+      const bookingData = response.data?.data?.booking || response.data?.data || response.data?.booking || null;
+      if (bookingData) {
+        setBooking(bookingData);
       } else {
         throw new Error('Invalid response format');
       }
     } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to load booking details';
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      const errorMessage = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Failed to load booking details');
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -213,8 +226,9 @@ function GuestBookingDetail() {
     try {
       setHistoryLoading(true);
       const response = await api.get(`/bookings/enhanced/${id}/price-history`);
-      setPriceHistory(response.data.data?.adjustmentHistory || []);
-    } catch (err: unknown) {
+      setPriceHistory(response.data?.data?.adjustmentHistory || []);
+    } catch (_err: unknown) {
+      // Price history is supplementary; don't block the page on failure
       toast.error('Failed to load price history');
     } finally {
       setHistoryLoading(false);
@@ -252,10 +266,15 @@ function GuestBookingDetail() {
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Error Loading Booking</h2>
           <p className="text-gray-600 mb-6">{error || 'Booking not found'}</p>
-          <Button onClick={() => navigate('/app/bookings')} className="bg-yellow-600 hover:bg-yellow-700">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Bookings
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button onClick={fetchBookingDetails} className="bg-blue-600 hover:bg-blue-700">
+              Try Again
+            </Button>
+            <Button onClick={() => navigate('/app/bookings')} className="bg-yellow-600 hover:bg-yellow-700">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Bookings
+            </Button>
+          </div>
         </Card>
       </div>
     );
@@ -544,18 +563,18 @@ function GuestBookingDetail() {
               </h2>
               <div className="space-y-3">
                 {(booking.rooms || []).map((room, index) => (
-                  <div key={room.roomId} className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:border-yellow-300 transition-colors">
+                  <div key={room.roomId?._id || index} className="bg-gray-50 rounded-xl p-4 border border-gray-200 hover:border-yellow-300 transition-colors">
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div>
                         <p className="text-base font-semibold text-gray-900 mb-1">
                           Room {room.roomId?.roomNumber || index + 1} - {room.roomId?.type || 'Standard'}
                         </p>
                         <p className="text-sm text-gray-600">
-                          {booking.nights} {booking.nights === 1 ? 'night' : 'nights'} × {formatCurrency(room.rate, booking.currency)}/night
+                          {booking.nights || 0} {booking.nights === 1 ? 'night' : 'nights'} x {formatCurrency(room.rate, booking.currency)}/night
                         </p>
                       </div>
                       <p className="text-lg font-bold text-gray-900">
-                        {formatCurrency(room.rate * booking.nights, booking.currency)}
+                        {formatCurrency((room.rate || 0) * (booking.nights || 0), booking.currency)}
                       </p>
                     </div>
                   </div>

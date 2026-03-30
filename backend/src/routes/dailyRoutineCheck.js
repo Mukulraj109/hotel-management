@@ -118,9 +118,11 @@ router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'
     filteredRooms = roomsWithStatus.filter(room => room.checkStatus === filter);
   }
 
-  // Apply pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  const paginatedRooms = filteredRooms.slice(skip, skip + parseInt(limit));
+  // Apply pagination with safe defaults
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(1000, Math.max(1, parseInt(limit) || 50));
+  const skip = (parsedPage - 1) * parsedLimit;
+  const paginatedRooms = filteredRooms.slice(skip, skip + parsedLimit);
 
   // Batch-fetch all templates and inventories to avoid N+1 queries
   const uniqueRoomTypes = [...new Set(paginatedRooms.map(r => r.type).filter(Boolean))];
@@ -200,10 +202,10 @@ router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'
     data: {
       rooms: roomsWithInventory,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total: filteredRooms.length,
-        pages: Math.ceil(filteredRooms.length / parseInt(limit))
+        pages: parsedLimit > 0 ? Math.ceil(filteredRooms.length / parsedLimit) : 0
       }
     }
   });

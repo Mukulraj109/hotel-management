@@ -261,7 +261,7 @@ const documentSchema = new mongoose.Schema({
   },
   ipAddress: {
     type: String,
-    match: [/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^(?:[a-fA-F0-9]*:){7}[a-fA-F0-9]*$/, 'Invalid IP address format']
+    maxlength: [45, 'IP address cannot exceed 45 characters']
   },
   deviceInfo: {
     userAgent: String,
@@ -440,7 +440,9 @@ documentSchema.virtual('isExpired').get(function() {
 });
 
 // Instance methods
-documentSchema.methods.addAuditEntry = function(action, performedBy, details = {}, ipAddress = '', userAgent = '') {
+// Push audit entry to the log without saving (caller is responsible for save).
+// Use addAuditEntryAndSave() when you only need to add an audit entry.
+documentSchema.methods.pushAuditEntry = function(action, performedBy, details = {}, ipAddress = '', userAgent = '') {
   this.auditLog.push({
     action,
     performedBy,
@@ -453,7 +455,11 @@ documentSchema.methods.addAuditEntry = function(action, performedBy, details = {
   if (this.auditLog.length > 50) {
     this.auditLog = this.auditLog.slice(-50);
   }
+};
 
+// Convenience: add audit entry AND save in one call (backward-compatible alias)
+documentSchema.methods.addAuditEntry = function(action, performedBy, details = {}, ipAddress = '', userAgent = '') {
+  this.pushAuditEntry(action, performedBy, details, ipAddress, userAgent);
   return this.save();
 };
 
@@ -465,7 +471,7 @@ documentSchema.methods.verify = async function(verifiedBy, comments = '', confid
     this.verificationDetails.comments = comments;
     this.verificationDetails.confidenceLevel = confidenceLevel;
 
-    await this.addAuditEntry('verify', verifiedBy, { comments, confidenceLevel });
+    this.pushAuditEntry('verify', verifiedBy, { comments, confidenceLevel });
     return this.save();
   } catch (error) {
     throw new Error(`${error.message}`);
@@ -479,7 +485,7 @@ documentSchema.methods.reject = async function(rejectedBy, rejectionReason) {
     this.verificationDetails.verifiedAt = new Date();
     this.verificationDetails.rejectionReason = rejectionReason;
 
-    await this.addAuditEntry('reject', rejectedBy, { rejectionReason });
+    this.pushAuditEntry('reject', rejectedBy, { rejectionReason });
     return this.save();
   } catch (error) {
     throw new Error(`${error.message}`);
@@ -491,7 +497,7 @@ documentSchema.methods.markForRenewal = async function(updatedBy, reason = '') {
     this.status = 'renewal_required';
     this.renewalRequired = true;
 
-    await this.addAuditEntry('renewal_required', updatedBy, { reason });
+    this.pushAuditEntry('renewal_required', updatedBy, { reason });
     return this.save();
   } catch (error) {
     throw new Error(`${error.message}`);
@@ -532,16 +538,21 @@ documentSchema.methods.canBeViewedBy = function(user, userDepartment = null) {
 // Static methods
 documentSchema.statics.getDocumentsByUser = function(userId, options = {}) {
   const {
+    hotelId,
     status,
     category,
     userType,
-    limit = 50,
+    limit = 20,
     skip = 0,
     sortBy = '-createdAt'
   } = options;
 
+  const parsedLimit = Math.min(limit, 100);
+
   let query = { userId, isActive: true, isDeleted: false };
 
+  // Always filter by hotelId when provided for tenant isolation
+  if (hotelId) query.hotelId = hotelId;
   if (status) query.status = status;
   if (category) query.category = category;
   if (userType) query.userType = userType;
@@ -551,8 +562,9 @@ documentSchema.statics.getDocumentsByUser = function(userId, options = {}) {
     .populate('departmentId', 'name code')
     .populate('bookingId', 'bookingNumber checkIn checkOut')
     .sort(sortBy)
-    .limit(limit)
-    .skip(skip);
+    .limit(parsedLimit)
+    .skip(skip)
+    .lean();
 };
 
 documentSchema.statics.getPendingVerifications = function(hotelId, options = {}) {
@@ -560,9 +572,11 @@ documentSchema.statics.getPendingVerifications = function(hotelId, options = {})
     userType,
     departmentId,
     priority,
-    limit = 100,
+    limit = 20,
     skip = 0
   } = options;
+
+  const parsedLimit = Math.min(limit, 100);
 
   let query = {
     hotelId,
@@ -581,8 +595,9 @@ documentSchema.statics.getPendingVerifications = function(hotelId, options = {})
     .populate('departmentId', 'name code')
     .populate('bookingId', 'bookingNumber checkIn checkOut')
     .sort({ priority: -1, createdAt: 1 })
-    .limit(limit)
-    .skip(skip);
+    .limit(parsedLimit)
+    .skip(skip)
+    .lean();
 };
 
 documentSchema.statics.getExpiringDocuments = function(hotelId, days = 30) {
@@ -601,7 +616,9 @@ documentSchema.statics.getExpiringDocuments = function(hotelId, days = 30) {
   })
   .populate('userId', 'name email role')
   .populate('departmentId', 'name code')
-  .sort({ expiryDate: 1 });
+  .sort({ expiryDate: 1 })
+  .limit(100)
+  .lean();
 };
 
 documentSchema.statics.getComplianceStats = async function(hotelId, options = {}) {
