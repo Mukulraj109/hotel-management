@@ -6,6 +6,7 @@ import inventoryAlertService from '../../src/services/inventoryAlertService.js';
 import '../../src/models/RoomType.js';
 
 let replset;
+let x;
 
 describe('Reservation Engine Integration Tests', () => {
   beforeAll(async () => {
