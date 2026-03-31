@@ -121,6 +121,32 @@ const loyaltySchema = new mongoose.Schema({
 loyaltySchema.index({ userId: 1, createdAt: -1 });
 loyaltySchema.index({ userId: 1, type: 1 });
 loyaltySchema.index({ hotelId: 1, type: 1 });
+loyaltySchema.index({ type: 1, createdAt: -1 });
+loyaltySchema.index({ userId: 1, expiresAt: 1, type: 1 });
+loyaltySchema.index({ 'metadata.campaignId': 1, type: 1, createdAt: -1 });
+// Prevent duplicate stay-completion award rows per booking/user.
+loyaltySchema.index(
+  { userId: 1, type: 1, bookingId: 1, 'metadata.awardType': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      type: 'earned',
+      bookingId: { $exists: true },
+      'metadata.awardType': 'stay_completion'
+    }
+  }
+);
+// Prevent duplicate expiry rows for the same source earned transaction.
+loyaltySchema.index(
+  { userId: 1, type: 1, 'metadata.expirySourceTxId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      type: 'expired',
+      'metadata.expirySourceTxId': { $exists: true }
+    }
+  }
+);
 // FIX: Removed TTL index on expiresAt - loyalty transactions are financial records
 // that must be retained for audit trails. Point expiry should be handled by
 // filtering in queries (getUserActivePoints already does this), not by auto-deletion.

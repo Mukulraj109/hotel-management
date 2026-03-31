@@ -217,29 +217,54 @@ class AdvancedNotificationService {
       validate: (to) => typeof to === 'string' && to.length > 10 // Device token
     });
 
-    // In-app notification provider
+    // In-app: unified MongoDB Notification + Socket.IO / SSE
     this.addProvider('in_app', {
       send: async (userId, content, options = {}) => {
-        // Store in database for in-app display
-        const notification = {
-          id: uuidv4(),
-          userId,
-          title: content.title,
-          message: content.message,
-          actionUrl: content.actionUrl,
-          read: false,
-          createdAt: new Date().toISOString()
-        };
+        try {
+          const { createAndDeliverInApp } = await import('./inAppNotificationDeliveryService.js');
+          const mongoose = await import('mongoose');
+          const User = (await import('../models/User.js')).default;
+          const Notification = (await import('../models/Notification.js')).default;
 
-        // In production, this would save to database
-        logger.info('In-app notification created', notification);
+          const uid = userId?.toString?.() || String(userId);
+          if (!mongoose.Types.ObjectId.isValid(uid)) {
+            return { success: false, error: 'invalid_user_id' };
+          }
 
-        return {
-          success: true,
-          notificationId: notification.id
-        };
+          let hotelId = options.hotelId || content.hotelId;
+          if (!hotelId) {
+            const u = await User.findById(uid).select('hotelId').lean();
+            hotelId = u?.hotelId;
+          }
+          if (!hotelId) {
+            return { success: false, error: 'no_hotel' };
+          }
+
+          const allowed = Notification.schema.path('type')?.enumValues || [];
+          const t = options.templateName;
+          const dbType = t && allowed.includes(t) ? t : 'system_alert';
+
+          await createAndDeliverInApp({
+            userId: uid,
+            hotelId,
+            type: dbType,
+            title: String(content.title || 'Notification').slice(0, 100),
+            message: String(content.message || content.body || '').slice(0, 500),
+            priority: options.priority || 'medium',
+            metadata: {
+              actionUrl: content.actionUrl,
+              templateName: options.templateName,
+              advancedNotificationId: options.notificationId
+            }
+          });
+
+          return { success: true, notificationId: options.notificationId };
+        } catch (e) {
+          logger.error('advancedNotification in_app failed', { error: e.message });
+          return { success: false, error: e.message };
+        }
       },
-      validate: (userId) => typeof userId === 'string' && userId.length > 0
+      validate: (userId) => userId != null && String(userId).length > 0
     });
 
     // Webhook provider
@@ -442,7 +467,8 @@ class AdvancedNotificationService {
         const result = await provider.send(recipient, content, {
           notificationId: notification.id,
           templateName: notification.templateName,
-          priority: notification.priority
+          priority: notification.priority,
+          hotelId: notification.data?.hotelId || notification.metadata?.hotelId
         });
 
         results[channelName] = result;

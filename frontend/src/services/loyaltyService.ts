@@ -6,6 +6,26 @@ export interface LoyaltyDashboard {
     tier: string;
     nextTier: string | null;
     pointsToNextTier: number;
+    pointsExpiringSoon?: {
+      totalPoints: number;
+      items: Array<{
+        points: number;
+        expiresAt: string;
+        description: string;
+        awardType?: string | null;
+      }>;
+    };
+    pendingPoints?: number;
+    pendingBreakdown?: Array<{
+      bookingId: string;
+      bookingNumber: string;
+      estimatedPoints: number;
+    }>;
+    earningFormula?: {
+      pointsPerCurrencyUnit: number;
+      pointsPerNight: number;
+      maxPointsPerStay: number;
+    };
   };
   recentTransactions: LoyaltyTransaction[];
   availableOffers: Offer[];
@@ -94,6 +114,67 @@ export interface RedemptionResult {
   transaction: LoyaltyTransaction;
   remainingPoints: number;
   newTier: string;
+}
+
+export interface LoyaltyAdminHealth {
+  totalLedgerLiability: number;
+  latestReconciliation: {
+    createdAt: string;
+    mismatchCount: number;
+    totalUsersChecked: number;
+    largestDelta: number;
+  } | null;
+  mismatchRate: number;
+  latestExpiryRunAt: string | null;
+  recentRuns: Array<{
+    _id: string;
+    createdAt: string;
+    status: string;
+    mismatchCount: number;
+    totalUsersChecked: number;
+    repairedCount: number;
+  }>;
+  openAlerts?: number;
+}
+
+export interface LoyaltyQueueStats {
+  depth: number;
+}
+
+export interface LoyaltyRuleVersion {
+  _id: string;
+  version: number;
+  isActive: boolean;
+  rules: {
+    pointsPerCurrencyUnit: number;
+    pointsPerNight: number;
+    maxPointsPerStay: number;
+  };
+  notes?: string;
+  createdAt: string;
+}
+
+export interface LoyaltyBonusCampaign {
+  _id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
+  points: number;
+  startsAt: string;
+  endsAt: string;
+  maxTotalAwards: number;
+  maxAwardsPerUser: number;
+  totalAwardsCount: number;
+}
+
+export interface LoyaltyOpsAlert {
+  _id: string;
+  type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  status: 'open' | 'acknowledged' | 'resolved';
+  createdAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface OfferDetails {
@@ -232,7 +313,7 @@ class LoyaltyService {
    * Get tier level for comparison
    */
   getTierLevel(tier: string): number {
-    const levels = { bronze: 0, silver: 1, gold: 2, platinum: 3 };
+    const levels = { bronze: 0, silver: 1, gold: 2, platinum: 3, diamond: 4 };
     return levels[tier.toLowerCase() as keyof typeof levels] || 0;
   }
 
@@ -333,6 +414,113 @@ class LoyaltyService {
     }
   }
 
+  async getAdminHealth(): Promise<LoyaltyAdminHealth> {
+    const response = await api.get('/loyalty/admin/health');
+    return response.data.data;
+  }
+
+  async getReconciliationRuns(page = 1, limit = 20) {
+    const response = await api.get('/loyalty/admin/reconciliation-runs', { params: { page, limit } });
+    return response.data.data;
+  }
+
+  async runReconciliation(maxUsers = 1000) {
+    const response = await api.post('/loyalty/admin/reconciliation/run', { maxUsers });
+    return response.data.data;
+  }
+
+  async reconcileUser(userId: string, applyFix = false) {
+    const response = await api.post(`/loyalty/admin/reconcile/${userId}`, { applyFix });
+    return response.data.data;
+  }
+
+  async runExpiry(limit = 300) {
+    const response = await api.post('/loyalty/admin/expiry/run', { limit });
+    return response.data.data;
+  }
+
+  async getRules() {
+    const response = await api.get('/loyalty/admin/rules');
+    return response.data.data as { active: LoyaltyRuleVersion | null; versions: LoyaltyRuleVersion[] };
+  }
+
+  async createRuleVersion(rules: { pointsPerCurrencyUnit: number; pointsPerNight: number; maxPointsPerStay: number }, notes = '') {
+    const response = await api.post('/loyalty/admin/rules', { rules, notes });
+    return response.data.data as LoyaltyRuleVersion;
+  }
+
+  async simulateRules(payload: {
+    monthlyCompletedStays: number;
+    avgStayAmount: number;
+    avgNights: number;
+    sampleUsers?: number;
+    rules: { pointsPerCurrencyUnit: number; pointsPerNight: number; maxPointsPerStay: number };
+  }) {
+    const response = await api.post('/loyalty/admin/rules/simulate', payload);
+    return response.data.data;
+  }
+
+  async getCampaigns(page = 1, limit = 20) {
+    const response = await api.get('/loyalty/admin/campaigns', { params: { page, limit } });
+    return response.data.data as { campaigns: LoyaltyBonusCampaign[]; pagination: Record<string, unknown> };
+  }
+
+  async createCampaign(payload: {
+    name: string;
+    code: string;
+    points: number;
+    startsAt: string;
+    endsAt: string;
+    maxTotalAwards: number;
+    maxAwardsPerUser: number;
+  }) {
+    const response = await api.post('/loyalty/admin/campaigns', payload);
+    return response.data.data as LoyaltyBonusCampaign;
+  }
+
+  async awardCampaignBonus(campaignId: string, userId: string, reference?: string) {
+    const response = await api.post(`/loyalty/admin/campaigns/${campaignId}/award`, { userId, reference });
+    return response.data.data;
+  }
+
+  async getOpsAlerts(page = 1, limit = 20, status = 'open') {
+    const response = await api.get('/loyalty/admin/alerts', { params: { page, limit, status } });
+    return response.data.data as { alerts: LoyaltyOpsAlert[]; pagination: Record<string, unknown> };
+  }
+
+  async evaluateOpsAlerts() {
+    const response = await api.post('/loyalty/admin/alerts/evaluate', {});
+    return response.data.data;
+  }
+
+  async acknowledgeAlert(alertId: string) {
+    const response = await api.post(`/loyalty/admin/alerts/${alertId}/ack`, {});
+    return response.data.data as LoyaltyOpsAlert;
+  }
+
+  async enqueueQueueEvent(type: string, payload: Record<string, unknown> = {}) {
+    const response = await api.post('/loyalty/admin/queue/enqueue', { type, payload });
+    return response.data.data;
+  }
+
+  async getQueueStats(): Promise<LoyaltyQueueStats> {
+    const response = await api.get('/loyalty/admin/queue/stats');
+    return response.data.data;
+  }
+
+  async getComplianceRetentionReport(months = 12) {
+    const response = await api.get('/loyalty/admin/compliance/retention-report', { params: { months } });
+    return response.data.data;
+  }
+
+  async downloadMonthlyLiabilityCsv(year: number, month: number) {
+    const response = await api.get('/loyalty/admin/finance/monthly-liability', {
+      params: { year, month, format: 'csv' },
+      responseType: 'blob'
+    });
+    return response.data as Blob;
+  }
+
   /**
    * Get offers by category
    */
@@ -347,6 +535,8 @@ class LoyaltyService {
    */
   getTierBenefits(tier: string): string {
     switch (tier) {
+      case 'diamond':
+        return 'Top-tier recognition, dedicated concierge, best available upgrades, premium welcome amenities';
       case 'platinum':
         return 'Exclusive benefits, priority support, room upgrades, late checkout, welcome gifts';
       case 'gold':
@@ -363,6 +553,8 @@ class LoyaltyService {
    */
   getTierColor(tier: string): string {
     switch (tier) {
+      case 'diamond':
+        return 'from-cyan-400 to-blue-700';
       case 'platinum':
         return 'from-purple-500 to-purple-700';
       case 'gold':
@@ -379,6 +571,8 @@ class LoyaltyService {
    */
   getTierIcon(tier: string): string {
     switch (tier) {
+      case 'diamond':
+        return 'Star';
       case 'platinum':
         return 'Star';
       case 'gold':

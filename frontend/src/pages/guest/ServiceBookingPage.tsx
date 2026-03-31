@@ -64,7 +64,10 @@ const ServiceBookingPage: React.FC = () => {
 
   // Book service mutation
   const bookingMutation = useMutation({
-    mutationFn: () => hotelServicesService.bookService(serviceId!, formData),
+    mutationFn: () => hotelServicesService.bookService(serviceId!, {
+      ...formData,
+      idempotencyKey: `svc-${serviceId}-${formData.bookingDate}-${formData.numberOfPeople}`
+    }, publicHotelId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['service-bookings'] });
       toast.success('Service booked successfully!');

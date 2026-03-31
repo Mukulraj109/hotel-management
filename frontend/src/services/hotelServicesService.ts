@@ -154,6 +154,10 @@ class HotelServicesService {
     type?: string;
     search?: string;
     featured?: boolean;
+    tags?: string[];
+    minPrice?: number;
+    maxPrice?: number;
+    availabilityNow?: boolean;
     page?: number;
     limit?: number;
     hotelId?: string | null;
@@ -162,6 +166,10 @@ class HotelServicesService {
     const response = await api.get('/hotel-services', {
       params: {
         ...paginatedParams,
+        tags: params?.tags?.join(','),
+        minPrice: params?.minPrice,
+        maxPrice: params?.maxPrice,
+        availabilityNow: params?.availabilityNow,
         hotelId: tenantHotelIdForServices(params?.hotelId)
       }
     });
@@ -203,11 +211,12 @@ class HotelServicesService {
   async checkAvailability(
     serviceId: string,
     date: string,
-    people: number
+    people: number,
+    hotelId?: string | null
   ): Promise<AvailabilityCheck> {
     try {
       const response = await api.get(`/hotel-services/${serviceId}/availability`, {
-        params: { date, people }
+        params: { date, people, hotelId: tenantHotelIdForServices(hotelId) }
       });
       return response.data.data;
     } catch (error: unknown) {
@@ -220,10 +229,13 @@ class HotelServicesService {
    */
   async bookService(
     serviceId: string,
-    bookingData: ServiceBookingRequest
+    bookingData: ServiceBookingRequest & { idempotencyKey?: string },
+    hotelId?: string | null
   ): Promise<{ message: string; booking: ServiceBooking }> {
     try {
-      const response = await api.post(`/hotel-services/${serviceId}/bookings`, bookingData);
+      const response = await api.post(`/hotel-services/${serviceId}/bookings`, bookingData, {
+        params: { hotelId: tenantHotelIdForServices(hotelId) }
+      });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -237,10 +249,16 @@ class HotelServicesService {
     page?: number;
     limit?: number;
     status?: string;
+    hotelId?: string | null;
   }): Promise<ServiceBookingsResponse> {
     try {
       const normalizedParams = normalizeListParams(params);
-      const response = await api.get('/hotel-services/bookings', { params: normalizedParams });
+      const response = await api.get('/hotel-services/bookings', {
+        params: {
+          ...normalizedParams,
+          hotelId: tenantHotelIdForServices(params?.hotelId)
+        }
+      });
       return unwrapApiData<ServiceBookingsResponse>(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -264,10 +282,13 @@ class HotelServicesService {
    */
   async cancelBooking(
     bookingId: string,
-    cancelData: CancelBookingRequest
+    cancelData: CancelBookingRequest,
+    hotelId?: string | null
   ): Promise<{ message: string; booking: ServiceBooking }> {
     try {
-      const response = await api.post(`/hotel-services/bookings/${bookingId}/cancel`, cancelData);
+      const response = await api.post(`/hotel-services/bookings/${bookingId}/cancel`, cancelData, {
+        params: { hotelId: tenantHotelIdForServices(hotelId) }
+      });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -298,6 +319,45 @@ class HotelServicesService {
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
+  }
+
+  async getFavorites(hotelId?: string | null): Promise<string[]> {
+    const response = await api.get('/hotel-services/favorites', {
+      params: { hotelId: tenantHotelIdForServices(hotelId) }
+    });
+    return response.data?.data || [];
+  }
+
+  async addFavorite(serviceId: string, hotelId?: string | null): Promise<void> {
+    await api.post(`/hotel-services/favorites/${serviceId}`, {}, {
+      params: { hotelId: tenantHotelIdForServices(hotelId) }
+    });
+  }
+
+  async removeFavorite(serviceId: string, hotelId?: string | null): Promise<void> {
+    await api.delete(`/hotel-services/favorites/${serviceId}`, {
+      params: { hotelId: tenantHotelIdForServices(hotelId) }
+    });
+  }
+
+  async getAdminFulfillmentQueue(params?: { page?: number; limit?: number; status?: string; hotelId?: string | null }): Promise<{ bookings: ServiceBooking[]; pagination: { page: number; limit: number; totalCount: number; totalPages: number } }> {
+    const response = await api.get('/admin/hotel-services/bookings/queue', { params: normalizeListParams(params) });
+    return unwrapApiData(response.data);
+  }
+
+  async assignBookingStaff(bookingId: string, staffId: string): Promise<ServiceBooking> {
+    const response = await api.patch(`/admin/hotel-services/bookings/${bookingId}/assign-staff`, { staffId });
+    return unwrapApiData(response.data);
+  }
+
+  async updateBookingStatus(bookingId: string, status: 'confirmed' | 'completed' | 'cancelled', reason?: string): Promise<ServiceBooking> {
+    const response = await api.patch(`/admin/hotel-services/bookings/${bookingId}/status`, { status, reason });
+    return unwrapApiData(response.data);
+  }
+
+  async getServiceAnalyticsSummary(params?: { from?: string; to?: string; hotelId?: string | null }): Promise<unknown> {
+    const response = await api.get('/admin/hotel-services/analytics/summary', { params });
+    return unwrapApiData(response.data);
   }
 
   /**

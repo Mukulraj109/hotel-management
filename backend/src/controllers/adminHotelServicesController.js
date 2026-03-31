@@ -1,10 +1,47 @@
 import mongoose from 'mongoose';
 import HotelService from '../models/HotelService.js';
+import ServiceBooking from '../models/ServiceBooking.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import websocketService from '../services/websocketService.js';
+import logger from '../utils/logger.js';
+
+function resolveActorHotelId(req) {
+  const resolvedHotelId = req.user?.hotelId || req.query?.hotelId;
+  if (!resolvedHotelId) {
+    throw new ApplicationError('Hotel context required', 400);
+  }
+  return resolvedHotelId;
+}
+
+async function emitHotelServiceEvent(eventName, serviceDoc, extra = {}) {
+  if (!serviceDoc) return;
+  const hotelId = serviceDoc.hotelId?._id || serviceDoc.hotelId;
+  if (!hotelId) return;
+  await websocketService.broadcastToHotel(
+    hotelId.toString(),
+    eventName,
+    {
+      service: serviceDoc,
+      ...extra
+    }
+  ).catch(() => {});
+}
+
+async function enforceFeaturedLimit(hotelId, currentServiceId = null) {
+  const featuredMax = Math.max(1, Number.parseInt(process.env.HOTEL_SERVICE_MAX_FEATURED || '12', 10));
+  const query = { hotelId, featured: true, isActive: true };
+  if (currentServiceId) {
+    query._id = { $ne: currentServiceId };
+  }
+  const count = await HotelService.countDocuments(query);
+  if (count >= featuredMax) {
+    throw new ApplicationError(`Featured services limit reached (${featuredMax})`, 400);
+  }
+}
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
@@ -160,17 +197,12 @@ export const getAllServices = catchAsync(async (req, res) => {
  *         description: Service not found
  */
 export const getServiceById = catchAsync(async (req, res) => {
-  const service = await HotelService.findById(req.params.id)
+  const actorHotelId = resolveActorHotelId(req);
+  const service = await HotelService.findOne({ _id: req.params.id, hotelId: actorHotelId })
     .populate('hotelId', 'name address contact').lean();
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Tenant isolation — applies to all roles
-  const serviceHotelId = service.hotelId?._id || service.hotelId;
-  if (req.user.hotelId && serviceHotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   res.json({
@@ -240,6 +272,9 @@ export const createService = catchAsync(async (req, res) => {
     amenities,
     tags,
     featured = false,
+    featuredPriority = 0,
+    featuredFrom,
+    featuredUntil,
     isActive = true
   } = req.body;
 
@@ -280,6 +315,9 @@ export const createService = catchAsync(async (req, res) => {
     amenities: parsedAmenities,
     tags: parsedTags,
     featured: featured === 'true' || featured === true,
+    featuredPriority: Number.isFinite(Number(featuredPriority)) ? Number(featuredPriority) : 0,
+    featuredFrom: featuredFrom ? new Date(featuredFrom) : undefined,
+    featuredUntil: featuredUntil ? new Date(featuredUntil) : undefined,
     isActive: isActive === 'true' || isActive === true,
     images,
     operatingHours,
@@ -289,10 +327,14 @@ export const createService = catchAsync(async (req, res) => {
       count: 0
     }
   };
+  if (serviceData.featured) {
+    await enforceFeaturedLimit(serviceData.hotelId);
+  }
 
   const service = await HotelService.create(serviceData);
 
   await service.populate('hotelId', 'name');
+  await emitHotelServiceEvent('hotel-service:created', service.toObject());
 
   res.status(201).json({
     status: 'success',
@@ -339,16 +381,11 @@ export const createService = catchAsync(async (req, res) => {
  *         description: Service updated successfully
  */
 export const updateService = catchAsync(async (req, res) => {
-  const service = await HotelService.findById(req.params.id);
+  const actorHotelId = resolveActorHotelId(req);
+  const service = await HotelService.findOne({ _id: req.params.id, hotelId: actorHotelId });
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   const {
@@ -364,6 +401,9 @@ export const updateService = catchAsync(async (req, res) => {
     amenities,
     tags,
     featured,
+    featuredPriority,
+    featuredFrom,
+    featuredUntil,
     isActive
   } = req.body;
 
@@ -408,10 +448,17 @@ export const updateService = catchAsync(async (req, res) => {
   if (parsedAmenities !== undefined) service.amenities = parsedAmenities;
   if (parsedTags !== undefined) service.tags = parsedTags;
   if (featured !== undefined) service.featured = featured === 'true' || featured === true;
+  if (featuredPriority !== undefined) service.featuredPriority = Number.parseInt(featuredPriority, 10) || 0;
+  if (featuredFrom !== undefined) service.featuredFrom = featuredFrom ? new Date(featuredFrom) : undefined;
+  if (featuredUntil !== undefined) service.featuredUntil = featuredUntil ? new Date(featuredUntil) : undefined;
   if (isActive !== undefined) service.isActive = isActive === 'true' || isActive === true;
 
+  if (service.featured) {
+    await enforceFeaturedLimit(actorHotelId, service._id);
+  }
   await service.save();
   await service.populate('hotelId', 'name');
+  await emitHotelServiceEvent('hotel-service:updated', service.toObject());
 
   res.json({
     status: 'success',
@@ -438,16 +485,11 @@ export const updateService = catchAsync(async (req, res) => {
  *         description: Service deleted successfully
  */
 export const deleteService = catchAsync(async (req, res) => {
-  const service = await HotelService.findById(req.params.id).lean();
+  const actorHotelId = resolveActorHotelId(req);
+  const service = await HotelService.findOne({ _id: req.params.id, hotelId: actorHotelId }).lean();
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   // Delete service images from filesystem
@@ -460,7 +502,8 @@ export const deleteService = catchAsync(async (req, res) => {
     });
   }
 
-  await HotelService.findByIdAndDelete(req.params.id);
+  await HotelService.findOneAndDelete({ _id: req.params.id, hotelId: actorHotelId });
+  await emitHotelServiceEvent('hotel-service:updated', service, { deleted: true });
 
   res.json({
     status: 'success',
@@ -487,25 +530,25 @@ export const deleteService = catchAsync(async (req, res) => {
  *         description: Service status updated successfully
  */
 export const toggleServiceStatus = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
   // First read to check access and get current status
-  const existing = await HotelService.findById(req.params.id).lean();
+  const existing = await HotelService.findOne({ _id: req.params.id, hotelId: actorHotelId }).lean();
 
   if (!existing) {
     throw new ApplicationError('Service not found', 404);
   }
 
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      existing.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
-  }
-
   // Atomic toggle using findOneAndUpdate
   const service = await HotelService.findOneAndUpdate(
-    { _id: req.params.id },
+    { _id: req.params.id, hotelId: actorHotelId },
     { $set: { isActive: !existing.isActive } },
     { new: true, runValidators: true }
   ).populate('hotelId', 'name');
+  await emitHotelServiceEvent(
+    service.isActive ? 'hotel-service:updated' : 'hotel-service:unavailable',
+    service.toObject(),
+    { availabilityChanged: true }
+  );
 
   res.json({
     status: 'success',
@@ -539,16 +582,11 @@ export const toggleServiceStatus = catchAsync(async (req, res) => {
  */
 export const deleteServiceImage = catchAsync(async (req, res) => {
   const { id, imageIndex } = req.params;
-  const service = await HotelService.findById(id);
+  const actorHotelId = resolveActorHotelId(req);
+  const service = await HotelService.findOne({ _id: id, hotelId: actorHotelId });
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   const index = parseInt(imageIndex);
@@ -566,6 +604,7 @@ export const deleteServiceImage = catchAsync(async (req, res) => {
   // Remove image from array
   service.images.splice(index, 1);
   await service.save();
+  await emitHotelServiceEvent('hotel-service:updated', service.toObject());
 
   res.json({
     status: 'success',
@@ -605,6 +644,7 @@ export const deleteServiceImage = catchAsync(async (req, res) => {
  */
 export const bulkOperations = catchAsync(async (req, res) => {
   const { operation, serviceIds } = req.body;
+  const actorHotelId = resolveActorHotelId(req);
 
   if (!operation || !serviceIds || !Array.isArray(serviceIds)) {
     throw new ApplicationError('Operation and serviceIds array are required', 400);
@@ -612,7 +652,7 @@ export const bulkOperations = catchAsync(async (req, res) => {
 
   const services = await HotelService.find({
     _id: { $in: serviceIds },
-    ...(req.user.hotelId && { hotelId: req.user.hotelId })
+    hotelId: actorHotelId
   }).lean().limit(1000);
 
   if (services.length !== serviceIds.length) {
@@ -651,8 +691,10 @@ export const bulkOperations = catchAsync(async (req, res) => {
           });
         }
       }
-      const hotelId = req.user?.hotelId || req.user?.hotel || req.tenantId;
-      await HotelService.deleteMany({ _id: { $in: serviceIds }, ...(hotelId && { hotelId }) });
+      await HotelService.deleteMany({ _id: { $in: serviceIds }, hotelId: actorHotelId });
+      for (const service of services) {
+        await emitHotelServiceEvent('hotel-service:updated', service, { deleted: true });
+      }
       return res.json({
         status: 'success',
         message: 'Services deleted successfully'
@@ -661,11 +703,20 @@ export const bulkOperations = catchAsync(async (req, res) => {
       throw new ApplicationError('Invalid operation', 400);
   }
 
-  const hotelId = req.user?.hotelId || req.user?.hotel || req.tenantId;
   await HotelService.updateMany(
-    { _id: { $in: serviceIds }, ...(hotelId && { hotelId }) },
+    { _id: { $in: serviceIds }, hotelId: actorHotelId },
     updateData
   );
+  const updatedServices = await HotelService.find({ _id: { $in: serviceIds }, hotelId: actorHotelId })
+    .populate('hotelId', 'name')
+    .lean();
+  for (const service of updatedServices) {
+    await emitHotelServiceEvent(
+      service.isActive ? 'hotel-service:updated' : 'hotel-service:unavailable',
+      service,
+      { bulkOperation: operation, availabilityChanged: operation === 'deactivate' || operation === 'activate' }
+    );
+  }
 
   res.json({
     status: 'success',
@@ -764,16 +815,11 @@ export const getServiceStaff = catchAsync(async (req, res) => {
  */
 export const assignStaffToService = catchAsync(async (req, res) => {
   const { staffId, role = 'attendant', primaryContact = false } = req.body;
+  const actorHotelId = resolveActorHotelId(req);
 
-  const service = await HotelService.findById(req.params.id);
+  const service = await HotelService.findOne({ _id: req.params.id, hotelId: actorHotelId });
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   // Verify staff member exists and belongs to the same hotel
@@ -795,6 +841,7 @@ export const assignStaffToService = catchAsync(async (req, res) => {
 
   // Populate the updated service
   await service.populate('assignedStaff.staffId', 'name email department');
+  await emitHotelServiceEvent('hotel-service:updated', service.toObject());
 
   res.json({
     status: 'success',
@@ -831,22 +878,18 @@ export const assignStaffToService = catchAsync(async (req, res) => {
  */
 export const removeStaffFromService = catchAsync(async (req, res) => {
   const { id: serviceId, staffId } = req.params;
+  const actorHotelId = resolveActorHotelId(req);
 
-  const service = await HotelService.findById(serviceId);
+  const service = await HotelService.findOne({ _id: serviceId, hotelId: actorHotelId });
   if (!service) {
     throw new ApplicationError('Service not found', 404);
-  }
-
-  // Check if admin has access to this service's hotel
-  if (req.user.role === 'admin' && req.user.hotelId &&
-      service.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('Access denied to this service', 403);
   }
 
   service.unassignStaff(staffId);
   await service.save();
 
   await service.populate('assignedStaff.staffId', 'name email department');
+  await emitHotelServiceEvent('hotel-service:updated', service.toObject());
 
   res.json({
     status: 'success',
@@ -889,4 +932,186 @@ export const getAvailableStaff = catchAsync(async (req, res) => {
     status: 'success',
     data: availableStaff
   });
+});
+
+export const getFulfillmentQueue = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
+  const rawPage = Number.parseInt(String(req.query.page ?? 1), 10);
+  const rawLimit = Number.parseInt(String(req.query.limit ?? 20), 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 20;
+  const skip = (page - 1) * limit;
+  const status = req.query.status;
+  const query = { hotelId: actorHotelId };
+  if (status) {
+    query.status = status;
+  } else {
+    query.status = { $in: ['pending', 'confirmed'] };
+  }
+
+  const [bookings, totalCount] = await Promise.all([
+    ServiceBooking.find(query)
+      .sort({ bookingDate: 1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('serviceId', 'name type location')
+      .populate('userId', 'name email phone')
+      .populate('assignedStaffId', 'name email')
+      .lean(),
+    ServiceBooking.countDocuments(query)
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      bookings,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1
+      }
+    }
+  });
+});
+
+export const assignBookingStaff = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
+  const { bookingId } = req.params;
+  const { staffId } = req.body;
+
+  const booking = await ServiceBooking.findOne({ _id: bookingId, hotelId: actorHotelId });
+  if (!booking) {
+    throw new ApplicationError('Booking not found', 404);
+  }
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    throw new ApplicationError('Cannot assign staff for closed booking', 400);
+  }
+
+  const User = mongoose.model('User');
+  const staff = await User.findOne({ _id: staffId, hotelId: actorHotelId, role: 'staff', isActive: true }).lean();
+  if (!staff) {
+    throw new ApplicationError('Staff member not found or inactive', 404);
+  }
+
+  booking.assignedStaffId = staffId;
+  booking.assignedAt = new Date();
+  if (booking.status === 'pending') {
+    booking.status = 'confirmed';
+  }
+  await booking.save();
+  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status, assignedStaffId: staffId }).catch(() => {});
+
+  res.json({ status: 'success', data: booking });
+});
+
+export const updateBookingStatus = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
+  const { bookingId } = req.params;
+  const { status, reason } = req.body;
+  const booking = await ServiceBooking.findOne({ _id: bookingId, hotelId: actorHotelId });
+  if (!booking) {
+    throw new ApplicationError('Booking not found', 404);
+  }
+
+  if (status === 'confirmed' && booking.status !== 'pending') {
+    throw new ApplicationError('Only pending booking can be confirmed', 400);
+  }
+  if (status === 'completed' && !['confirmed', 'pending'].includes(booking.status)) {
+    throw new ApplicationError('Only active booking can be completed', 400);
+  }
+  if (status === 'cancelled' && booking.status === 'completed') {
+    throw new ApplicationError('Completed booking cannot be cancelled', 400);
+  }
+
+  booking.status = status;
+  if (status === 'completed') {
+    booking.fulfilledAt = new Date();
+  }
+  if (status === 'cancelled') {
+    booking.cancellationReason = reason || 'Cancelled by operations';
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = req.user._id;
+  }
+  await booking.save();
+  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status }).catch(() => {});
+
+  res.json({ status: 'success', data: booking });
+});
+
+export const getServiceAnalyticsSummary = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+  const match = { hotelId: new mongoose.Types.ObjectId(String(actorHotelId)), createdAt: { $gte: from, $lte: to } };
+
+  const [kpis, topServices, topTypes] = await Promise.all([
+    ServiceBooking.aggregate([
+      { $match: match },
+      { $group: { _id: null, totalBookings: { $sum: 1 }, totalRevenue: { $sum: '$totalAmount' }, completedBookings: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }, cancelledBookings: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } } } }
+    ]),
+    ServiceBooking.aggregate([
+      { $match: match },
+      { $group: { _id: '$serviceId', bookings: { $sum: 1 }, revenue: { $sum: '$totalAmount' } } },
+      { $sort: { revenue: -1 } },
+      { $limit: 10 },
+      { $lookup: { from: 'hotelservices', localField: '_id', foreignField: '_id', as: 'service' } },
+      { $project: { _id: 1, bookings: 1, revenue: 1, serviceName: { $ifNull: [{ $arrayElemAt: ['$service.name', 0] }, 'Unknown Service'] } } }
+    ]),
+    ServiceBooking.aggregate([
+      { $match: match },
+      { $lookup: { from: 'hotelservices', localField: 'serviceId', foreignField: '_id', as: 'service' } },
+      { $project: { totalAmount: 1, serviceType: { $ifNull: [{ $arrayElemAt: ['$service.type', 0] }, 'unknown'] } } },
+      { $group: { _id: '$serviceType', bookings: { $sum: 1 }, revenue: { $sum: '$totalAmount' } } },
+      { $sort: { revenue: -1 } }
+    ])
+  ]);
+
+  const summary = kpis[0] || { totalBookings: 0, totalRevenue: 0, completedBookings: 0, cancelledBookings: 0 };
+  const conversionRate = summary.totalBookings > 0 ? (summary.completedBookings / summary.totalBookings) * 100 : 0;
+  const cancellationRate = summary.totalBookings > 0 ? (summary.cancelledBookings / summary.totalBookings) * 100 : 0;
+
+  res.json({
+    status: 'success',
+    data: {
+      range: { from, to },
+      summary: {
+        ...summary,
+        conversionRate: Math.round(conversionRate * 10) / 10,
+        cancellationRate: Math.round(cancellationRate * 10) / 10
+      },
+      topServices,
+      topTypes
+    }
+  });
+});
+
+export const exportServiceAnalyticsCsv = catchAsync(async (req, res) => {
+  const actorHotelId = resolveActorHotelId(req);
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+  const rows = await ServiceBooking.find({ hotelId: actorHotelId, createdAt: { $gte: from, $lte: to } })
+    .populate('serviceId', 'name type')
+    .populate('userId', 'name email')
+    .sort({ createdAt: -1 })
+    .lean()
+    .limit(5000);
+  const header = 'bookingId,serviceName,serviceType,guestName,guestEmail,status,bookingDate,totalAmount,currency,createdAt';
+  const lines = rows.map((r) => [
+    r._id,
+    `"${(r.serviceId?.name || '').replace(/"/g, '""')}"`,
+    r.serviceId?.type || '',
+    `"${(r.userId?.name || '').replace(/"/g, '""')}"`,
+    r.userId?.email || '',
+    r.status || '',
+    r.bookingDate ? new Date(r.bookingDate).toISOString() : '',
+    r.totalAmount ?? 0,
+    r.currency || 'INR',
+    r.createdAt ? new Date(r.createdAt).toISOString() : ''
+  ].join(','));
+  const csv = [header, ...lines].join('\n');
+  logger.info('Service analytics CSV exported', { hotelId: String(actorHotelId), rowCount: rows.length });
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=\"service-analytics-${Date.now()}.csv\"`);
+  res.status(200).send(csv);
 });

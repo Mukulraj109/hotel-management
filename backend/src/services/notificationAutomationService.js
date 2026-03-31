@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 import logger from '../utils/logger.js';
+import { coerceDbNotificationType } from '../utils/notificationTypeCoercion.js';
 
 /**
  * Notification Automation Service
@@ -18,6 +19,7 @@ class NotificationAutomationService {
    */
   static async triggerNotification(type, data, recipients = 'auto', priority = 'medium', hotelId) {
     try {
+      const dbType = coerceDbNotificationType(type);
       // Generate notification content based on type and data
       const notificationContent = await this.generateNotificationContent(type, data);
 
@@ -27,7 +29,7 @@ class NotificationAutomationService {
       // Create notifications for each recipient
       const notifications = await Promise.all(
         resolvedRecipients.map(recipientId => this.createNotificationForUser(
-          type,
+          dbType,
           notificationContent,
           recipientId,
           hotelId,
@@ -539,28 +541,19 @@ class NotificationAutomationService {
    */
   static async sendRealTimeNotifications(notifications) {
     try {
-      // Import WebSocket service dynamically to avoid circular imports
       const websocketService = (await import('./websocketService.js')).default;
+      const { deliverInAppNotificationToUser } = await import('./inAppNotificationDeliveryService.js');
 
-      logger.debug(`🔔 Sending ${notifications.length} real-time notifications via WebSocket`);
+      logger.debug(`🔔 Sending ${notifications.length} real-time in-app notifications`);
 
-      // Send each notification via WebSocket
       const sentIds = [];
       const failedIds = [];
       for (const notification of notifications) {
         try {
-          websocketService.sendToUser(notification.userId, 'notification:new', {
-            id: notification._id,
-            type: notification.type,
-            title: notification.title,
-            message: notification.message,
-            priority: notification.priority,
-            metadata: notification.metadata,
-            createdAt: notification.createdAt
-          });
+          await deliverInAppNotificationToUser(notification);
 
           if (notification.priority === 'urgent' || notification.priority === 'high') {
-            websocketService.sendToHotel(notification.hotelId, 'notification:urgent', {
+            await websocketService.sendToHotel(String(notification.hotelId), 'notification:urgent', {
               id: notification._id,
               type: notification.type,
               title: notification.title,
@@ -571,7 +564,7 @@ class NotificationAutomationService {
           }
 
           sentIds.push(notification._id);
-          logger.debug(`✅ Sent real-time notification: ${notification.title} to user ${notification.userId}`);
+          logger.debug(`✅ Delivered real-time notification: ${notification.title} to user ${notification.userId}`);
 
         } catch (error) {
           logger.error(`❌ Error sending real-time notification ${notification._id}:`, error);
@@ -608,6 +601,7 @@ class NotificationAutomationService {
    */
   static async scheduleNotification(type, data, scheduledFor, recipients, priority, hotelId) {
     try {
+      const dbType = coerceDbNotificationType(type);
       const content = await this.generateNotificationContent(type, data);
       const resolvedRecipients = await this.resolveRecipients(type, data, recipients, hotelId);
 
@@ -616,7 +610,7 @@ class NotificationAutomationService {
           const notification = new Notification({
             userId: recipientId,
             hotelId,
-            type,
+            type: dbType,
             title: content.title,
             message: content.message,
             priority,

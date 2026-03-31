@@ -149,13 +149,17 @@ function NotificationsDashboard() {
       const notificationId = getNotificationId(newNotification);
       if (!notificationId) return;
 
-      // Add new notification to the cache
-      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
-        if (!oldData) return oldData;
+      // Match all paginated notification queries (key includes page, filters, search)
+      queryClient.setQueriesData({ queryKey: ['notifications'], exact: false }, (oldData: unknown) => {
+        if (!oldData || typeof oldData !== 'object' || !Array.isArray((oldData as Record<string, unknown>).notifications)) {
+          return oldData;
+        }
+        const o = oldData as Record<string, unknown> & { notifications: Notification[] };
+        const prevUnread = Number(o.unreadCount) || 0;
         return {
-          ...oldData,
-          notifications: [{ ...newNotification, _id: notificationId, id: notificationId }, ...oldData.notifications],
-          unreadCount: oldData.unreadCount + 1
+          ...o,
+          notifications: [{ ...newNotification, _id: notificationId, id: notificationId }, ...o.notifications],
+          unreadCount: prevUnread + 1
         };
       });
 
@@ -181,15 +185,20 @@ function NotificationsDashboard() {
       const notificationId = getNotificationId(data);
       if (!notificationId) return;
       
-      // Update the notification in cache
-      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
-        if (!oldData) return oldData;
+      queryClient.setQueriesData({ queryKey: ['notifications'], exact: false }, (oldData: unknown) => {
+        if (!oldData || typeof oldData !== 'object' || !Array.isArray((oldData as Record<string, unknown>).notifications)) {
+          return oldData;
+        }
+        const o = oldData as Record<string, unknown> & { notifications: Notification[]; unreadCount?: number };
+        const prevUnread = Number(o.unreadCount) || 0;
         return {
-          ...oldData,
-          notifications: oldData.notifications.map((n: Notification) =>
-            n._id === notificationId ? { ...n, status: 'read', readAt: new Date().toISOString() } : n
+          ...o,
+          notifications: o.notifications.map((n: Notification) =>
+            String(n._id || n.id || '') === String(notificationId)
+              ? { ...n, status: 'read', readAt: new Date().toISOString() }
+              : n
           ),
-          unreadCount: Math.max(0, oldData.unreadCount - 1)
+          unreadCount: Math.max(0, prevUnread - 1)
         };
       });
 
@@ -201,13 +210,17 @@ function NotificationsDashboard() {
       const notificationId = getNotificationId(data);
       if (!notificationId) return;
       
-      // Update delivery status in cache
-      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
-        if (!oldData) return oldData;
+      queryClient.setQueriesData({ queryKey: ['notifications'], exact: false }, (oldData: unknown) => {
+        if (!oldData || typeof oldData !== 'object' || !Array.isArray((oldData as Record<string, unknown>).notifications)) {
+          return oldData;
+        }
+        const o = oldData as Record<string, unknown> & { notifications: Notification[] };
         return {
-          ...oldData,
-          notifications: oldData.notifications.map((n: Notification) =>
-            n._id === notificationId ? { ...n, status: 'delivered', deliveredAt: new Date().toISOString() } : n
+          ...o,
+          notifications: o.notifications.map((n: Notification) =>
+            String(n._id || n.id || '') === String(notificationId)
+              ? { ...n, status: 'delivered', deliveredAt: new Date().toISOString() }
+              : n
           )
         };
       });
@@ -217,13 +230,15 @@ function NotificationsDashboard() {
       const notificationId = getNotificationId(data);
       if (!notificationId) return;
       
-      // Update failure status in cache
-      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
-        if (!oldData) return oldData;
+      queryClient.setQueriesData({ queryKey: ['notifications'], exact: false }, (oldData: unknown) => {
+        if (!oldData || typeof oldData !== 'object' || !Array.isArray((oldData as Record<string, unknown>).notifications)) {
+          return oldData;
+        }
+        const o = oldData as Record<string, unknown> & { notifications: Notification[] };
         return {
-          ...oldData,
-          notifications: oldData.notifications.map((n: Notification) =>
-            n._id === notificationId ? { ...n, status: 'failed' } : n
+          ...o,
+          notifications: o.notifications.map((n: Notification) =>
+            String(n._id || n.id || '') === String(notificationId) ? { ...n, status: 'failed' } : n
           )
         };
       });
@@ -253,11 +268,16 @@ function NotificationsDashboard() {
         : (notificationId ? [notificationId] : []);
       if (deletedIds.length === 0) return;
 
-      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
-        if (!oldData || !Array.isArray(oldData.notifications)) return oldData;
+      queryClient.setQueriesData({ queryKey: ['notifications'], exact: false }, (oldData: unknown) => {
+        if (!oldData || typeof oldData !== 'object' || !Array.isArray((oldData as Record<string, unknown>).notifications)) {
+          return oldData;
+        }
+        const o = oldData as Record<string, unknown> & { notifications: Notification[] };
         return {
-          ...oldData,
-          notifications: oldData.notifications.filter((n: Notification) => !deletedIds.includes(String(n._id || (n as { id?: string }).id || '')))
+          ...o,
+          notifications: o.notifications.filter(
+            (n: Notification) => !deletedIds.includes(String(n._id || (n as { id?: string }).id || ''))
+          )
         };
       });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
@@ -305,7 +325,7 @@ function NotificationsDashboard() {
       ...filters,
       ...(searchTerm && { search: searchTerm })
     }),
-    keepPreviousData: true
+    placeholderData: (prev) => prev
   });
 
   // Fetch notification types
@@ -453,9 +473,19 @@ function NotificationsDashboard() {
                   connectionState === 'connected' ? 'bg-green-500' : 
                   connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                 }`} />
-                <span className="text-xs text-gray-500">
-                  {connectionState === 'connected' ? 'Live Updates' : 
-                   connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
+                <span
+                  className="text-xs text-gray-500"
+                  title={
+                    connectionState === 'connected'
+                      ? 'Real-time notification sync is active.'
+                      : 'Your inbox still refreshes every few seconds; connect for instant updates.'
+                  }
+                >
+                  {connectionState === 'connected'
+                    ? 'Live updates'
+                    : connectionState === 'connecting'
+                      ? 'Connecting…'
+                      : 'Auto-refresh'}
                 </span>
               </div>
             </div>
@@ -617,7 +647,7 @@ function NotificationsDashboard() {
 
           {/* Notifications List */}
           <div className="space-y-4">
-            {notificationsData?.notifications.length === 0 ? (
+            {(notificationsData?.notifications?.length ?? 0) === 0 ? (
               <Card className="p-8 text-center">
                 <Bell className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No notifications</h3>
@@ -647,7 +677,7 @@ function NotificationsDashboard() {
           </div>
 
           {/* Pagination */}
-          {notificationsData?.pagination.totalPages > 1 && (
+          {(notificationsData?.pagination?.totalPages ?? 0) > 1 && notificationsData?.pagination && (
             <div className="mt-6 sm:mt-8">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
@@ -702,6 +732,16 @@ interface NotificationCardProps {
   getIconComponent: (iconName: string) => React.ComponentType<unknown>;
 }
 
+function formatInrAmount(amount: unknown): string {
+  const n = typeof amount === 'number' ? amount : Number.parseFloat(String(amount ?? ''));
+  if (!Number.isFinite(n)) return '';
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(n);
+  } catch {
+    return `₹${n}`;
+  }
+}
+
 function NotificationCard({
   notification,
   isSelected,
@@ -716,6 +756,23 @@ function NotificationCard({
   const statusInfo = notificationService.getStatusInfo(notification.status);
   const isUnread = notificationService.isUnread(notification);
   const IconComponent = getIconComponent(typeInfo.icon);
+  const meta = notification.metadata;
+  const bookingRef = meta?.bookingId;
+  const bookingLabel =
+    bookingRef != null && typeof bookingRef === 'object' && bookingRef !== null && 'bookingNumber' in bookingRef
+      ? String((bookingRef as { bookingNumber?: string }).bookingNumber ?? '')
+      : bookingRef != null
+        ? String(bookingRef)
+        : '';
+  const paymentRef = meta?.paymentId;
+  const paymentAmount =
+    paymentRef != null && typeof paymentRef === 'object' && paymentRef !== null && 'amount' in paymentRef
+      ? formatInrAmount((paymentRef as { amount?: unknown }).amount)
+      : '';
+  const paymentCurrency =
+    paymentRef != null && typeof paymentRef === 'object' && paymentRef !== null && 'currency' in paymentRef
+      ? String((paymentRef as { currency?: string }).currency ?? '')
+      : '';
 
   return (
     <Card className={`p-3 sm:p-4 transition-all duration-200 ${isUnread ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}>
@@ -769,7 +826,7 @@ function NotificationCard({
 
               <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                 <span>{notificationService.formatTimeAgo(notification.createdAt)}</span>
-                {notification.channels.length > 0 && (
+                {Array.isArray(notification.channels) && notification.channels.length > 0 && (
                   <span>via {notification.channels.join(', ')}</span>
                 )}
               </div>

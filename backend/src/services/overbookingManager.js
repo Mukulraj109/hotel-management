@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Overbooking Manager
  * Handles the strategy when overbookings materialize.
@@ -134,16 +136,21 @@ class OverbookingManager {
       booking.overbookingResolution = resolution;
       await booking.save();
 
-      // Send notification to front desk
-      if (this.Notification) {
-        await this.Notification.create({
-          hotelId,
+      try {
+        const { createAndDeliverToHotelOps } = await import('./inAppNotificationDeliveryService.js');
+        await createAndDeliverToHotelOps(hotelId, {
           type: 'overbooking_resolved',
           title: `Overbooking resolved: ${resolutionType}`,
           message: `Booking ${booking.bookingNumber || bookingId} resolved via ${resolutionType}`,
           priority: 'high',
-          targetRoles: ['frontdesk', 'manager'],
+          metadata: {
+            category: 'operations',
+            bookingId: booking._id || bookingId,
+            resolutionType
+          }
         });
+      } catch (notifyErr) {
+        logger.warn('Overbooking ops notification failed', { error: notifyErr.message });
       }
 
       return { success: true, bookingId, resolution };

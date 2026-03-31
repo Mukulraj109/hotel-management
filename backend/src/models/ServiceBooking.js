@@ -151,6 +151,35 @@ const serviceBookingSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  invoiceId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Invoice'
+  },
+  settlementId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Settlement'
+  },
+  paymentReference: {
+    type: String,
+    trim: true,
+    maxlength: 120
+  },
+  idempotencyKey: {
+    type: String,
+    trim: true,
+    maxlength: 120
+  },
+  assignedStaffId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    index: true
+  },
+  assignedAt: {
+    type: Date
+  },
+  fulfilledAt: {
+    type: Date
+  },
   cancellationReason: {
     type: String,
     maxlength: [200, 'Cancellation reason cannot exceed 200 characters']
@@ -197,6 +226,8 @@ const serviceBookingSchema = new mongoose.Schema({
 serviceBookingSchema.index({ userId: 1, bookingDate: -1 });
 serviceBookingSchema.index({ serviceId: 1, bookingDate: 1 });
 serviceBookingSchema.index({ hotelId: 1, status: 1 });
+serviceBookingSchema.index({ hotelId: 1, assignedStaffId: 1, status: 1, bookingDate: 1 });
+serviceBookingSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $exists: true, $type: 'string' } } });
 serviceBookingSchema.index({ bookingDate: 1, status: 1 });
 serviceBookingSchema.index({ paymentStatus: 1, status: 1 });
 
@@ -248,11 +279,17 @@ serviceBookingSchema.virtual('statusColor').get(function() {
 // Static method to get user bookings
 serviceBookingSchema.statics.getUserBookings = async function(userId, options = {}) {
   try {
-    const { page = 1, status } = options;
-    const limit = Math.min(100, Math.max(1, options.limit || 20));
+    const rawPage = Number.parseInt(String(options.page ?? 1), 10);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    const rawLimit = Number.parseInt(String(options.limit ?? 20), 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 20;
+    const { status, hotelId } = options;
     const skip = (page - 1) * limit;
   
     const matchQuery = { userId };
+    if (hotelId) {
+      matchQuery.hotelId = hotelId;
+    }
     if (status) {
       matchQuery.status = status;
     }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Key, 
@@ -44,6 +45,7 @@ import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 function DigitalKeysDashboard() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'my-keys' | 'shared-keys' | 'stats'>('my-keys');
   const [selectedKey, setSelectedKey] = useState<DigitalKey | null>(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -164,7 +166,7 @@ function DigitalKeysDashboard() {
               ...key,
               currentUses: accessedKey.currentUses,
               remainingUses: accessedKey.remainingUses,
-              lastUsed: accessedKey.lastUsed
+              lastUsedAt: accessedKey.lastUsedAt
             } : key
           )
         };
@@ -322,12 +324,21 @@ function DigitalKeysDashboard() {
   };
 
   const downloadQRCode = (key: DigitalKey) => {
-    const canvas = document.querySelector(`#qr-${key._id} canvas`) as HTMLCanvasElement;
+    if (key.qrCode?.startsWith('data:image/')) {
+      const link = document.createElement('a');
+      link.download = `key-${key.keyCode}.png`;
+      link.href = key.qrCode;
+      link.click();
+      return;
+    }
+    const canvas = document.querySelector(`#qr-${key._id} canvas`) as HTMLCanvasElement | null;
     if (canvas) {
       const link = document.createElement('a');
       link.download = `key-${key.keyCode}.png`;
       link.href = canvas.toDataURL();
       link.click();
+    } else {
+      toast.error('QR image is not ready to download yet.');
     }
   };
 
@@ -462,7 +473,7 @@ function DigitalKeysDashboard() {
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => window.location.href = '/app/bookings'}
+                  onClick={() => navigate('/app/bookings')}
                   className="text-blue-600 border-blue-600 hover:bg-blue-50"
                 >
                   <Calendar className="w-4 h-4 mr-2" />
@@ -738,6 +749,7 @@ function KeyCard({
   onCopyCode,
   onDownloadQR
 }: KeyCardProps) {
+  const navigate = useNavigate();
   const typeInfo = digitalKeyService.getKeyTypeInfo(digitalKey.type);
   const statusInfo = digitalKeyService.getStatusInfo(digitalKey.status);
   const expirationStatus = digitalKeyService.getExpirationStatus(digitalKey);
@@ -750,9 +762,9 @@ function KeyCard({
             <div className="text-2xl">{typeInfo.icon}</div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900">
-                Room {digitalKey.roomId.number}
+                Room {digitalKey.roomId?.number ?? '—'}
               </h3>
-              <p className="text-sm text-gray-600">{digitalKey.hotelId.name}</p>
+              <p className="text-sm text-gray-600">{digitalKey.hotelId?.name ?? '—'}</p>
               {digitalKey.bookingId && (
                 <p className="text-xs text-gray-500">
                   Booking #{digitalKey.bookingId.bookingNumber} • {formatDate(digitalKey.bookingId.checkIn)} - {formatDate(digitalKey.bookingId.checkOut)}
@@ -789,7 +801,7 @@ function KeyCard({
             <div>
               <p className="text-sm text-gray-500">Shared</p>
               <p className="text-sm font-medium">
-                {digitalKey.sharedWith.filter(s => s.isActive).length} users
+                {(digitalKey.sharedWith ?? []).filter(s => s.isActive).length} users
               </p>
             </div>
           </div>
@@ -819,7 +831,7 @@ function KeyCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.location.href = '/app/bookings'}
+                onClick={() => navigate('/app/bookings')}
                 className="flex items-center gap-2 text-blue-600 border-blue-600 hover:bg-blue-50"
               >
                 <Calendar className="w-4 h-4" />
@@ -904,9 +916,9 @@ function SharedKeyCard({ digitalKey, onViewDetails }: SharedKeyCardProps) {
           <div className="text-2xl">{typeInfo.icon}</div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">
-              Room {digitalKey.roomId.number}
+              Room {digitalKey.roomId?.number ?? '—'}
             </h3>
-            <p className="text-sm text-gray-600">{digitalKey.hotelId.name}</p>
+            <p className="text-sm text-gray-600">{digitalKey.hotelId?.name ?? '—'}</p>
             <p className="text-xs text-gray-500">
               Shared by {typeof digitalKey.userId === 'object' ? digitalKey.userId.name || digitalKey.userId.email || 'Unknown' : 'Unknown'}
             </p>
@@ -942,12 +954,13 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, icon: Icon, color }: StatCardProps) {
+  const displayValue = Number.isFinite(value) ? value : 0;
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
+          <p className="text-2xl font-bold text-gray-900">{displayValue}</p>
         </div>
         <div className={`p-3 rounded-full ${color}`}>
           <Icon className="w-6 h-6" />
@@ -964,6 +977,8 @@ interface GenerateKeyModalProps {
 }
 
 function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProps) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState<GenerateKeyRequest>({
     bookingId: '',
     type: 'primary',
@@ -1052,7 +1067,7 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => window.location.reload()}
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['eligible-bookings-for-keys'] })}
                   className="mt-2"
                 >
                   Try Again
@@ -1080,7 +1095,7 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
                 <p className="text-xs mt-1 mb-3">You need confirmed bookings to generate digital keys</p>
                 <Button 
                   variant="outline" 
-                  onClick={() => window.location.href = '/app/bookings'}
+                  onClick={() => navigate('/app/bookings')}
                   className="text-blue-600 border-blue-600 hover:bg-blue-50"
                 >
                   <Calendar className="w-4 h-4 mr-2" />
@@ -1184,7 +1199,7 @@ function ShareKeyModal({ digitalKey, onClose, onSubmit, isLoading }: ShareKeyMod
       <Card className="w-full max-w-md p-6">
         <h2 className="text-xl font-semibold mb-4">Share Digital Key</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Share access to Room {digitalKey.roomId.number} with another person.
+          Share access to Room {digitalKey.roomId?.number ?? '—'} with another person.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -1263,7 +1278,7 @@ function KeyLogsModal({ digitalKey, onClose }: KeyLogsModalProps) {
           </Button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
-          Activity history for Room {digitalKey.roomId.number}
+          Activity history for Room {digitalKey.roomId?.number ?? '—'}
         </p>
         
         {isLoading ? (

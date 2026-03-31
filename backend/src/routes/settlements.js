@@ -10,6 +10,7 @@ import { catchAsync } from '../utils/catchAsync.js';
 import rateLimit from 'express-rate-limit';
 import Joi from 'joi';
 import { validate } from '../middleware/validation.js';
+import logger from '../utils/logger.js';
 import {
   validateSettlementCreation,
   validatePaymentAddition,
@@ -23,6 +24,7 @@ import {
 } from '../middleware/settlementValidation.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
+import { awardStayCompletionPoints } from '../services/loyaltyAwardService.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -529,6 +531,15 @@ router.post('/:id/payment',
             settlementNumber: settlement.settlementNumber || null,
             settlementPaymentAmount: amount
           }
+        });
+
+        await awardStayCompletionPoints(linkedBooking).catch((error) => {
+          // Non-blocking for settlement flows.
+          // Award service is idempotent and skips non-checkout states.
+          logger.warn('Settlement loyalty award skipped', {
+            bookingId: linkedBooking._id,
+            error: error.message
+          });
         });
       } catch (bookingSyncError) {
         throw new ApplicationError(

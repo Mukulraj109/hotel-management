@@ -163,6 +163,8 @@ export interface AdminAnalytics {
 
 export interface GenerateKeyRequest {
   bookingId: string;
+  /** Property scope for staff/admin generate-on-behalf (must match booking hotel) */
+  hotel?: string;
   type?: 'primary' | 'temporary' | 'emergency';
   maxUses?: number;
   securitySettings?: {
@@ -306,6 +308,18 @@ class DigitalKeyService {
     }
   }
 
+  /** Revoke any key in the property (staff/admin) */
+  async revokeKeyAsPropertyStaff(keyId: string, hotelId?: string): Promise<{ message: string }> {
+    try {
+      const response = await api.delete(`/digital-keys/admin/${keyId}`, {
+        params: hotelId ? { hotel: hotelId } : undefined
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
   async getStats(): Promise<KeyStats> {
     try {
       const response = await api.get('/digital-keys/stats/overview');
@@ -332,12 +346,12 @@ class DigitalKeyService {
     }
   }
 
-  async getAdminAnalytics(timeRange: string = '30d'): Promise<AdminAnalytics> {
+  async getAdminAnalytics(timeRange: string = '30d', hotelId?: string): Promise<AdminAnalytics> {
     try {
       const response = await api.get(`/digital-keys/admin/analytics`, {
-        params: { timeRange }
+        params: { timeRange, ...(hotelId ? { hotelId } : {}) }
       });
-      return response.data.data;
+      return response.data.data as AdminAnalytics;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -349,6 +363,7 @@ class DigitalKeyService {
     action?: string;
     userId?: string;
     timeRange?: string;
+    hotelId?: string;
   }): Promise<{
     logs: AccessLog[];
     pagination: {

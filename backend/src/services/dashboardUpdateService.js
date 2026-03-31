@@ -1,69 +1,65 @@
-import Notification from '../models/Notification.js';
 import logger from '../utils/logger.js';
+import { createAndDeliverToHotelOps } from './inAppNotificationDeliveryService.js';
 
 /**
- * Service for updating admin dashboard when user actions occur
+ * Hotel operational alerts for admin, manager, and front desk (in-app + real-time).
  */
 class DashboardUpdateService {
-  
   /**
-   * Notify admin when a new booking is created
+   * Notify operations when a new booking is created
    */
   async notifyNewBooking(booking, user) {
     try {
-      // Create admin notification
-      await Notification.create({
-        userId: booking.hotelId, // This should be admin user ID, but we'll use hotelId for now
-        hotelId: booking.hotelId,
+      await createAndDeliverToHotelOps(booking.hotelId, {
         title: 'New Booking Created',
-        message: `${user.name} created a new booking for ${booking.nights} nights`,
+        message: `${user?.name || 'Guest'} created booking ${booking.bookingNumber || ''} (${booking.nights || 0} nights)`,
         type: 'booking_created',
-        channels: ['in_app'],
         priority: 'medium',
-        status: 'sent',
         metadata: {
           category: 'booking',
           bookingId: booking._id,
-          guestId: user._id,
+          guestId: user?._id,
           amount: booking.totalAmount,
           currency: booking.currency
         },
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       });
 
-      logger.info(`Admin notification created for new booking: ${booking.bookingNumber}`);
+      logger.info(`Ops notifications sent for new booking: ${booking.bookingNumber}`);
     } catch (error) {
-      logger.error('Failed to notify admin of new booking:', error);
+      logger.error('Failed to notify ops of new booking:', error);
     }
   }
 
   /**
-   * Notify admin when booking payment status changes
+   * Notify operations when booking payment status changes
+   * @param {object} booking
+   * @param {string} oldPaymentStatus
+   * @param {string} newPaymentStatus
+   * @param {object} actorUser — req.user (staff/admin performing update)
    */
-  async notifyPaymentUpdate(booking, oldPaymentStatus, newPaymentStatus, user) {
+  async notifyPaymentUpdate(booking, oldPaymentStatus, newPaymentStatus, actorUser) {
     try {
       if (oldPaymentStatus === newPaymentStatus) return;
 
       const statusMessage = {
-        'paid': 'completed payment',
-        'pending': 'has payment pending',
-        'failed': 'payment failed',
-        'refunded': 'received refund'
+        paid: 'completed payment',
+        pending: 'has payment pending',
+        failed: 'payment failed',
+        refunded: 'received refund'
       };
 
-      await Notification.create({
-        userId: booking.hotelId,
-        hotelId: booking.hotelId,
+      const actorName = actorUser?.name || 'Staff';
+
+      await createAndDeliverToHotelOps(booking.hotelId, {
         title: 'Payment Status Updated',
-        message: `${user.name} ${statusMessage[newPaymentStatus] || 'updated payment status'} for booking ${booking.bookingNumber}`,
+        message: `${actorName} — ${statusMessage[newPaymentStatus] || 'updated payment'} for booking ${booking.bookingNumber}`,
         type: 'payment_update',
-        channels: ['in_app'],
         priority: newPaymentStatus === 'paid' ? 'high' : 'medium',
-        status: 'sent',
         metadata: {
           category: 'payment',
           bookingId: booking._id,
-          guestId: user._id,
+          guestId: booking.userId,
           amount: booking.totalAmount,
           currency: booking.currency,
           oldStatus: oldPaymentStatus,
@@ -71,56 +67,50 @@ class DashboardUpdateService {
         }
       });
 
-      logger.info(`Admin notification created for payment update: ${booking.bookingNumber} ${oldPaymentStatus} -> ${newPaymentStatus}`);
+      logger.info(
+        `Ops notifications sent for payment update: ${booking.bookingNumber} ${oldPaymentStatus} -> ${newPaymentStatus}`
+      );
     } catch (error) {
-      logger.error('Failed to notify admin of payment update:', error);
+      logger.error('Failed to notify ops of payment update:', error);
     }
   }
 
   /**
-   * Notify admin when booking is cancelled
+   * Notify operations when booking is cancelled
    */
   async notifyBookingCancellation(booking, user, reason) {
     try {
-      await Notification.create({
-        userId: booking.hotelId,
-        hotelId: booking.hotelId,
+      await createAndDeliverToHotelOps(booking.hotelId, {
         title: 'Booking Cancelled',
-        message: `${user.name} cancelled booking ${booking.bookingNumber}${reason ? `: ${reason}` : ''}`,
+        message: `${user?.name || 'User'} cancelled booking ${booking.bookingNumber}${reason ? `: ${reason}` : ''}`,
         type: 'booking_cancelled',
-        channels: ['in_app'],
         priority: 'high',
-        status: 'sent',
         metadata: {
           category: 'booking',
           bookingId: booking._id,
-          guestId: user._id,
+          guestId: user?._id,
           amount: booking.totalAmount,
           currency: booking.currency,
           cancellationReason: reason
         }
       });
 
-      logger.info(`Admin notification created for booking cancellation: ${booking.bookingNumber}`);
+      logger.info(`Ops notifications sent for booking cancellation: ${booking.bookingNumber}`);
     } catch (error) {
-      logger.error('Failed to notify admin of booking cancellation:', error);
+      logger.error('Failed to notify ops of booking cancellation:', error);
     }
   }
 
   /**
-   * Notify admin when new user registers
+   * Notify operations when a new guest registers
    */
   async notifyNewUserRegistration(user, hotelId) {
     try {
-      await Notification.create({
-        userId: hotelId,
-        hotelId: hotelId,
+      await createAndDeliverToHotelOps(hotelId, {
         title: 'New Guest Registration',
-        message: `${user.name} (${user.email}) registered as a new guest`,
+        message: `${user.name} (${user.email}) registered`,
         type: 'user_registration',
-        channels: ['in_app'],
         priority: 'low',
-        status: 'sent',
         metadata: {
           category: 'user',
           guestId: user._id,
@@ -129,26 +119,22 @@ class DashboardUpdateService {
         }
       });
 
-      logger.info(`Admin notification created for new user registration: ${user.email}`);
+      logger.info(`Ops notifications sent for new user registration: ${user.email}`);
     } catch (error) {
-      logger.error('Failed to notify admin of new user registration:', error);
+      logger.error('Failed to notify ops of new user registration:', error);
     }
   }
 
   /**
-   * Notify admin when guest service request is created
+   * Notify operations when guest submits a service request
    */
   async notifyServiceRequest(serviceRequest, user) {
     try {
-      await Notification.create({
-        userId: serviceRequest.hotelId,
-        hotelId: serviceRequest.hotelId,
+      await createAndDeliverToHotelOps(serviceRequest.hotelId, {
         title: 'New Service Request',
         message: `${user.name} requested ${serviceRequest.serviceType} service`,
         type: 'service_request',
-        channels: ['in_app'],
         priority: serviceRequest.priority === 'urgent' ? 'high' : 'medium',
-        status: 'sent',
         metadata: {
           category: 'service',
           serviceRequestId: serviceRequest._id,
@@ -158,28 +144,24 @@ class DashboardUpdateService {
         }
       });
 
-      logger.info(`Admin notification created for service request: ${serviceRequest._id}`);
+      logger.info(`Ops notifications sent for service request: ${serviceRequest._id}`);
     } catch (error) {
-      logger.error('Failed to notify admin of service request:', error);
+      logger.error('Failed to notify ops of service request:', error);
     }
   }
 
   /**
-   * Notify admin when guest leaves a review
+   * Notify operations when a guest leaves a review
    */
   async notifyNewReview(review, user) {
     try {
       const priority = review.rating <= 2 ? 'high' : review.rating >= 4 ? 'medium' : 'low';
-      
-      await Notification.create({
-        userId: review.hotelId,
-        hotelId: review.hotelId,
+
+      await createAndDeliverToHotelOps(review.hotelId, {
         title: `New ${review.rating}-Star Review`,
         message: `${user.name} left a ${review.rating}-star review: "${review.title}"`,
         type: 'review_created',
-        channels: ['in_app'],
-        priority: priority,
-        status: 'sent',
+        priority,
         metadata: {
           category: 'review',
           reviewId: review._id,
@@ -189,70 +171,63 @@ class DashboardUpdateService {
         }
       });
 
-      logger.info(`Admin notification created for new review: ${review._id} (${review.rating} stars)`);
+      logger.info(`Ops notifications sent for new review: ${review._id} (${review.rating} stars)`);
     } catch (error) {
-      logger.error('Failed to notify admin of new review:', error);
+      logger.error('Failed to notify ops of new review:', error);
     }
   }
 
   /**
-   * Log user activity for admin tracking
+   * Log notable user activity for operations (low noise)
    */
   async logUserActivity(user, action, details = {}) {
     try {
-      // Create activity log notification for admin
-      await Notification.create({
-        userId: details.hotelId,
-        hotelId: details.hotelId,
+      if (!details.hotelId) {
+        logger.debug('logUserActivity skipped: no hotelId', { action });
+        return;
+      }
+
+      await createAndDeliverToHotelOps(details.hotelId, {
         title: 'User Activity',
         message: `${user.name} ${action}`,
         type: 'user_activity',
-        channels: ['in_app'],
         priority: 'low',
-        status: 'sent',
         metadata: {
           category: 'activity',
           guestId: user._id,
-          action: action,
-          details: details,
+          action,
+          details,
           timestamp: new Date()
         }
       });
 
       logger.info(`User activity logged: ${user.email} ${action}`);
     } catch (error) {
-      logger.error('Failed to log user activity:', error);
+      logger.error('Failed to log user activity notification:', error);
     }
   }
 
   /**
-   * Trigger dashboard data refresh
+   * Nudge operational clients that dashboard aggregates may have changed
    */
   async triggerDashboardRefresh(hotelId, dataType = 'all') {
     try {
-      // In a real-world scenario, this would emit to WebSocket clients
-      // For now, we'll just log it
       logger.info(`Dashboard refresh triggered for hotel ${hotelId}, data type: ${dataType}`);
-      
-      // Could also send a special notification to admin clients to refresh data
-      await Notification.create({
-        userId: hotelId,
-        hotelId: hotelId,
+
+      await createAndDeliverToHotelOps(hotelId, {
         title: 'Data Updated',
-        message: `Dashboard data has been updated (${dataType})`,
+        message: `Dashboard data updated (${dataType})`,
         type: 'data_refresh',
-        channels: ['in_app'],
         priority: 'low',
-        status: 'sent',
         metadata: {
           category: 'system',
-          dataType: dataType,
+          dataType,
           timestamp: new Date()
         },
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000)
       });
     } catch (error) {
-      logger.error('Failed to trigger dashboard refresh:', error);
+      logger.error('Failed to trigger dashboard refresh notifications:', error);
     }
   }
 }

@@ -78,7 +78,8 @@ export const RBAC_POLICIES = {
   },
   digitalKeys: {
     baseAccess: AUTHENTICATED_ROLES,
-    adminAccess: ['admin']
+    /** Property-level key ops: list/analytics/export + generate/revoke on behalf of guests */
+    adminAccess: ['admin', 'manager', 'frontdesk', 'staff']
   },
   discountPricing: {
     modifyAccess: ['admin', 'manager', 'staff']
@@ -225,7 +226,13 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   loyalty: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: AUTHENTICATED_ROLES,
+    adminAccess: ['admin', 'manager'],
+    rulesManage: ['admin'],
+    simulationAccess: ['admin', 'manager'],
+    campaignManage: ['admin', 'manager'],
+    operationsRun: ['admin', 'manager'],
+    walletRepair: ['admin']
   },
   messageTemplates: {
     baseAccess: AUTHENTICATED_ROLES

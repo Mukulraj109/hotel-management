@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Calendar,
   Clock, 
@@ -25,6 +25,7 @@ import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 const MyServiceBookings: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -51,7 +52,7 @@ const MyServiceBookings: React.FC = () => {
   // Cancel booking mutation
   const cancelMutation = useMutation({
     mutationFn: (data: { bookingId: string; reason: string }) =>
-      hotelServicesService.cancelBooking(data.bookingId, { reason: data.reason }),
+      hotelServicesService.cancelBooking(data.bookingId, { reason: data.reason }, publicHotelId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['service-bookings'] });
       toast.success('Booking cancelled successfully');

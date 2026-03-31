@@ -102,7 +102,7 @@ class BookingService {
     }
   }
 
-  async getBookings(filters: { status?: string; page?: number; limit?: number; startDate?: string; endDate?: string } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
+  async getBookings(filters: { status?: string; page?: number; limit?: number; startDate?: string; endDate?: string; hotelId?: string } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
     try {
       const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();

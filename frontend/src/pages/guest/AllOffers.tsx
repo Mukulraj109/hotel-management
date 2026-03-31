@@ -204,6 +204,7 @@ export default function AllOffers() {
               </div>
               <div className="text-sm">
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  loyaltyInfo.tier === 'diamond' ? 'bg-cyan-100 text-cyan-900' :
                   loyaltyInfo.tier === 'platinum' ? 'bg-purple-100 text-purple-800' :
                   loyaltyInfo.tier === 'gold' ? 'bg-yellow-100 text-yellow-800' :
                   loyaltyInfo.tier === 'silver' ? 'bg-gray-100 text-gray-800' :

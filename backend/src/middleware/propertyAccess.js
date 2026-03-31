@@ -142,7 +142,18 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
   // Check if property exists at all (for multi-property users)
   const propertyExists = await Hotel.findById(hotelId).lean();
 
+  const isHotelServicesRouter =
+    typeof req.baseUrl === 'string' && req.baseUrl.includes('hotel-services');
+  const isGuestOrTravelAgentPublicTenant =
+    (req.user?.role === 'guest' || req.user?.role === 'travel_agent') &&
+    isHotelServicesRouter;
+
   if (!propertyExists) {
+    // Catalog / self-service: hotelId is tenant filter for the user's own rows; a default ID may
+    // not exist in this DB (empty lists) — do not hard-404 before the controller.
+    if (isGuestOrTravelAgentPublicTenant) {
+      return next();
+    }
     logger.warn(
       `Property access denied - property not found: hotelId=${hotelId}, ` +
       `user=${req.user._id}, role=${req.user.role}, method=${req.method}, path=${req.path}`
@@ -165,6 +176,16 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
     isPublicBookingOrAvailabilityPost &&
     (req.user?.role === 'guest' || req.user?.role === 'travel_agent')
   ) {
+    if (propertyExists.isActive === false) {
+      throw new ApplicationError('This property is not accepting bookings.', 403);
+    }
+    req.property = propertyExists;
+    return next();
+  }
+
+  // Hotel services (SPA, favorites, amenity bookings): same tenant model as public booking — any
+  // active hotel is a valid scope; user rows are still filtered by userId in controllers.
+  if (isGuestOrTravelAgentPublicTenant) {
     if (propertyExists.isActive === false) {
       throw new ApplicationError('This property is not accepting bookings.', 403);
     }

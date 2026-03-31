@@ -129,17 +129,12 @@ class RealTimeService extends EventEmitter {
       this.shouldReconnect = true;
 
       try {
-        // Read accessToken from cookie for explicit auth
-        const accessToken = document.cookie
+        // Non–httpOnly cookies (e.g. some dev setups) can be forwarded explicitly; httpOnly
+        // tokens are invisible to JS but are still sent on the handshake when withCredentials is true.
+        const accessTokenFromCookie = document.cookie
           .split('; ')
-          .find(row => row.startsWith('accessToken='))
+          .find((row) => row.startsWith('accessToken='))
           ?.split('=')[1];
-
-        if (!accessToken) {
-          this.isConnecting = false;
-          reject(new Error('No auth token available — user not logged in'));
-          return;
-        }
 
         // Create Socket.IO connection
         this.socket = io(this.config.url, {
@@ -151,7 +146,7 @@ class RealTimeService extends EventEmitter {
           forceNew: true, // Force new connection to avoid conflicts
           withCredentials: true,
           upgrade: true, // Allow upgrade to WebSocket after initial connection
-          auth: { token: accessToken }
+          auth: accessTokenFromCookie ? { token: accessTokenFromCookie } : {}
         });
 
         // Connection event handlers

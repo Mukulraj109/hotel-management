@@ -176,6 +176,37 @@ export default function LoyaltyDashboard() {
         </Card>
       </div>
 
+      {/* Loyalty transparency */}
+      <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">How You Earn Points</h3>
+          <div className="space-y-2 text-sm text-gray-700">
+            <p>
+              Posted on completed stays after checkout confirmation.
+            </p>
+            <p>
+              Formula: floor(amount x {dashboard.user.earningFormula?.pointsPerCurrencyUnit ?? 0.1}) + floor(nights x {dashboard.user.earningFormula?.pointsPerNight ?? 0})
+            </p>
+            <p>
+              Max per stay: {dashboard.user.earningFormula?.maxPointsPerStay ?? 50000} points
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Pending and Expiring</h3>
+          <div className="space-y-2 text-sm text-gray-700">
+            <p><span className="font-medium">Pending points:</span> {dashboard.user.pendingPoints ?? 0}</p>
+            <p><span className="font-medium">Expiring in 30 days:</span> {dashboard.user.pointsExpiringSoon?.totalPoints ?? 0}</p>
+            {dashboard.user.pointsExpiringSoon?.items?.slice(0, 2).map((item, idx) => (
+              <p key={`${item.expiresAt}-${idx}`} className="text-xs text-gray-500">
+                {item.points} pts expires on {new Date(item.expiresAt).toLocaleDateString()}
+              </p>
+            ))}
+          </div>
+        </Card>
+      </div>
+
       {/* Recent Transactions */}
       <Card className="p-6 mb-8">
         <div className="flex items-center justify-between mb-6">

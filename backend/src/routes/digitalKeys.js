@@ -14,8 +14,27 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import websocketService from '../services/websocketService.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
+
+const keyPopulateSpec = [
+  { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
+  { path: 'roomId', select: 'number type floor' },
+  { path: 'hotelId', select: 'name address' }
+];
+
+async function emitDigitalKeyEvent(userIds, suffix, payload) {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean).map((id) => String(id)))];
+  await Promise.all(
+    ids.map((uid) =>
+      websocketService
+        .sendToUser(uid, `digital-key:${suffix}`, payload)
+        .catch((err) => logger.warn('digital-key realtime emit failed', { uid, suffix, error: err.message }))
+    )
+  );
+}
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 const sanitizeDigitalKey = (digitalKey) => {
@@ -87,17 +106,19 @@ router.get('/shared', catchAsync(async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (safePage - 1) * safeLimit;
   
-  const keys = await DigitalKey.getSharedKeysForUser(req.user.id)
-    .skip(skip)
-    .limit(safeLimit);
+  const keys = await DigitalKey.getSharedKeysForUser(req.user.id, {
+    page: safePage,
+    limit: safeLimit,
+    hotelId: req.user.hotelId
+  });
   
   const total = await DigitalKey.countDocuments({
     'sharedWith.userId': req.user.id,
     'sharedWith.isActive': true,
     status: 'active',
-    validUntil: { $gt: new Date() }
+    validUntil: { $gt: new Date() },
+    hotelId: req.user.hotelId
   });
   
   res.json({
@@ -106,9 +127,9 @@ router.get('/shared', catchAsync(async (req, res) => {
       keys: sanitizeDigitalKeys(keys),
       pagination: {
         currentPage: safePage,
-        totalPages: Math.ceil(total / safeLimit),
+        totalPages: Math.max(1, Math.ceil(total / safeLimit)),
         totalItems: total,
-        hasNext: skip + keys.length < total,
+        hasNext: (safePage - 1) * safeLimit + keys.length < total,
         hasPrev: safePage > 1
       }
     }
@@ -138,7 +159,12 @@ router.get('/my-key', catchAsync(async (req, res) => {
 
 // Generate a new digital key for a booking
 router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async (req, res) => {
-  const { bookingId, type = 'primary', maxUses = -1, securitySettings = {} } = req.body;
+  const { bookingId, type = 'primary', maxUses: maxUsesBody, securitySettings = {} } = req.body;
+  let safeMaxUses = -1;
+  if (maxUsesBody !== undefined && maxUsesBody !== null && maxUsesBody !== '') {
+    const n = Number(maxUsesBody);
+    safeMaxUses = Number.isFinite(n) ? n : -1;
+  }
   
   // Verify booking exists and belongs to user
   const booking = await Booking.findOne({ 
@@ -195,7 +221,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
     type,
     validFrom: new Date(),
     validUntil: booking.checkOut,
-    maxUses: parseInt(maxUses),
+    maxUses: safeMaxUses,
     securitySettings: {
       requirePin: securitySettings.requirePin || false,
       pin: securitySettings.pin,
@@ -215,16 +241,31 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   await digitalKey.save();
   
   // Populate references for response
-  await digitalKey.populate([
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
-    { path: 'roomId', select: 'number type floor' },
-    { path: 'hotelId', select: 'name address' }
-  ]);
+  await digitalKey.populate(keyPopulateSpec);
   
+  const sanitizedGen = sanitizeDigitalKey(digitalKey);
+  await emitDigitalKeyEvent(req.user.id, 'created', { digitalKey: sanitizedGen });
+
+  try {
+    const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+    const roomNo = firstRoom.roomId?.number || 'your room';
+    await createAndDeliverInApp({
+      userId: req.user.id,
+      hotelId: booking.hotelId._id,
+      type: 'system_alert',
+      title: 'Digital key ready',
+      message: `Your digital key for Room ${roomNo} is active until ${new Date(booking.checkOut).toLocaleDateString()}.`,
+      priority: 'medium',
+      metadata: { category: 'system', tags: ['digital_key', 'key_created'] }
+    });
+  } catch (e) {
+    logger.warn('digital-key in-app (created) skipped', { error: e.message });
+  }
+
   res.status(201).json({
     success: true,
     message: 'Digital key generated successfully',
-    data: sanitizeDigitalKey(digitalKey)
+    data: sanitizedGen
   });
 }));
 
@@ -232,7 +273,9 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
 // Get all digital keys (admin only)
 router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, type, hotel, search } = req.query;
-  const skip = (page - 1) * limit;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (safePage - 1) * safeLimit;
   const adminHotelId = hotel || req.user.hotelId;
 
   if (!adminHotelId) {
@@ -259,7 +302,7 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
     .populate('hotelId', 'name address')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(safeLimit).lean();
   
   const total = await DigitalKey.countDocuments(filter);
   
@@ -268,11 +311,11 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
     data: {
       keys: sanitizeDigitalKeys(keys),
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: safePage,
+        totalPages: Math.max(1, Math.ceil(total / safeLimit)),
         totalItems: total,
         hasNext: skip + keys.length < total,
-        hasPrev: page > 1
+        hasPrev: safePage > 1
       }
     }
   });
@@ -500,6 +543,8 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
 router.get('/stats/overview', catchAsync(async (req, res) => {
   const userId = req.user.id;
   const userObjectId = new mongoose.Types.ObjectId(userId);
+  const hotelObjectId = new mongoose.Types.ObjectId(req.user.hotelId);
+  const tenantKeyFilter = { userId, hotelId: req.user.hotelId };
 
   const [
     totalKeys,
@@ -509,28 +554,29 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
     totalUses,
     recentActivity
   ] = await Promise.all([
-    DigitalKey.countDocuments({ userId }),
+    DigitalKey.countDocuments(tenantKeyFilter),
     DigitalKey.countDocuments({
-      userId,
+      ...tenantKeyFilter,
       status: 'active',
       validUntil: { $gt: new Date() }
     }),
     DigitalKey.countDocuments({
-      userId,
+      ...tenantKeyFilter,
       status: 'expired'
     }),
     DigitalKey.countDocuments({
       'sharedWith.userId': userId,
       'sharedWith.isActive': true,
       status: 'active',
-      validUntil: { $gt: new Date() }
+      validUntil: { $gt: new Date() },
+      hotelId: req.user.hotelId
     }),
     DigitalKey.aggregate([
-      { $match: { userId: userObjectId } },
+      { $match: { userId: userObjectId, hotelId: hotelObjectId } },
       { $group: { _id: null, total: { $sum: '$currentUses' } } }
     ]),
     DigitalKey.aggregate([
-      { $match: { userId: userObjectId } },
+      { $match: { userId: userObjectId, hotelId: hotelObjectId } },
       { $unwind: '$accessLogs' },
       { $sort: { 'accessLogs.timestamp': -1 } },
       { $limit: 10 },
@@ -566,7 +612,9 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
     timeRange = '30d'
   } = req.query;
 
-  const skip = (page - 1) * limit;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  const skip = (safePage - 1) * safeLimit;
 
   // Calculate date range
   let startDate = new Date();
@@ -682,7 +730,7 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
     DigitalKey.aggregate([
       ...pipeline,
       { $skip: skip },
-      { $limit: parseInt(limit) }
+      { $limit: safeLimit }
     ]),
     DigitalKey.aggregate([
       ...pipeline,
@@ -697,11 +745,11 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
     data: {
       logs,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(totalCount / limit),
+        currentPage: safePage,
+        totalPages: Math.max(1, Math.ceil(totalCount / safeLimit)),
         totalItems: totalCount,
         hasNext: skip + logs.length < totalCount,
-        hasPrev: page > 1
+        hasPrev: safePage > 1
       }
     }
   });
@@ -793,6 +841,197 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
   }
 }));
 
+/** Property staff: generate a digital key for a guest booking (owner = booking.userId) */
+router.post(
+  '/admin/generate',
+  authenticate,
+  authorizePolicy('digitalKeys', 'adminAccess'),
+  validate(schemas.generateDigitalKey),
+  catchAsync(async (req, res) => {
+    const {
+      bookingId,
+      type = 'primary',
+      maxUses: maxUsesBody,
+      securitySettings = {},
+      hotel: hotelFromBody
+    } = req.body;
+
+    const scopeHotelId = hotelFromBody || req.query.hotel || req.user.hotelId;
+    if (!scopeHotelId) {
+      throw new ApplicationError('Hotel ID is required', 400);
+    }
+
+    let safeMaxUses = -1;
+    if (maxUsesBody !== undefined && maxUsesBody !== null && maxUsesBody !== '') {
+      const n = Number(maxUsesBody);
+      safeMaxUses = Number.isFinite(n) ? n : -1;
+    }
+
+    const booking = await Booking.findOne({
+      _id: bookingId,
+      hotelId: scopeHotelId,
+      status: { $in: ['confirmed', 'checked_in'] }
+    })
+      .populate('hotelId')
+      .populate('rooms.roomId')
+      .lean();
+
+    if (!booking) {
+      throw new ApplicationError('Booking not found or not eligible for digital key', 404);
+    }
+
+    const bookingHotelId = String(booking.hotelId?._id || booking.hotelId);
+    if (bookingHotelId !== String(scopeHotelId)) {
+      throw new ApplicationError('Booking is not in the selected property', 403);
+    }
+
+    if (!booking.rooms || booking.rooms.length === 0) {
+      throw new ApplicationError('Booking has no rooms assigned', 400);
+    }
+
+    const guestUserId = booking.userId;
+    if (!guestUserId) {
+      throw new ApplicationError('Booking has no guest user', 400);
+    }
+
+    const existingKey = await DigitalKey.findOne({
+      bookingId,
+      userId: guestUserId,
+      hotelId: scopeHotelId,
+      status: { $in: ['active', 'expired'] }
+    }).lean();
+
+    if (existingKey && type === 'primary') {
+      throw new ApplicationError('A primary key already exists for this booking', 400);
+    }
+
+    const firstRoom = booking.rooms[0];
+    const keyCode = DigitalKey.generateKeyCode();
+    const qrData = JSON.stringify({
+      k: keyCode,
+      b: booking._id.toString().slice(-8),
+      r: firstRoom.roomId._id.toString().slice(-8),
+      h: booking.hotelId._id.toString().slice(-8),
+      t: type.charAt(0),
+      ts: Math.floor(Date.now() / 1000)
+    });
+
+    const qrCode = await QRCode.toDataURL(qrData);
+
+    const digitalKey = new DigitalKey({
+      userId: guestUserId,
+      bookingId: booking._id,
+      roomId: firstRoom.roomId._id,
+      hotelId: booking.hotelId._id,
+      keyCode,
+      qrCode,
+      type,
+      validFrom: new Date(),
+      validUntil: booking.checkOut,
+      maxUses: safeMaxUses,
+      securitySettings: {
+        requirePin: securitySettings.requirePin || false,
+        pin: securitySettings.pin,
+        allowSharing: securitySettings.allowSharing !== false,
+        maxSharedUsers: securitySettings.maxSharedUsers || 5,
+        requireApproval: securitySettings.requireApproval || false
+      },
+      metadata: {
+        generatedBy: req.user.id,
+        notes: `staff_issued:${req.user.role}`,
+        deviceInfo: {
+          userAgent: req.get('User-Agent'),
+          ipAddress: req.ip
+        }
+      }
+    });
+
+    await digitalKey.save();
+    await digitalKey.populate(keyPopulateSpec);
+
+    const sanitizedGen = sanitizeDigitalKey(digitalKey);
+    await emitDigitalKeyEvent(String(guestUserId), 'created', { digitalKey: sanitizedGen });
+
+    try {
+      const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+      const roomNo = firstRoom.roomId?.number || 'your room';
+      await createAndDeliverInApp({
+        userId: guestUserId,
+        hotelId: booking.hotelId._id,
+        type: 'system_alert',
+        title: 'Digital key ready',
+        message: `Your digital key for Room ${roomNo} is active until ${new Date(booking.checkOut).toLocaleDateString()}.`,
+        priority: 'medium',
+        metadata: { category: 'system', tags: ['digital_key', 'key_created', 'staff_issued'] }
+      });
+    } catch (e) {
+      logger.warn('digital-key in-app (staff created) skipped', { error: e.message });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Digital key generated successfully',
+      data: sanitizedGen
+    });
+  })
+);
+
+/** Property staff: revoke any guest key in the hotel */
+router.delete(
+  '/admin/:keyId',
+  authenticate,
+  authorizePolicy('digitalKeys', 'adminAccess'),
+  validate(mutationBaselineSchema),
+  catchAsync(async (req, res) => {
+    const { keyId } = req.params;
+    const scopeHotelId = req.query.hotel || req.user.hotelId;
+    if (!scopeHotelId) {
+      throw new ApplicationError('Hotel ID is required', 400);
+    }
+
+    const digitalKey = await DigitalKey.findOne({
+      _id: keyId,
+      hotelId: scopeHotelId
+    });
+
+    if (!digitalKey) {
+      throw new ApplicationError('Digital key not found', 404);
+    }
+
+    const guestUserId = String(digitalKey.userId);
+    const previousStatus = digitalKey.status;
+    await digitalKey.revokeKey();
+    await digitalKey.populate(keyPopulateSpec);
+    const sanitizedRevoked = sanitizeDigitalKey(digitalKey);
+
+    await emitDigitalKeyEvent(guestUserId, 'updated', {
+      digitalKey: sanitizedRevoked,
+      previousStatus
+    });
+
+    try {
+      const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+      const rn = sanitizedRevoked.roomId?.number || 'your room';
+      await createAndDeliverInApp({
+        userId: guestUserId,
+        hotelId: scopeHotelId,
+        type: 'system_alert',
+        title: 'Digital key revoked',
+        message: `Your digital key for Room ${rn} has been revoked by the hotel.`,
+        priority: 'high',
+        metadata: { category: 'system', tags: ['digital_key', 'key_revoked', 'staff_revoked'] }
+      });
+    } catch (e) {
+      logger.warn('digital-key in-app (staff revoked) skipped', { error: e.message });
+    }
+
+    res.json({
+      success: true,
+      message: 'Digital key revoked successfully'
+    });
+  })
+);
+
 // --- Parameterized routes below (/:keyId) --- must come AFTER all static routes ---
 
 // Get a specific digital key
@@ -871,6 +1110,16 @@ router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(a
     ipAddress: req.ip,
     ...deviceInfo
   });
+
+  await digitalKey.populate(keyPopulateSpec);
+  const sanitizedAccess = sanitizeDigitalKey(digitalKey);
+  const ownerId = String(digitalKey.userId?._id || digitalKey.userId);
+  const accessorId = String(req.user.id);
+  await emitDigitalKeyEvent(
+    accessorId === ownerId ? [ownerId] : [accessorId, ownerId],
+    'accessed',
+    { digitalKey: sanitizedAccess }
+  );
   
   res.json({
     success: true,
@@ -921,6 +1170,28 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   };
 
   await digitalKey.shareWithUser(shareData);
+  await digitalKey.populate(keyPopulateSpec);
+  const sanitizedShare = sanitizeDigitalKey(digitalKey);
+  const sharePayload = { digitalKey: sanitizedShare, sharedWith: { name } };
+  await emitDigitalKeyEvent(req.user.id, 'shared', sharePayload);
+  if (sharedUserId) {
+    await emitDigitalKeyEvent(sharedUserId, 'shared', sharePayload);
+    try {
+      const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+      const rn = sanitizedShare.roomId?.number || 'a room';
+      await createAndDeliverInApp({
+        userId: sharedUserId,
+        hotelId: req.user.hotelId,
+        type: 'system_alert',
+        title: 'Digital key shared with you',
+        message: `You now have shared access to Room ${rn}.`,
+        priority: 'medium',
+        metadata: { category: 'system', tags: ['digital_key', 'key_shared'] }
+      });
+    } catch (e) {
+      logger.warn('digital-key in-app (share) skipped', { error: e.message });
+    }
+  }
 
   res.json({
     success: true,
@@ -939,14 +1210,27 @@ router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), 
   // Do NOT use .lean() — we need Mongoose instance methods (revokeShare)
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
-    userId: req.user.id
+    userId: req.user.id,
+    hotelId: req.user.hotelId
   });
 
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
   }
 
+  const shareEntry = digitalKey.sharedWith.find(
+    (share) =>
+      (share.userId && share.userId.toString() === userIdOrEmail) ||
+      (share.email && share.email === userIdOrEmail)
+  );
+
   await digitalKey.revokeShare(userIdOrEmail);
+  await digitalKey.populate(keyPopulateSpec);
+  const sanitizedRevokeShare = sanitizeDigitalKey(digitalKey);
+  await emitDigitalKeyEvent(req.user.id, 'share-revoked', { digitalKey: sanitizedRevokeShare });
+  if (shareEntry?.userId) {
+    await emitDigitalKeyEvent(shareEntry.userId, 'share-revoked', { digitalKey: sanitizedRevokeShare });
+  }
 
   res.json({
     success: true,
@@ -958,11 +1242,14 @@ router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), 
 router.get('/:keyId/logs', catchAsync(async (req, res) => {
   const { keyId } = req.params;
   const { page = 1, limit = 50 } = req.query;
-  const skip = (page - 1) * limit;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  const skip = (safePage - 1) * safeLimit;
   
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
-    userId: req.user.id
+    userId: req.user.id,
+    hotelId: req.user.hotelId
   }).populate('accessLogs.userId', 'name email').lean();
   
   if (!digitalKey) {
@@ -971,18 +1258,18 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
   
   const logs = digitalKey.accessLogs
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(skip, skip + parseInt(limit));
+    .slice(skip, skip + safeLimit);
   
   res.json({
     success: true,
     data: {
       logs,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(digitalKey.accessLogs.length / limit),
+        currentPage: safePage,
+        totalPages: Math.max(1, Math.ceil(digitalKey.accessLogs.length / safeLimit)),
         totalItems: digitalKey.accessLogs.length,
         hasNext: skip + logs.length < digitalKey.accessLogs.length,
-        hasPrev: page > 1
+        hasPrev: safePage > 1
       }
     }
   });
@@ -995,14 +1282,38 @@ router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req
   // Do NOT use .lean() — we need Mongoose instance methods (revokeKey)
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
-    userId: req.user.id
+    userId: req.user.id,
+    hotelId: req.user.hotelId
   });
 
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
   }
 
+  const previousStatus = digitalKey.status;
   await digitalKey.revokeKey();
+  await digitalKey.populate(keyPopulateSpec);
+  const sanitizedRevoked = sanitizeDigitalKey(digitalKey);
+  await emitDigitalKeyEvent(req.user.id, 'updated', {
+    digitalKey: sanitizedRevoked,
+    previousStatus
+  });
+
+  try {
+    const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+    const rn = sanitizedRevoked.roomId?.number || 'your room';
+    await createAndDeliverInApp({
+      userId: req.user.id,
+      hotelId: req.user.hotelId,
+      type: 'system_alert',
+      title: 'Digital key revoked',
+      message: `Your digital key for Room ${rn} has been revoked.`,
+      priority: 'medium',
+      metadata: { category: 'system', tags: ['digital_key', 'key_revoked'] }
+    });
+  } catch (e) {
+    logger.warn('digital-key in-app (revoked) skipped', { error: e.message });
+  }
 
   res.json({
     success: true,

@@ -96,7 +96,12 @@ function getEmojiForNotificationType(type: string): string {
     check_in: '🏨',
     check_out: '👋',
     review_request: '📝',
-    special_offer: '🏷️'
+    special_offer: '🏷️',
+    meetup_invite: '🤝',
+    meetup_accepted: '✅',
+    meetup_declined: '📤',
+    meetup_cancelled: '🚫',
+    meetup_completed: '🎉'
   };
   
   return emojiMap[type] || '📢';

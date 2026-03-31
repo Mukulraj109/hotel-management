@@ -6,6 +6,7 @@ import StripeWebhookEvent from '../models/StripeWebhookEvent.js';
 import logger from '../utils/logger.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
+import { awardStayCompletionPoints } from '../services/loyaltyAwardService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -195,6 +196,14 @@ async function handlePaymentSuccess(paymentIntent) {
             tags: ['stripe_webhook', 'payment_success'],
             paymentIntentId: paymentIntent.id
           }
+        });
+
+        // Loyalty award is idempotent and will only post when booking is checked out.
+        await awardStayCompletionPoints(booking).catch((error) => {
+          logger.warn('Webhook loyalty award skipped', {
+            bookingId: booking._id,
+            error: error.message
+          });
         });
       }
 

@@ -11,7 +11,8 @@ import {
   FileText,
   DollarSign,
   Save,
-  Loader2
+  Loader2,
+  Users
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
@@ -60,6 +61,185 @@ interface HotelFormData {
 
 interface HotelSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
+}
+
+type GuestMeetUpPolicyPayload = {
+  meetUpsEnabled: boolean;
+  meetUpsEmailNotify: boolean;
+  maxPendingInvitesPerGuest: number;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  blockUrlsInMeetUpText: boolean;
+  profanityAction: 'none' | 'block' | 'sanitize';
+};
+
+function GuestMeetUpPolicyPanel({
+  selectedPropertyId,
+  guestExperience,
+  isSaving,
+  onSave
+}: {
+  selectedPropertyId: string | null | undefined;
+  guestExperience?: {
+    meetUpsEnabled: boolean;
+    meetUpsEmailNotify?: boolean;
+    maxPendingInvitesPerGuest?: number;
+    quietHoursStart?: string | null;
+    quietHoursEnd?: string | null;
+    blockUrlsInMeetUpText?: boolean;
+    profanityAction?: 'none' | 'block' | 'sanitize';
+  };
+  isSaving: boolean;
+  onSave: (payload: GuestMeetUpPolicyPayload) => void;
+}) {
+  const [draft, setDraft] = useState<GuestMeetUpPolicyPayload>({
+    meetUpsEnabled: true,
+    meetUpsEmailNotify: true,
+    maxPendingInvitesPerGuest: 10,
+    quietHoursStart: '',
+    quietHoursEnd: '',
+    blockUrlsInMeetUpText: true,
+    profanityAction: 'sanitize'
+  });
+
+  useEffect(() => {
+    if (!guestExperience) return;
+    setDraft({
+      meetUpsEnabled: guestExperience.meetUpsEnabled !== false,
+      meetUpsEmailNotify: guestExperience.meetUpsEmailNotify !== false,
+      maxPendingInvitesPerGuest: Math.min(
+        100,
+        Math.max(1, guestExperience.maxPendingInvitesPerGuest ?? 10)
+      ),
+      quietHoursStart: guestExperience.quietHoursStart || '',
+      quietHoursEnd: guestExperience.quietHoursEnd || '',
+      blockUrlsInMeetUpText: guestExperience.blockUrlsInMeetUpText !== false,
+      profanityAction: guestExperience.profanityAction || 'sanitize'
+    });
+  }, [guestExperience]);
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-6 space-y-4">
+      <h3 className="text-md font-medium text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <Users className="h-4 w-4" />
+        <span>Guest meet-ups & safety</span>
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Controls discoverability, invite limits, quiet hours (hotel timezone from Operations), and text moderation for
+        guest-created meet-ups. Saving applies only to this section.
+      </p>
+
+      <label className="flex items-center gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          checked={draft.meetUpsEnabled}
+          onChange={(e) => setDraft((d) => ({ ...d, meetUpsEnabled: e.target.checked }))}
+        />
+        <span className="text-sm text-gray-800 dark:text-gray-200">Enable guest meet-ups</span>
+      </label>
+
+      <label className="flex items-center gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          checked={draft.meetUpsEmailNotify}
+          onChange={(e) => setDraft((d) => ({ ...d, meetUpsEmailNotify: e.target.checked }))}
+        />
+        <span className="text-sm text-gray-800 dark:text-gray-200">Email guests for meet-up events (when SMTP is configured)</span>
+      </label>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Max pending invites per guest
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={100}
+          className="w-full max-w-xs px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          value={draft.maxPendingInvitesPerGuest}
+          onChange={(e) =>
+            setDraft((d) => ({
+              ...d,
+              maxPendingInvitesPerGuest: Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 1))
+            }))
+          }
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Quiet hours start (HH:mm, hotel time)
+          </label>
+          <input
+            type="time"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            value={draft.quietHoursStart}
+            onChange={(e) => setDraft((d) => ({ ...d, quietHoursStart: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Quiet hours end (HH:mm)
+          </label>
+          <input
+            type="time"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            value={draft.quietHoursEnd}
+            onChange={(e) => setDraft((d) => ({ ...d, quietHoursEnd: e.target.value }))}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-gray-500">
+        Leave both times empty to disable. New invites only are blocked during this window.
+      </p>
+
+      <label className="flex items-center gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          checked={draft.blockUrlsInMeetUpText}
+          onChange={(e) => setDraft((d) => ({ ...d, blockUrlsInMeetUpText: e.target.checked }))}
+        />
+        <span className="text-sm text-gray-800 dark:text-gray-200">Strip links from meet-up title, description, and location text</span>
+      </label>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Profanity policy</label>
+        <select
+          className="w-full max-w-md px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          value={draft.profanityAction}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, profanityAction: e.target.value as GuestMeetUpPolicyPayload['profanityAction'] }))
+          }
+        >
+          <option value="sanitize">Mask words (default)</option>
+          <option value="block">Reject message if profanity detected</option>
+          <option value="none">No profanity filter</option>
+        </select>
+      </div>
+
+      <div className="pt-2">
+        <Button
+          type="button"
+          disabled={!selectedPropertyId || isSaving}
+          className="flex items-center gap-2"
+          onClick={() =>
+            onSave({
+              ...draft,
+              quietHoursStart: draft.quietHoursStart || '',
+              quietHoursEnd: draft.quietHoursEnd || ''
+            })
+          }
+        >
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save meet-up policies
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
@@ -161,6 +341,49 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
       setValue('taxes', hotelSettings.taxes || {}, { shouldDirty: false });
     }
   }, [hotelSettings, setValue]);
+
+  const { data: guestExperience, refetch: refetchGuestExp } = useQuery({
+    queryKey: ['hotel-settings-guest-experience', selectedPropertyId],
+    queryFn: async () => {
+      const { data } = await api.get('/hotel-settings/guest-experience', {
+        params: { propertyId: selectedPropertyId }
+      });
+      return data.data.guestExperience as {
+        meetUpsEnabled: boolean;
+        meetUpsEmailNotify?: boolean;
+        maxPendingInvitesPerGuest?: number;
+        quietHoursStart?: string | null;
+        quietHoursEnd?: string | null;
+        blockUrlsInMeetUpText?: boolean;
+        profanityAction?: 'none' | 'block' | 'sanitize';
+      };
+    },
+    enabled: !!selectedPropertyId
+  });
+
+  const saveGuestExperienceMutation = useMutation({
+    mutationFn: async (payload: {
+      meetUpsEnabled: boolean;
+      meetUpsEmailNotify: boolean;
+      maxPendingInvitesPerGuest: number;
+      quietHoursStart: string;
+      quietHoursEnd: string;
+      blockUrlsInMeetUpText: boolean;
+      profanityAction: 'none' | 'block' | 'sanitize';
+    }) => {
+      const { data } = await api.put('/hotel-settings/guest-experience', payload, {
+        params: { propertyId: selectedPropertyId }
+      });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Guest meet-up policies saved');
+      void refetchGuestExp();
+    },
+    onError: () => {
+      toast.error('Failed to save guest meet-up policies');
+    }
+  });
 
   // Watch for form changes
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -740,6 +963,14 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
               </div>
             </div>
           </div>
+
+          {/* Guest meet-ups & safety (saved on button) */}
+          <GuestMeetUpPolicyPanel
+            selectedPropertyId={selectedPropertyId}
+            guestExperience={guestExperience}
+            isSaving={saveGuestExperienceMutation.isPending}
+            onSave={(payload) => saveGuestExperienceMutation.mutate(payload)}
+          />
 
           {/* Success Message */}
           {showSuccess && (

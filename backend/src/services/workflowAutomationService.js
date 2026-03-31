@@ -649,8 +649,7 @@ class WorkflowAutomationService {
                             amount: compensationAmount
                     };
 
-                case 'notify_it_team':
-                    // Notify IT team for system failures
+                case 'notify_it_team': {
                     await sendNotification({
                         type: 'system_integration_error',
                         recipient: 'it_team@hotel.com',
@@ -663,10 +662,28 @@ class WorkflowAutomationService {
                             impact: 'Guest service disruption'
                         }
                     });
+
+                    const hid = auditRecord.hotelId?._id || auditRecord.hotelId;
+                    if (hid) {
+                        await sendNotification({
+                            type: 'system_alert',
+                            recipient: `hotel_${hid}`,
+                            channels: ['inApp'],
+                            priority: 'high',
+                            data: {
+                                title: 'IT / bypass alert',
+                                message: auditRecord.reason?.description || 'Bypass system requires attention.',
+                                hotelId: hid,
+                                bypassId: auditRecord.bypassId
+                            }
+                        });
+                    }
+
                     return {
                         action: actionType,
-                            success: true
+                        success: true
                     };
+                }
 
                 case 'create_incident_ticket':
                     // Create incident ticket
@@ -793,6 +810,10 @@ class WorkflowAutomationService {
     async sendCompletionNotifications(auditRecord, context) {
       try {
           const notifications = [];
+          const hid =
+              auditRecord.hotelId?._id?.toString?.() ||
+              (auditRecord.hotelId && auditRecord.hotelId.toString?.()) ||
+              null;
 
           // Notify the admin who initiated the bypass
           notifications.push({
@@ -803,9 +824,44 @@ class WorkflowAutomationService {
               metadata: {
                   bypassId: auditRecord.bypassId,
                   template: context.template,
-                  automated: true
+                  automated: true,
+                  ...(hid ? { hotelId: hid } : {})
               }
           });
+
+          const adminUserId = auditRecord.adminId?._id?.toString?.() || null;
+          if (adminUserId && hid) {
+              notifications.push({
+                  type: 'system_alert',
+                  recipient: adminUserId,
+                  channels: ['inApp'],
+                  priority: 'medium',
+                  data: {
+                      title: `Bypass completed: ${auditRecord.bypassId}`,
+                      message: `Your bypass request was processed successfully through automated workflow: ${context.template}.`,
+                      hotelId: hid,
+                      bypassId: auditRecord.bypassId,
+                      template: context.template
+                  }
+              });
+          }
+
+          if (hid) {
+              notifications.push({
+                  type: 'system_alert',
+                  recipient: `hotel_${hid}`,
+                  channels: ['inApp'],
+                  priority: 'medium',
+                  data: {
+                      title: `Bypass completed: ${auditRecord.bypassId}`,
+                      message: `A bypass operation completed via automation (${context.template}).`,
+                      hotelId: hid,
+                      bypassId: auditRecord.bypassId,
+                      template: context.template,
+                      automated: true
+                  }
+              });
+          }
 
           // Notify relevant departments based on bypass category
           const departmentNotifications = this.getDepartmentNotifications(auditRecord);
@@ -908,6 +964,11 @@ class WorkflowAutomationService {
      */
     async sendAutomationNotifications(auditRecord, results) {
       try {
+          const hid =
+              auditRecord.hotelId?._id?.toString?.() ||
+              (auditRecord.hotelId && auditRecord.hotelId.toString?.()) ||
+              null;
+
           // Notify system administrators about automation execution
           if (results.errors.length > 0) {
               await sendNotification({
@@ -919,9 +980,26 @@ class WorkflowAutomationService {
                       service: 'Workflow Automation',
                       error: `${results.errors.length} errors during automation execution`,
                       timestamp: new Date().toISOString(),
-                      impact: `Bypass ${auditRecord.bypassId} partially processed`
+                      impact: `Bypass ${auditRecord.bypassId} partially processed`,
+                      ...(hid ? { hotelId: hid } : {})
                   }
               });
+              if (hid) {
+                  await sendNotification({
+                      type: 'system_integration_error',
+                      recipient: `hotel_${hid}`,
+                      channels: ['inApp'],
+                      priority: 'high',
+                      data: {
+                          title: 'Workflow automation errors',
+                          message: `${results.errors.length} error(s) during automation for bypass ${auditRecord.bypassId}.`,
+                          hotelId: hid,
+                          service: 'Workflow Automation',
+                          errorCount: results.errors.length,
+                          bypassId: auditRecord.bypassId
+                      }
+                  });
+              }
           }
 
           // Success notification for high-value or critical bypasses
@@ -938,9 +1016,27 @@ class WorkflowAutomationService {
                       bypassId: auditRecord.bypassId,
                       template: results.template,
                       financialImpact: estimatedLoss,
-                      urgency: urgencyLevel
+                      urgency: urgencyLevel,
+                      ...(hid ? { hotelId: hid } : {})
                   }
               });
+              if (hid) {
+                  await sendNotification({
+                      type: 'system_alert',
+                      recipient: `hotel_${hid}`,
+                      channels: ['inApp'],
+                      priority: 'high',
+                      data: {
+                          title: `High-impact bypass processed: ${auditRecord.bypassId}`,
+                          message: `Automated workflow completed. Template: ${results.template}. Estimated loss: $${estimatedLoss}. Urgency: ${urgencyLevel || 'n/a'}.`,
+                          hotelId: hid,
+                          bypassId: auditRecord.bypassId,
+                          template: results.template,
+                          financialImpact: estimatedLoss,
+                          urgency: urgencyLevel
+                      }
+                  });
+              }
           }
       } catch (error) {
         throw new Error(`${error.message}`);

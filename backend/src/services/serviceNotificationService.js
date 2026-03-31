@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
+import { deliverInAppNotificationToUser } from './inAppNotificationDeliveryService.js';
 
 class ServiceNotificationService {
   /**
@@ -27,6 +28,8 @@ class ServiceNotificationService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         sentAt: new Date()
       });
+
+      await deliverInAppNotificationToUser(notification);
 
       logger.info(`Service assignment notification sent to staff ${staffMember._id} for request ${serviceRequest._id}`);
       return notification;
@@ -56,7 +59,7 @@ class ServiceNotificationService {
             'cancelled': 'Your service request has been cancelled'
           };
 
-          await Notification.create({
+          const guestNotif = await Notification.create({
             userId: guest._id,
             hotelId: serviceRequest.hotelId,
             title: 'Service Request Update',
@@ -74,6 +77,8 @@ class ServiceNotificationService {
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             sentAt: new Date()
           });
+
+          await deliverInAppNotificationToUser(guestNotif);
 
           logger.info(`Service status notification sent to guest ${guest._id} for request ${serviceRequest._id}`);
         }
@@ -137,7 +142,7 @@ class ServiceNotificationService {
           const recentNotification = recentlyNotifiedIds.has(request._id.toString());
 
           if (!recentNotification) {
-            await Notification.create({
+            const overdueDoc = await Notification.create({
               userId: request.assignedTo._id,
               hotelId: request.hotelId._id,
               title: 'Overdue Service Request',
@@ -154,6 +159,8 @@ class ServiceNotificationService {
               expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
               sentAt: new Date()
             });
+
+            await deliverInAppNotificationToUser(overdueDoc);
 
             logger.info(`Overdue notification sent for request ${request._id} to staff ${request.assignedTo._id}`);
           }
@@ -220,7 +227,7 @@ class ServiceNotificationService {
       const statsMessage = this.formatDailySummary(todayStats, pendingCount, overdueCount);
 
       for (const manager of managers) {
-        await Notification.create({
+        const summaryDoc = await Notification.create({
           userId: manager._id,
           hotelId,
           title: 'Daily Service Summary',
@@ -238,6 +245,8 @@ class ServiceNotificationService {
           expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
           sentAt: new Date()
         });
+
+        await deliverInAppNotificationToUser(summaryDoc);
       }
 
       logger.info(`Daily service summary sent to ${managers.length} managers for hotel ${hotelId}`);

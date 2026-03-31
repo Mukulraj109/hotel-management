@@ -217,13 +217,22 @@ describe('authorizePolicy middleware', () => {
     expect(next).toHaveBeenCalledWith();
   });
 
-  it('enforces admin-only access for digital keys admin policy', () => {
+  it('allows property staff roles for digital keys admin policy', () => {
     const middleware = authorizePolicy('digitalKeys', 'adminAccess');
-    const req = createReq('manager');
-    const res = {};
+    ['admin', 'manager', 'frontdesk', 'staff'].forEach((role) => {
+      const req = createReq(role);
+      const next = jest.fn();
+      middleware(req, {}, next);
+      expect(next).toHaveBeenCalledWith();
+    });
+  });
+
+  it('denies guest for digital keys admin policy', () => {
+    const middleware = authorizePolicy('digitalKeys', 'adminAccess');
+    const req = createReq('guest');
     const next = jest.fn();
 
-    middleware(req, res, next);
+    middleware(req, {}, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     const err = next.mock.calls[0][0];

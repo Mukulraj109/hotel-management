@@ -41,7 +41,8 @@ import { withErrorBoundary } from '../../components/ErrorBoundary';
 interface AdminDigitalKeyManagementProps {}
 
 function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const { selectedPropertyId, selectedProperty, primaryTenantHotelId } = useProperty();
+  const propertyScopeId = selectedPropertyId || primaryTenantHotelId || '';
   const [activeTab, setActiveTab] = useState<'all-keys' | 'analytics' | 'logs'>('all-keys');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -56,58 +57,79 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
 
   // Fetch all digital keys (admin view)
   const { data: keysData, isLoading: keysLoading } = useQuery({
-    queryKey: ['admin-digital-keys', selectedPropertyId, currentPage, statusFilter, typeFilter, searchTerm],
+    queryKey: ['admin-digital-keys', propertyScopeId, currentPage, statusFilter, typeFilter, searchTerm],
     queryFn: () => digitalKeyService.getAdminKeys({
       page: currentPage,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
-      hotel: selectedPropertyId || undefined,
+      hotel: propertyScopeId || undefined,
       search: searchTerm || undefined
     }),
-    enabled: !!selectedPropertyId,
+    enabled: !!propertyScopeId,
     staleTime: 30 * 1000 // 30 seconds
   });
 
   // Fetch analytics data
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['admin-key-analytics', selectedPropertyId, timeRange],
-    queryFn: () => digitalKeyService.getAdminAnalytics(timeRange),
-    enabled: activeTab === 'analytics' && !!selectedPropertyId,
+    queryKey: ['admin-key-analytics', propertyScopeId, timeRange],
+    queryFn: () => digitalKeyService.getAdminAnalytics(timeRange, propertyScopeId || undefined),
+    enabled: activeTab === 'analytics' && !!propertyScopeId,
     staleTime: 5 * 60 * 1000
   });
 
   // Generate key mutation
   const generateKeyMutation = useMutation({
-    mutationFn: (request: GenerateKeyRequest) => digitalKeyService.generateKey(request),
+    mutationFn: (request: GenerateKeyRequest) =>
+      digitalKeyService.generateKeyAsPropertyStaff({
+        ...request,
+        hotel: propertyScopeId || undefined
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-key-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-activity-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-eligible-bookings-for-keys'] });
       setShowGenerateModal(false);
       toast.success('Digital key generated successfully!');
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to generate key');
+      const msg =
+        error && typeof error === 'object' && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Failed to generate key');
     }
   });
 
   // Revoke key mutation
   const revokeKeyMutation = useMutation({
-    mutationFn: (keyId: string) => digitalKeyService.revokeKey(keyId),
+    mutationFn: (keyId: string) =>
+      digitalKeyService.revokeKeyAsPropertyStaff(keyId, propertyScopeId || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-key-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-activity-logs'] });
       toast.success('Key revoked successfully!');
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to revoke key');
+      const msg =
+        error && typeof error === 'object' && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Failed to revoke key');
     }
   });
 
   const filteredKeys = keysData?.keys.filter(key => {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
+      const roomPart = key.roomId?.number?.toLowerCase?.() ?? '';
+      const hotelPart = key.hotelId?.name?.toLowerCase?.() ?? '';
+      const codePart = key.keyCode?.toLowerCase?.() ?? '';
       return (
-        key.roomId.number.toLowerCase().includes(searchLower) ||
-        key.hotelId.name.toLowerCase().includes(searchLower) ||
-        key.keyCode.toLowerCase().includes(searchLower) ||
+        roomPart.includes(searchLower) ||
+        hotelPart.includes(searchLower) ||
+        codePart.includes(searchLower) ||
         (key.bookingId?.bookingNumber || '').toLowerCase().includes(searchLower)
       );
     }
@@ -130,7 +152,7 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
   };
 
   const exportKeysData = async () => {
-    if (!selectedPropertyId) {
+    if (!propertyScopeId) {
       toast.error('Please select a property first');
       return;
     }
@@ -141,7 +163,7 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
       const blob = await digitalKeyService.exportAdminKeys({
         status: statusFilter || undefined,
         type: typeFilter || undefined,
-        hotel: selectedPropertyId,
+        hotel: propertyScopeId,
         format: 'csv'
       });
 
@@ -163,13 +185,15 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
     }
   };
 
-  if (!selectedPropertyId) {
+  if (!propertyScopeId) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md px-4">
           <div className="text-6xl mb-4">🏨</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
-          <p className="text-gray-600">Please select a property from the header to view digital key management.</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Property unavailable</h2>
+          <p className="text-gray-600">
+            Your account needs a hotel assignment or property selection. Open the property switcher in the header, or refresh after logging in.
+          </p>
         </div>
       </div>
     );
@@ -535,13 +559,14 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
         <ActivityLogsTab
           timeRange={timeRange}
           setTimeRange={setTimeRange}
-          hotelId={selectedPropertyId}
+          hotelId={propertyScopeId}
         />
       )}
 
       {/* Generate Key Modal */}
       {showGenerateModal && (
         <AdminGenerateKeyModal
+          hotelId={propertyScopeId}
           onClose={() => setShowGenerateModal(false)}
           onSubmit={handleGenerateKey}
           isLoading={generateKeyMutation.isPending}
@@ -681,12 +706,13 @@ function StatsCard({ title, value, icon: Icon, color }: StatsCardProps) {
 
 // Admin Generate Key Modal
 interface AdminGenerateKeyModalProps {
+  hotelId: string;
   onClose: () => void;
   onSubmit: (data: GenerateKeyRequest) => void;
   isLoading: boolean;
 }
 
-function AdminGenerateKeyModal({ onClose, onSubmit, isLoading }: AdminGenerateKeyModalProps) {
+function AdminGenerateKeyModal({ hotelId, onClose, onSubmit, isLoading }: AdminGenerateKeyModalProps) {
   const [formData, setFormData] = useState<GenerateKeyRequest>({
     bookingId: '',
     type: 'primary',
@@ -703,13 +729,13 @@ function AdminGenerateKeyModal({ onClose, onSubmit, isLoading }: AdminGenerateKe
 
   // For admin, fetch all eligible bookings (admin has access to all bookings)
   const { data: bookingsData, isLoading: bookingsLoading } = useQuery({
-    queryKey: ['admin-eligible-bookings-for-keys'],
+    queryKey: ['admin-eligible-bookings-for-keys', hotelId],
     queryFn: async () => {
-      // Use admin booking service to get all system bookings
       const response = await bookingService.getBookings({
         status: 'confirmed,checked_in',
         limit: 100,
-        page: 1
+        page: 1,
+        hotelId
       });
       const bookingsData = response.data?.bookings || response.data || [];
       // Filter for eligible bookings (confirmed/checked-in and not expired)
@@ -718,6 +744,7 @@ function AdminGenerateKeyModal({ onClose, onSubmit, isLoading }: AdminGenerateKe
         new Date(booking.checkOut) > new Date()
       ) : [];
     },
+    enabled: !!hotelId,
     staleTime: 5 * 60 * 1000
   });
 

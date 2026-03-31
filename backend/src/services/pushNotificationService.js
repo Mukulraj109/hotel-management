@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import logger from '../utils/logger.js';
+import { coerceDbNotificationType } from '../utils/notificationTypeCoercion.js';
 
 // Configure web-push (these should be environment variables in production)
 const vapidKeys = {
@@ -417,26 +418,49 @@ class PushNotificationService {
   }
 
   /**
-   * Store notification in database for history
+   * Persist web-push delivery to the unified Notification collection + fan-out (SSE / Socket.IO).
    */
   async storeNotification(userId, notificationData) {
     try {
-      const notification = new Notification({
-        userId,
-        title: notificationData.title,
-        body: notificationData.body,
-        type: notificationData.data?.type || 'general',
-        tag: notificationData.tag,
-        url: notificationData.url,
-        data: notificationData.data,
-        sentAt: new Date(),
-        isRead: false
-      });
+      const user = await User.findById(userId).select('hotelId').lean();
+      const hid = user?.hotelId;
+      if (!hid) {
+        logger.warn('storeNotification: skip inbox row — user has no hotelId', { userId });
+        return null;
+      }
 
-      await notification.save();
-      return notification;
+      const { createAndDeliverInApp } = await import('./inAppNotificationDeliveryService.js');
+
+      const rawType = notificationData.data?.type || 'system_alert';
+      const type = coerceDbNotificationType(typeof rawType === 'string' ? rawType : 'system_alert');
+      const title = String(notificationData.title || 'Notification').slice(0, 100);
+      const message = String(notificationData.body || notificationData.title || '').slice(0, 500);
+
+      const tags = ['web_push'];
+      if (notificationData.tag) tags.push(String(notificationData.tag));
+
+      const metadata = {
+        category: 'system',
+        tags
+      };
+      if (notificationData.url && /^https?:\/\/.+/.test(String(notificationData.url))) {
+        metadata.actionUrl = notificationData.url;
+      }
+
+      return await createAndDeliverInApp({
+        userId,
+        hotelId: hid,
+        type,
+        title,
+        message,
+        priority: ['low', 'medium', 'high', 'urgent'].includes(notificationData.priority)
+          ? notificationData.priority
+          : 'medium',
+        metadata
+      });
     } catch (error) {
-      logger.error('Error storing notification:', error);
+      logger.error('Error storing push notification to inbox:', error);
+      return null;
     }
   }
 
@@ -446,8 +470,9 @@ class PushNotificationService {
   async getNotificationHistory(userId, limit = 50) {
     try {
       const notifications = await Notification.find({ userId })
-        .sort({ sentAt: -1 })
-        .limit(limit).lean();
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean();
       
       return notifications;
     } catch (error) {
@@ -463,8 +488,7 @@ class PushNotificationService {
     try {
       await Notification.findOneAndUpdate(
         { _id: notificationId, userId },
-        { isRead: true, readAt: new Date() }
-      ,
+        { readAt: new Date(), status: 'read' },
         { new: true }
       );
       
@@ -482,7 +506,8 @@ class PushNotificationService {
     try {
       const count = await Notification.countDocuments({
         userId,
-        isRead: false
+        status: { $in: ['pending', 'sent', 'delivered'] },
+        readAt: { $exists: false }
       });
       
       return count;

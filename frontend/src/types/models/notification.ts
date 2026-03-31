@@ -91,7 +91,12 @@ export type NotificationType =
   | 'emergency_alert'
   | 'security_incident'
   | 'evacuation_notice'
-  | 'safety_inspection_required';
+  | 'safety_inspection_required'
+  | 'meetup_invite'
+  | 'meetup_accepted'
+  | 'meetup_declined'
+  | 'meetup_cancelled'
+  | 'meetup_completed';
 
 export type NotificationChannel = 'in_app' | 'email' | 'sms' | 'push' | 'websocket';
 
@@ -105,13 +110,15 @@ export type NotificationMetadataCategory =
   | 'loyalty'
   | 'service'
   | 'promotional'
-  | 'system';
+  | 'system'
+  | 'guest_social';
 
 export interface NotificationMetadata {
   bookingId?: string;
   serviceBookingId?: string;
   paymentId?: string;
   loyaltyTransactionId?: string;
+  meetUpRequestId?: string;
   actionUrl?: string;
   actionText?: string;
   imageUrl?: string;

@@ -22,10 +22,13 @@ import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 const ServiceDetailsPage: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const publicHotelId = useMemo(() => resolvePublicHotelId(searchParams), [searchParams]);
   const [isFavorite, setIsFavorite] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -40,9 +43,12 @@ const ServiceDetailsPage: React.FC = () => {
     if (serviceId) {
       // Check if service is in favorites (localStorage for now)
       const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-      if (savedFavorites) {
-        const favorites = JSON.parse(savedFavorites);
-        setIsFavorite(favorites.includes(serviceId));
+      try {
+        const favorites = savedFavorites ? JSON.parse(savedFavorites) : [];
+        setIsFavorite(Array.isArray(favorites) && favorites.includes(serviceId));
+      } catch {
+        localStorage.removeItem('hotelServicesFavorites');
+        setIsFavorite(false);
       }
     }
   }, [serviceId]);
@@ -51,7 +57,13 @@ const ServiceDetailsPage: React.FC = () => {
     if (!serviceId) return;
     
     const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-    const favorites = savedFavorites ? JSON.parse(savedFavorites) : [];
+    let favorites: string[] = [];
+    try {
+      const parsed = savedFavorites ? JSON.parse(savedFavorites) : [];
+      favorites = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      localStorage.removeItem('hotelServicesFavorites');
+    }
     
     if (isFavorite) {
       const newFavorites = favorites.filter((id: string) => id !== serviceId);

@@ -2,7 +2,7 @@ import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import notificationCache from './notificationCache.js';
 import rateLimiter from './rateLimiter.js';
-import { notificationEmitter } from './notificationEmitter.js';
+import { deliverInAppNotificationToUser } from './inAppNotificationDeliveryService.js';
 import notificationRouter from './notificationRouting.js';
 import logger from '../utils/logger.js';
 
@@ -305,12 +305,9 @@ class OptimizedNotificationService {
    */
   async sendRealTimeNotifications(userId, notifications) {
     try {
-      notifications.forEach(notification => {
-        notificationEmitter.emit(`user:${userId}`, {
-          type: 'notification',
-          data: notification
-        });
-      });
+      for (const notification of notifications) {
+        await deliverInAppNotificationToUser(notification);
+      }
     } catch (error) {
       logger.error('Error sending real-time notifications:', error);
     }

@@ -28,7 +28,8 @@ import {
   MeetUpRequest,
   MeetUpRequestsResponse,
   AdminAnalytics,
-  AdminInsights
+  AdminInsights,
+  GuestMeetUpReportRow
 } from '../../services/meetUpRequestService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,7 +44,9 @@ interface AdminMeetUpManagementProps {}
 
 function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
-  const [activeTab, setActiveTab] = useState<'all-meetups' | 'analytics' | 'insights'>('all-meetups');
+  const [activeTab, setActiveTab] = useState<'all-meetups' | 'analytics' | 'insights' | 'guest-reports'>('all-meetups');
+  const [reportPage, setReportPage] = useState(1);
+  const [reportStatusFilter, setReportStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -96,6 +99,19 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
     }),
     enabled: activeTab === 'insights' && !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
+  });
+
+  const { data: guestReportsData, isLoading: guestReportsLoading } = useQuery({
+    queryKey: ['admin-guest-meetup-reports', selectedPropertyId, reportPage, reportStatusFilter],
+    queryFn: () =>
+      meetUpRequestService.getAdminGuestMeetupReports({
+        hotelId: selectedPropertyId || undefined,
+        page: reportPage,
+        limit: 20,
+        status: reportStatusFilter || undefined
+      }),
+    enabled: activeTab === 'guest-reports' && !!selectedPropertyId,
+    staleTime: 30 * 1000
   });
 
   // Force cancel mutation
@@ -472,6 +488,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 queryClient.invalidateQueries({ queryKey: ['admin-meetups'] });
                 queryClient.invalidateQueries({ queryKey: ['admin-meetup-analytics'] });
                 queryClient.invalidateQueries({ queryKey: ['admin-meetup-insights'] });
+                queryClient.invalidateQueries({ queryKey: ['admin-guest-meetup-reports'] });
               }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
             >
@@ -494,12 +511,16 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
         <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
           {[
             { id: 'all-meetups', label: 'All Meet-ups', count: meetUpsData?.pagination.totalItems || 0 },
+            { id: 'guest-reports', label: 'Guest reports', count: guestReportsData?.pagination.totalItems },
             { id: 'analytics', label: 'Analytics' },
             { id: 'insights', label: 'Insights' }
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              onClick={() => {
+                setActiveTab(tab.id as typeof activeTab);
+                if (tab.id === 'guest-reports') setReportPage(1);
+              }}
               className={`flex-1 py-2 px-4 rounded-md font-medium text-sm transition-colors duration-200 ${
                 activeTab === tab.id
                   ? 'bg-white text-blue-600 shadow-sm'
@@ -656,6 +677,93 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 variant="outline"
                 onClick={() => setCurrentPage(prev => prev + 1)}
                 disabled={!meetUpsData.pagination.hasNext}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'guest-reports' && (
+        <div className="space-y-6">
+          <Card className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={reportStatusFilter}
+                  onChange={(e) => {
+                    setReportStatusFilter(e.target.value);
+                    setReportPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="dismissed">Dismissed</option>
+                </select>
+              </div>
+              <p className="text-sm text-gray-600 flex-1">
+                Guest-submitted safety reports for meet-ups. Staff are also notified in-app when a report is filed.
+              </p>
+            </div>
+          </Card>
+
+          {guestReportsLoading ? (
+            <div className="flex justify-center py-12">
+              <LoadingSpinner />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(guestReportsData?.reports?.length ?? 0) === 0 ? (
+                <Card className="p-12 text-center text-gray-600">No guest reports match this filter.</Card>
+              ) : (
+                guestReportsData?.reports?.map((r: GuestMeetUpReportRow) => (
+                  <Card key={r._id} className="p-4 border border-gray-200">
+                    <div className="flex flex-wrap justify-between gap-2 mb-2">
+                      <Badge variant="outline" className="capitalize">
+                        {r.reason}
+                      </Badge>
+                      <span className="text-xs text-gray-500">{format(new Date(r.createdAt), 'PPp')}</span>
+                    </div>
+                    <p className="text-sm text-gray-800 mb-2">
+                      <span className="font-medium">Reporter:</span>{' '}
+                      {r.reporterId?.name || r.reporterId?.email || '—'} ·{' '}
+                      <span className="font-medium">Reported:</span>{' '}
+                      {r.reportedUserId?.name || r.reportedUserId?.email || '—'}
+                    </p>
+                    {r.meetUpRequestId && typeof r.meetUpRequestId === 'object' && (
+                      <p className="text-xs text-gray-600 mb-1">
+                        Meet-up: {(r.meetUpRequestId as { title?: string }).title || '—'} (
+                        {(r.meetUpRequestId as { status?: string }).status || '—'})
+                      </p>
+                    )}
+                    {r.details ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.details}</p> : null}
+                    <p className="text-xs text-gray-500 mt-2 capitalize">Status: {r.status}</p>
+                  </Card>
+                ))
+              )}
+            </div>
+          )}
+
+          {guestReportsData && guestReportsData.pagination.totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setReportPage((p) => Math.max(1, p - 1))}
+                disabled={!guestReportsData.pagination.hasPrev}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600">
+                Page {guestReportsData.pagination.currentPage} of {guestReportsData.pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setReportPage((p) => p + 1)}
+                disabled={!guestReportsData.pagination.hasNext}
               >
                 Next
               </Button>

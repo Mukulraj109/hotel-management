@@ -259,9 +259,9 @@ digitalKeySchema.statics.getActiveKeysForUser = function(userId, { page = 1, lim
   .lean();
 };
 
-digitalKeySchema.statics.getSharedKeysForUser = function(userId, { page = 1, limit = 20 } = {}) {
+digitalKeySchema.statics.getSharedKeysForUser = function(userId, { page = 1, limit = 20, hotelId } = {}) {
   const limitNum = Math.min(100, Math.max(1, limit));
-  return this.find({
+  const filter = {
     'sharedWith.userId': userId,
     'sharedWith.isActive': true,
     status: 'active',
@@ -270,7 +270,11 @@ digitalKeySchema.statics.getSharedKeysForUser = function(userId, { page = 1, lim
       { 'sharedWith.expiresAt': { $exists: false } },
       { 'sharedWith.expiresAt': { $gt: new Date() } }
     ]
-  })
+  };
+  if (hotelId) {
+    filter.hotelId = hotelId;
+  }
+  return this.find(filter)
   .populate('userId', 'name email')
   .populate('bookingId', 'bookingNumber checkIn checkOut')
   .populate('roomId', 'number type floor')

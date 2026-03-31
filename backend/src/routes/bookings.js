@@ -5,13 +5,14 @@ import Room from '../models/Room.js';
 import Invoice from '../models/Invoice.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensurePropertyAccess, refToHotelIdString } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { dashboardUpdateService } from '../services/dashboardUpdateService.js';
+import { createAndDeliverInApp } from '../services/inAppNotificationDeliveryService.js';
 import websocketService from '../services/websocketService.js';
 import { marketingSyncMiddleware } from '../middleware/marketingSyncMiddleware.js';
 import { bookingCompletionMiddleware } from '../middleware/crmTrackingMiddleware.js';
@@ -34,6 +35,7 @@ import {
 } from '../modules/booking/controller.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
+import { awardStayCompletionPoints } from '../services/loyaltyAwardService.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -52,7 +54,21 @@ const mutationBaselineSchema = Joi.object({}).unknown(true);
  *         description: Current user's hotel ID
  */
 router.get('/current-hotel', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
-  const scopedHotelId = req.query.hotelId || req.user.hotelId;
+  let scopedHotelId = refToHotelIdString(req.query.hotelId) || refToHotelIdString(req.user.hotelId || req.user.hotel);
+
+  if (!scopedHotelId && (req.user.role === 'guest' || req.user.role === 'travel_agent')) {
+    const now = new Date();
+    const booking = await Booking.findOne({
+      userId: req.user._id,
+      status: { $in: ['confirmed', 'checked_in', 'pending'] },
+      checkOut: { $gte: now }
+    })
+      .sort({ checkIn: -1 })
+      .select('hotelId')
+      .lean();
+    scopedHotelId = booking?.hotelId ? refToHotelIdString(booking.hotelId) : null;
+  }
+
   res.json({
     status: 'success',
     data: {
@@ -1006,6 +1022,22 @@ router.post('/',
           logger.warn('Failed to send real-time booking notification', { error: wsError.message });
         }
 
+        if (booking[0].userId) {
+          try {
+            await createAndDeliverInApp({
+              userId: booking[0].userId,
+              hotelId,
+              type: 'booking_confirmation',
+              title: 'Booking confirmed',
+              message: `Your stay is confirmed. Reference ${booking[0].bookingNumber || ''}.`,
+              priority: 'medium',
+              metadata: { category: 'booking', bookingId: booking[0]._id }
+            });
+          } catch (gErr) {
+            logger.warn('Guest booking confirmation notification failed', { error: gErr.message });
+          }
+        }
+
         res.status(201).json({
           status: 'success',
           data: {
@@ -1179,7 +1211,12 @@ router.patch('/:id',
 
       // Notify admin dashboard if payment status changed
       if (oldPaymentStatus !== updateData.paymentStatus) {
-        await dashboardUpdateService.notifyPaymentUpdate(updatedBooking, oldPaymentStatus, updateData.paymentStatus, updatedBooking.userId);
+        await dashboardUpdateService.notifyPaymentUpdate(
+          updatedBooking,
+          oldPaymentStatus,
+          updateData.paymentStatus,
+          req.user
+        );
         await dashboardUpdateService.triggerDashboardRefresh(updatedBooking.hotelId, 'payments');
       }
     }
@@ -1217,6 +1254,51 @@ router.patch('/:id',
     } catch (wsError) {
       // Log WebSocket errors but don't fail the booking update
       logger.warn('Failed to send real-time booking update notification', { error: wsError.message });
+    }
+
+    if (updatedBooking.userId) {
+      const guestId = updatedBooking.userId._id || updatedBooking.userId;
+      try {
+        if (updateData.paymentStatus != null && oldPaymentStatus !== updateData.paymentStatus) {
+          const p = updateData.paymentStatus;
+          const type = p === 'paid' ? 'payment_success' : p === 'failed' ? 'payment_failed' : 'system_alert';
+          const title = p === 'paid' ? 'Payment received' : p === 'failed' ? 'Payment issue' : 'Payment updated';
+          await createAndDeliverInApp({
+            userId: guestId,
+            hotelId: updatedBooking.hotelId?._id || updatedBooking.hotelId,
+            type,
+            title,
+            message: `Booking ${updatedBooking.bookingNumber}: payment is now ${p}.`,
+            priority: p === 'failed' ? 'high' : 'medium',
+            metadata: { category: 'payment', bookingId: updatedBooking._id }
+          });
+        } else {
+          const guestKeys = [
+            'checkIn',
+            'checkOut',
+            'status',
+            'rooms',
+            'primaryRoomTypeId',
+            'primaryRoomQuantity',
+            'roomIds',
+            'guestInfo',
+            'nights'
+          ];
+          if (Object.keys(updateData).some((k) => guestKeys.includes(k))) {
+            await createAndDeliverInApp({
+              userId: guestId,
+              hotelId: updatedBooking.hotelId?._id || updatedBooking.hotelId,
+              type: 'system_alert',
+              title: 'Booking updated',
+              message: `Your booking ${updatedBooking.bookingNumber} has been updated.`,
+              priority: 'low',
+              metadata: { category: 'booking', bookingId: updatedBooking._id }
+            });
+          }
+        }
+      } catch (guestNotifErr) {
+        logger.warn('Guest booking update notification failed', { error: guestNotifErr.message });
+      }
     }
 
     await bookingAuditService.logBookingMutation({
@@ -1433,6 +1515,26 @@ router.patch('/:id/cancel',
     // Notify admin dashboard of booking cancellation
     await dashboardUpdateService.notifyBookingCancellation(booking, req.user, req.body.reason);
     await dashboardUpdateService.triggerDashboardRefresh(booking.hotelId, 'bookings');
+
+    if (booking.userId) {
+      try {
+        await createAndDeliverInApp({
+          userId: booking.userId,
+          hotelId: booking.hotelId,
+          type: 'booking_cancellation',
+          title: 'Booking cancelled',
+          message: `Booking ${booking.bookingNumber} has been cancelled.`,
+          priority: 'high',
+          metadata: {
+            category: 'booking',
+            bookingId: booking._id,
+            reason: booking.cancellationReason
+          }
+        });
+      } catch (cErr) {
+        logger.warn('Guest cancellation notification failed', { error: cErr.message });
+      }
+    }
 
     // Broadcast booking cancellation via WebSocket
     try {
@@ -2351,6 +2453,19 @@ router.patch('/:id/check-out',
       await updatedBooking.save();
 
       logger.info('Settlement auto-completed at checkout', { bookingNumber: updatedBooking.bookingNumber });
+    }
+
+    // Loyalty: award points for completed stay (idempotent per booking; never fails checkout)
+    try {
+      const loyaltyResult = await awardStayCompletionPoints(updatedBooking);
+      if (loyaltyResult.awarded) {
+        logger.info('Checkout loyalty award applied', {
+          bookingNumber: updatedBooking.bookingNumber,
+          points: loyaltyResult.points
+        });
+      }
+    } catch (loyaltyErr) {
+      logger.warn('Checkout loyalty award skipped', { error: loyaltyErr.message });
     }
 
     // Broadcast room status change via WebSocket after checkout

@@ -5,6 +5,7 @@ import {
     notificationService
 } from '../services/notificationService.js';
 import User from '../models/User.js';
+import logger from '../utils/logger.js';
 
 /**
  * Approval Timeout and Escalation Job
@@ -285,14 +286,30 @@ class ApprovalTimeoutJob {
                 }
             });
 
+            if (approver.hotelId) {
+                await notificationService.sendNotification({
+                    type: 'system_alert',
+                    recipient: String(approver._id),
+                    channels: ['inApp'],
+                    priority: 'high',
+                    data: {
+                        title: 'Approval timeout warning',
+                        message: `Workflow ${workflow.workflowId} is approaching its deadline. Please review.`,
+                        hotelId: approver.hotelId,
+                        workflowId: workflow.workflowId,
+                        bypassId: workflow.bypassAuditId?.bypassId
+                    }
+                });
+            }
+
             // Record notification in workflow
             workflow.addNotification('timeout_warning', 'email', currentApproval.assignedTo, `warning_${Date.now()}`);
             await workflow.save();
 
-            console.log(`Timeout warning sent to ${approver.email} for workflow ${workflow.workflowId}`);
+            logger.info(`Timeout warning sent to ${approver.email} for workflow ${workflow.workflowId}`);
 
         } catch (error) {
-            console.error(`Failed to send timeout warning for workflow ${workflow.workflowId}:`, error);
+            logger.warn(`Failed to send timeout warning for workflow ${workflow.workflowId}:`, error);
             this.stats.errors++;
         }
     }
@@ -323,14 +340,31 @@ class ApprovalTimeoutJob {
                 }
             });
 
+            if (initiator._id && initiator.hotelId) {
+                await notificationService.sendNotification({
+                    type: 'system_alert',
+                    recipient: String(initiator._id),
+                    channels: ['inApp'],
+                    priority: 'high',
+                    data: {
+                        title: 'Bypass approval timed out',
+                        message: `Your bypass request ${workflow.workflowId} has expired.`,
+                        hotelId: initiator.hotelId,
+                        workflowId: workflow.workflowId,
+                        bypassId: workflow.bypassAuditId?.bypassId,
+                        status: 'expired'
+                    }
+                });
+            }
+
             // Record notification in workflow
             workflow.addNotification('timeout', 'email', workflow.initiatedBy, `timeout_${Date.now()}`);
             await workflow.save();
 
-            console.log(`Timeout notification sent to ${initiator.email} for workflow ${workflow.workflowId}`);
+            logger.info(`Timeout notification sent to ${initiator.email} for workflow ${workflow.workflowId}`);
 
         } catch (error) {
-            console.error(`Failed to send timeout notification for workflow ${workflow.workflowId}:`, error);
+            logger.warn(`Failed to send timeout notification for workflow ${workflow.workflowId}:`, error);
             this.stats.errors++;
         }
     }

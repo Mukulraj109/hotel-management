@@ -3,6 +3,9 @@ import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import websocketService from './websocketService.js';
 import logger from '../utils/logger.js';
+import { deliverInAppNotificationsBulk } from './inAppNotificationDeliveryService.js';
+
+const OPS_ROLES = { $in: ['admin', 'manager', 'frontdesk'] };
 
 /**
  * Inventory Notification Service
@@ -20,7 +23,7 @@ class InventoryNotificationService {
       // Find all admin users for this hotel
       const admins = await User.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        role: 'admin',
+        role: OPS_ROLES,
         isActive: true
       }).lean().limit(1000);
 
@@ -149,8 +152,8 @@ class InventoryNotificationService {
       if (notifications.length > 0) {
         const createdNotifications = await Notification.insertMany(notifications);
         logger.debug(`Created ${notifications.length} inventory notifications`);
-      
-        // Broadcast real-time notifications to admins
+        await deliverInAppNotificationsBulk(createdNotifications);
+
         if (createdNotifications.length > 0) {
           const sampleNotification = createdNotifications[0];
           websocketService.broadcastInventoryNotification(hotelId.toString(), {
@@ -181,7 +184,7 @@ class InventoryNotificationService {
     
       const admins = await User.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        role: 'admin',
+        role: OPS_ROLES,
         isActive: true
       }).lean().limit(1000);
 
@@ -219,7 +222,8 @@ class InventoryNotificationService {
       }
 
       if (notifications.length > 0) {
-        await Notification.insertMany(notifications);
+        const created = await Notification.insertMany(notifications);
+        await deliverInAppNotificationsBulk(created);
       }
 
       return notifications.length;
@@ -235,7 +239,7 @@ class InventoryNotificationService {
     try {
       const admins = await User.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        role: 'admin',
+        role: OPS_ROLES,
         isActive: true
       }).lean().limit(1000);
 
@@ -267,7 +271,8 @@ class InventoryNotificationService {
         });
       }
 
-      await Notification.insertMany(notifications);
+      const created = await Notification.insertMany(notifications);
+      await deliverInAppNotificationsBulk(created);
       return notifications.length;
     } catch (error) {
       throw new Error(`${error.message}`);
@@ -352,13 +357,13 @@ class InventoryNotificationService {
    */
   async notifyInventoryAuditResults(hotelId, auditResults) {
     try {
-      const admins = await User.find({
+      const opsUsers = await User.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        role: 'admin',
+        role: OPS_ROLES,
         isActive: true
       }).lean().limit(1000);
 
-      if (admins.length === 0) return 0;
+      if (opsUsers.length === 0) return 0;
 
       const { lowStockCount, outOfStockCount } = auditResults;
     
@@ -382,19 +387,19 @@ class InventoryNotificationService {
         }
       };
 
-      for (const admin of admins) {
+      for (const u of opsUsers) {
         notifications.push({
           ...notification,
-          userId: admin._id
+          userId: u._id
         });
       }
 
       // Create notifications
       if (notifications.length > 0) {
-        await Notification.insertMany(notifications);
+        const created = await Notification.insertMany(notifications);
         logger.debug(`Created ${notifications.length} audit notifications`);
-      
-        // Broadcast real-time notification
+        await deliverInAppNotificationsBulk(created);
+
         const sampleNotification = notifications[0];
         websocketService.broadcastInventoryNotification(hotelId.toString(), {
           type: 'inventory_audit_alert',
@@ -418,13 +423,13 @@ class InventoryNotificationService {
    */
   async notifyWeeklyInventoryReport(hotelId, reportData) {
     try {
-      const admins = await User.find({
+      const opsUsers = await User.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        role: 'admin',
+        role: OPS_ROLES,
         isActive: true
       }).lean().limit(1000);
 
-      if (admins.length === 0) return 0;
+      if (opsUsers.length === 0) return 0;
 
       const notifications = [];
       const notification = {
@@ -440,15 +445,16 @@ class InventoryNotificationService {
         }
       };
 
-      for (const admin of admins) {
+      for (const u of opsUsers) {
         notifications.push({
           ...notification,
-          userId: admin._id
+          userId: u._id
         });
       }
 
       if (notifications.length > 0) {
-        await Notification.insertMany(notifications);
+        const created = await Notification.insertMany(notifications);
+        await deliverInAppNotificationsBulk(created);
         logger.debug(`Created ${notifications.length} weekly report notifications`);
       }
 

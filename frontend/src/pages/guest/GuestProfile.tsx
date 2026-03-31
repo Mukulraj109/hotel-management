@@ -45,6 +45,17 @@ interface FormErrors {
 
 const PHONE_REGEX = /^\+?[\d\s\-()]{7,20}$/;
 
+const formatPreference = (value?: string) => {
+  if (!value) return 'Not specified';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const formatMemberSince = (date?: string) => {
+  if (!date) return 'N/A';
+
+  return new Date(date).toLocaleDateString('en-GB');
+};
+
 export default function GuestProfile() {
   const { user, updateUser } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -216,7 +227,7 @@ export default function GuestProfile() {
   };
 
   const getLoyaltyTierColor = (tier: string) => {
-    switch (tier) {
+    switch (tier?.toLowerCase()) {
       case 'platinum': return 'text-purple-600 bg-purple-100';
       case 'gold': return 'text-yellow-600 bg-yellow-100';
       case 'silver': return 'text-gray-600 bg-gray-100';
@@ -233,17 +244,17 @@ export default function GuestProfile() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Profile</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-gray-900">My Profile</h1>
         <p className="text-gray-600">Manage your personal information and preferences</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.75fr)_320px]">
         {/* Profile Information */}
-        <div className="lg:col-span-2">
-          <Card className="p-6">
+        <div>
+          <Card className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-900">Personal Information</h2>
               {!editing ? (
@@ -251,6 +262,7 @@ export default function GuestProfile() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setEditing(true)}
+                  className="text-gray-600 hover:text-gray-900"
                 >
                   <Edit3 className="w-4 h-4 mr-2" />
                   Edit
@@ -293,10 +305,10 @@ export default function GuestProfile() {
               )}
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Full Name *
                 </label>
                 {editing ? (
@@ -319,8 +331,8 @@ export default function GuestProfile() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <User className="w-5 h-5 text-gray-400" />
+                  <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
+                    <User className="h-4 w-4 text-gray-400" />
                     <span className="text-gray-900">{user?.name || 'Not provided'}</span>
                   </div>
                 )}
@@ -328,11 +340,11 @@ export default function GuestProfile() {
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Email Address
                 </label>
-                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <Mail className="w-5 h-5 text-gray-400" />
+                <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
+                  <Mail className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-900">{user?.email}</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
@@ -340,7 +352,7 @@ export default function GuestProfile() {
 
               {/* Phone */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Phone Number
                 </label>
                 {editing ? (
@@ -362,8 +374,8 @@ export default function GuestProfile() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <Phone className="w-5 h-5 text-gray-400" />
+                  <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
+                    <Phone className="h-4 w-4 text-gray-400" />
                     <span className="text-gray-900">{user?.phone || 'Not provided'}</span>
                   </div>
                 )}
@@ -371,11 +383,11 @@ export default function GuestProfile() {
 
               {/* Preferences */}
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Room Preferences</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h3 className="mb-4 text-lg font-semibold text-gray-900">Room Preferences</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Bed Type */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Preferred Bed Type
                     </label>
                     {editing ? (
@@ -391,18 +403,16 @@ export default function GuestProfile() {
                         <option value="king">King</option>
                       </select>
                     ) : (
-                      <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                        <Bed className="w-5 h-5 text-gray-400" />
-                        <span className="text-gray-900">
-                          {user?.preferences?.bedType ? user.preferences.bedType.charAt(0).toUpperCase() + user.preferences.bedType.slice(1) : 'Not specified'}
-                        </span>
+                      <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
+                        <Bed className="h-4 w-4 text-gray-400" />
+                        <span className="text-gray-900">{formatPreference(user?.preferences?.bedType)}</span>
                       </div>
                     )}
                   </div>
 
                   {/* Floor Preference */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Floor Preference
                     </label>
                     {editing ? (
@@ -414,8 +424,8 @@ export default function GuestProfile() {
                         placeholder="e.g., High floor, Low floor"
                       />
                     ) : (
-                      <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                        <Building className="w-5 h-5 text-gray-400" />
+                      <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
+                        <Building className="h-4 w-4 text-gray-400" />
                         <span className="text-gray-900">{user?.preferences?.floor || 'Not specified'}</span>
                       </div>
                     )}
@@ -423,34 +433,37 @@ export default function GuestProfile() {
 
                   {/* Smoking Preference */}
                   <div className="md:col-span-2">
-                    <label className="flex items-center space-x-3">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Smoking Preference
+                    </label>
+                    <div className="rounded-xl bg-gray-50 px-4 py-3">
                       {editing ? (
-                        <input
-                          type="checkbox"
-                          checked={profileData.preferences.smokingAllowed}
-                          onChange={(e) => handleProfileChange('preferences.smokingAllowed', e.target.checked)}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
+                        <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={profileData.preferences.smokingAllowed}
+                            onChange={(e) => handleProfileChange('preferences.smokingAllowed', e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          Smoking Allowed
+                        </label>
                       ) : (
-                        <div className="flex items-center space-x-2">
-                          <AlertCircle className="w-5 h-5 text-gray-400" />
-                          <span className="text-sm font-medium text-gray-700">Smoking Allowed</span>
+                        <div className="flex items-center gap-2 text-sm text-gray-900">
+                          <AlertCircle className="h-4 w-4 text-gray-400" />
+                          <span className="font-medium text-gray-700">Smoking Allowed</span>
                           {user?.preferences?.smokingAllowed ? (
-                            <CheckCircle className="w-4 h-4 text-green-500" />
+                            <CheckCircle className="h-4 w-4 text-green-500" />
                           ) : (
-                            <X className="w-4 h-4 text-red-500" />
+                            <X className="h-4 w-4 text-red-500" />
                           )}
                         </div>
                       )}
-                      {editing && (
-                        <span className="text-sm font-medium text-gray-700">Smoking Allowed</span>
-                      )}
-                    </label>
+                    </div>
                   </div>
 
                   {/* Other Preferences */}
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Other Preferences
                     </label>
                     {editing ? (
@@ -462,7 +475,7 @@ export default function GuestProfile() {
                         placeholder="Any other preferences or special requirements..."
                       />
                     ) : (
-                      <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
                         <span className="text-gray-900">
                           {user?.preferences?.other || 'No additional preferences'}
                         </span>
@@ -476,29 +489,29 @@ export default function GuestProfile() {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Loyalty Status */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Loyalty Status</h3>
+          <Card className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Loyalty Status</h3>
             <div className="text-center">
-              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getLoyaltyTierColor(user?.loyalty?.tier || 'bronze')} mb-3`}>
-                {user?.loyalty?.tier ? (user.loyalty.tier.charAt(0).toUpperCase() + user.loyalty.tier.slice(1)) : 'Bronze'} Member
+              <div className={`mb-4 inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${getLoyaltyTierColor(user?.loyalty?.tier || 'bronze')}`}>
+                {formatPreference(user?.loyalty?.tier || 'bronze')} Member
               </div>
-              <p className="text-2xl font-bold text-gray-900 mb-1">
+              <p className="mb-1 text-3xl font-bold text-gray-900">
                 {user?.loyalty?.points || 0} Points
               </p>
               <p className="text-sm text-gray-600">
-                Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                Member since {formatMemberSince(user?.createdAt)}
               </p>
             </div>
           </Card>
 
           {/* Security */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Security</h3>
+          <Card className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Security</h3>
             <Button
               variant="ghost"
-              className="w-full justify-start"
+              className="w-full justify-start rounded-xl border border-transparent px-3 py-2 text-gray-700 hover:border-gray-200 hover:bg-gray-50"
               onClick={() => setShowPasswordForm(!showPasswordForm)}
             >
               <Lock className="w-4 h-4 mr-2" />
@@ -508,11 +521,11 @@ export default function GuestProfile() {
 
           {/* Password Change Form */}
           {showPasswordForm && (
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h3>
+            <Card className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">Change Password</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Current Password *
                   </label>
                   <div className="relative">
@@ -534,7 +547,7 @@ export default function GuestProfile() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                     New Password *
                   </label>
                   <div className="relative">
@@ -576,7 +589,7 @@ export default function GuestProfile() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Confirm New Password *
                   </label>
                   <input
@@ -595,7 +608,7 @@ export default function GuestProfile() {
                     <p className="mt-1 text-xs text-red-600">Passwords do not match</p>
                   )}
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"

@@ -22,6 +22,7 @@ const notificationSchema = new mongoose.Schema({
       'booking_created', 'payment_update', 'booking_cancelled', 'user_registration', 'service_request', 'review_created', 'user_activity', 'data_refresh',
       // Inventory notification types
       'inventory_damage', 'inventory_missing', 'inventory_replacement_needed', 'inventory_guest_charged', 'inventory_low_stock', 'checkout_inspection_failed', 'inventory_theft',
+      'inventory_audit_alert', 'inventory_weekly_report', 'inventory_reorder', 'inventory_impact_summary', 'inventory_integration_errors',
 
       // HOTEL MANAGEMENT AUTOMATION NOTIFICATIONS
       // Daily Operations
@@ -50,7 +51,14 @@ const notificationSchema = new mongoose.Schema({
       'emergency_alert', 'security_incident', 'evacuation_notice', 'safety_inspection_required',
 
       // Service Management
-      'service_assignment', 'service_escalation', 'service_feedback'
+      'service_assignment', 'service_escalation', 'service_feedback',
+      'service_update', 'service_cancellation', 'service_overdue', 'daily_summary',
+
+      // Overbooking / ops
+      'overbooking_resolved',
+
+      // Guest social (meet-ups)
+      'meetup_invite', 'meetup_accepted', 'meetup_declined', 'meetup_cancelled', 'meetup_completed'
     ],
     required: [true, 'Notification type is required']
   },
@@ -106,7 +114,8 @@ const notificationSchema = new mongoose.Schema({
     actionUrl: { type: String, validate: { validator: function(value) { return !value || /^https?:\/\/.+/.test(value); }, message: 'Action URL must be a valid URL' } },
     actionText: { type: String, maxlength: [50, 'Action text cannot exceed 50 characters'] },
     imageUrl: { type: String, validate: { validator: function(value) { return !value || /^https?:\/\/.+/.test(value); }, message: 'Image URL must be a valid URL' } },
-    category: { type: String, enum: ['booking', 'payment', 'loyalty', 'service', 'promotional', 'system', 'service_management'] },
+    category: { type: String, enum: ['booking', 'payment', 'loyalty', 'service', 'promotional', 'system', 'service_management', 'guest_social'] },
+    meetUpRequestId: { type: mongoose.Schema.ObjectId, ref: 'MeetUpRequest' },
     tags: [{ type: String, trim: true }]
   },
   deliveryAttempts: [{

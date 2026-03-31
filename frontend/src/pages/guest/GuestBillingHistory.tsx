@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -321,19 +321,28 @@ export default function GuestBillingHistory() {
   } = useQuery({
     queryKey: ['guest-billing-history', filters],
     queryFn: () => billingHistoryService.getBillingHistory(filters),
-    keepPreviousData: true,
-    onSuccess: (data: { data: { history: BillingHistoryItem[] } }) => {
-      if ((filters.page || 1) === 1) {
-        setAccumulatedItems(data?.data?.history || []);
-      } else {
-        setAccumulatedItems(prev => {
-          const existingIds = new Set(prev.map(i => i.id));
-          const newItems = (data?.data?.history || []).filter(i => !existingIds.has(i.id));
-          return [...prev, ...newItems];
-        });
-      }
-    }
+    // v5: use placeholderData instead of removed keepPreviousData option name
+    placeholderData: keepPreviousData,
   });
+
+  // TanStack Query v5 removed useQuery's onSuccess — sync list state when data arrives.
+  // Ignore stale placeholder rows while the next page is loading (pagination.page must match).
+  useEffect(() => {
+    if (!historyData?.data) return;
+    const page = filters.page || 1;
+    const responsePage = historyData.data.pagination?.page ?? page;
+    if (responsePage !== page) return;
+    const history = historyData.data.history ?? [];
+    if (page === 1) {
+      setAccumulatedItems(history);
+    } else {
+      setAccumulatedItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id));
+        const newItems = history.filter((i) => !existingIds.has(i.id));
+        return [...prev, ...newItems];
+      });
+    }
+  }, [historyData, filters.page]);
 
   const handlePeriodFilter = (period: string) => {
     setSelectedPeriod(period);

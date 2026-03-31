@@ -70,6 +70,7 @@ const navigation = [
   { name: 'POS System', href: '/admin/pos', icon: ShoppingCart },
   { name: 'Revenue Management', href: '/admin/revenue', icon: TrendingUp },
   { name: 'Offer Management', href: '/admin/offers', icon: Gift },
+  { name: 'Loyalty Manager', href: '/admin/loyalty-manager', icon: Gift },
   { name: 'Overbooking Config', href: '/admin/overbooking', icon: Shield },
   { name: 'Booking Engine', href: '/admin/booking-engine', icon: Zap },
   { name: 'Form Builder', href: '/admin/booking-forms', icon: FileCode },

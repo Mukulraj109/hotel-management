@@ -161,8 +161,8 @@ class NotificationEmitter extends EventEmitter {
 
       await notification.save();
 
-      // Send via SSE
-      await this.sendToUser(userId.toString(), notification);
+      const { deliverInAppNotificationToUser } = await import('./inAppNotificationDeliveryService.js');
+      await deliverInAppNotificationToUser(notification);
 
       return notification;
     } catch (error) {
@@ -356,9 +356,11 @@ class NotificationEmitter extends EventEmitter {
 
     try {
       switch (channel) {
-        case 'in_app':
-          await this.sendToUser(recipient.userId.toString(), notification);
+        case 'in_app': {
+          const { deliverInAppNotificationToUser } = await import('./inAppNotificationDeliveryService.js');
+          await deliverInAppNotificationToUser(notification);
           break;
+        }
 
         case 'push':
         case 'browser':

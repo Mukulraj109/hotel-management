@@ -1006,17 +1006,8 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
   // Mark as sent and emit real-time event for in-app delivery
   await testNotification.markAsSent(channel);
 
-  // Emit real-time notification to user via SSE/WebSocket
-  notificationEmitter.emit(`user:${userId}`, {
-    id: testNotification._id,
-    type: testNotification.type,
-    title: testNotification.title,
-    message: testNotification.message,
-    priority: testNotification.priority,
-    channels: testNotification.channels,
-    metadata: testNotification.metadata,
-    createdAt: testNotification.createdAt
-  });
+  const { deliverInAppNotificationToUser } = await import('../services/inAppNotificationDeliveryService.js');
+  await deliverInAppNotificationToUser(testNotification);
 
   res.status(200).json({
     status: 'success',

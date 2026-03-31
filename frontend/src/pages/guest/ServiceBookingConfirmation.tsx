@@ -308,10 +308,10 @@ For any queries, please contact us.
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
                   <div className="flex items-center gap-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
-                    <span className="font-medium text-green-800">Payment Status: Confirmed</span>
+                    <span className="font-medium text-green-800">Payment Status: {booking.paymentStatus || 'pending'}</span>
                   </div>
                   <p className="text-green-700 text-sm mt-1">
-                    Your booking has been confirmed and payment processed successfully.
+                    Your booking has been confirmed. Payment settlement status is shown above.
                   </p>
                 </div>
               </div>

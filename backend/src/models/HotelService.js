@@ -196,6 +196,18 @@ const hotelServiceSchema = new mongoose.Schema({
     default: false,
     index: true
   },
+  featuredPriority: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 1000
+  },
+  featuredFrom: {
+    type: Date
+  },
+  featuredUntil: {
+    type: Date
+  },
   rating: {
     average: {
       type: Number,
@@ -283,6 +295,7 @@ const hotelServiceSchema = new mongoose.Schema({
 // Indexes for efficient querying
 hotelServiceSchema.index({ hotelId: 1, type: 1, isActive: 1 });
 hotelServiceSchema.index({ hotelId: 1, featured: 1 });
+hotelServiceSchema.index({ hotelId: 1, featured: 1, featuredFrom: 1, featuredUntil: 1, featuredPriority: -1 });
 hotelServiceSchema.index({ type: 1, isActive: 1 });
 hotelServiceSchema.index({ 'rating.average': -1 });
 
@@ -340,11 +353,28 @@ hotelServiceSchema.statics.getServicesByType = async function(hotelId, type, { p
 // Static method to get featured services
 hotelServiceSchema.statics.getFeaturedServices = async function(hotelId) {
   try {
+    const now = new Date();
     return await this.find({
       hotelId,
       featured: true,
-      isActive: true
-    }).sort({ 'rating.average': -1 }).lean().limit(20);
+      isActive: true,
+      $and: [
+        {
+          $or: [
+            { featuredFrom: { $exists: false } },
+            { featuredFrom: null },
+            { featuredFrom: { $lte: now } }
+          ]
+        },
+        {
+          $or: [
+            { featuredUntil: { $exists: false } },
+            { featuredUntil: null },
+            { featuredUntil: { $gte: now } }
+          ]
+        }
+      ]
+    }).sort({ featuredPriority: -1, 'rating.average': -1 }).lean().limit(20);
   } catch (error) {
     throw new Error(`${error.message}`);
   }

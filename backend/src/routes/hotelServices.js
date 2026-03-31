@@ -1,12 +1,15 @@
 import express from 'express';
 import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
+import HotelServiceFavorite from '../models/HotelServiceFavorite.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
+import logger from '../utils/logger.js';
+import { resolvePublicHotelIdFromRequest } from '../utils/publicHotelContext.js';
 
 const router = express.Router();
 
@@ -41,14 +44,9 @@ const router = express.Router();
  *         description: List of hotel services
  */
 router.get('/', optionalAuth, catchAsync(async (req, res) => {
-  const { type, search, featured, hotelId: queryHotelId, page = '1', limit = '20' } = req.query;
-  const user = req.user;
-
-  // Resolve hotelId — require it from either user context or query param
-  const resolvedHotelId = user?.hotelId || queryHotelId;
-  if (!resolvedHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context is required' });
-  }
+  const { type, search, featured, page = '1', limit = '20', tags, minPrice, maxPrice, availabilityNow } = req.query;
+  // Guest JWTs often omit hotelId; align with public catalog + query ?hotelId= + PUBLIC_DEFAULT_HOTEL_ID
+  const resolvedHotelId = resolvePublicHotelIdFromRequest(req);
 
   const query = { isActive: true, hotelId: resolvedHotelId };
 
@@ -58,6 +56,47 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
 
   if (featured === 'true') {
     query.featured = true;
+    const now = new Date();
+    query.$and = [
+      {
+        $or: [
+          { featuredFrom: { $exists: false } },
+          { featuredFrom: null },
+          { featuredFrom: { $lte: now } }
+        ]
+      },
+      {
+        $or: [
+          { featuredUntil: { $exists: false } },
+          { featuredUntil: null },
+          { featuredUntil: { $gte: now } }
+        ]
+      }
+    ];
+  }
+
+  if (tags && typeof tags === 'string') {
+    const tagsList = tags.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tagsList.length) {
+      query.tags = { $in: tagsList };
+    }
+  }
+
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    query.price = {};
+    if (minPrice !== undefined && Number.isFinite(Number(minPrice))) {
+      query.price.$gte = Number(minPrice);
+    }
+    if (maxPrice !== undefined && Number.isFinite(Number(maxPrice))) {
+      query.price.$lte = Number(maxPrice);
+    }
+    if (Object.keys(query.price).length === 0) {
+      delete query.price;
+    }
+  }
+
+  if (availabilityNow === 'true') {
+    query.isActive = true;
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -128,10 +167,12 @@ router.get('/bookings',
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { page = 1, limit = 20, status } = req.query;
+    const resolvedHotelId = resolvePublicHotelIdFromRequest(req);
     
     const options = {
       page: parseInt(page),
-      limit: parseInt(limit)
+      limit: parseInt(limit),
+      hotelId: resolvedHotelId
     };
     
     if (status) {
@@ -144,6 +185,53 @@ router.get('/bookings',
       status: 'success',
       data: result
     });
+  })
+);
+
+router.get('/favorites',
+  authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
+  ensurePropertyAccess,
+  catchAsync(async (req, res) => {
+    const hotelId = resolvePublicHotelIdFromRequest(req);
+    const favorites = await HotelServiceFavorite.find({ userId: req.user._id, hotelId })
+      .select('serviceId')
+      .lean()
+      .limit(1000);
+    res.json({
+      status: 'success',
+      data: favorites.map((f) => String(f.serviceId))
+    });
+  })
+);
+
+router.post('/favorites/:serviceId',
+  authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
+  ensurePropertyAccess,
+  catchAsync(async (req, res) => {
+    const { serviceId } = req.params;
+    const hotelId = resolvePublicHotelIdFromRequest(req);
+    const service = await HotelService.findOne({ _id: serviceId, hotelId, isActive: true }).select('_id').lean();
+    if (!service) throw new ApplicationError('Service not found', 404);
+    await HotelServiceFavorite.updateOne(
+      { userId: req.user._id, hotelId, serviceId },
+      { $setOnInsert: { userId: req.user._id, hotelId, serviceId } },
+      { upsert: true }
+    );
+    res.status(201).json({ status: 'success', data: { serviceId } });
+  })
+);
+
+router.delete('/favorites/:serviceId',
+  authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
+  ensurePropertyAccess,
+  catchAsync(async (req, res) => {
+    const { serviceId } = req.params;
+    const hotelId = resolvePublicHotelIdFromRequest(req);
+    await HotelServiceFavorite.deleteOne({ userId: req.user._id, hotelId, serviceId });
+    res.json({ status: 'success', data: { serviceId } });
   })
 );
 
@@ -234,12 +322,7 @@ router.get('/types', catchAsync(async (req, res) => {
  *         description: List of featured services
  */
 router.get('/featured', optionalAuth, catchAsync(async (req, res) => {
-  const user = req.user;
-  const hotelId = user?.hotelId || req.query.hotelId;
-
-  if (!hotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context is required' });
-  }
+  const hotelId = resolvePublicHotelIdFromRequest(req);
 
   const featuredServices = await HotelService.getFeaturedServices(hotelId);
 
@@ -269,11 +352,7 @@ router.get('/featured', optionalAuth, catchAsync(async (req, res) => {
  */
 router.get('/:serviceId', optionalAuth, catchAsync(async (req, res) => {
   const { serviceId } = req.params;
-  const user = req.user;
-  const resolvedHotelId = user?.hotelId || req.query.hotelId;
-  if (!resolvedHotelId) {
-    throw new ApplicationError('Hotel context is required', 400);
-  }
+  const resolvedHotelId = resolvePublicHotelIdFromRequest(req);
 
   const query = { _id: serviceId, isActive: true };
   query.hotelId = resolvedHotelId;
@@ -327,13 +406,16 @@ router.get('/:serviceId/availability', optionalAuth, catchAsync(async (req, res)
   if (!date || !people) {
     throw new ApplicationError('Date and number of people are required', 400);
   }
-
-  // Verify service exists and belongs to hotel context
-  const user = req.user;
-  const resolvedHotelId = user?.hotelId || req.query.hotelId;
-  if (!resolvedHotelId) {
-    throw new ApplicationError('Hotel context is required', 400);
+  const peopleNum = Number.parseInt(String(people), 10);
+  if (!Number.isInteger(peopleNum) || peopleNum < 1) {
+    throw new ApplicationError('Number of people must be a positive integer', 400);
   }
+  const bookingDate = new Date(String(date));
+  if (Number.isNaN(bookingDate.getTime())) {
+    throw new ApplicationError('Invalid booking date', 400);
+  }
+
+  const resolvedHotelId = resolvePublicHotelIdFromRequest(req);
   const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId, isActive: true }).lean();
   if (!service) {
     throw new ApplicationError('Service not found', 404);
@@ -341,8 +423,8 @@ router.get('/:serviceId/availability', optionalAuth, catchAsync(async (req, res)
 
   const availability = await ServiceBooking.checkAvailability(
     serviceId,
-    new Date(date),
-    parseInt(people)
+    bookingDate,
+    peopleNum
   );
 
   res.json({
@@ -397,9 +479,10 @@ router.post('/:serviceId/bookings',
   catchAsync(async (req, res) => {
     const { serviceId } = req.params;
     const { bookingDate, numberOfPeople, specialRequests } = req.body;
-    const resolvedHotelId = req.user?.hotelId || req.body.hotelId || req.query.hotelId;
-    if (!resolvedHotelId) {
-      throw new ApplicationError('Hotel context is required', 400);
+    const resolvedHotelId = resolvePublicHotelIdFromRequest(req);
+    const idempotencyKey = req.headers['x-idempotency-key'] || req.body.idempotencyKey;
+    if (idempotencyKey && typeof idempotencyKey !== 'string') {
+      throw new ApplicationError('Invalid idempotency key', 400);
     }
     
     // Get the service
@@ -421,6 +504,33 @@ router.post('/:serviceId/bookings',
     
     // Calculate total amount
     const totalAmount = service.price * numberOfPeople;
+    const maxDaily = Number.parseInt(process.env.HOTEL_SERVICE_BOOKING_DAILY_LIMIT || '10', 10);
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date();
+    dayEnd.setHours(23, 59, 59, 999);
+    const todayCount = await ServiceBooking.countDocuments({
+      userId: req.user._id,
+      hotelId: resolvedHotelId,
+      createdAt: { $gte: dayStart, $lte: dayEnd },
+      status: { $ne: 'cancelled' }
+    });
+    if (todayCount >= maxDaily) {
+      throw new ApplicationError('Daily service booking limit exceeded', 429);
+    }
+
+    if (idempotencyKey) {
+      const existing = await ServiceBooking.findOne({ userId: req.user._id, idempotencyKey }).lean();
+      if (existing) {
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            message: 'Service booking already created for this idempotency key',
+            booking: existing
+          }
+        });
+      }
+    }
     
     // Create booking
     const booking = await ServiceBooking.create({
@@ -432,6 +542,8 @@ router.post('/:serviceId/bookings',
       totalAmount,
       currency: service.currency,
       specialRequests
+      ,
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined
     });
     
     // Populate booking data
@@ -446,6 +558,12 @@ router.post('/:serviceId/bookings',
         message: 'Service booked successfully',
         booking
       }
+    });
+    logger.info('Service booking created', {
+      bookingId: booking._id,
+      serviceId,
+      hotelId: String(resolvedHotelId),
+      userId: String(req.user._id)
     });
   })
 );
@@ -495,8 +613,8 @@ router.post('/bookings/:bookingId/cancel',
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
-    const currentHotelId = req.user?.hotelId || req.query.hotelId;
-    if (!currentHotelId || booking.hotelId.toString() !== currentHotelId.toString()) {
+    const currentHotelId = resolvePublicHotelIdFromRequest(req);
+    if (booking.hotelId.toString() !== currentHotelId.toString()) {
       throw new ApplicationError('Not authorized to cancel this booking', 403);
     }
 
@@ -505,16 +623,10 @@ router.post('/bookings/:bookingId/cancel',
       throw new ApplicationError('Not authorized to cancel this booking', 403);
     }
 
-    if (typeof booking.cancelBooking === 'function') {
-      await booking.cancelBooking(reason, req.user._id);
-    } else {
-      // Fallback: update directly if instance method is not available
-      booking.status = 'cancelled';
-      booking.cancellationReason = reason;
-      booking.cancelledBy = req.user._id;
-      booking.cancelledAt = new Date();
-      await booking.save();
+    if (typeof booking.cancelBooking !== 'function') {
+      throw new ApplicationError('Booking cancellation handler unavailable', 500);
     }
+    await booking.cancelBooking(reason, req.user._id);
 
     res.json({
       status: 'success',

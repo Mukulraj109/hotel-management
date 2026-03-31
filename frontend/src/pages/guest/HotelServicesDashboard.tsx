@@ -33,6 +33,10 @@ function HotelServicesDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [filterFeatured, setFilterFeatured] = useState(false);
+  const [availabilityNow, setAvailabilityNow] = useState(false);
+  const [tagsFilter, setTagsFilter] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 20;
 
@@ -101,7 +105,11 @@ function HotelServicesDashboard() {
     };
 
     const handleServiceCreated = (data: Record<string, unknown>) => {
-      const newService = data.service;
+      const wrappedData = (data.data && typeof data.data === 'object')
+        ? data.data as Record<string, unknown>
+        : data;
+      const newService = wrappedData.service as HotelService | undefined;
+      if (!newService?._id) return;
       
       // Invalidate queries to refresh with new service
       queryClient.invalidateQueries({ queryKey: ['hotel-services'] });
@@ -116,14 +124,30 @@ function HotelServicesDashboard() {
     };
 
     const handleServiceUnavailable = (data: Record<string, unknown>) => {
-      const service = data.service;
+      const wrappedData = (data.data && typeof data.data === 'object')
+        ? data.data as Record<string, unknown>
+        : data;
+      const service = wrappedData.service as HotelService | undefined;
+      if (!service?._id) return;
       
       // Update cache to reflect unavailable status
       queryClient.setQueriesData({ queryKey: ['hotel-services'] }, (oldData: unknown) => {
-        if (!Array.isArray(oldData)) return oldData;
-        return oldData.map((s: HotelService) =>
-          s._id === service._id ? { ...s, isActive: false } : s
-        );
+        if (!oldData) return oldData;
+        if (Array.isArray(oldData)) {
+          return oldData.map((s: HotelService) =>
+            s._id === service._id ? { ...s, isActive: false } : s
+          );
+        }
+
+        const paginated = oldData as { services?: HotelService[] };
+        if (!Array.isArray(paginated.services)) return oldData;
+
+        return {
+          ...paginated,
+          services: paginated.services.map((s) =>
+            s._id === service._id ? { ...s, isActive: false } : s
+          )
+        };
       });
 
       toast.error(`${service.name} is temporarily unavailable`, {
@@ -144,13 +168,21 @@ function HotelServicesDashboard() {
     };
   }, [connectionState, on, off, queryClient]);
 
-  // Load favorites from localStorage
+  // Load favorites from API (fallback to localStorage when unavailable)
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-    if (savedFavorites) {
-      setFavorites(JSON.parse(savedFavorites));
-    }
-  }, []);
+    hotelServicesService.getFavorites(publicHotelId)
+      .then((ids) => setFavorites(Array.isArray(ids) ? ids : []))
+      .catch(() => {
+        const savedFavorites = localStorage.getItem('hotelServicesFavorites');
+        try {
+          const parsed = savedFavorites ? JSON.parse(savedFavorites) : [];
+          setFavorites(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          localStorage.removeItem('hotelServicesFavorites');
+          setFavorites([]);
+        }
+      });
+  }, [publicHotelId]);
 
   // Save favorites to localStorage
   const saveFavorites = (newFavorites: string[]) => {
@@ -164,6 +196,10 @@ function HotelServicesDashboard() {
       ? favorites.filter(id => id !== serviceId)
       : [...favorites, serviceId];
     saveFavorites(newFavorites);
+    const op = favorites.includes(serviceId)
+      ? hotelServicesService.removeFavorite(serviceId, publicHotelId)
+      : hotelServicesService.addFavorite(serviceId, publicHotelId);
+    op.catch(() => { /* local fallback already applied */ });
   };
 
   // Get services based on filters
@@ -172,6 +208,10 @@ function HotelServicesDashboard() {
     if (selectedType) params.type = selectedType;
     if (searchTerm) params.search = searchTerm;
     if (filterFeatured) params.featured = true;
+    if (availabilityNow) params.availabilityNow = true;
+    if (tagsFilter.trim()) params.tags = tagsFilter.split(',').map((t) => t.trim()).filter(Boolean);
+    if (minPrice.trim()) params.minPrice = Number(minPrice);
+    if (maxPrice.trim()) params.maxPrice = Number(maxPrice);
     params.page = currentPage;
     params.limit = PAGE_SIZE;
     params.hotelId = publicHotelId;
@@ -180,7 +220,7 @@ function HotelServicesDashboard() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedType, searchTerm, filterFeatured, publicHotelId]);
+  }, [selectedType, searchTerm, filterFeatured, availabilityNow, tagsFilter, minPrice, maxPrice, publicHotelId]);
 
   // Queries
   const { data: servicesData, isLoading: servicesLoading, error: servicesError, refetch: refetchServices } = useQuery({
@@ -272,7 +312,7 @@ function HotelServicesDashboard() {
                     connectionState === 'connecting' ? 'bg-yellow-500 animate-bounce' : 'bg-red-500'
                   }`}></div>
                   <span className="text-xs text-gray-600 capitalize font-medium">
-                    {connectionState === 'connected' ? 'Live Updates' :
+                    {connectionState === 'connected' ? 'Connected' :
                      connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
                   </span>
                 </div>
@@ -294,7 +334,7 @@ function HotelServicesDashboard() {
                   </div>
                 </div>
                 <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-                  {services?.length || 0}
+                  {servicesPagination?.totalCount || 0}
                 </div>
                 <div className="text-xs font-medium text-gray-600">Total Services</div>
               </div>
@@ -459,8 +499,40 @@ function HotelServicesDashboard() {
                 Featured Only
               </Button>
 
+              <Button
+                variant={availabilityNow ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAvailabilityNow(!availabilityNow)}
+                className="rounded-xl px-4 py-3 font-semibold"
+              >
+                Available Now
+              </Button>
+
+              <Input
+                value={tagsFilter}
+                onChange={(e) => setTagsFilter(e.target.value)}
+                placeholder="Tags (comma-separated)"
+                className="max-w-xs"
+              />
+              <Input
+                type="number"
+                min="0"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                placeholder="Min Price"
+                className="max-w-[140px]"
+              />
+              <Input
+                type="number"
+                min="0"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                placeholder="Max Price"
+                className="max-w-[140px]"
+              />
+
               {/* Clear Filters */}
-              {(selectedType || searchTerm || filterFeatured) && (
+              {(selectedType || searchTerm || filterFeatured || availabilityNow || tagsFilter || minPrice || maxPrice) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -468,6 +540,10 @@ function HotelServicesDashboard() {
                     setSelectedType('');
                     setSearchTerm('');
                     setFilterFeatured(false);
+                    setAvailabilityNow(false);
+                    setTagsFilter('');
+                    setMinPrice('');
+                    setMaxPrice('');
                   }}
                   className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-0 rounded-xl px-4 py-3 font-semibold transition-all duration-200 hover:shadow-lg"
                 >
@@ -479,6 +555,13 @@ function HotelServicesDashboard() {
         </Card>
 
         {/* Featured Services Section */}
+        {!selectedType && !searchTerm && !filterFeatured && featuredLoading && (
+          <Card className="mb-8 bg-white/90 backdrop-blur-sm border-0 shadow-xl rounded-2xl overflow-hidden">
+            <div className="p-8 flex items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          </Card>
+        )}
         {!selectedType && !searchTerm && !filterFeatured && featuredServices && featuredServices.length > 0 && (
           <Card className="mb-8 bg-white/90 backdrop-blur-sm border-0 shadow-xl rounded-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-yellow-50 to-orange-50 px-6 py-5 border-b border-gray-200/50">
@@ -612,7 +695,7 @@ function ServiceCard({
       {featured && (
         <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
       )}
-      <Card className={`relative p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer rounded-2xl ${
+      <Card onClick={onClick} className={`relative p-6 bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer rounded-2xl ${
         featured ? 'ring-2 ring-yellow-200' : ''
       }`}>
       {/* Service Image */}
@@ -664,7 +747,7 @@ function ServiceCard({
       </div>
 
       {/* Service Info */}
-      <div role="button" tabIndex={0} onClick={onClick} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e as any); } }}>
+      <div role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}>
         <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
           {service.name}
         </h3>

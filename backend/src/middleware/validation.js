@@ -224,6 +224,8 @@ export const schemas = {
                 })
               }),
               generateDigitalKey: Joi.object({
+                /** When set (staff/admin), key is scoped to this hotel; must match booking.hotelId */
+                hotel: Joi.string().optional(),
                 bookingId: Joi.string().required().messages({
                   'string.empty': 'Booking ID is required',
                   'any.required': 'Booking ID is required'
@@ -265,10 +267,8 @@ export const schemas = {
                   'string.empty': 'Target user ID is required',
                   'any.required': 'Target user ID is required'
                 }),
-                hotelId: Joi.string().required().messages({
-                  'string.empty': 'Hotel ID is required',
-                  'any.required': 'Hotel ID is required'
-                }),
+                // Optional: server resolves from active booking when unset (typical for guests).
+                hotelId: Joi.string().optional().allow('', null),
                 type: Joi.string().valid('casual', 'business', 'social', 'networking', 'activity').required().messages({
                   'any.only': 'Type must be one of: casual, business, social, networking, activity',
                   'any.required': 'Type is required'
@@ -401,6 +401,12 @@ export const schemas = {
                 }).required().messages({
                   'any.required': 'Alternative time is required'
                 })
+              }),
+              meetUpReport: Joi.object({
+                reportedUserId: Joi.string().required(),
+                meetUpRequestId: Joi.string().optional().allow('', null),
+                reason: Joi.string().valid('harassment', 'spam', 'inappropriate', 'safety', 'other').required(),
+                details: Joi.string().max(2000).optional().allow('')
               }),
               
               // API Management validation schemas

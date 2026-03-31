@@ -699,23 +699,29 @@ class InventoryIntegrationService {
 
           // Notify procurement team
           notifications.push({
-              type: 'reorder_created',
+              type: 'inventory_reorder',
               recipient: 'procurement_team',
               subject: `Reorder Request Created: ${reorderRequest.itemName}`,
               message: `A new reorder request has been created for ${reorderRequest.requestedQuantity} units of ${reorderRequest.itemName}. Priority: ${reorderRequest.priority}. Total cost: $${reorderRequest.totalCost.toLocaleString()}.`,
               priority: reorderRequest.priority === 'emergency' ? 'high' : 'medium',
-              metadata: reorderRequest
+              metadata: {
+                ...reorderRequest,
+                hotelId: reorderRequest.hotelId || reorderRequest.hotel?._id
+              }
           });
 
           // Notify inventory manager for high-value orders
           if (reorderRequest.totalCost > 500) {
               notifications.push({
-                  type: 'high_value_reorder',
+                  type: 'inventory_reorder',
                   recipient: 'inventory_manager',
                   subject: `High-Value Reorder Request: $${reorderRequest.totalCost.toLocaleString()}`,
                   message: `A high-value reorder request has been created for ${reorderRequest.itemName}. Please review and approve if necessary.`,
                   priority: 'medium',
-                  metadata: reorderRequest
+                  metadata: {
+                    ...reorderRequest,
+                    hotelId: reorderRequest.hotelId || reorderRequest.hotel?._id
+                  }
               });
           }
 
@@ -779,7 +785,7 @@ class InventoryIntegrationService {
                 metadata: {
                     bypassId: auditRecord.bypassId,
                     results,
-                    hotelId: auditRecord.hotelId._id
+                    hotelId: auditRecord.hotelId?._id || auditRecord.hotelId
                 }
             };
 
@@ -800,7 +806,8 @@ class InventoryIntegrationService {
                 priority: 'high',
                 metadata: {
                     errors: results.errors,
-                    bypassId: auditRecord.bypassId
+                    bypassId: auditRecord.bypassId,
+                    hotelId: auditRecord.hotelId?._id || auditRecord.hotelId
                 }
             };
 

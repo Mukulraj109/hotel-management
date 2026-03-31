@@ -197,6 +197,25 @@ const hotelSettingsSchema = new mongoose.Schema({
     noShowAlerts: { type: Boolean, default: true }
   },
 
+  // Guest app experience (portal features)
+  guestExperience: {
+    meetUpsEnabled: { type: Boolean, default: true },
+    /** Send SMTP email in addition to in-app for meet-up events */
+    meetUpsEmailNotify: { type: Boolean, default: true },
+    /** Max pending invites per guest per property (sent by requester) */
+    maxPendingInvitesPerGuest: { type: Number, default: 10, min: 1, max: 100 },
+    /** Hotel-local quiet window: no *new* invites (HH:mm, hotel timezone from operations.timezone) */
+    quietHoursStart: { type: String, default: null },
+    quietHoursEnd: { type: String, default: null },
+    /** Replace http(s) / www links in titles & descriptions */
+    blockUrlsInMeetUpText: { type: Boolean, default: true },
+    profanityAction: {
+      type: String,
+      enum: ['none', 'block', 'sanitize'],
+      default: 'sanitize'
+    }
+  },
+
   // Security settings
   security: {
     requireTwoFactor: { type: Boolean, default: false },

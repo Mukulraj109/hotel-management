@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Layers,
   CheckCircle,
+  Key,
 } from 'lucide-react';
 
 const navigation = [
@@ -36,6 +37,7 @@ const navigation = [
   { name: 'Rooms', href: '/frontdesk/rooms', icon: Bed },
   { name: 'Room Types', href: '/frontdesk/room-types', icon: Layers },
   { name: 'Bookings', href: '/frontdesk/bookings', icon: Calendar },
+  { name: 'Digital Keys', href: '/frontdesk/digital-keys', icon: Key },
   { name: 'Upcoming Arrivals', href: '/frontdesk/upcoming-bookings', icon: CalendarDays },
   { name: 'Corporate', href: '/frontdesk/corporate', icon: Users },
   { name: 'Travel Agents', href: '/frontdesk/travel-agents', icon: Plane },

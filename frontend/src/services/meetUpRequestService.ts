@@ -274,7 +274,86 @@ export interface AdminInsights {
   };
 }
 
+export interface MeetUpGuestFeatureStatus {
+  meetUpsEnabled: boolean;
+  hotelId: string | null;
+  reason?: 'no_active_stay' | 'disabled_by_property';
+}
+
+export type MeetUpReportReason = 'harassment' | 'spam' | 'inappropriate' | 'safety' | 'other';
+
+export interface SubmitMeetUpReportBody {
+  reportedUserId: string;
+  meetUpRequestId?: string | null;
+  reason: MeetUpReportReason;
+  details?: string;
+}
+
+export interface GuestMeetUpReportRow {
+  _id: string;
+  hotelId: string;
+  reporterId?: { _id: string; name?: string; email?: string };
+  reportedUserId?: { _id: string; name?: string; email?: string };
+  meetUpRequestId?: { _id: string; title?: string; status?: string } | null;
+  reason: MeetUpReportReason;
+  details?: string;
+  status: 'pending' | 'reviewed' | 'dismissed';
+  createdAt: string;
+}
+
+export interface HotelGuestExperienceSettings {
+  meetUpsEnabled: boolean;
+  meetUpsEmailNotify?: boolean;
+  maxPendingInvitesPerGuest?: number;
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+  blockUrlsInMeetUpText?: boolean;
+  profanityAction?: 'none' | 'block' | 'sanitize';
+}
+
 class MeetUpRequestService {
+  async getGuestFeatureStatus(): Promise<MeetUpGuestFeatureStatus> {
+    const response = await api.get('/meet-up-requests/guest/feature-status');
+    return response.data.data;
+  }
+
+  async getMyMeetUpBlocks(): Promise<{ blockedUserIds: string[]; hotelId: string | null }> {
+    const response = await api.get('/meet-up-requests/my-blocks');
+    return response.data.data;
+  }
+
+  async submitMeetUpReport(body: SubmitMeetUpReportBody): Promise<{ id: string }> {
+    const response = await api.post('/meet-up-requests/report', body);
+    return response.data.data;
+  }
+
+  async blockMeetUpPeer(targetUserId: string): Promise<void> {
+    await api.post(`/meet-up-requests/blocks/${targetUserId}`, {});
+  }
+
+  async unblockMeetUpPeer(targetUserId: string): Promise<void> {
+    await api.delete(`/meet-up-requests/blocks/${targetUserId}`);
+  }
+
+  async getAdminGuestMeetupReports(params: {
+    hotelId?: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<{
+    reports: GuestMeetUpReportRow[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const response = await api.get('/meet-up-requests/admin/guest-meetup-reports', { params });
+    return response.data.data;
+  }
+
   async getMeetUpRequests(params?: {
     page?: number;
     limit?: number;

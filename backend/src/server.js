@@ -40,6 +40,8 @@ import reorderJob from './jobs/reorderJob.js';
 import NotificationScheduler from './services/notificationScheduler.js';
 import { startScheduledUpdatesJob, stopScheduledUpdatesJob } from './jobs/scheduledUpdatesJob.js';
 import { scheduleNightAudit } from './jobs/nightAuditJob.js';
+import loyaltyMaintenanceJob from './jobs/loyaltyMaintenanceJob.js';
+import loyaltyEventQueueService from './services/loyaltyEventQueueService.js';
 // import pricingScheduler from './schedulers/pricingScheduler.js'; // Temporarily disabled - requires tensorflow
 import {
     applyEventMiddleware
@@ -886,6 +888,14 @@ server = app.listen(PORT, async () => {
         logger.info('🔄 Starting night audit job...');
         scheduleNightAudit();
         logger.info('✅ Night audit job started (runs at 2:00 AM daily)');
+
+        logger.info('🔄 Starting loyalty maintenance job...');
+        loyaltyMaintenanceJob.start();
+        logger.info('✅ Loyalty maintenance job started');
+        logger.info('🔄 Starting loyalty event queue...');
+        await loyaltyEventQueueService.initialize();
+        loyaltyEventQueueService.start();
+        logger.info('✅ Loyalty event queue started');
 
         // Start backup scheduler
         logger.info('Starting backup scheduler...');

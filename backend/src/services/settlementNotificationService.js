@@ -141,13 +141,15 @@ class SettlementNotificationService {
 
       // Push notification to hotel staff
       await notificationService.sendNotification({
-        type: 'custom',
+        type: 'system_alert',
         recipient: `hotel_${hotel._id}`,
-        channels: ['push'],
+        channels: ['inApp', 'push'],
         priority: 'high',
         data: {
           title: 'Overdue Settlement',
+          message: `Settlement ${settlement.settlementNumber} is ${daysOverdue} days overdue (booking ${booking.bookingNumber}).`,
           body: `Settlement ${settlement.settlementNumber} is ${daysOverdue} days overdue`,
+          hotelId: hotel._id,
           data: {
             type: 'settlement_overdue',
             settlementId: settlement._id.toString(),
@@ -199,13 +201,15 @@ class SettlementNotificationService {
 
       // Push notification to guest if they have the app
       await notificationService.sendNotification({
-        type: 'custom',
+        type: 'system_alert',
         recipient: `user_${guest._id}`,
-        channels: ['push'],
+        channels: ['inApp', 'push'],
         priority: 'high',
         data: {
           title: 'Payment Due Today',
+          message: `Your settlement payment of ₹${settlement.outstandingBalance} is due today for booking ${booking.bookingNumber}.`,
           body: `Your settlement payment of ₹${settlement.outstandingBalance} is due today`,
+          hotelId: hotel._id,
           data: {
             type: 'settlement_due_today',
             settlementId: settlement._id.toString()

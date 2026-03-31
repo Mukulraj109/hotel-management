@@ -805,6 +805,29 @@ class BypassApprovalService {
                         metadata: {
                             workflowId: workflow.workflowId,
                             notificationType,
+                            urgency: workflow.analytics.urgencyLevel || 'normal',
+                            hotelId: recipient.hotelId
+                        }
+                    }));
+                }
+
+                if (recipient && recipient._id && recipient.hotelId) {
+                    notifPromises.push(sendNotification({
+                        type: 'system_alert',
+                        recipient: recipient._id.toString(),
+                        channels: ['inApp'],
+                        priority:
+                            workflow.analytics.urgencyLevel === 'critical'
+                                ? 'urgent'
+                                : workflow.analytics.urgencyLevel === 'high'
+                                  ? 'high'
+                                  : 'medium',
+                        data: {
+                            title: subject,
+                            message,
+                            hotelId: recipient.hotelId,
+                            workflowId: workflow.workflowId,
+                            notificationType,
                             urgency: workflow.analytics.urgencyLevel || 'normal'
                         }
                     }));

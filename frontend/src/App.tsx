@@ -134,6 +134,7 @@ const ApprovalManagement = React.lazy(() => import('./pages/admin/ApprovalManage
 const AdminAuditLogPage = React.lazy(() => import('./pages/admin/AuditLog'));
 const AdminSettingsHubPage = React.lazy(() => import('./pages/admin/AdminSettings'));
 const AdminRevenueAnalyticsPage = React.lazy(() => import('./pages/admin/analytics/RevenueAnalytics'));
+const AdminLoyaltyManager = React.lazy(() => import('./pages/admin/AdminLoyaltyManager'));
 
 // Admin Settings Pages (lazy loaded)
 const AdminProfileSettings = React.lazy(() => import('./pages/admin/settings/ProfileSettings'));
@@ -362,6 +363,7 @@ function App() {
                 <Route path="ai-dashboard" element={<Suspense fallback={<RouteLoadingFallback />}><AIDashboard /></Suspense>} />
                 <Route path="automation" element={<Suspense fallback={<RouteLoadingFallback />}><AdminAutomation /></Suspense>} />
                 <Route path="offers" element={<Suspense fallback={<RouteLoadingFallback />}><AdminOfferManagement /></Suspense>} />
+                <Route path="loyalty-manager" element={<Suspense fallback={<RouteLoadingFallback />}><AdminLoyaltyManager /></Suspense>} />
                 <Route path="services" element={<Suspense fallback={<RouteLoadingFallback />}><AdminServiceManagement /></Suspense>} />
                 <Route path="digital-keys" element={<Suspense fallback={<RouteLoadingFallback />}><AdminDigitalKeyManagement /></Suspense>} />
                 <Route path="meet-up-management" element={<Suspense fallback={<RouteLoadingFallback />}><AdminMeetUpManagement /></Suspense>} />
@@ -416,6 +418,7 @@ function App() {
                 <Route path="checkout" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskCheckout /></Suspense>} />
                 <Route path="inventory-automation" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskInventoryAutomation /></Suspense>} />
                 <Route path="my-approvals" element={<Suspense fallback={<RouteLoadingFallback />}><MyApprovalRequests /></Suspense>} />
+                <Route path="digital-keys" element={<Suspense fallback={<RouteLoadingFallback />}><AdminDigitalKeyManagement /></Suspense>} />
               </Route>
 
               {/* Travel Agent Routes */}
@@ -463,6 +466,7 @@ function App() {
                 <Route path="checkout-inventory" element={<Suspense fallback={<RouteLoadingFallback />}><CheckoutInventory /></Suspense>} />
                 <Route path="documents" element={<Suspense fallback={<RouteLoadingFallback />}><StaffDocuments /></Suspense>} />
                 <Route path="reports" element={<Suspense fallback={<RouteLoadingFallback />}><StaffReports /></Suspense>} />
+                <Route path="digital-keys" element={<Suspense fallback={<RouteLoadingFallback />}><AdminDigitalKeyManagement /></Suspense>} />
 
                 {/* Staff Settings Routes */}
                 <Route path="settings/profile" element={<Suspense fallback={<RouteLoadingFallback />}><StaffProfileSettings /></Suspense>} />

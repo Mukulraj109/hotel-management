@@ -183,6 +183,70 @@ router.get('/', catchAsync(async (req, res, next) => {
   });
 }));
 
+const guestExperienceUpdateSchema = Joi.object({
+  meetUpsEnabled: Joi.boolean(),
+  meetUpsEmailNotify: Joi.boolean(),
+  maxPendingInvitesPerGuest: Joi.number().integer().min(1).max(100),
+  quietHoursStart: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).allow(null, ''),
+  quietHoursEnd: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).allow(null, ''),
+  blockUrlsInMeetUpText: Joi.boolean(),
+  profanityAction: Joi.string().valid('none', 'block', 'sanitize')
+}).min(1);
+
+// GET /api/v1/hotel-settings/guest-experience — guest portal toggles for the selected property
+router.get('/guest-experience', catchAsync(async (req, res, next) => {
+  const hotelId = req.query.propertyId || req.user.hotelId;
+  if (!hotelId) {
+    return next(new ApplicationError('Property ID is required', 400));
+  }
+  await assertUserCanAccessHotel(req.user, hotelId);
+  const settings = await HotelSettings.findOne({ hotelId }).select('guestExperience').lean();
+  res.status(200).json({
+    status: 'success',
+    data: {
+      guestExperience: settings?.guestExperience || { meetUpsEnabled: true }
+    }
+  });
+}));
+
+// PUT /api/v1/hotel-settings/guest-experience
+router.put('/guest-experience', validate(guestExperienceUpdateSchema), catchAsync(async (req, res, next) => {
+  const hotelId = req.query.propertyId || req.user.hotelId;
+  if (!hotelId) {
+    return next(new ApplicationError('Property ID is required', 400));
+  }
+  await assertUserCanAccessHotel(req.user, hotelId);
+  const body = { ...req.body };
+  const set = {};
+  const mapField = (key, path = `guestExperience.${key}`) => {
+    if (body[key] !== undefined) {
+      let v = body[key];
+      if (key === 'quietHoursStart' || key === 'quietHoursEnd') {
+        v = v === '' ? null : v;
+      }
+      set[path] = v;
+    }
+  };
+  mapField('meetUpsEnabled');
+  mapField('meetUpsEmailNotify');
+  mapField('maxPendingInvitesPerGuest');
+  mapField('quietHoursStart');
+  mapField('quietHoursEnd');
+  mapField('blockUrlsInMeetUpText');
+  mapField('profanityAction');
+
+  const updated = await HotelSettings.findOneAndUpdate(
+    { hotelId },
+    { $set: set },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  res.status(200).json({
+    status: 'success',
+    message: 'Guest experience settings updated',
+    data: { guestExperience: updated.guestExperience || {} }
+  });
+}));
+
 // GET /api/v1/hotel-settings/backup - Create settings backup
 router.get('/backup', catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
@@ -626,7 +690,7 @@ router.post('/restore', validate(mutationBaselineSchema), catchAsync(async (req,
   }
 
   // Only allow known settings fields to prevent arbitrary data injection
-  const allowedFields = ['basicInfo', 'operations', 'policies', 'taxes', 'amenities', 'roomDefaults', 'notifications', 'security', 'maintenance'];
+  const allowedFields = ['basicInfo', 'operations', 'policies', 'taxes', 'amenities', 'roomDefaults', 'notifications', 'security', 'maintenance', 'guestExperience'];
   const sanitizedBackup = {};
   for (const field of allowedFields) {
     if (backup[field] !== undefined) {

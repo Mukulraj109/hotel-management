@@ -1,4 +1,20 @@
+import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
+import User from '../models/User.js';
+import Notification from '../models/Notification.js';
+import { coerceDbNotificationType } from '../utils/notificationTypeCoercion.js';
+
+const KNOWN_DELIVERY_CHANNELS = new Set(['email', 'sms', 'push', 'webhook', 'slack', 'teams', 'inApp']);
+
+function normalizeDeliveryChannels(channels) {
+  const list = Array.isArray(channels) && channels.length > 0 ? channels : ['email'];
+  return list.map((c) => {
+    const x = c === 'in_app' ? 'inApp' : c;
+    if (KNOWN_DELIVERY_CHANNELS.has(x)) return x;
+    return 'inApp';
+  });
+}
+
 /**
  * Enhanced Notification Service
  * Supports multiple channels: email, SMS, push notifications, webhooks
@@ -228,6 +244,8 @@ class NotificationService {
                 };
             }
 
+            processedNotification.channels = normalizeDeliveryChannels(processedNotification.channels);
+
             const {
                 type,
                 recipient,
@@ -291,13 +309,14 @@ class NotificationService {
      */
     async sendToChannel(channelName, notification) {
       try {
-          const channel = this.channels[channelName];
+          const channelKey = channelName === 'in_app' ? 'inApp' : channelName;
+          const channel = this.channels[channelKey];
           if (!channel || !channel.enabled) {
               // For disabled channels, just log and return success (graceful degradation)
-              logger.debug(`Channel ${channelName} is not available or disabled - skipping`);
+              logger.debug(`Channel ${channelKey} is not available or disabled - skipping`);
               return {
                   success: true,
-                  channel: channelName,
+                  channel: channelKey,
                   messageId: `disabled_${Date.now()}`,
                   timestamp: new Date(),
                   note: 'Channel disabled - notification skipped'
@@ -306,13 +325,13 @@ class NotificationService {
 
           // Check rate limits
           if (this.isRateLimited(channel)) {
-              throw new Error(`Rate limit exceeded for ${channelName}`);
+              throw new Error(`Rate limit exceeded for ${channelKey}`);
           }
 
           // Get template or use custom content
           let renderedContent;
           if (notification.type && notification.type !== 'custom') {
-              const template = this.getTemplate(notification.type, channelName);
+              const template = this.getTemplate(notification.type, channelKey);
               if (template) {
                   renderedContent = this.renderTemplate(template, notification.data);
               }
@@ -320,11 +339,11 @@ class NotificationService {
 
           // Fallback to custom content
           if (!renderedContent) {
-              renderedContent = this.createCustomContent(channelName, notification.data);
+              renderedContent = this.createCustomContent(channelKey, notification.data);
           }
 
           // Send based on channel type
-          switch (channelName) {
+          switch (channelKey) {
               case 'email':
                   return await this.sendEmail(notification.recipient, renderedContent, notification.priority);
               case 'sms':
@@ -336,9 +355,9 @@ class NotificationService {
               case 'teams':
                   return await this.sendWebhook(notification.recipient, renderedContent, notification.priority);
               case 'inApp':
-                  return await this.sendInApp(notification.recipient, renderedContent, notification.priority);
+                  return await this.sendInApp(notification.recipient, renderedContent, notification.priority, notification);
               default:
-                  throw new Error(`Unsupported channel: ${channelName}`);
+                  throw new Error(`Unsupported channel: ${channelKey}`);
           }
       } catch (error) {
         throw new Error(`${error.message}`);
@@ -475,14 +494,169 @@ class NotificationService {
     }
 
     /**
-     * Send in-app notification
+     * Persist to Notification collection + SSE + Socket.IO (unified inbox).
      */
-    async sendInApp(recipient, content, priority) {
+    async sendInApp(recipient, content, priority, ctx = {}) {
       try {
-          logger.debug(`[IN-APP] Storing for ${recipient}:`);
-          logger.debug(`Content: ${JSON.stringify(content)}`);
+          const { createAndDeliverInApp, createAndDeliverToHotelOps } = await import(
+            './inAppNotificationDeliveryService.js'
+          );
 
-          // In production, store in database or cache
+          const type = coerceDbNotificationType(ctx.type);
+          const data = ctx.data && typeof ctx.data === 'object' ? ctx.data : {};
+          const titleRaw =
+              (content && typeof content === 'object'
+                  ? content.title || content.subject
+                  : null) ||
+              data.title ||
+              data.subject ||
+              'Notification';
+          const messageRaw =
+              (content && typeof content === 'object'
+                  ? content.body || content.text || content.message || content.html
+                  : null) ||
+              data.body ||
+              data.message ||
+              data.text ||
+              titleRaw;
+
+          const title = String(titleRaw).slice(0, 100);
+          const message = String(messageRaw).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+
+          const meta = {
+              ...data,
+              source: 'notificationService.sendInApp',
+              templateType: ctx.type
+          };
+
+          let hotelId = meta.hotelId || data.hotelId;
+          if (hotelId && typeof hotelId === 'object' && hotelId._id) {
+            hotelId = hotelId._id;
+          }
+
+          const prio = priority || 'medium';
+
+          if (typeof recipient === 'string' && recipient.startsWith('hotel_')) {
+            const hid = recipient.slice(6);
+            if (mongoose.Types.ObjectId.isValid(hid)) {
+              await createAndDeliverToHotelOps(hid, {
+                type,
+                title,
+                message,
+                priority: prio,
+                metadata: meta
+              });
+              return {
+                success: true,
+                notificationId: `inapp_hotel_${Date.now()}`,
+                channel: 'inApp',
+                timestamp: new Date()
+              };
+            }
+          }
+
+          const roleAliases = {
+            procurement_team: ['admin', 'manager'],
+            inventory_manager: ['admin', 'manager'],
+            system_administrator: ['admin']
+          };
+
+          if (typeof recipient === 'string' && roleAliases[recipient]) {
+            if (!hotelId || !mongoose.Types.ObjectId.isValid(String(hotelId))) {
+              logger.warn('sendInApp: role alias requires valid hotelId in metadata/data', { recipient, type });
+              return {
+                success: false,
+                channel: 'inApp',
+                note: 'no_hotel_for_role_alias',
+                timestamp: new Date()
+              };
+            }
+            const hid = new mongoose.Types.ObjectId(String(hotelId));
+            const users = await User.find({
+              hotelId: hid,
+              role: { $in: roleAliases[recipient] },
+              isActive: true
+            })
+              .select('_id')
+              .lean()
+              .limit(100);
+            for (const u of users) {
+              await createAndDeliverInApp({
+                userId: u._id,
+                hotelId: hid,
+                type,
+                title,
+                message,
+                priority: prio,
+                metadata: meta
+              });
+            }
+            return {
+              success: users.length > 0,
+              notificationId: `inapp_roles_${Date.now()}`,
+              channel: 'inApp',
+              timestamp: new Date()
+            };
+          }
+
+          let userId = null;
+          if (typeof recipient === 'string') {
+            if (recipient.startsWith('user_')) {
+              const id = recipient.slice(5);
+              if (mongoose.Types.ObjectId.isValid(id)) userId = id;
+            } else if (mongoose.Types.ObjectId.isValid(recipient) && recipient.length === 24) {
+              userId = recipient;
+            } else if (recipient.includes('@')) {
+              const u = await User.findOne({ email: recipient.trim().toLowerCase() })
+                .select('_id hotelId')
+                .lean();
+              if (u) {
+                userId = u._id;
+                if (!hotelId && u.hotelId) hotelId = u.hotelId;
+              }
+            }
+          } else if (recipient && typeof recipient === 'object' && recipient._id) {
+            userId = recipient._id;
+          }
+
+          if (!userId) {
+            logger.warn('sendInApp: could not resolve user recipient', {
+              recipient: typeof recipient === 'string' ? recipient : '[object]',
+              type
+            });
+            return {
+              success: false,
+              channel: 'inApp',
+              note: 'unresolved_recipient',
+              timestamp: new Date()
+            };
+          }
+
+          if (!hotelId) {
+            const u = await User.findById(userId).select('hotelId').lean();
+            hotelId = u?.hotelId;
+          }
+
+          if (!hotelId) {
+            logger.warn('sendInApp: missing hotelId for user', { userId: String(userId), type });
+            return {
+              success: false,
+              channel: 'inApp',
+              note: 'no_hotel',
+              timestamp: new Date()
+            };
+          }
+
+          await createAndDeliverInApp({
+            userId,
+            hotelId,
+            type,
+            title,
+            message,
+            priority: prio,
+            metadata: meta
+          });
+
           return {
               success: true,
               notificationId: `inapp_${Date.now()}`,
@@ -490,7 +664,8 @@ class NotificationService {
               timestamp: new Date()
           };
       } catch (error) {
-        throw new Error(`${error.message}`);
+          logger.error('sendInApp failed', { error: error.message });
+          throw new Error(`${error.message}`);
       }
     }
 

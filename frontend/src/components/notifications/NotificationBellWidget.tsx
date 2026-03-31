@@ -39,7 +39,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
   const sessionReady = isAuthenticated && !authLoading;
 
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['notifications', 'unread-count'],
+    queryKey: ['unreadCount'],
     queryFn: () => notificationService.getUnreadCount(),
     enabled: sessionReady,
     refetchInterval: sessionReady ? 30000 : false,
@@ -64,6 +64,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
     mutationFn: (notificationId: string) => notificationService.markAsRead(notificationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
     }
   });
 
@@ -71,6 +72,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
     mutationFn: () => notificationService.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       setIsOpen(false);
     }
   });
@@ -88,8 +90,14 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
   }, []);
 
   const handleNavigateToNotifications = () => {
-    const basePath = user?.role === 'admin' ? '/admin' :
-                    user?.role === 'staff' ? '/staff' : '/guest';
+    const basePath =
+      user?.role === 'admin' || user?.role === 'manager'
+        ? '/admin'
+        : user?.role === 'staff'
+          ? '/staff'
+          : user?.role === 'travel_agent'
+            ? '/travel-agent'
+            : '/app';
     navigate(`${basePath}/notifications`);
     setIsOpen(false);
   };

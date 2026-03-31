@@ -341,6 +341,25 @@ router.post('/sync', validate(mutationBaselineSchema), catchAsync(async (req, re
                 }
             });
 
+            const syncHid =
+                req.user.hotelId?._id?.toString?.() ||
+                (req.user.hotelId && req.user.hotelId.toString?.()) ||
+                null;
+            if (syncHid && req.user._id) {
+                await sendNotification({
+                    type: 'system_alert',
+                    recipient: req.user._id.toString(),
+                    channels: ['inApp'],
+                    priority: 'low',
+                    data: {
+                        title: 'System sync test',
+                        message: 'System sync completed successfully (notifications channel).',
+                        hotelId: syncHid,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+            }
+
             syncResults.services.notifications = {
                 success: true,
                 testNotificationSent: true,

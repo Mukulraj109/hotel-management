@@ -1211,6 +1211,11 @@ class BypassFinancialService {
      */
     async sendBudgetAlertNotifications(financialImpact, alerts) {
         try {
+            const hid =
+                financialImpact.hotelId?._id?.toString?.() ||
+                (financialImpact.hotelId && financialImpact.hotelId.toString?.()) ||
+                null;
+
             // Get hotel managers for notifications
             const managers = await User.find({
                 hotelId: financialImpact.hotelId,
@@ -1238,7 +1243,27 @@ Please review the financial impact and take appropriate action.`,
                             impactId: financialImpact.impactId,
                             totalImpact: financialImpact.getTotalFinancialImpact(),
                             alertCount: alerts.length,
-                            urgency: 'high'
+                            urgency: 'high',
+                            ...(hid ? { hotelId: hid } : {})
+                        }
+                    });
+                }
+                if (hid && manager._id) {
+                    const detail = alerts.map((a) => a.alertMessage).join('; ');
+                    const msg = `Critical budget alert for bypass ${financialImpact.bypassAuditId || financialImpact.impactId}. ${detail}`.slice(0, 500);
+                    await sendNotification({
+                        type: 'system_alert',
+                        recipient: manager._id.toString(),
+                        channels: ['inApp'],
+                        priority: 'high',
+                        data: {
+                            title: 'Critical budget alert — bypass',
+                            message: msg,
+                            hotelId: hid,
+                            impactId: financialImpact.impactId,
+                            bypassAuditId: financialImpact.bypassAuditId,
+                            alertCount: alerts.length,
+                            totalImpact: financialImpact.getTotalFinancialImpact()
                         }
                     });
                 }
