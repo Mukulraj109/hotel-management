@@ -57,15 +57,17 @@ function DigitalKeysDashboard() {
   const [confirmRevokeShare, setConfirmRevokeShare] = useState<{ keyId: string; userIdOrEmail: string } | null>(null);
 
   const queryClient = useQueryClient();
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const { connectionState, connect, on, off } = useRealTime();
 
   // Real-time WebSocket connection setup
   useEffect(() => {
-    connect();
+    connect().catch(() => {
+      // Keep page usable even if real-time transport is unavailable.
+    });
     return () => {
-      disconnect();
+      // Do not disconnect shared singleton socket on page unmount.
     };
-  }, [connect, disconnect]);
+  }, [connect]);
 
   // Real-time event listeners for digital key updates
   useEffect(() => {

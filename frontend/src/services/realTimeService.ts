@@ -361,6 +361,10 @@ class RealTimeService extends EventEmitter {
     // Emit the raw type field if present and different from entity
     if (eventData.type && eventData.type !== eventData.entity && eventData.type !== `${eventData.entity}:${eventData.action}`) {
       this.emit(eventData.type, eventData.data);
+      // Also emit a colon-normalized alias for underscore event names.
+      if (eventData.type.includes('_')) {
+        this.emit(eventData.type.replace(/_/g, ':'), eventData.data);
+      }
     }
     if (eventData.entity) {
       this.emit(`${eventData.entity}:*`, eventData);

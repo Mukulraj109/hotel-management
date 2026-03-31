@@ -137,7 +137,7 @@ class AdminMaintenanceService {
       }
     }
 
-    const response = await this.apiRequest(`/${endpoint}`);
+    const response = await this.apiRequest(endpoint);
 
     // Transform backend data to match frontend interface
     if (response.data && response.data.tasks) {
@@ -190,7 +190,9 @@ class AdminMaintenanceService {
           description: task.description || 'No description provided',
           priority: task.priority || 'medium',
           status: task.status || 'pending',
-          estimatedDuration: task.estimatedDuration || 60
+          estimatedDuration: task.estimatedDuration || 60,
+          startedAt: task.startedAt || task.startedDate,
+          completedAt: task.completedAt || task.completedDate
         };
         return transformedTask;
       });

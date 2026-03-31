@@ -8,11 +8,10 @@ import logger from '../../utils/logger.js';
 
 const getSettlement = catchAsync(async (req, res) => {
   const { id } = req.params;
+  const scopedHotelId = req.tenantId || req.user?.hotelId;
 
   const booking = await Booking.findById(id);
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
+  bookingService.assertResourceInScopedHotel(booking, scopedHotelId, 'Booking');
 
   const settlement = booking.calculateSettlement();
 
@@ -34,13 +33,12 @@ const getSettlement = catchAsync(async (req, res) => {
 const addSettlementAdjustment = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { type, amount, description } = req.body;
+  const scopedHotelId = req.tenantId || req.user?.hotelId;
 
   bookingService.assertSettlementAdjustmentInput({ type, amount, description });
 
   const booking = await Booking.findById(id);
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
+  bookingService.assertResourceInScopedHotel(booking, scopedHotelId, 'Booking');
 
   bookingService.assertBookingInUserHotel(booking, req.user);
 
@@ -85,11 +83,10 @@ const addSettlementAdjustment = catchAsync(async (req, res) => {
 const paySettlement = catchAsync(async (req, res) => {
   const { paymentMethods, amount } = req.body;
   const { id } = req.params;
+  const scopedHotelId = req.tenantId || req.user?.hotelId;
 
   const booking = await Booking.findById(id);
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
+  bookingService.assertResourceInScopedHotel(booking, scopedHotelId, 'Booking');
 
   const { totalPaid } = bookingService.assertSettlementPaymentInput({ paymentMethods, amount });
 
@@ -191,6 +188,7 @@ const paySettlement = catchAsync(async (req, res) => {
 const markNoShow = catchAsync(async (req, res) => {
   const { reason, chargeAmount = 0 } = req.body;
   const { id } = req.params;
+  const scopedHotelId = req.tenantId || req.user?.hotelId;
 
   if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
     throw new ApplicationError('Reason is required for marking a booking as no-show', 400);
@@ -208,9 +206,7 @@ const markNoShow = catchAsync(async (req, res) => {
     .populate('userId', 'name email phone')
     .populate('rooms.roomId', 'roomNumber type');
 
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
+  bookingService.assertResourceInScopedHotel(booking, scopedHotelId, 'Booking');
 
   const bookingBeforeNoShow = bookingAuditService.buildSnapshot(booking);
   const noShowTransition = validateTransition(booking.status, 'no_show');

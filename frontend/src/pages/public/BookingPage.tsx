@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -16,7 +17,8 @@ import {
   Edit3,
   Crown,
   Bed,
-  Star
+  Star,
+  Building2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -29,7 +31,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
-import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+import contactService from '../../services/contactService';
+import { hotelLabel, persistPublicHotelId, resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 // Room types data
 const ROOM_TYPES = {
@@ -80,8 +83,17 @@ type GuestDetailsForm = z.infer<typeof guestDetailsSchema>;
 const BookingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const hotelId = resolvePublicHotelId(searchParams);
+
+  const { data: hotelsPayload } = useQuery({
+    queryKey: ['public-contact-hotels'],
+    queryFn: () => contactService.getHotelsContact(),
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+  const hotels = hotelsPayload?.hotels ?? [];
 
   useEffect(() => {
     document.title = 'Book Your Stay - The Pentouz';
@@ -94,7 +106,7 @@ const BookingPage: React.FC = () => {
   const urlCheckIn = searchParams.get('checkIn') || '';
   const urlCheckOut = searchParams.get('checkOut') || '';
 
-  const { data: publicCatalog } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
+  const { data: publicCatalog } = usePublicRoomCatalog(hotelId);
 
   // Booking state
   const [currentStep, setCurrentStep] = useState(1);
@@ -108,6 +120,16 @@ const BookingPage: React.FC = () => {
     guestDetails: null as GuestDetailsForm | null,
     paymentCompleted: false
   });
+
+  useEffect(() => {
+    if (!publicCatalog?.length) return;
+    setBookingData((prev) => {
+      if (!prev.roomTypeId) return prev;
+      const ok = publicCatalog.some((c) => c.id === prev.roomTypeId);
+      if (ok) return prev;
+      return { ...prev, roomTypeId: null, roomType: null };
+    });
+  }, [publicCatalog]);
 
   // Form
   const { register, handleSubmit, formState: { errors } } = useForm<GuestDetailsForm>({
@@ -129,6 +151,20 @@ const BookingPage: React.FC = () => {
   };
 
   const nights = calculateNights();
+
+  const handlePropertyChange = (nextId: string) => {
+    persistPublicHotelId(nextId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('hotelId', nextId);
+        return next;
+      },
+      { replace: true }
+    );
+    setBookingData((prev) => ({ ...prev, roomTypeId: null, roomType: null }));
+  };
+
   const roomTypeData = useMemo(() => {
     if (bookingData.roomTypeId && publicCatalog?.length) {
       const o = publicCatalog.find((c) => c.id === bookingData.roomTypeId);
@@ -189,6 +225,33 @@ const BookingPage: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Book Your Stay</h1>
           <p className="text-gray-600">Choose your room type and travel dates</p>
         </div>
+
+        <Card className="border border-gray-200">
+          <CardContent className="p-4 sm:p-6">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+              <Building2 className="h-4 w-4 text-gray-500" />
+              Property
+            </label>
+            <select
+              value={hotelId}
+              onChange={(e) => handlePropertyChange(e.target.value)}
+              className="w-full max-w-xl border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {hotels.length > 0 ? (
+                hotels.map((h) => (
+                  <option key={String(h.id)} value={String(h.id)}>
+                    {hotelLabel(h)}
+                  </option>
+                ))
+              ) : (
+                <option value={hotelId}>Default property (list unavailable)</option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Room types and pricing below are for this property only.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Date & Guest Selection */}
         <Card className="border-2">
@@ -650,7 +713,7 @@ const BookingPage: React.FC = () => {
 
                   // Create booking request with room type info but no specific room assignment
                   const bookingRequest = {
-                    // hotelId will be set dynamically by bookingService.createBooking()
+                    hotelId,
                     roomIds: [], // No specific rooms assigned - admin will assign later
                     checkIn: new Date(bookingData.checkIn).toISOString(),
                     checkOut: new Date(bookingData.checkOut).toISOString(),

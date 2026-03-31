@@ -1,6 +1,6 @@
 import { ApiResponse } from '../types/api';
 import { API_CONFIG } from '../config/api';
-import { api } from './api';
+import { api, normalizeListParams } from './api';
 
 export interface SupplyRequestItem {
   name: string;
@@ -203,9 +203,21 @@ class AdminSupplyRequestsService {
 
   async getRequests(filters: SupplyRequestFilters = {}): Promise<ApiResponse<{ requests: SupplyRequest[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {
     const queryParams = new URLSearchParams();
+    const normalizedFilters = normalizeListParams(filters);
 
-    Object.entries(filters).forEach(([key, value]) => {
+    Object.entries(normalizedFilters).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
+        if (key === 'dateFrom') {
+          queryParams.append('startDate', value.toString());
+          return;
+        }
+        if (key === 'dateTo') {
+          queryParams.append('endDate', value.toString());
+          return;
+        }
+        if (key === 'sortBy' || key === 'sortOrder') {
+          return;
+        }
         queryParams.append(key, value.toString());
       }
     });
@@ -268,6 +280,14 @@ class AdminSupplyRequestsService {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
+          if (key === 'dateFrom') {
+            queryParams.append('startDate', value.toString());
+            return;
+          }
+          if (key === 'dateTo') {
+            queryParams.append('endDate', value.toString());
+            return;
+          }
           queryParams.append(key, value.toString());
         }
       });

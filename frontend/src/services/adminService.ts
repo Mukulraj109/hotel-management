@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, normalizeListParams } from './api';
 import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData, AdminBooking, BookingFilters, BookingStats } from '../types/admin';
 
 interface ApiResponse<T> {
@@ -34,8 +34,9 @@ class AdminService {
   // Housekeeping
   async getHousekeepingTasks(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters as { page?: number; limit?: number });
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -84,8 +85,9 @@ class AdminService {
   // Inventory
   async getInventoryItems(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ items: InventoryItem[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters as { page?: number; limit?: number });
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -125,6 +127,15 @@ class AdminService {
   async updateInventoryItem(id: string, updates: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
     try {
       const response = await api.patch(`/inventory/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  async restockInventoryItem(id: string, payload: { quantity: number; costPerUnit?: number }): Promise<ApiResponse<{ item: InventoryItem }>> {
+    try {
+      const response = await api.post(`/inventory/${id}/restock`, payload);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -290,8 +301,9 @@ class AdminService {
   // Booking Management
   async getBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -327,8 +339,9 @@ class AdminService {
   // Bookings for frontdesk - skips admin endpoint to avoid 403 errors
   async getFrontDeskBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -353,10 +366,11 @@ class AdminService {
     }
   }
 
-  async getUpcomingBookings(filters: { days?: number; page?: number; limit?: number } = {}): Promise<ApiResponse<AdminBooking[]> & { stats: { todayArrivals: number; tomorrowArrivals: number; totalUpcoming: number } }> {
+  async getUpcomingBookings(filters: { days?: number; page?: number; limit?: number; hotelId?: string } = {}): Promise<ApiResponse<AdminBooking[]> & { stats: { todayArrivals: number; tomorrowArrivals: number; totalUpcoming: number } }> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -521,8 +535,9 @@ class AdminService {
 
   async getUsers(filters: { search?: string; role?: string; hotelId?: string } = {}): Promise<ApiResponse<{ users: unknown[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters as { page?: number; limit?: number });
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -555,8 +570,9 @@ class AdminService {
   // Hotel Management
   async getHotels(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ hotels: unknown[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters as { page?: number; limit?: number });
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }

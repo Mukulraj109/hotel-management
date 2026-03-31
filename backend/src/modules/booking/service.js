@@ -378,7 +378,7 @@ const bookingService = {
     const bookingUserId = booking?.userId?._id?.toString?.() || booking?.userId?.toString?.();
     const requestUserId = user?._id?.toString?.();
     const isOwner = bookingUserId && requestUserId && bookingUserId === requestUserId;
-    const isStaff = ['admin', 'staff', 'manager'].includes(user.role);
+    const isStaff = ['admin', 'staff', 'manager', 'frontdesk'].includes(user.role);
 
     if (!isOwner && !isStaff) {
       throw new ApplicationError(`You are not authorized to ${action} this booking`, 403);
@@ -537,6 +537,20 @@ const bookingService = {
   assertBookingInUserHotel(booking, user) {
     if (booking.hotelId.toString() !== user.hotelId.toString()) {
       throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+  },
+
+  assertResourceInScopedHotel(resource, scopedHotelId, resourceName = 'Resource') {
+    if (!resource) {
+      throw new ApplicationError(`${resourceName} not found`, 404);
+    }
+
+    if (!scopedHotelId) {
+      return;
+    }
+
+    if (resource.hotelId?.toString?.() !== scopedHotelId.toString()) {
+      throw new ApplicationError(`${resourceName} not found`, 404);
     }
   }
 };

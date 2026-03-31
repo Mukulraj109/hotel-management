@@ -8,10 +8,37 @@ import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import websocketService from '../services/websocketService.js';
 import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const OBJECT_ID_PARAM = '([0-9a-fA-F]{24})';
+
+const normalizeObjectId = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') {
+    return value._id ? value._id.toString() : value.toString();
+  }
+  return value.toString();
+};
+
+const enforceTenantHotelAccess = (req, supplyRequest, roles) => {
+  if (!roles.includes(req.user?.role)) {
+    return;
+  }
+
+  const userHotelId = normalizeObjectId(req.user?.hotelId);
+  const requestHotelId = normalizeObjectId(supplyRequest?.hotelId);
+
+  if (!userHotelId) {
+    throw new ApplicationError('Active hotel context is required', 400);
+  }
+
+  if (!requestHotelId || requestHotelId !== userHotelId) {
+    throw new ApplicationError('You can only process requests for your hotel', 403);
+  }
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -107,6 +134,13 @@ router.post('/', authorizePolicy('supplyRequests', 'staffAccess'), validate(muta
     status: 'success',
     data: { supplyRequest }
   });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:created', {
+      supplyRequest
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request creation event', { error: wsError.message });
+  }
 }));
 
 /**
@@ -152,7 +186,7 @@ router.post('/', authorizePolicy('supplyRequests', 'staffAccess'), validate(muta
  *       200:
  *         description: List of supply requests
  */
-router.get('/', catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     status,
     department,
@@ -260,7 +294,9 @@ router.get('/', catchAsync(async (req, res) => {
  *         description: Supply request statistics
  */
 router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
-  const { department, startDate, endDate } = req.query;
+  const { department, startDate, endDate, dateFrom, dateTo } = req.query;
+  const effectiveStartDate = startDate || dateFrom;
+  const effectiveEndDate = endDate || dateTo;
 
   const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
@@ -278,10 +314,10 @@ router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsyn
   if (department) {
     match.department = department;
   }
-  if (startDate || endDate) {
+  if (effectiveStartDate || effectiveEndDate) {
     match.createdAt = {};
-    if (startDate) match.createdAt.$gte = new Date(startDate);
-    if (endDate) match.createdAt.$lte = new Date(endDate);
+    if (effectiveStartDate) match.createdAt.$gte = new Date(effectiveStartDate);
+    if (effectiveEndDate) match.createdAt.$lte = new Date(effectiveEndDate);
   }
 
   const [statusRows, overdue, valueRow, deptRows] = await Promise.all([
@@ -388,426 +424,6 @@ router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsyn
 
 /**
  * @swagger
- * /supply-requests/{id}:
- *   get:
- *     summary: Get specific supply request
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Supply request details
- */
-router.get('/:id', catchAsync(async (req, res) => {
-  const supplyRequest = await SupplyRequest.findById(req.params.id)
-    .populate('hotelId', 'name address contact')
-    .populate('requestedBy', 'name email department')
-    .populate('approvedBy', 'name email')
-    .populate('items.receivedBy', 'name')
-    .populate('attachments.uploadedBy', 'name').lean();
-
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff') {
-    if (supplyRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You can only view requests for your hotel', 403);
-    }
-    // Staff can only view their own requests unless they're managers
-    if (req.user.role !== 'manager' && supplyRequest.requestedBy._id.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You can only view your own requests', 403);
-    }
-  }
-
-  res.json({
-    status: 'success',
-    data: { supplyRequest }
-  });
-}));
-
-/**
- * @swagger
- * /supply-requests/{id}:
- *   patch:
- *     summary: Update supply request
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *               description:
- *                 type: string
- *               priority:
- *                 type: string
- *               neededBy:
- *                 type: string
- *                 format: date-time
- *               items:
- *                 type: array
- *               notes:
- *                 type: string
- *     responses:
- *       200:
- *         description: Supply request updated successfully
- */
-router.patch('/:id', authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
-  
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff') {
-    if (supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You can only update requests for your hotel', 403);
-    }
-    // Staff can only update their own pending requests
-    if (supplyRequest.requestedBy.toString() !== req.user._id.toString() && req.user.role !== 'manager') {
-      throw new ApplicationError('You can only update your own requests', 403);
-    }
-  }
-
-  // Don't allow updates to approved/ordered requests by regular staff
-  if (['approved', 'ordered', 'received'].includes(supplyRequest.status) && req.user.role === 'staff' && req.user.role !== 'manager') {
-    throw new ApplicationError('Cannot update approved or processed requests', 400);
-  }
-
-  const allowedUpdates = [
-    'title', 'description', 'priority', 'neededBy', 'items', 
-    'notes', 'justification', 'supplier', 'expectedDelivery'
-  ];
-
-  const updates = {};
-  Object.keys(req.body).forEach(key => {
-    if (allowedUpdates.includes(key)) {
-      updates[key] = req.body[key];
-    }
-  });
-
-  Object.assign(supplyRequest, updates);
-  await supplyRequest.save();
-
-  res.json({
-    status: 'success',
-    data: { supplyRequest }
-  });
-}));
-
-/**
- * @swagger
- * /supply-requests/{id}/approve:
- *   post:
- *     summary: Approve supply request
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               notes:
- *                 type: string
- *               budget:
- *                 type: object
- *                 properties:
- *                   allocated:
- *                     type: number
- *     responses:
- *       200:
- *         description: Supply request approved successfully
- */
-router.post('/:id/approve', authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { notes, budget } = req.body;
-  
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
-  
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'manager' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only approve requests for your hotel', 403);
-  }
-
-  if (supplyRequest.status !== 'pending') {
-    throw new ApplicationError('Only pending requests can be approved', 400);
-  }
-
-  await supplyRequest.approve(req.user._id, notes);
-
-  if (budget) {
-    supplyRequest.budget = {
-      ...supplyRequest.budget,
-      ...budget,
-      remaining: budget.allocated - supplyRequest.totalEstimatedCost
-    };
-    await supplyRequest.save();
-  }
-
-  await supplyRequest.populate([
-    { path: 'approvedBy', select: 'name' }
-  ]);
-
-  res.json({
-    status: 'success',
-    message: 'Supply request approved successfully',
-    data: { supplyRequest }
-  });
-}));
-
-/**
- * @swagger
- * /supply-requests/{id}/reject:
- *   post:
- *     summary: Reject supply request
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - reason
- *             properties:
- *               reason:
- *                 type: string
- *     responses:
- *       200:
- *         description: Supply request rejected successfully
- */
-router.post('/:id/reject', authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { reason } = req.body;
-  
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
-
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'manager' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only reject requests for your hotel', 403);
-  }
-
-  if (supplyRequest.status !== 'pending') {
-    throw new ApplicationError('Only pending requests can be rejected', 400);
-  }
-
-  await supplyRequest.reject(req.user._id, reason);
-
-  res.json({
-    status: 'success',
-    message: 'Supply request rejected successfully',
-    data: { supplyRequest }
-  });
-}));
-
-/**
- * @swagger
- * /supply-requests/{id}/order:
- *   post:
- *     summary: Mark request as ordered
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               purchaseOrder:
- *                 type: object
- *                 properties:
- *                   number:
- *                     type: string
- *                   totalAmount:
- *                     type: number
- *                   url:
- *                     type: string
- *               supplier:
- *                 type: object
- *               expectedDelivery:
- *                 type: string
- *                 format: date-time
- *     responses:
- *       200:
- *         description: Request marked as ordered successfully
- */
-router.post('/:id/order', authorizePolicy('supplyRequests', 'purchasingAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { purchaseOrder, supplier, expectedDelivery } = req.body;
-  
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
-  
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (['manager', 'purchasing'].includes(req.user.role) && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only process orders for your hotel', 403);
-  }
-
-  if (supplyRequest.status !== 'approved') {
-    throw new ApplicationError('Only approved requests can be ordered', 400);
-  }
-
-  const purchaseOrderData = purchaseOrder ? {
-    ...purchaseOrder,
-    date: new Date()
-  } : undefined;
-
-  await supplyRequest.markOrdered(purchaseOrderData, supplier);
-
-  if (expectedDelivery) {
-    supplyRequest.expectedDelivery = new Date(expectedDelivery);
-    await supplyRequest.save();
-  }
-
-  res.json({
-    status: 'success',
-    message: 'Request marked as ordered successfully',
-    data: { supplyRequest }
-  });
-}));
-
-/**
- * @swagger
- * /supply-requests/{id}/items/{itemIndex}/receive:
- *   post:
- *     summary: Mark item as received
- *     tags: [Supply Requests]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: itemIndex
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - receivedQuantity
- *             properties:
- *               receivedQuantity:
- *                 type: number
- *               condition:
- *                 type: string
- *                 enum: [excellent, good, damaged, defective]
- *               actualCost:
- *                 type: number
- *               invoiceNumber:
- *                 type: string
- *               notes:
- *                 type: string
- *     responses:
- *       200:
- *         description: Item marked as received successfully
- */
-router.post('/:id/items/:itemIndex/receive', authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { receivedQuantity, condition, actualCost, invoiceNumber, notes } = req.body;
-  const { itemIndex } = req.params;
-  
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
-
-  if (!supplyRequest) {
-    throw new ApplicationError('Supply request not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only receive items for your hotel', 403);
-  }
-
-  if (!['ordered', 'partial_received'].includes(supplyRequest.status)) {
-    throw new ApplicationError('Can only receive items from ordered requests', 400);
-  }
-
-  const itemIdx = parseInt(itemIndex);
-  if (itemIdx < 0 || itemIdx >= supplyRequest.items.length) {
-    throw new ApplicationError('Invalid item index', 400);
-  }
-
-  // Update item with actual cost and invoice if provided
-  if (actualCost !== undefined) {
-    supplyRequest.items[itemIdx].actualCost = actualCost;
-  }
-  if (invoiceNumber) {
-    supplyRequest.items[itemIdx].invoiceNumber = invoiceNumber;
-  }
-
-  await supplyRequest.receiveItem(itemIdx, receivedQuantity, condition, req.user._id, notes);
-
-  res.json({
-    status: 'success',
-    message: 'Item marked as received successfully',
-    data: { 
-      supplyRequest,
-      completionPercentage: supplyRequest.completionPercentage
-    }
-  });
-}));
-
-/**
- * @swagger
  * /supply-requests/pending-approvals:
  *   get:
  *     summary: Get pending approval requests
@@ -875,6 +491,452 @@ router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAs
       count: overdueRequests.length
     }
   });
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}:
+ *   get:
+ *     summary: Get specific supply request
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Supply request details
+ */
+router.get(`/:id${OBJECT_ID_PARAM}`, catchAsync(async (req, res) => {
+  const supplyRequest = await SupplyRequest.findById(req.params.id)
+    .populate('hotelId', 'name address contact')
+    .populate('requestedBy', 'name email department')
+    .populate('approvedBy', 'name email')
+    .populate('items.receivedBy', 'name')
+    .populate('attachments.uploadedBy', 'name').lean();
+
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  // Enforce tenant scope for all scoped users
+  const userHotelId = req.user?.hotelId ? req.user.hotelId.toString() : null;
+  if (userHotelId && supplyRequest.hotelId._id.toString() !== userHotelId) {
+    throw new ApplicationError('You can only view requests for your hotel', 403);
+  }
+  if (req.user.role === 'staff' && supplyRequest.requestedBy._id.toString() !== req.user._id.toString()) {
+    throw new ApplicationError('You can only view your own requests', 403);
+  }
+
+  res.json({
+    status: 'success',
+    data: { supplyRequest }
+  });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:updated', {
+      supplyRequest
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request update event', { error: wsError.message });
+  }
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}:
+ *   patch:
+ *     summary: Update supply request
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               priority:
+ *                 type: string
+ *               neededBy:
+ *                 type: string
+ *                 format: date-time
+ *               items:
+ *                 type: array
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Supply request updated successfully
+ */
+router.patch(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+  
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  // Enforce tenant scope for all scoped users
+  const userHotelId = req.user?.hotelId ? req.user.hotelId.toString() : null;
+  if (userHotelId && supplyRequest.hotelId.toString() !== userHotelId) {
+    throw new ApplicationError('You can only update requests for your hotel', 403);
+  }
+  if (req.user.role === 'staff' && supplyRequest.requestedBy.toString() !== req.user._id.toString()) {
+    throw new ApplicationError('You can only update your own requests', 403);
+  }
+
+  // Don't allow updates to approved/ordered requests by regular staff
+  if (['approved', 'ordered', 'received'].includes(supplyRequest.status) && req.user.role === 'staff') {
+    throw new ApplicationError('Cannot update approved or processed requests', 400);
+  }
+
+  const allowedUpdates = [
+    'title', 'description', 'priority', 'neededBy', 'items', 
+    'notes', 'justification', 'supplier', 'expectedDelivery'
+  ];
+
+  const updates = {};
+  Object.keys(req.body).forEach(key => {
+    if (allowedUpdates.includes(key)) {
+      updates[key] = req.body[key];
+    }
+  });
+
+  Object.assign(supplyRequest, updates);
+  await supplyRequest.save();
+
+  res.json({
+    status: 'success',
+    data: { supplyRequest }
+  });
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}/approve:
+ *   post:
+ *     summary: Approve supply request
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes:
+ *                 type: string
+ *               budget:
+ *                 type: object
+ *                 properties:
+ *                   allocated:
+ *                     type: number
+ *     responses:
+ *       200:
+ *         description: Supply request approved successfully
+ */
+router.post(`/:id${OBJECT_ID_PARAM}/approve`, authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { notes, budget } = req.body;
+  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+  
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  enforceTenantHotelAccess(req, supplyRequest, ['admin', 'manager', 'frontdesk']);
+
+  if (supplyRequest.status !== 'pending') {
+    throw new ApplicationError('Only pending requests can be approved', 400);
+  }
+
+  await supplyRequest.approve(req.user._id, notes);
+
+  if (budget) {
+    supplyRequest.budget = {
+      ...supplyRequest.budget,
+      ...budget,
+      remaining: budget.allocated - supplyRequest.totalEstimatedCost
+    };
+    await supplyRequest.save();
+  }
+
+  await supplyRequest.populate([
+    { path: 'approvedBy', select: 'name' }
+  ]);
+
+  res.json({
+    status: 'success',
+    message: 'Supply request approved successfully',
+    data: { supplyRequest }
+  });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
+      supplyRequest,
+      status: supplyRequest.status
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request approval event', { error: wsError.message });
+  }
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}/reject:
+ *   post:
+ *     summary: Reject supply request
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Supply request rejected successfully
+ */
+router.post(`/:id${OBJECT_ID_PARAM}/reject`, authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { reason } = req.body;
+  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  enforceTenantHotelAccess(req, supplyRequest, ['admin', 'manager', 'frontdesk']);
+
+  if (supplyRequest.status !== 'pending') {
+    throw new ApplicationError('Only pending requests can be rejected', 400);
+  }
+
+  await supplyRequest.reject(req.user._id, reason);
+
+  res.json({
+    status: 'success',
+    message: 'Supply request rejected successfully',
+    data: { supplyRequest }
+  });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
+      supplyRequest,
+      status: supplyRequest.status
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request rejection event', { error: wsError.message });
+  }
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}/order:
+ *   post:
+ *     summary: Mark request as ordered
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               purchaseOrder:
+ *                 type: object
+ *                 properties:
+ *                   number:
+ *                     type: string
+ *                   totalAmount:
+ *                     type: number
+ *                   url:
+ *                     type: string
+ *               supplier:
+ *                 type: object
+ *               expectedDelivery:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: Request marked as ordered successfully
+ */
+router.post(`/:id${OBJECT_ID_PARAM}/order`, authorizePolicy('supplyRequests', 'purchasingAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { purchaseOrder, supplier, expectedDelivery } = req.body;
+  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+  
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  enforceTenantHotelAccess(req, supplyRequest, ['admin', 'manager', 'frontdesk', 'purchasing']);
+
+  if (supplyRequest.status !== 'approved') {
+    throw new ApplicationError('Only approved requests can be ordered', 400);
+  }
+
+  const purchaseOrderData = purchaseOrder ? {
+    ...purchaseOrder,
+    date: new Date()
+  } : undefined;
+
+  await supplyRequest.markOrdered(purchaseOrderData, supplier);
+
+  if (expectedDelivery) {
+    supplyRequest.expectedDelivery = new Date(expectedDelivery);
+    await supplyRequest.save();
+  }
+
+  res.json({
+    status: 'success',
+    message: 'Request marked as ordered successfully',
+    data: { supplyRequest }
+  });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
+      supplyRequest,
+      status: supplyRequest.status
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request order event', { error: wsError.message });
+  }
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}/items/{itemIndex}/receive:
+ *   post:
+ *     summary: Mark item as received
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: itemIndex
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - receivedQuantity
+ *             properties:
+ *               receivedQuantity:
+ *                 type: number
+ *               condition:
+ *                 type: string
+ *                 enum: [excellent, good, damaged, defective]
+ *               actualCost:
+ *                 type: number
+ *               invoiceNumber:
+ *                 type: string
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Item marked as received successfully
+ */
+router.post(`/:id${OBJECT_ID_PARAM}/items/:itemIndex/receive`, authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { receivedQuantity, condition, actualCost, invoiceNumber, notes } = req.body;
+  const { itemIndex } = req.params;
+  
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  enforceTenantHotelAccess(req, supplyRequest, ['admin', 'manager', 'frontdesk', 'staff']);
+
+  if (!['ordered', 'partial_received'].includes(supplyRequest.status)) {
+    throw new ApplicationError('Can only receive items from ordered requests', 400);
+  }
+
+  const itemIdx = parseInt(itemIndex);
+  if (itemIdx < 0 || itemIdx >= supplyRequest.items.length) {
+    throw new ApplicationError('Invalid item index', 400);
+  }
+
+  // Update item with actual cost and invoice if provided
+  if (actualCost !== undefined) {
+    supplyRequest.items[itemIdx].actualCost = actualCost;
+  }
+  if (invoiceNumber) {
+    supplyRequest.items[itemIdx].invoiceNumber = invoiceNumber;
+  }
+
+  await supplyRequest.receiveItem(itemIdx, receivedQuantity, condition, req.user._id, notes);
+
+  res.json({
+    status: 'success',
+    message: 'Item marked as received successfully',
+    data: { 
+      supplyRequest,
+      completionPercentage: supplyRequest.completionPercentage
+    }
+  });
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:updated', {
+      supplyRequest
+    });
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
+      supplyRequest,
+      status: supplyRequest.status
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request receive-item event', { error: wsError.message });
+  }
 }));
 
 export default router;

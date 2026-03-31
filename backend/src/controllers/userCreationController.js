@@ -45,6 +45,10 @@ export const createUser = catchAsync(async (req, res) => {
     throw new ApplicationError('Invalid role. Must be admin, manager, or staff', 400);
   }
 
+  if (req.user.role === 'manager' && role === 'admin') {
+    throw new ApplicationError('Managers cannot create admin users', 403);
+  }
+
   // For admin/manager/staff, hotelId or primaryProperty is required
   const propertyId = primaryProperty || hotelId;
   if (!propertyId) {
@@ -168,6 +172,10 @@ export const updateUser = catchAsync(async (req, res) => {
     throw new ApplicationError('User not found', 404);
   }
 
+  if (req.user.role === 'manager' && user.role === 'admin') {
+    throw new ApplicationError('Managers cannot update admin users', 403);
+  }
+
   // Verify permission - admins can update any user, others can only update users in their properties
   if (req.user.role !== 'admin') {
     // Non-admin users can only update users within their properties
@@ -195,6 +203,9 @@ export const updateUser = catchAsync(async (req, res) => {
     const validRoles = ['admin', 'manager', 'staff'];
     if (!validRoles.includes(role)) {
       throw new ApplicationError('Invalid role', 400);
+    }
+    if (req.user.role === 'manager' && role === 'admin') {
+      throw new ApplicationError('Managers cannot assign admin role', 403);
     }
     user.role = role;
   }

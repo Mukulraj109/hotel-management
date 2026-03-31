@@ -52,6 +52,22 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
     }
   });
 
+  // Load profile preferences stored in user-preferences/profile
+  useEffect(() => {
+    const loadProfilePreferences = async () => {
+      try {
+        const { data } = await api.get('/user-preferences/profile');
+        const profilePrefs = data?.data?.profile || {};
+        setValue('timezone', profilePrefs.timezone || user?.timezone || 'Asia/Kolkata', { shouldDirty: false });
+        setValue('language', profilePrefs.language || user?.language || 'en', { shouldDirty: false });
+        setValue('avatar', profilePrefs.avatar || user?.avatar || '', { shouldDirty: false });
+      } catch {
+        // Keep default values from auth context
+      }
+    };
+    loadProfilePreferences();
+  }, [setValue, user]);
+
   // Watch for form changes
   useEffect(() => {
     if (onSettingsChange) {

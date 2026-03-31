@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { travelAgentService, TravelAgentBooking } from '../../services/travelAgentService';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { api } from '../../services/api';
+import { useProperty } from '../../context/PropertyContext';
 
 interface GuestInfo {
   name: string;
@@ -64,10 +65,10 @@ interface BookingFormData {
 
 const BookingCreate: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedPropertyId } = useProperty();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [availableRooms, setAvailableRooms] = useState<RoomSelection[]>([]);
-  const [agentRates, setAgentRates] = useState<unknown[]>([]);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [confirmationDetails, setConfirmationDetails] = useState<TravelAgentBooking | null>(null);
 
@@ -94,14 +95,20 @@ const BookingCreate: React.FC = () => {
 
   useEffect(() => {
     fetchAvailableRooms();
-  }, [formData.checkIn, formData.checkOut]);
+  }, [formData.checkIn, formData.checkOut, selectedPropertyId]);
 
   const fetchAvailableRooms = async () => {
     try {
       setLoading(true);
 
+      if (!selectedPropertyId) {
+        toast.error('Please select a property before creating a booking');
+        setAvailableRooms([]);
+        return;
+      }
+
       // Fetch real room types from the backend
-      const response = await api.get('/room-types', { params: { limit: 100 } });
+      const response = await api.get(`/room-types/hotel/${selectedPropertyId}`, { params: { limit: 100 } });
       const rawRoomTypes = response.data?.data?.roomTypes || response.data?.data || response.data?.roomTypes || [];
 
       if (!Array.isArray(rawRoomTypes) || rawRoomTypes.length === 0) {

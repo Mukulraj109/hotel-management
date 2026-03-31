@@ -19,6 +19,19 @@ import Department from '../models/Department.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+const resolveScopedHotelId = (req, requestedPropertyId) => {
+  const isManagerOrAdmin = ['admin', 'manager'].includes(req.user.role);
+  if (!isManagerOrAdmin) {
+    return req.user.hotelId;
+  }
+
+  if (requestedPropertyId && String(requestedPropertyId) !== String(req.user.hotelId)) {
+    throw new ApplicationError('Property access mismatch for current tenant context', 403);
+  }
+
+  return req.user.hotelId;
+};
+
 // Ensure uploads directory exists
 const createUploadDirectories = () => {
   const baseDir = path.join(process.cwd(), 'uploads', 'documents');
@@ -420,7 +433,7 @@ router.get('/admin/queue',
     const parsedLimit = Math.min(parseInt(limit) || 20, 100);
     const parsedSkip = parseInt(skip) || 0;
 
-    const hotelId = propertyId || req.user.hotelId;
+    const hotelId = resolveScopedHotelId(req, propertyId);
     const baseFilter = {
       hotelId,
       isActive: true,
@@ -522,7 +535,7 @@ router.get('/analytics', catchAsync(async (req, res) => {
   startDate.setDate(startDate.getDate() - days);
 
   // Always enforce tenant isolation via hotelId
-  const hotelId = propertyId || req.user.hotelId;
+  const hotelId = resolveScopedHotelId(req, propertyId);
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
@@ -1008,20 +1021,38 @@ router.get('/guest/:guestId',
     const parsedLimit = Math.min(parseInt(limit) || 20, 100);
     const parsedSkip = parseInt(skip) || 0;
 
-    let query = {
+    const baseQuery = {
       hotelId: req.user.hotelId,
+      userId: guestId,
       userType: 'guest',
-      status,
-      category,
-      limit: parsedLimit,
-      skip: parsedSkip
+      isActive: true,
+      isDeleted: false
     };
 
-    if (bookingId) {
-      query.bookingId = bookingId;
+    if (status) {
+      baseQuery.status = status;
     }
 
-    const documents = await Document.getDocumentsByUser(guestId, query);
+    if (category) {
+      baseQuery.category = category;
+    }
+
+    if (bookingId) {
+      baseQuery.bookingId = bookingId;
+    }
+
+    const candidateDocuments = await Document.find(baseQuery)
+      .populate('verificationDetails.verifiedBy', 'name email')
+      .populate('departmentId', 'name code')
+      .populate('bookingId', 'bookingNumber checkIn checkOut')
+      .sort('-createdAt')
+      .skip(parsedSkip)
+      .limit(parsedLimit);
+
+    // Enforce per-document ACL checks for this endpoint.
+    const documents = candidateDocuments.filter((document) =>
+      document.canBeViewedBy(req.user, req.user.departmentId)
+    );
 
     res.json({
       status: 'success',

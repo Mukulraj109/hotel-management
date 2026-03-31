@@ -36,13 +36,13 @@ const getTransactionTypeInfo = (type: string) => {
 
 export default function LoyaltyTransactions() {
   const navigate = useNavigate();
-  const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedType, setSelectedType] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
   const { data: transactionData, isLoading, error, refetch } = useQuery({
     queryKey: ['loyalty-transactions', selectedType, currentPage],
-    queryFn: () => loyaltyService.getHistory(currentPage, itemsPerPage, selectedType || undefined),
+    queryFn: () => loyaltyService.getHistory(currentPage, itemsPerPage, selectedType === 'all' ? undefined : selectedType),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -129,7 +129,7 @@ export default function LoyaltyTransactions() {
               <SelectValue placeholder="All transactions" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All transactions</SelectItem>
+              <SelectItem value="all">All transactions</SelectItem>
               <SelectItem value="earned">Earned</SelectItem>
               <SelectItem value="redeemed">Redeemed</SelectItem>
               <SelectItem value="bonus">Bonus</SelectItem>

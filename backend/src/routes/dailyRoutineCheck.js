@@ -11,11 +11,28 @@ import Room from '../models/Room.js';
 import InventoryItem from '../models/InventoryItem.js';
 import RoomInventory from '../models/RoomInventory.js';
 import DailyRoutineCheckTemplate from '../models/DailyRoutineCheckTemplate.js';
+import User from '../models/User.js';
 import logger from '../utils/logger.js';
+import websocketService from '../services/websocketService.js';
 import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+const getDayRange = (baseDate = new Date()) => {
+  const startOfDay = new Date(baseDate);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  return { startOfDay, endOfDay };
+};
+
+const isStaffScopedUser = (user) => ['staff', 'housekeeping'].includes(user?.role);
+const isAssignmentScopedExecutor = (user) => ['staff', 'housekeeping', 'frontdesk'].includes(user?.role);
+const ASSIGNABLE_DAILY_CHECK_ROLES = ['staff', 'housekeeping', 'frontdesk'];
+
+const isDuplicateKeyError = (error) =>
+  Boolean(error && (error.code === 11000 || error?.name === 'MongoServerError' && error?.code === 11000));
 
 // All routes require authentication and property access
 router.use(authenticate);
@@ -51,14 +68,9 @@ router.use(ensurePropertyAccess);
  *         description: List of rooms for daily check
  */
 router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'), catchAsync(async (req, res) => {
-  const { hotelId } = req.user;
-  const { filter, floor, type, page = 1, limit = 50 } = req.query;
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { hotelId, _id: userId } = req.user;
+  const { filter, floor, type, page = 1, limit = 50, assignedToMe } = req.query;
+  const { startOfDay: today, endOfDay: tomorrow } = getDayRange();
 
   logger.debug('Daily Routine Check - Getting rooms', { hotelId, date: today });
 
@@ -67,19 +79,56 @@ router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'
   if (floor) roomQuery.floor = floor;
   if (type) roomQuery.type = type;
 
+  let scopedRoomIds = null;
+  const enforceAssignedScope = isStaffScopedUser(req.user) || assignedToMe === 'true';
+  if (enforceAssignedScope) {
+    const assignedChecks = await DailyRoutineCheck.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      checkedBy: new mongoose.Types.ObjectId(userId),
+      checkDate: { $gte: today, $lt: tomorrow }
+    }).select('roomId').lean().limit(1000);
+    scopedRoomIds = assignedChecks.map((check) => check.roomId);
+    if (scopedRoomIds.length === 0) {
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          rooms: [],
+          pagination: { page: 1, limit: Math.min(100, Math.max(1, parseInt(limit) || 50)), total: 0, pages: 0 }
+        }
+      });
+    }
+    roomQuery._id = { $in: scopedRoomIds };
+  }
+
   // Get all rooms for the hotel
   const rooms = await Room.find(roomQuery).select('roomNumber type floor status').lean().limit(1000);
-  
+
+  const roomIds = rooms.map((room) => room._id);
+
   // Get today's checks for these rooms
   const todayChecks = await DailyRoutineCheck.find({
     hotelId: new mongoose.Types.ObjectId(hotelId),
+    roomId: { $in: roomIds },
     checkDate: { $gte: today, $lt: tomorrow }
   }).select('roomId status checkedAt').lean().limit(1000);
+
+  const previousChecks = await DailyRoutineCheck.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    roomId: { $in: roomIds },
+    checkDate: { $lt: today }
+  }).sort({ checkDate: -1, createdAt: -1 }).select('roomId status checkedAt').lean().limit(5000);
 
   // Create a map of room checks
   const roomCheckMap = new Map();
   todayChecks.forEach(check => {
     roomCheckMap.set(check.roomId.toString(), check);
+  });
+  const lastHistoricalCheckMap = new Map();
+  previousChecks.forEach((check) => {
+    const roomKey = check.roomId.toString();
+    if (!lastHistoricalCheckMap.has(roomKey)) {
+      lastHistoricalCheckMap.set(roomKey, check);
+    }
   });
 
   // Prepare room data with check status
@@ -93,10 +142,10 @@ router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'
       lastChecked = check.checkedAt;
     }
 
-    // Determine if overdue (no check for more than 1 day)
+    // Overdue only when there is a prior uncompleted historical check.
     if (!check) {
-      const lastCheck = roomCheckMap.get(room._id.toString());
-      if (!lastCheck) {
+      const previousCheck = lastHistoricalCheckMap.get(room._id.toString());
+      if (previousCheck && previousCheck.status !== 'completed') {
         checkStatus = 'overdue';
       }
     }
@@ -354,12 +403,19 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
     throw new ApplicationError('Room not found', 404);
   }
 
-  // Check if already completed today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { startOfDay: today, endOfDay: tomorrow } = getDayRange();
 
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (isAssignmentScopedExecutor(req.user)) {
+    const assignment = await DailyRoutineCheck.findOne({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      roomId: new mongoose.Types.ObjectId(roomId),
+      checkedBy: new mongoose.Types.ObjectId(checkedBy),
+      checkDate: { $gte: today, $lt: tomorrow }
+    }).select('_id').lean();
+    if (!assignment) {
+      throw new ApplicationError('Room is not assigned to you for today', 403);
+    }
+  }
 
   // Validate category-action combinations before processing
   const validateCategoryActionCombination = (category, action) => {
@@ -406,61 +462,98 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
     }));
   }
 
+  const completedAt = new Date();
   const completionData = {
     status: 'completed',
-    completedAt: new Date(),
+    completedAt,
+    checkedAt: completedAt,
+    checkedBy: new mongoose.Types.ObjectId(checkedBy),
     notes,
     items: processedItems
   };
 
-  // Atomically upsert: update existing non-completed check or create new one
-  const dailyCheck = await DailyRoutineCheck.findOneAndUpdate(
-    {
-      roomId: new mongoose.Types.ObjectId(roomId),
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkDate: { $gte: today, $lt: tomorrow },
-      status: { $ne: 'completed' }
-    },
-    { $set: completionData },
-    { new: true }
-  );
+  let resultCheck = await DailyRoutineCheck.findOne({
+    roomId: new mongoose.Types.ObjectId(roomId),
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    checkDate: { $gte: today, $lt: tomorrow }
+  });
 
-  let resultCheck;
-  if (dailyCheck) {
-    resultCheck = dailyCheck;
-  } else {
-    // Check if already completed
-    const alreadyCompleted = await DailyRoutineCheck.findOne({
-      roomId: new mongoose.Types.ObjectId(roomId),
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkDate: { $gte: today, $lt: tomorrow },
-      status: 'completed'
-    }).lean();
-
-    if (alreadyCompleted) {
-      throw new ApplicationError('Daily check already completed for this room today', 400);
-    }
-
-    // No existing check -- create a new one
-    const newCheck = new DailyRoutineCheck({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      roomId: new mongoose.Types.ObjectId(roomId),
-      checkedBy: new mongoose.Types.ObjectId(checkedBy),
-      checkDate: today,
-      ...completionData
+  if (resultCheck?.status === 'completed') {
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        roomId: resultCheck.roomId,
+        checkedBy: resultCheck.checkedBy,
+        checkedAt: resultCheck.completedAt || resultCheck.checkedAt,
+        items: resultCheck.items,
+        totalCost: resultCheck.totalCost,
+        status: resultCheck.status,
+        qualityScore: resultCheck.qualityScore
+      }
     });
-    await newCheck.save();
-    resultCheck = newCheck;
+  }
+
+  if (resultCheck) {
+    resultCheck = await DailyRoutineCheck.findByIdAndUpdate(
+      resultCheck._id,
+      { $set: completionData },
+      { new: true }
+    );
+  } else {
+    try {
+      const newCheck = new DailyRoutineCheck({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        roomId: new mongoose.Types.ObjectId(roomId),
+        checkedBy: new mongoose.Types.ObjectId(checkedBy),
+        checkDate: today,
+        ...completionData
+      });
+      await newCheck.save();
+      resultCheck = newCheck;
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      resultCheck = await DailyRoutineCheck.findOne({
+        roomId: new mongoose.Types.ObjectId(roomId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkDate: today
+      });
+      if (resultCheck?.status !== 'completed') {
+        resultCheck = await DailyRoutineCheck.findByIdAndUpdate(
+          resultCheck._id,
+          { $set: completionData },
+          { new: true }
+        );
+      }
+    }
+  }
+
+  if (!resultCheck) {
+    throw new ApplicationError('Unable to complete daily check', 500);
   }
 
   // Calculate quality score
   await resultCheck.calculateQualityScore();
+
+  try {
+    await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:completed', {
+      roomId: resultCheck.roomId,
+      checkedBy: resultCheck.checkedBy,
+      completedAt: resultCheck.completedAt || resultCheck.checkedAt,
+      status: resultCheck.status
+    });
+  } catch (socketError) {
+    logger.warn('Failed to emit websocket event for daily check completion', { roomId, error: socketError.message });
+  }
 
   // Update Room status to 'vacant' (clean) after daily check completion
   try {
     const Room = (await import('../models/Room.js')).default;
     await Room.findByIdAndUpdate(roomId, { status: 'vacant', lastCleaned: new Date() }, { new: true });
     logger.debug('Room status updated to vacant after daily check', { roomId });
+    await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:status_updated', {
+      roomId,
+      roomStatus: 'vacant'
+    });
   } catch (roomErr) {
     logger.warn('Failed to update room status after daily check', { roomId, error: roomErr.message });
   }
@@ -476,7 +569,7 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
     data: {
       roomId: resultCheck.roomId,
       checkedBy: resultCheck.checkedBy,
-      checkedAt: resultCheck.checkedAt,
+      checkedAt: resultCheck.completedAt || resultCheck.checkedAt,
       items: resultCheck.items,
       totalCost: resultCheck.totalCost,
       status: resultCheck.status,
@@ -625,33 +718,86 @@ router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 
     throw new ApplicationError('Room not found', 404);
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { startOfDay: today, endOfDay: tomorrow } = getDayRange();
+
+  if (isAssignmentScopedExecutor(req.user)) {
+    const assignment = await DailyRoutineCheck.findOne({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      roomId: new mongoose.Types.ObjectId(roomId),
+      checkedBy: new mongoose.Types.ObjectId(checkedBy),
+      checkDate: { $gte: today, $lt: tomorrow }
+    }).select('_id').lean();
+    if (!assignment) {
+      throw new ApplicationError('Room is not assigned to you for today', 403);
+    }
+  }
 
   const completedAt = new Date();
+  const existingCheck = await DailyRoutineCheck.findOne({
+    roomId: new mongoose.Types.ObjectId(roomId),
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    checkDate: { $gte: today, $lt: tomorrow }
+  }).select('_id status').lean();
 
-  // Atomically upsert daily check
-  const dailyCheck = await DailyRoutineCheck.findOneAndUpdate(
-    {
-      roomId: new mongoose.Types.ObjectId(roomId),
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkDate: today
-    },
-    {
-      $set: {
-        status: 'completed',
-        completedAt,
-        notes: notes || 'Quick check completed',
-        checkedBy: new mongoose.Types.ObjectId(checkedBy)
+  let dailyCheck;
+  if (existingCheck) {
+    dailyCheck = await DailyRoutineCheck.findByIdAndUpdate(
+      existingCheck._id,
+      {
+        $set: {
+          status: 'completed',
+          completedAt,
+          checkedAt: completedAt,
+          notes: notes || 'Quick check completed',
+          checkedBy: new mongoose.Types.ObjectId(checkedBy)
+        }
       },
-      $setOnInsert: {
+      { new: true }
+    );
+  } else {
+    try {
+      dailyCheck = await DailyRoutineCheck.create({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         roomId: new mongoose.Types.ObjectId(roomId),
-        checkDate: today
-      }
-    },
-    { new: true, upsert: true }
-  );
+        checkDate: today,
+        status: 'completed',
+        completedAt,
+        checkedAt: completedAt,
+        notes: notes || 'Quick check completed',
+        checkedBy: new mongoose.Types.ObjectId(checkedBy)
+      });
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      dailyCheck = await DailyRoutineCheck.findOneAndUpdate(
+        {
+          roomId: new mongoose.Types.ObjectId(roomId),
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          checkDate: today
+        },
+        {
+          $set: {
+            status: 'completed',
+            completedAt,
+            checkedAt: completedAt,
+            notes: notes || 'Quick check completed',
+            checkedBy: new mongoose.Types.ObjectId(checkedBy)
+          }
+        },
+        { new: true }
+      );
+    }
+  }
+
+  try {
+    await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:completed', {
+      roomId: dailyCheck.roomId,
+      checkedBy: dailyCheck.checkedBy,
+      completedAt: dailyCheck.completedAt || dailyCheck.checkedAt,
+      status: dailyCheck.status
+    });
+  } catch (socketError) {
+    logger.warn('Failed to emit websocket event for quick completion', { roomId, error: socketError.message });
+  }
 
   res.status(200).json({
     status: 'success',
@@ -712,6 +858,11 @@ router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAcc
 
   // Batch-fetch all rooms and existing checks upfront to avoid N+1 queries
   const assignmentRoomIds = assignments.map(a => a.roomId).filter(Boolean);
+  const assignmentStaffIds = assignments.map(a => a.staffId).filter(Boolean);
+  const validStaffObjectIds = assignmentStaffIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
   const [batchRooms, batchExistingChecks] = await Promise.all([
     Room.find({
       _id: { $in: assignmentRoomIds },
@@ -723,29 +874,52 @@ router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAcc
       checkDate: { $gte: today, $lt: tomorrow }
     }).limit(1000)
   ]);
+  const batchAssignableUsers = validStaffObjectIds.length > 0
+    ? await User.find({
+        _id: { $in: validStaffObjectIds },
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        role: { $in: ASSIGNABLE_DAILY_CHECK_ROLES },
+        isActive: true
+      }).select('_id role hotelId').lean().limit(1000)
+    : [];
+
   const roomsMap = new Map(batchRooms.map(r => [r._id.toString(), r]));
   const existingChecksMap = new Map(batchExistingChecks.map(c => [c.roomId.toString(), c]));
+  const validAssigneesMap = new Map(batchAssignableUsers.map((u) => [u._id.toString(), u]));
 
   for (const assignment of assignments) {
     try {
       const { roomId, staffId } = assignment;
+      const roomIdString = roomId?.toString ? roomId.toString() : roomId;
+      const staffIdString = staffId?.toString ? staffId.toString() : staffId;
 
       // Verify room exists and belongs to hotel (using pre-fetched map)
-      const room = roomsMap.get(roomId.toString ? roomId.toString() : roomId);
+      const room = roomsMap.get(roomIdString);
 
       if (!room) {
         errors.push(`Room ${roomId} not found`);
         continue;
       }
 
+      if (!staffIdString || !mongoose.Types.ObjectId.isValid(staffIdString)) {
+        errors.push(`Invalid staffId for room ${roomId}`);
+        continue;
+      }
+
+      const validAssignee = validAssigneesMap.get(staffIdString);
+      if (!validAssignee) {
+        errors.push(`Staff ${staffId} is not an active assignable user for this hotel`);
+        continue;
+      }
+
       // Check if assignment already exists for today (using pre-fetched map)
-      const existingCheck = existingChecksMap.get(roomId.toString ? roomId.toString() : roomId);
+      const existingCheck = existingChecksMap.get(roomIdString);
 
       if (existingCheck) {
         // Update existing assignment atomically
         const updated = await DailyRoutineCheck.findByIdAndUpdate(
           existingCheck._id,
-          { $set: { checkedBy: new mongoose.Types.ObjectId(staffId) } },
+          { $set: { checkedBy: new mongoose.Types.ObjectId(staffIdString) } },
           { new: true }
         );
         createdAssignments.push(updated);
@@ -755,7 +929,7 @@ router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAcc
         const newCheck = new DailyRoutineCheck({
           hotelId: new mongoose.Types.ObjectId(hotelId),
           roomId: new mongoose.Types.ObjectId(roomId),
-          checkedBy: new mongoose.Types.ObjectId(staffId),
+          checkedBy: new mongoose.Types.ObjectId(staffIdString),
           checkDate: today,
           status: 'pending'
         });
@@ -768,6 +942,22 @@ router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAcc
       logger.error('Error assigning room', { roomId: assignment.roomId, error: error.message });
       errors.push(`Failed to assign room ${assignment.roomId}: ${error.message}`);
     }
+  }
+
+  try {
+    await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:assigned', {
+      assignmentsCreated: createdAssignments.length
+    });
+    for (const assignment of createdAssignments) {
+      if (assignment?.checkedBy) {
+        await websocketService.sendToUser(assignment.checkedBy.toString(), 'daily-routine-check:assigned', {
+          roomId: assignment.roomId,
+          assignmentId: assignment._id
+        });
+      }
+    }
+  } catch (socketError) {
+    logger.warn('Failed to emit websocket event for daily check assignment', { error: socketError.message });
   }
 
   res.status(200).json({

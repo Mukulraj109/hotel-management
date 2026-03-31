@@ -100,14 +100,13 @@ export default function GuestDocuments() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   useEffect(() => {
-    fetchDocuments();
     fetchBookings();
   }, []);
 
-  // Re-fetch when page changes
+  // Re-fetch when page or server-side filters change
   useEffect(() => {
     fetchDocuments();
-  }, [page]);
+  }, [page, selectedCategory, selectedStatus]);
 
   const fetchDocuments = async () => {
     try {
@@ -115,6 +114,8 @@ export default function GuestDocuments() {
       const { data } = await api.get('/documents', {
         params: {
           userType: 'guest',
+          category: selectedCategory !== 'all' ? selectedCategory : undefined,
+          status: selectedStatus !== 'all' ? selectedStatus : undefined,
           limit: PAGE_SIZE,
           skip: (page - 1) * PAGE_SIZE
         }
@@ -241,7 +242,7 @@ export default function GuestDocuments() {
     try {
       await api.delete(`/documents/${doc._id}`);
       setDocuments(prev => prev.filter(d => d._id !== doc._id));
-      setTotalCount(prev => prev - 1);
+      setTotalCount(prev => Math.max(0, prev - 1));
       toast.success('Document deleted successfully');
     } catch (err) {
       toast.error('Failed to delete document');
@@ -289,6 +290,10 @@ export default function GuestDocuments() {
   const stats = getDocumentStats();
   const categoryStats = getCategoryStats();
   const filteredDocuments = getFilteredDocuments();
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedCategory, selectedStatus, selectedBooking, searchTerm]);
 
   if (loading) {
     return (
@@ -515,9 +520,9 @@ export default function GuestDocuments() {
                       <DocumentTextIcon className="w-6 h-6 text-gray-600" />
                       <div>
                         <p className="font-medium text-gray-900">{doc.originalName}</p>
-                        <p className="text-sm text-gray-600">
-                          {CATEGORY_LABELS[doc.category]} • {new Date(doc.createdAt).toLocaleDateString()}
-                        </p>
+                            <p className="text-sm text-gray-600">
+                              {(CATEGORY_LABELS[doc.category] || doc.category)} • {new Date(doc.createdAt).toLocaleDateString()}
+                            </p>
                       </div>
                     </div>
                     <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(doc.status)}`}>
@@ -637,7 +642,7 @@ export default function GuestDocuments() {
                           <div>
                             <h4 className="font-medium text-gray-900">{doc.originalName}</h4>
                             <p className="text-sm text-gray-600">
-                              {CATEGORY_LABELS[doc.category]} • {doc.documentType} •{' '}
+                              {(CATEGORY_LABELS[doc.category] || doc.category)} • {doc.documentType} •{' '}
                               {formatFileSize(doc.fileSize)} •{' '}
                               {new Date(doc.createdAt).toLocaleDateString()}
                             </p>

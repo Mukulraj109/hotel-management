@@ -50,6 +50,33 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
     }
   });
 
+  useEffect(() => {
+    const loadProfileData = async () => {
+      try {
+        const [{ data: authData }, { data: staffData }, { data: profilePrefsData }] = await Promise.all([
+          api.get('/auth/me'),
+          api.get('/user-preferences/staff'),
+          api.get('/user-preferences/profile')
+        ]);
+
+        const currentUser = authData?.user;
+        const staffPrefs = staffData?.data?.staff || {};
+        const profilePrefs = profilePrefsData?.data?.profile || {};
+
+        setValue('name', currentUser?.name || user?.name || '', { shouldDirty: false });
+        setValue('email', currentUser?.email || user?.email || '', { shouldDirty: false });
+        setValue('phone', currentUser?.phone || user?.phone || '', { shouldDirty: false });
+        setValue('department', staffPrefs.department || user?.department || 'Housekeeping', { shouldDirty: false });
+        setValue('employeeId', staffPrefs.employeeId || user?.employeeId || '', { shouldDirty: false });
+        setValue('avatar', profilePrefs.avatar || user?.avatar || '', { shouldDirty: false });
+      } catch {
+        // Fallback to AuthContext default values
+      }
+    };
+
+    loadProfileData();
+  }, [setValue, user]);
+
   // Watch for form changes
   useEffect(() => {
     if (onSettingsChange) {
@@ -71,8 +98,18 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
   // Save profile mutation
   const saveProfileMutation = useMutation({
     mutationFn: async (data: StaffProfileFormData) => {
-      const { data: result } = await api.put('/staff/profile', data);
-      return result;
+      const profileResponse = await api.patch('/auth/profile', {
+        name: data.name,
+        phone: data.phone
+      });
+      await api.put('/user-preferences/staff', {
+        department: data.department,
+        employeeId: data.employeeId
+      });
+      await api.put('/user-preferences/profile', {
+        avatar: data.avatar || ''
+      });
+      return profileResponse.data;
     },
     onSuccess: () => {
       toast.success('Profile updated successfully');
@@ -216,11 +253,13 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
                   }
                 })}
                 type="email"
+                disabled
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {errors.email && (
                 <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
               )}
+              <p className="text-xs text-gray-500 mt-1">Email updates are managed by administrators.</p>
             </div>
 
             <div>

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bell, X, Check, Clock, AlertTriangle } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
-import { apiRequest } from '../../services/api';
+import { notificationService } from '../../services/notificationService';
 import { useNavigate } from 'react-router-dom';
 
 interface Notification {
@@ -30,52 +30,45 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
   showPreview = true,
   maxPreviewItems = 5
 }) => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch unread notifications count
+  const sessionReady = isAuthenticated && !authLoading;
+
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ['notifications', 'unread-count'],
-    queryFn: async () => {
-      const response = await apiRequest('/api/v1/notifications/unread-count');
-      return response.data.unreadCount;
-    },
-    refetchInterval: 30000
+    queryFn: () => notificationService.getUnreadCount(),
+    enabled: sessionReady,
+    refetchInterval: sessionReady ? 30000 : false,
+    retry: false,
   });
 
-  // Fetch recent notifications for preview
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ['notifications', 'preview'],
     queryFn: async () => {
-      const response = await apiRequest(`/api/v1/notifications?limit=${maxPreviewItems}&unreadOnly=true`);
-      return response.data.notifications;
+      const res = await notificationService.getNotifications({
+        limit: maxPreviewItems,
+        unreadOnly: true,
+      });
+      return res.notifications as Notification[];
     },
-    refetchInterval: 30000,
-    enabled: showPreview
+    refetchInterval: sessionReady && showPreview ? 30000 : false,
+    enabled: sessionReady && showPreview,
+    retry: false,
   });
 
-  // Mark notification as read mutation
   const markAsReadMutation = useMutation({
-    mutationFn: async (notificationId: string) => {
-      await apiRequest(`/api/v1/notifications/${notificationId}/read`, {
-        method: 'PATCH'
-      });
-    },
+    mutationFn: (notificationId: string) => notificationService.markAsRead(notificationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     }
   });
 
-  // Mark all as read mutation
   const markAllAsReadMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest('/api/v1/notifications/mark-all-read', {
-        method: 'POST'
-      });
-    },
+    mutationFn: () => notificationService.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       setIsOpen(false);

@@ -80,8 +80,11 @@ export default function GuestFeedback() {
   });
 
   // Bookings pagination state
-  const [bookingsPage, setBookingsPage] = useState(1);
   const BOOKINGS_PER_PAGE = 10;
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [bookingsPagination, setBookingsPagination] = useState<PaginationInfo>({
+    page: 1, limit: BOOKINGS_PER_PAGE, total: 0, pages: 0
+  });
 
   const [feedbackForm, setFeedbackForm] = useState<FeedbackForm>({
     bookingId: '',
@@ -117,6 +120,21 @@ export default function GuestFeedback() {
       ) as CheckedOutBooking[];
 
       setCheckedOutBookings(checkedOut);
+      if (response.pagination) {
+        setBookingsPagination({
+          page: response.pagination.page || bookingsPage,
+          limit: response.pagination.limit || BOOKINGS_PER_PAGE,
+          total: response.pagination.total || 0,
+          pages: response.pagination.pages || 0
+        });
+      } else {
+        setBookingsPagination({
+          page: bookingsPage,
+          limit: BOOKINGS_PER_PAGE,
+          total: checkedOut.length,
+          pages: checkedOut.length >= BOOKINGS_PER_PAGE ? bookingsPage + 1 : bookingsPage
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load your bookings. Please try again.';
       setError(message);
@@ -185,15 +203,19 @@ export default function GuestFeedback() {
 
     try {
       setSubmitting(true);
+      if (!selectedBooking?.hotelId?._id) {
+        throw new Error('Invalid booking details. Please re-open the feedback form.');
+      }
+
       await reviewService.createReview({
-        hotelId: selectedBooking!.hotelId._id,
+        hotelId: selectedBooking.hotelId._id,
         bookingId: feedbackForm.bookingId,
         rating: feedbackForm.rating,
         title: feedbackForm.title.trim(),
         content: feedbackForm.content.trim(),
         categories: feedbackForm.categories,
         visitType: feedbackForm.visitType,
-        stayDate: selectedBooking!.checkOut,
+        stayDate: selectedBooking.checkOut,
         isAnonymous: feedbackForm.isAnonymous
       });
 
@@ -395,7 +417,7 @@ export default function GuestFeedback() {
               </div>
 
               {/* Bookings pagination */}
-              {checkedOutBookings.length >= BOOKINGS_PER_PAGE && (
+              {bookingsPagination.pages > 1 && (
                 <div className="flex items-center justify-center gap-2 pt-4">
                   <Button
                     variant="outline"
@@ -406,12 +428,14 @@ export default function GuestFeedback() {
                     <ChevronLeft className="h-4 w-4" />
                     Previous
                   </Button>
-                  <span className="text-sm text-gray-600 px-3">Page {bookingsPage}</span>
+                  <span className="text-sm text-gray-600 px-3">
+                    Page {bookingsPagination.page} of {bookingsPagination.pages}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setBookingsPage(prev => prev + 1)}
-                    disabled={checkedOutBookings.length < BOOKINGS_PER_PAGE}
+                    disabled={bookingsPagination.page >= bookingsPagination.pages}
                   >
                     Next
                     <ChevronRight className="h-4 w-4" />

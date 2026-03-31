@@ -1,5 +1,5 @@
 import { ApiResponse } from '../types/dashboard';
-import { api } from './api';
+import { api, normalizeListParams } from './api';
 
 export interface MaintenanceTask {
   _id: string;
@@ -8,7 +8,7 @@ export interface MaintenanceTask {
   type: 'plumbing' | 'electrical' | 'hvac' | 'cleaning' | 'carpentry' | 'painting' | 'appliance' | 'safety' | 'other';
   priority: 'low' | 'medium' | 'high' | 'urgent' | 'emergency';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
-  assignedToUserId?: {
+  assignedTo?: {
     _id: string;
     name: string;
   };
@@ -61,13 +61,14 @@ class MaintenanceService {
     overdue?: boolean;
   } = {}) {
     try {
+      const normalizedParams = normalizeListParams(params);
       const queryParams = new URLSearchParams();
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.status) queryParams.append('status', params.status);
-      if (params.type) queryParams.append('type', params.type);
-      if (params.priority) queryParams.append('priority', params.priority);
-      if (params.overdue) queryParams.append('overdue', 'true');
+      if (normalizedParams.page) queryParams.append('page', normalizedParams.page.toString());
+      if (normalizedParams.limit) queryParams.append('limit', normalizedParams.limit.toString());
+      if (normalizedParams.status) queryParams.append('status', normalizedParams.status);
+      if (normalizedParams.type) queryParams.append('type', normalizedParams.type);
+      if (normalizedParams.priority) queryParams.append('priority', normalizedParams.priority);
+      if (normalizedParams.overdue) queryParams.append('overdue', 'true');
 
       const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
       const response = await api.get(`${this.baseURL}${endpoint}`);
@@ -164,14 +165,14 @@ class MaintenanceService {
   async getTasksGrouped() {
     try {
       const [allUrgent, pending, inProgress, completed] = await Promise.all([
-        this.getTasks({ priority: 'emergency', limit: 50 }), // Get more to filter properly
+        this.getTasks({ limit: 50 }),
         this.getTasks({ status: 'pending', limit: 10 }),
         this.getTasks({ status: 'in_progress', limit: 10 }),
         this.getTasks({ status: 'completed', limit: 10 }),
       ]);
 
       // Filter urgent tasks to only show those that are still pending (not started)
-      const urgent = (allUrgent.data.tasks || []).filter(task =>
+      const urgent = (allUrgent.data.tasks || []).filter((task: MaintenanceTask) =>
         task.status === 'pending' && (task.priority === 'emergency' || task.priority === 'urgent')
       );
 

@@ -1,18 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dashboardService } from '../services/dashboardService';
-import type {
-  RealTimeDashboard,
-  KPIData,
-  OccupancyData,
-  RevenueData,
-  StaffPerformanceData,
-  GuestSatisfactionData,
-  OperationsData,
-  MarketingData,
-  AlertsData,
-  SystemHealthData,
-  ReportData
-} from '../types/dashboard';
 
 // Query keys
 export const dashboardKeys = {
@@ -23,8 +10,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'occupancy', hotelId, floor, roomType] as const,
   revenue: (hotelId: string, period?: string, startDate?: string, endDate?: string, groupBy?: string) =>
     [...dashboardKeys.all, 'revenue', hotelId, period, startDate, endDate, groupBy] as const,
-  staffPerformance: (hotelId: string, department?: string, staffId?: string) => 
-    [...dashboardKeys.all, 'staff-performance', hotelId, department, staffId] as const,
+  staffPerformance: (hotelId: string, period?: string, department?: string, staffId?: string) =>
+    [...dashboardKeys.all, 'staff-performance', hotelId, period, department, staffId] as const,
   guestSatisfaction: (hotelId: string, period?: string, rating?: number) => 
     [...dashboardKeys.all, 'guest-satisfaction', hotelId, period, rating] as const,
   operations: (hotelId: string, category?: string) => 
@@ -117,14 +104,15 @@ export const useRevenueData = (
 // Staff performance hook
 export const useStaffPerformance = (
   hotelId: string,
+  period?: string,
   department?: string,
   staffId?: string,
   options?: { enabled?: boolean }
 ) => {
   return useQuery({
-    queryKey: dashboardKeys.staffPerformance(hotelId, department, staffId),
-    queryFn: () => dashboardService.getStaffPerformance(hotelId, department, staffId),
-    enabled: options?.enabled ?? true,
+    queryKey: dashboardKeys.staffPerformance(hotelId, period, department, staffId),
+    queryFn: () => dashboardService.getStaffPerformance(hotelId, period, department, staffId),
+    enabled: (options?.enabled ?? true) && !!hotelId,
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 };

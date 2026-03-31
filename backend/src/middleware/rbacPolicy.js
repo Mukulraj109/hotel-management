@@ -22,7 +22,8 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   settings: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: AUTHENTICATED_ROLES,
+    manageAccess: ['admin', 'manager']
   },
   hotelSettings: {
     modifyAccess: ['admin', 'manager']
@@ -492,8 +493,8 @@ export const RBAC_POLICIES = {
     staffAccess: ['admin', 'staff']
   },
   housekeeping: {
-    staffAccess: ['admin', 'staff', 'frontdesk'],
-    inspectAccess: ['admin', 'frontdesk']
+    staffAccess: ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'],
+    inspectAccess: ['admin', 'manager', 'frontdesk']
   },
   maintenance: {
     staffAccess: ['staff', 'admin', 'frontdesk']

@@ -36,7 +36,7 @@ router.put('/competitor-rates', authorizePolicy('revenueManagement', 'manageAcce
 
 // Package Management Routes
 router.post('/packages', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.createPackage);
-router.get('/packages', revenueController.getPackages);
+router.get('/packages', authorizePolicy('revenueManagement', 'readAccess'), revenueController.getPackages);
 router.put('/packages/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.updatePackage);
 router.delete('/packages/:id', authorizePolicy('revenueManagement', 'manageAccess'), validate(mutationBaselineSchema), revenueController.deletePackage);
 

@@ -53,13 +53,11 @@ import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
 import { useRealTime } from '../../services/realTimeService';
-import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 
 export default function AdminGuestServices() {
-  const { user } = useAuth();
   const { selectedPropertyId, viewMode } = useProperty();
   const [services, setServices] = useState<GuestService[]>([]);
   const [stats, setStats] = useState<GuestServiceStats>({
@@ -80,7 +78,7 @@ export default function AdminGuestServices() {
   const [availableStaff, setAvailableStaff] = useState<Array<{ _id: string; name: string; email: string; department: string }>>([]);
   
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connectionState, connect, on, off, isConnected } = useRealTime();
   
   // Modal states
   const [showViewModal, setShowViewModal] = useState(false);
@@ -97,7 +95,7 @@ export default function AdminGuestServices() {
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [bulkOperating, setBulkOperating] = useState(false);
-  const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
 
   const fetchServices = async () => {
     try {
@@ -181,13 +179,13 @@ export default function AdminGuestServices() {
   useEffect(() => {
     if (!isConnected) return;
     
-    const handleGuestServiceUpdate = (_data: Record<string, unknown>) => {
+    const handleGuestServiceUpdate = () => {
       fetchServices();
       fetchStats();
       toast.success('Guest service data updated in real-time');
     };
 
-    const handleGuestServiceCreate = (_data: Record<string, unknown>) => {
+    const handleGuestServiceCreate = () => {
       fetchServices();
       fetchStats();
       toast.success('New guest service request created');
@@ -587,7 +585,7 @@ export default function AdminGuestServices() {
   }
 
   return (
-    <ErrorBoundary level="page" onError={(error, errorInfo) => {
+    <ErrorBoundary level="page" onError={() => {
       toast.error('An error occurred in the guest services management page');
     }}>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
@@ -1523,14 +1521,14 @@ export default function AdminGuestServices() {
                 <input
                   type="radio"
                   name="exportFormat"
-                  value="excel"
-                  checked={exportFormat === 'excel'}
-                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'excel')}
+                  value="json"
+                  checked={exportFormat === 'json'}
+                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
                   className="w-4 h-4 text-blue-600"
                 />
                 <div>
-                  <div className="font-semibold text-gray-900">Excel Format</div>
-                  <div className="text-sm text-gray-600">Microsoft Excel file</div>
+                  <div className="font-semibold text-gray-900">JSON Format</div>
+                  <div className="text-sm text-gray-600">Structured JSON export</div>
                 </div>
               </label>
             </div>

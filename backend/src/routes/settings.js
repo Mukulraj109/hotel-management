@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { assertUserCanAccessHotel, getUserPropertyIds } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { SettingsInheritanceService } from '../services/settingsInheritance.js';
@@ -12,6 +13,33 @@ import Joi from 'joi';
 
 const router = express.Router();
 const anySettingsMutationSchema = Joi.object({}).unknown(true);
+
+const inheritanceManageAccess = authorizePolicy('settings', 'manageAccess');
+
+const ensurePropertyParamAccess = catchAsync(async (req, res, next) => {
+  const { propertyId } = req.params;
+  if (!propertyId) return next();
+  await assertUserCanAccessHotel(req.user, propertyId);
+  next();
+});
+
+const ensureGroupParamAccess = catchAsync(async (req, res, next) => {
+  const { groupId } = req.params;
+  if (!groupId) return next();
+  const group = await PropertyGroup.findById(groupId).lean();
+  if (!group) {
+    throw new ApplicationError('Property group not found', 404);
+  }
+  const userPropertyIds = await getUserPropertyIds(req.user._id, req.user);
+  if (
+    group.ownerId?.toString() !== req.user._id.toString() &&
+    !await Hotel.exists({ _id: { $in: userPropertyIds }, propertyGroupId: groupId, isActive: true })
+  ) {
+    throw new ApplicationError('You do not have permission to access this group', 403);
+  }
+  req.propertyGroup = group;
+  next();
+});
 
 /**
  * Settings Routes with Group Inheritance Support
@@ -486,6 +514,7 @@ router.put('/general',
  */
 router.get('/inheritance-status/:propertyId',
   authenticate,
+  ensurePropertyParamAccess,
   catchAsync(async (req, res) => {
     const { propertyId } = req.params;
 
@@ -514,7 +543,7 @@ router.get('/inheritance-status/:propertyId',
  */
 router.post('/apply-group-settings',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, groupId } = req.body;
@@ -523,6 +552,7 @@ router.post('/apply-group-settings',
       throw new ApplicationError('propertyId is required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     let finalGroupId = groupId;
 
     // If groupId not provided, get it from the property
@@ -537,6 +567,31 @@ router.post('/apply-group-settings',
       }
 
       finalGroupId = property.propertyGroupId;
+    }
+
+    if (finalGroupId) {
+      const group = await PropertyGroup.findById(finalGroupId).lean();
+      if (!group) {
+        throw new ApplicationError('Property group not found', 404);
+      }
+      if (group.ownerId?.toString() !== req.user._id.toString()) {
+        const hasGroupPropertyAccess = await Hotel.exists({
+          propertyGroupId: finalGroupId,
+          _id: { $in: await getUserPropertyIds(req.user._id, req.user) },
+          isActive: true
+        });
+        if (!hasGroupPropertyAccess) {
+          throw new ApplicationError('You do not have permission to access this group', 403);
+        }
+      }
+    }
+
+    const propertyForGroup = await Hotel.findById(propertyId).lean();
+    if (!propertyForGroup) {
+      throw new ApplicationError('Property not found', 404);
+    }
+    if (propertyForGroup.propertyGroupId?.toString() !== finalGroupId.toString()) {
+      throw new ApplicationError('Property does not belong to the specified group', 400);
     }
 
     const result = await SettingsInheritanceService.applyGroupSettings(
@@ -566,7 +621,8 @@ router.post('/apply-group-settings',
  */
 router.put('/toggle-inheritance/:propertyId',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
+  ensurePropertyParamAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId } = req.params;
@@ -613,17 +669,13 @@ router.put('/toggle-inheritance/:propertyId',
  */
 router.get('/group/:groupId',
   authenticate,
+  ensureGroupParamAccess,
   catchAsync(async (req, res) => {
     const { groupId } = req.params;
 
-    const group = await PropertyGroup.findById(groupId).lean();
+    const group = req.propertyGroup || await PropertyGroup.findById(groupId).lean();
     if (!group) {
       throw new ApplicationError('Property group not found', 404);
-    }
-
-    // Verify user owns this group
-    if (group.ownerId?.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You do not have permission to view this group', 403);
     }
 
     res.json({
@@ -656,7 +708,7 @@ router.get('/group/:groupId',
  */
 router.post('/apply',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId, settingType, settingUpdates } = req.body;
@@ -672,13 +724,16 @@ router.post('/apply',
       throw new ApplicationError('Invalid scope. Must be: single, group, or all', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
+
     // Apply settings using the service
     const result = await SettingsInheritanceService.applySettingsByScope({
       scope,
       propertyId,
       settingType,
       settingUpdates,
-      userId
+      userId,
+      user: req.user
     });
 
     res.json({
@@ -705,7 +760,7 @@ router.post('/apply',
  */
 router.post('/affected-count',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId } = req.body;
@@ -714,9 +769,12 @@ router.post('/affected-count',
       throw new ApplicationError('scope and propertyId are required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const count = await SettingsInheritanceService.getAffectedPropertiesCount({
       scope,
-      propertyId
+      propertyId,
+      userId: req.user._id,
+      user: req.user
     });
 
     res.json({
@@ -743,7 +801,7 @@ router.post('/affected-count',
  */
 router.put('/toggle-inheritance',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, enabled } = req.body;
@@ -752,6 +810,7 @@ router.put('/toggle-inheritance',
       throw new ApplicationError('propertyId, settingType, and enabled are required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const result = await SettingsInheritanceService.toggleInheritance(
       propertyId,
       settingType,
@@ -783,7 +842,7 @@ router.put('/toggle-inheritance',
  */
 router.put('/override',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, overrideValues } = req.body;
@@ -793,6 +852,7 @@ router.put('/override',
       throw new ApplicationError('propertyId, settingType, and overrideValues are required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const result = await SettingsInheritanceService.setOverride(
       propertyId,
       settingType,
@@ -824,7 +884,7 @@ router.put('/override',
  */
 router.delete('/override',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType } = req.body;
@@ -833,6 +893,7 @@ router.delete('/override',
       throw new ApplicationError('propertyId and settingType are required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const result = await SettingsInheritanceService.removeOverride(
       propertyId,
       settingType
@@ -856,6 +917,7 @@ router.delete('/override',
  */
 router.get('/group-summary/:groupId',
   authenticate,
+  ensureGroupParamAccess,
   catchAsync(async (req, res) => {
     const { groupId } = req.params;
 
@@ -886,7 +948,7 @@ router.get('/group-summary/:groupId',
  */
 router.post('/preview-changes',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId, settingType, settingUpdates } = req.body;
@@ -904,11 +966,14 @@ router.post('/preview-changes',
       throw new ApplicationError('propertyId is required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const preview = await SettingsInheritanceService.previewChanges({
       scope,
       propertyId,
       settingType,
-      settingUpdates
+      settingUpdates,
+      userId: req.user._id,
+      user: req.user
     });
 
     res.json({
@@ -932,6 +997,7 @@ router.post('/preview-changes',
  */
 router.get('/change-history/:propertyId/:settingType',
   authenticate,
+  ensurePropertyParamAccess,
   catchAsync(async (req, res) => {
     const { propertyId, settingType } = req.params;
     const { limit, includeRolledBack } = req.query;
@@ -963,7 +1029,7 @@ router.get('/change-history/:propertyId/:settingType',
  */
 router.post('/rollback',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, historyId } = req.body;
@@ -972,6 +1038,7 @@ router.post('/rollback',
       throw new ApplicationError('propertyId, settingType, and historyId are required', 400);
     }
 
+    await assertUserCanAccessHotel(req.user, propertyId);
     const result = await SettingsInheritanceService.rollbackChange({
       propertyId,
       settingType,
@@ -1000,7 +1067,7 @@ router.post('/rollback',
  */
 router.post('/bulk-rollback',
   authenticate,
-  authorizePolicy('settings', 'baseAccess'),
+  inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyIds, settingType, historyId } = req.body;
@@ -1009,6 +1076,7 @@ router.post('/bulk-rollback',
       throw new ApplicationError('propertyIds (array), settingType, and historyId are required', 400);
     }
 
+    await Promise.all(propertyIds.map(propertyId => assertUserCanAccessHotel(req.user, propertyId)));
     const result = await SettingsInheritanceService.bulkRollback({
       propertyIds,
       settingType,

@@ -647,8 +647,17 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
     throw new ApplicationError('Target user not found', 404);
   }
   
-  // Verify hotel exists
-  const hotel = await Hotel.findById(hotelId).lean();
+  // Enforce tenant isolation: guests can only create meet-ups in their active hotel context.
+  const resolvedHotelId = req.user?.hotelId?.toString();
+  if (!resolvedHotelId) {
+    throw new ApplicationError('Hotel context required', 400);
+  }
+  if (hotelId && hotelId.toString() !== resolvedHotelId) {
+    throw new ApplicationError('Invalid hotel context for meet-up request', 403);
+  }
+
+  // Verify hotel exists and matches tenant context
+  const hotel = await Hotel.findById(resolvedHotelId).lean();
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
   }
@@ -686,7 +695,7 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
   const meetUpRequest = new MeetUpRequest({
     requesterId: req.user._id,
     targetUserId,
-    hotelId,
+    hotelId: resolvedHotelId,
     type,
     title,
     description,

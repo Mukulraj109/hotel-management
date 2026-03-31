@@ -96,6 +96,18 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
   // Build $and conditions to safely combine $or clauses
   const andConditions = [];
 
+  // Staff/housekeeping roles only see their own assigned tasks unless a
+  // supervisor (admin, manager, frontdesk) is requesting all tasks.
+  const supervisorRoles = ['admin', 'manager', 'frontdesk'];
+  if (!supervisorRoles.includes(req.user.role) && !assignedToUserId) {
+    andConditions.push({
+      $or: [
+        { assignedToUserId: req.user._id },
+        { assignedTo: req.user._id }
+      ]
+    });
+  }
+
   if (assignedToUserId) {
     if (assignedToUserId === 'unassigned') {
       andConditions.push({
@@ -327,6 +339,19 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     throw new ApplicationError('Invalid task ID format', 400);
   }
 
+  const existingTask = await Housekeeping.findOne({ _id: id, hotelId }).select('status').lean();
+  if (!existingTask) {
+    logger.debug('Housekeeping task not found', { id });
+    throw new ApplicationError('Housekeeping task not found', 404);
+  }
+
+  if (updateData.status && updateData.status !== existingTask.status) {
+    const transition = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, existingTask.status, updateData.status);
+    if (!transition.valid) {
+      throw new ApplicationError(transition.error, 400);
+    }
+  }
+
   // If task is being started, set startedAt
   if (updateData.status === 'in_progress' && !updateData.startedAt) {
     updateData.startedAt = new Date();
@@ -348,13 +373,14 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     throw new ApplicationError('Housekeeping task not found', 404);
   }
 
-  // When task is completed, update room status to vacant (clean)
+  // When task is completed, mark room as actively being cleaned / pending QA.
+  // Room should only become ready ('vacant') after inspection passes.
   if (updateData.status === 'completed' && task.roomId) {
     const roomId = task.roomId._id || task.roomId;
     await Room.findByIdAndUpdate(roomId, {
-      $set: { status: 'vacant', lastCleaned: new Date() }
+      $set: { status: 'cleaning', lastCleaned: new Date() }
     });
-    logger.info('Room status updated to vacant after cleaning completed', {
+    logger.info('Room marked cleaning, pending QA inspection', {
       taskId: task._id,
       roomId: roomId.toString()
     });
@@ -373,11 +399,11 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
       updatedBy: req.user?._id
     });
 
-    // If task is completed, also broadcast room status change
+    // If task is completed, also broadcast normalized room status change
     if (updateData.status === 'completed' && task.roomId) {
       await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
         roomId: task.roomId._id || task.roomId,
-        status: 'vacant',
+        status: 'cleaning',
         taskId: task._id,
         event: 'housekeeping_completed'
       });
@@ -460,17 +486,25 @@ router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('
   };
 
   if (passed) {
-    // Inspection passed -- room is clean and ready
     task.status = 'inspected';
     task.roomStatus = 'clean';
   } else {
-    // Inspection failed -- reassign for re-cleaning
     task.status = 'assigned';
     task.roomStatus = 'dirty';
     task.reinspectionCount = (task.reinspectionCount || 0) + 1;
   }
 
   await task.save();
+
+  // Persist room state in Room model
+  if (task.roomId) {
+    const roomId = task.roomId._id || task.roomId;
+    const roomStatus = passed ? 'vacant' : 'dirty';
+    await Room.findByIdAndUpdate(roomId, { $set: { status: roomStatus } });
+    logger.info(`Room status updated to ${roomStatus} after inspection`, {
+      taskId: task._id, roomId: roomId.toString(), passed
+    });
+  }
 
   await task.populate([
     { path: 'roomId', select: 'roomNumber type' },
@@ -496,13 +530,13 @@ router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('
       });
     }
 
-    // If inspection passed, broadcast room status change
-    if (passed && task.roomId) {
+    // Broadcast room status change for both pass/fail with normalized room statuses.
+    if (task.roomId) {
       await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
         roomId: task.roomId._id || task.roomId,
-        status: 'clean',
+        status: passed ? 'vacant' : 'dirty',
         taskId: task._id,
-        event: 'inspection_passed'
+        event: passed ? 'inspection_passed' : 'inspection_failed'
       });
     }
   } catch (wsError) {

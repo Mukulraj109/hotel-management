@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatIndianCurrency } from '../../utils/currency';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
-import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 const API_FALLBACK_IMAGES = [
   'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
@@ -176,6 +176,7 @@ export default function RoomDetailPage() {
     } else if (type) {
       params.set('roomType', type);
     }
+    params.set('hotelId', hotelId);
 
     navigate(`/booking?${params.toString()}`);
   };
@@ -196,7 +197,7 @@ export default function RoomDetailPage() {
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <button
-            onClick={() => navigate('/rooms')}
+            onClick={() => navigate(`/rooms?hotelId=${hotelId}`)}
             className="flex items-center text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-5 w-5 mr-2" />

@@ -81,6 +81,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ item, onClick }) => {
         return <RefreshCw className="h-5 w-5 text-purple-500" />;
       case 'booking':
         return <Calendar className="h-5 w-5 text-orange-500" />;
+      case 'checkout_charges':
+        return <Receipt className="h-5 w-5 text-amber-600" />;
       default:
         return <Receipt className="h-5 w-5 text-gray-500" />;
     }
@@ -100,6 +102,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ item, onClick }) => {
               {item.type === 'payment' && 'Payment'}
               {item.type === 'refund' && 'Refund'}
               {item.type === 'booking' && item.bookingNumber}
+              {item.type === 'checkout_charges' && 'Checkout Charges'}
             </div>
             <div className="text-sm text-gray-600">
               {billingHistoryService.formatDate(item.date)}
@@ -193,6 +196,7 @@ const GuestDetailModal: React.FC<GuestDetailModalProps> = ({ item, isOpen, onClo
             {item.type === 'payment' && <CreditCard className="h-6 w-6 text-green-500" />}
             {item.type === 'refund' && <RefreshCw className="h-6 w-6 text-purple-500" />}
             {item.type === 'booking' && <Calendar className="h-6 w-6 text-orange-500" />}
+            {item.type === 'checkout_charges' && <Receipt className="h-6 w-6 text-amber-600" />}
             <div>
               <div className="font-medium capitalize">{item.type}</div>
               <Badge variant={billingHistoryService.getStatusColor(item.status, item.type) as 'green' | 'blue' | 'orange' | 'red' | 'gray' | 'yellow' | 'purple'}>
@@ -302,6 +306,7 @@ export default function GuestBillingHistory() {
     limit: 10,
     type: 'all'
   });
+  const [accumulatedItems, setAccumulatedItems] = useState<BillingHistoryItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<BillingHistoryItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('all');
@@ -316,7 +321,18 @@ export default function GuestBillingHistory() {
   } = useQuery({
     queryKey: ['guest-billing-history', filters],
     queryFn: () => billingHistoryService.getBillingHistory(filters),
-    keepPreviousData: true
+    keepPreviousData: true,
+    onSuccess: (data: { data: { history: BillingHistoryItem[] } }) => {
+      if ((filters.page || 1) === 1) {
+        setAccumulatedItems(data?.data?.history || []);
+      } else {
+        setAccumulatedItems(prev => {
+          const existingIds = new Set(prev.map(i => i.id));
+          const newItems = (data?.data?.history || []).filter(i => !existingIds.has(i.id));
+          return [...prev, ...newItems];
+        });
+      }
+    }
   });
 
   const handlePeriodFilter = (period: string) => {
@@ -338,10 +354,12 @@ export default function GuestBillingHistory() {
         startDate = '';
     }
     
+    setAccumulatedItems([]);
     setFilters({ ...filters, startDate, page: 1 });
   };
 
   const handleTypeFilter = (type: string) => {
+    setAccumulatedItems([]);
     setFilters({ ...filters, type: type as BillingHistoryFilters['type'], page: 1 });
   };
 
@@ -440,7 +458,7 @@ export default function GuestBillingHistory() {
           <div className="flex justify-center py-8">
             <LoadingSpinner />
           </div>
-        ) : historyData?.data.history.length === 0 ? (
+        ) : accumulatedItems.length === 0 ? (
           <Card className="p-8 text-center">
             <Receipt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
@@ -450,7 +468,7 @@ export default function GuestBillingHistory() {
           </Card>
         ) : (
           <>
-            {historyData?.data.history.map((item) => (
+            {accumulatedItems.map((item) => (
               <TransactionItem
                 key={item.id}
                 item={item}

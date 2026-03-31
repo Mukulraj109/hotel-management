@@ -1,4 +1,5 @@
-import { api } from './api';
+import { api, normalizeListParams } from './api';
+import { toEntityIdString } from '../utils/entityId';
 import { Room, Booking, BookingFilters, CreateBookingRequest } from '../types/booking';
 
 interface ApiResponse<T> {
@@ -17,9 +18,10 @@ interface ApiResponse<T> {
 class BookingService {
   async getRooms(filters: BookingFilters & { page?: number; limit?: number } = {}): Promise<ApiResponse<{ rooms: Room[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
     
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -102,9 +104,10 @@ class BookingService {
 
   async getBookings(filters: { status?: string; page?: number; limit?: number; startDate?: string; endDate?: string } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
     
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -119,7 +122,11 @@ class BookingService {
 
   async getBookingById(id: string): Promise<ApiResponse<{ booking: Booking }>> {
     try {
-      const response = await api.get(`/bookings/${id}`);
+      const safeId = toEntityIdString(id);
+      if (!safeId) {
+        throw new Error('Invalid booking id');
+      }
+      const response = await api.get(`/bookings/${safeId}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -145,18 +152,30 @@ class BookingService {
   }
 
   // Get user's bookings (for guests)
-  async getUserBookings(filters: { status?: string; page?: number; limit?: number } = {}): Promise<ApiResponse<Booking[]>> {
+  async getUserBookings(filters: { status?: string; page?: number; limit?: number } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
     
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
       });
 
       const response = await api.get(`/bookings?${params.toString()}`);
-      return response.data;
+      const payload = response.data || {};
+      const bookings = Array.isArray(payload.data)
+        ? payload.data
+        : Array.isArray(payload.data?.bookings)
+          ? payload.data.bookings
+          : [];
+
+      return {
+        ...payload,
+        data: { bookings },
+        pagination: payload.pagination
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -208,9 +227,10 @@ class BookingService {
     };
   }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
     
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -306,9 +326,10 @@ class BookingService {
     bookingId?: string;
   } = {}): Promise<ApiResponse<unknown>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
 
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }

@@ -48,14 +48,20 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const { data } = await api.get('/staff/display-preferences');
-        const prefs = data?.data;
-        if (prefs) {
-          setValue('theme', prefs.theme || 'light', { shouldDirty: false });
-          setValue('compactView', prefs.compactView ?? false, { shouldDirty: false });
-          setValue('language', prefs.language || 'en', { shouldDirty: false });
-          setValue('quickActions', prefs.quickActions || ['daily-check', 'guest-request'], { shouldDirty: false });
-        }
+        const [{ data: displayData }, { data: staffData }, { data: profileData }] = await Promise.all([
+          api.get('/user-preferences/display'),
+          api.get('/user-preferences/staff'),
+          api.get('/user-preferences/profile')
+        ]);
+
+        const displayPrefs = displayData?.data?.display || {};
+        const staffPrefs = staffData?.data?.staff || {};
+        const profilePrefs = profileData?.data?.profile || {};
+
+        setValue('theme', displayPrefs.theme || 'light', { shouldDirty: false });
+        setValue('compactView', displayPrefs.compactView ?? false, { shouldDirty: false });
+        setValue('language', profilePrefs.language || 'en', { shouldDirty: false });
+        setValue('quickActions', staffPrefs.quickActions || ['daily-check', 'guest-request'], { shouldDirty: false });
       } catch {
         // Use defaults if preferences not yet saved
       }
@@ -88,7 +94,16 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
   // Save display settings mutation
   const saveDisplayMutation = useMutation({
     mutationFn: async (data: StaffDisplayFormData) => {
-      const { data: result } = await api.put('/staff/display-preferences', data);
+      const { data: result } = await api.put('/user-preferences/display', {
+        theme: data.theme,
+        compactView: data.compactView
+      });
+      await api.put('/user-preferences/staff', {
+        quickActions: data.quickActions
+      });
+      await api.put('/user-preferences/profile', {
+        language: data.language
+      });
       return result;
     },
     onSuccess: () => {

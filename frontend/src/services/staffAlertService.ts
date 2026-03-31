@@ -74,8 +74,12 @@ export interface StaffAlertFilters {
   department?: string;
   page?: number;
   limit?: number;
+  skip?: number;
   unreadOnly?: boolean;
   activeOnly?: boolean;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface StaffAlertSummary {
@@ -103,16 +107,45 @@ class StaffAlertService {
     summary: StaffAlertSummary;
   }> {
     try {
-      const params = new URLSearchParams();
-    
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          params.append(key, value.toString());
-        }
-      });
+      const page = Math.max(1, Number(filters.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(filters.limit) || 20));
+      const skip = filters.skip != null ? Number(filters.skip) : (page - 1) * limit;
 
-      const response = await api.get(`/staff/alerts?${params.toString()}`);
-      return response.data.data;
+      const params: Record<string, string | number> = {
+        limit,
+        skip,
+        status: filters.status || 'all',
+        priority: filters.priority || 'all',
+        category: filters.category || 'all',
+        sortBy: filters.sortBy || 'createdAt',
+        sortOrder: filters.sortOrder || 'desc'
+      };
+
+      const [response, summaryResponse] = await Promise.all([
+        api.get('/staff/alerts', { params }),
+        api.get('/staff/alerts/summary')
+      ]);
+      const payload = response.data;
+      const alerts = payload?.data?.alerts || [];
+      const total = payload?.total || 0;
+      const pages = Math.max(1, Math.ceil(total / limit));
+      const summaryPayload = summaryResponse?.data?.data || {};
+
+      return {
+        alerts,
+        pagination: { page, limit, total, pages },
+        summary: {
+          totalActive: summaryPayload.totalAlerts || 0,
+          totalUnacknowledged: summaryPayload.unacknowledgedAlerts || 0,
+          criticalCount: summaryPayload.criticalAlerts || 0,
+          urgentCount: summaryPayload.urgentAlerts || 0,
+          highCount: 0,
+          byCategory: summaryPayload.alertsByCategory || {},
+          byType: {},
+          escalatedCount: 0,
+          expiringSoon: 0
+        }
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -164,7 +197,7 @@ class StaffAlertService {
   // Start working on alert
   async startWorkingOnAlert(id: string, notes?: string): Promise<StaffAlert> {
     try {
-      const response = await api.patch(`/staff/alerts/${id}/start`, { notes });
+      const response = await api.put(`/staff/alerts/${id}`, { status: 'in_progress', notes });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -174,7 +207,7 @@ class StaffAlertService {
   // Resolve alert
   async resolveAlert(id: string, resolution: string, notes?: string): Promise<StaffAlert> {
     try {
-      const response = await api.patch(`/staff/alerts/${id}/resolve`, { resolution, notes });
+      const response = await api.put(`/staff/alerts/${id}`, { status: 'resolved', resolution, notes });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -184,7 +217,7 @@ class StaffAlertService {
   // Dismiss alert
   async dismissAlert(id: string, reason?: string): Promise<StaffAlert> {
     try {
-      const response = await api.patch(`/staff/alerts/${id}/dismiss`, { reason });
+      const response = await api.put(`/staff/alerts/${id}`, { status: 'dismissed', reason });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -194,7 +227,7 @@ class StaffAlertService {
   // Escalate alert
   async escalateAlert(id: string, reason: string, escalateTo?: string): Promise<StaffAlert> {
     try {
-      const response = await api.patch(`/staff/alerts/${id}/escalate`, { reason, escalateTo });
+      const response = await api.put(`/staff/alerts/${id}`, { priority: 'critical', reason, escalateTo });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -224,8 +257,8 @@ class StaffAlertService {
   // Mark multiple alerts as acknowledged
   async acknowledgeMultiple(alertIds: string[]): Promise<{ modifiedCount: number }> {
     try {
-      const response = await api.post('/staff/alerts/acknowledge-multiple', { alertIds });
-      return response.data.data;
+      await Promise.all(alertIds.map((id) => this.acknowledgeAlert(id)));
+      return { modifiedCount: alertIds.length };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

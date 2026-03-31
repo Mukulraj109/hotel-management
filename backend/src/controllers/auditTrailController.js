@@ -1,7 +1,19 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import AuditLog from '../models/AuditLog.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+
+const ALLOWED_SORT_FIELDS = new Set(['timestamp', 'createdAt', 'updatedAt', 'changeType', 'tableName', 'source']);
+
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+};
+
+const parseDateSafe = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 // Get audit logs with filtering and pagination
 export const getAuditLogs = catchAsync(async (req, res, next) => {
@@ -21,6 +33,10 @@ export const getAuditLogs = catchAsync(async (req, res, next) => {
     sortBy = 'timestamp',
     sortOrder = 'desc'
   } = req.query;
+  const pageNumber = parsePositiveInt(page, 1);
+  const pageSize = Math.min(parsePositiveInt(limit, 50), 100);
+  const normalizedSortBy = ALLOWED_SORT_FIELDS.has(sortBy) ? sortBy : 'timestamp';
+  const normalizedSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
 
   // Build query filters
   const filters = {
@@ -40,9 +56,14 @@ export const getAuditLogs = catchAsync(async (req, res, next) => {
   }
 
   if (startDate || endDate) {
+    const start = parseDateSafe(startDate);
+    const end = parseDateSafe(endDate);
+    if ((startDate && !start) || (endDate && !end)) {
+      return next(new ApplicationError('Invalid date format for startDate or endDate', 400));
+    }
     filters.createdAt = {};
-    if (startDate) filters.createdAt.$gte = new Date(startDate);
-    if (endDate) filters.createdAt.$lte = new Date(endDate);
+    if (start) filters.createdAt.$gte = start;
+    if (end) filters.createdAt.$lte = end;
   }
 
   // Get total count for pagination
@@ -50,15 +71,15 @@ export const getAuditLogs = catchAsync(async (req, res, next) => {
 
   // Build sort object
   const sort = {};
-  sort[sortBy === 'timestamp' ? 'createdAt' : sortBy] = sortOrder === 'desc' ? -1 : 1;
+  sort[normalizedSortBy === 'timestamp' ? 'createdAt' : normalizedSortBy] = normalizedSortOrder === 'desc' ? -1 : 1;
 
   // Execute query
   const auditLogs = await AuditLog.find(filters)
     .populate('userId', 'name email role')
     .populate('sourceDetails.channel', 'name category')
     .sort(sort)
-    .limit(parseInt(limit))
-    .skip((parseInt(page) - 1) * parseInt(limit)).lean();
+    .limit(pageSize)
+    .skip((pageNumber - 1) * pageSize).lean();
 
   // Transform data for response
   const transformedLogs = auditLogs.map(log => ({
@@ -99,10 +120,10 @@ export const getAuditLogs = catchAsync(async (req, res, next) => {
     success: true,
     data: transformedLogs,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: pageNumber,
+      limit: pageSize,
       total: totalCount,
-      pages: Math.ceil(totalCount / parseInt(limit))
+      pages: Math.ceil(totalCount / pageSize)
     }
   });
 });
@@ -175,11 +196,13 @@ export const getAuditLogById = catchAsync(async (req, res, next) => {
 export const getEntityAuditTrail = catchAsync(async (req, res, next) => {
   const { entityType, entityId } = req.params;
   const { page = 1, limit = 50 } = req.query;
+  const pageNumber = parsePositiveInt(page, 1);
+  const pageSize = Math.min(parsePositiveInt(limit, 50), 100);
 
   const auditLogs = await AuditLog.getChangeHistory(entityType, entityId, {
     hotelId: req.user.hotelId,
-    limit: parseInt(limit),
-    skip: (parseInt(page) - 1) * parseInt(limit)
+    limit: pageSize,
+    skip: (pageNumber - 1) * pageSize
   });
 
   const totalCount = await AuditLog.countDocuments({
@@ -192,10 +215,10 @@ export const getEntityAuditTrail = catchAsync(async (req, res, next) => {
     success: true,
     data: auditLogs,
     pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: pageNumber,
+      limit: pageSize,
       total: totalCount,
-      pages: Math.ceil(totalCount / parseInt(limit))
+      pages: Math.ceil(totalCount / pageSize)
     }
   });
 });
@@ -219,8 +242,16 @@ export const getAuditStats = catchAsync(async (req, res, next) => {
     dateRange.end = new Date();
   }
 
-  if (startDate) dateRange.start = new Date(startDate);
-  if (endDate) dateRange.end = new Date(endDate);
+  if (startDate) {
+    const parsedStartDate = parseDateSafe(startDate);
+    if (!parsedStartDate) return next(new ApplicationError('Invalid startDate format', 400));
+    dateRange.start = parsedStartDate;
+  }
+  if (endDate) {
+    const parsedEndDate = parseDateSafe(endDate);
+    if (!parsedEndDate) return next(new ApplicationError('Invalid endDate format', 400));
+    dateRange.end = parsedEndDate;
+  }
 
   const filters = { hotelId: req.user.hotelId };
   if (dateRange.start || dateRange.end) {
@@ -419,7 +450,7 @@ export const reconcileAuditLog = catchAsync(async (req, res, next) => {
   const auditLog = await AuditLog.findOne({
     _id: id,
     hotelId: req.user.hotelId
-  }).lean();
+  });
 
   if (!auditLog) {
     return next(new ApplicationError('Audit log not found', 404));

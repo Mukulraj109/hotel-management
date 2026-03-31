@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Calendar, Users, Wifi, Bed, Crown, Star, CheckCircle, type LucideIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Calendar, Users, Wifi, Bed, Crown, Star, CheckCircle, Building2, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatIndianCurrency } from '../../utils/currency';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
-import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+import contactService from '../../services/contactService';
+import { hotelLabel, persistPublicHotelId, resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 // Room types data - same as BookingPage (fallback when API has no rows)
 const ROOM_TYPES = {
@@ -75,7 +77,33 @@ type DisplayRow = {
 
 export default function RoomsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hotelId = resolvePublicHotelId(searchParams);
+
+  const { data: hotelsPayload, isLoading: hotelsLoading } = useQuery({
+    queryKey: ['public-contact-hotels'],
+    queryFn: () => contactService.getHotelsContact(),
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+  const hotels = hotelsPayload?.hotels ?? [];
+
+  useEffect(() => {
+    if (!hotels.length) return;
+    const ids = new Set(hotels.map((h) => String(h.id)));
+    if (ids.has(hotelId)) return;
+    const fallback = String(hotels[0].id);
+    persistPublicHotelId(fallback);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('hotelId', fallback);
+        return next;
+      },
+      { replace: true }
+    );
+  }, [hotels, hotelId, setSearchParams]);
+
   const [filters, setFilters] = useState({
     checkIn: searchParams.get('checkIn') || '',
     checkOut: searchParams.get('checkOut') || '',
@@ -83,11 +111,20 @@ export default function RoomsPage() {
     guests: parseInt(searchParams.get('guests') || searchParams.get('adults') || '2'),
   });
 
+  const isFirstHotelEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstHotelEffect.current) {
+      isFirstHotelEffect.current = false;
+      return;
+    }
+    setFilters((prev) => ({ ...prev, roomType: '' }));
+  }, [hotelId]);
+
   useEffect(() => {
     document.title = 'Our Rooms - The Pentouz';
   }, []);
 
-  const { data: apiOptions, isLoading: catalogLoading } = usePublicRoomCatalog(DEFAULT_PUBLIC_HOTEL_ID);
+  const { data: apiOptions, isLoading: catalogLoading } = usePublicRoomCatalog(hotelId);
 
   const displayRows: DisplayRow[] = useMemo(() => {
     if (apiOptions && apiOptions.length > 0) {
@@ -136,6 +173,7 @@ export default function RoomsPage() {
 
   const handleBookNow = (slug: string, roomTypeId?: string) => {
     const params = new URLSearchParams();
+    params.set('hotelId', hotelId);
     if (filters.checkIn) params.set('checkIn', filters.checkIn);
     if (filters.checkOut) params.set('checkOut', filters.checkOut);
     if (filters.guests) params.set('guests', filters.guests.toString());
@@ -143,6 +181,18 @@ export default function RoomsPage() {
     else params.set('roomType', slug);
 
     navigate(`/booking?${params.toString()}`);
+  };
+
+  const handlePropertyChange = (nextId: string) => {
+    persistPublicHotelId(nextId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('hotelId', nextId);
+        return next;
+      },
+      { replace: true }
+    );
   };
 
   const filteredRows = displayRows.filter((row) => {
@@ -161,6 +211,31 @@ export default function RoomsPage() {
           
           {/* Search Filters */}
           <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
+            <div className="mb-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1">
+                <Building2 className="h-4 w-4 text-gray-500" />
+                Property
+              </label>
+              <select
+                value={hotelId}
+                onChange={(e) => handlePropertyChange(e.target.value)}
+                disabled={hotelsLoading}
+                className="w-full max-w-xl border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              >
+                {hotels.length > 0 ? (
+                  hotels.map((h) => (
+                    <option key={String(h.id)} value={String(h.id)}>
+                      {hotelLabel(h)}
+                    </option>
+                  ))
+                ) : (
+                  <option value={hotelId}>Default property (list unavailable)</option>
+                )}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Room types and rates are for the property you select.
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
@@ -361,7 +436,7 @@ export default function RoomsPage() {
                         variant="outline"
                         onClick={() =>
                           navigate(
-                            `/rooms/${room.slug}?checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}`
+                            `/rooms/${room.slug}?checkIn=${filters.checkIn}&checkOut=${filters.checkOut}&guests=${filters.guests}&hotelId=${hotelId}`
                           )
                         }
                         className="flex-1"

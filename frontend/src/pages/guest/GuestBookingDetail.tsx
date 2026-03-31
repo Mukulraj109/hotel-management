@@ -27,6 +27,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { toEntityIdString } from '../../utils/entityId';
 
 interface GuestDetails {
   firstName: string;
@@ -173,28 +174,18 @@ const formatDateTime = (dateString: string | undefined | null) => {
 };
 
 function GuestBookingDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id: rawParam } = useParams<{ id: string }>();
+  const id = toEntityIdString(rawParam);
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [priceHistory, setPriceHistory] = useState<PriceAdjustment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => Boolean(id));
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (id) {
-      fetchBookingDetails();
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (showHistory && id) {
-      fetchPriceHistory();
-    }
-  }, [showHistory, id]);
-
   const fetchBookingDetails = async () => {
+    if (!id) return;
     try {
       setLoading(true);
       setError(null);
@@ -223,6 +214,7 @@ function GuestBookingDetail() {
   };
 
   const fetchPriceHistory = async () => {
+    if (!id) return;
     try {
       setHistoryLoading(true);
       const response = await api.get(`/bookings/enhanced/${id}/price-history`);
@@ -234,6 +226,31 @@ function GuestBookingDetail() {
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (id) {
+      fetchBookingDetails();
+    } else {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (showHistory && id) {
+      fetchPriceHistory();
+    }
+  }, [showHistory, id]);
+
+  if (!rawParam || !id) {
+    return (
+      <div className="max-w-lg mx-auto p-6 text-center">
+        <p className="text-gray-700 mb-4">This booking link is invalid or incomplete.</p>
+        <Button type="button" onClick={() => navigate('/app/bookings')}>
+          Back to my bookings
+        </Button>
+      </div>
+    );
+  }
 
   const getAdjustmentTypeColor = (type: string) => {
     const colors: Record<string, string> = {

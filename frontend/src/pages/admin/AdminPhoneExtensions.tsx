@@ -167,12 +167,18 @@ const AdminPhoneExtensions: React.FC = () => {
   useEffect(() => {
     fetchExtensions();
     fetchOptions();
-  }, [currentPage, search, phoneTypeFilter, statusFilter, floorFilter, categoryFilter]);
+  }, [currentPage, search, phoneTypeFilter, statusFilter, floorFilter, categoryFilter, selectedPropertyId]);
 
   const fetchExtensions = async () => {
     try {
       setLoading(true);
-      const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
+      if (!selectedPropertyId) {
+        setExtensions([]);
+        setSummary(null);
+        setTotalPages(1);
+        setTotalCount(0);
+        return;
+      }
       
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -186,7 +192,7 @@ const AdminPhoneExtensions: React.FC = () => {
       if (floorFilter) params.append('floor', floorFilter);
       if (categoryFilter) params.append('category', categoryFilter);
 
-      const { data } = await api.get(`/phone-extensions/hotels/${hotelId}?${params}`);
+      const { data } = await api.get(`/phone-extensions/hotels/${selectedPropertyId}?${params}`);
       setExtensions(data.data.extensions || []);
       setSummary(data.data.summary || null);
       setTotalPages(data.data.pagination?.totalPages || 1);
@@ -297,9 +303,8 @@ const AdminPhoneExtensions: React.FC = () => {
         });
         setApplyToScope('single');
       } else {
-        const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
-
-        const { data } = await api.patch(`/phone-extensions/hotels/${hotelId}/bulk-update`, {
+        if (!selectedPropertyId) return;
+        const { data } = await api.patch(`/phone-extensions/hotels/${selectedPropertyId}/bulk-update`, {
           extensionIds: selectedExtensions,
           status
         });
@@ -423,9 +428,9 @@ const AdminPhoneExtensions: React.FC = () => {
 
   const exportDirectory = async (format: 'pdf' | 'csv' = 'csv') => {
     try {
-      const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
+      if (!selectedPropertyId) return;
       
-      const response = await api.get(`/phone-extensions/hotels/${hotelId}/directory`, {
+      const response = await api.get(`/phone-extensions/hotels/${selectedPropertyId}/directory`, {
         params: { format },
         responseType: 'blob'
       });

@@ -59,10 +59,19 @@ export interface StaffActivityData {
   }>;
   checkOuts: Array<{
     _id: string;
-    bookingNumber: string;
-    checkOut: string;
-    userId: { name: string };
-    rooms: Array<{ roomId: { roomNumber: string } }>;
+    bookingNumber?: string;
+    checkOut?: string;
+    createdAt?: string;
+    status?: string;
+    userId?: { name: string };
+    checkedBy?: { name: string };
+    roomId?: { roomNumber: string };
+    rooms?: Array<{ roomId?: { roomNumber?: string } }>;
+    bookingId?: {
+      bookingNumber?: string;
+      userId?: { name?: string };
+      rooms?: Array<{ roomId?: { roomNumber?: string } }>;
+    };
   }>;
   guestServices: Array<{
     _id: string;

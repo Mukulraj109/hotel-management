@@ -42,7 +42,8 @@ export const triggerCheckoutAutomation = async (booking, newStatus, oldStatus, c
       try {
         const result = await checkoutAutomationService.processCheckout(booking._id, {
           processedBy: context.userId || 'system',
-          source: 'status_change_trigger'
+          source: 'status_change_trigger',
+          hotelId: booking.hotelId
         });
 
         logger.info('Checkout automation completed', {

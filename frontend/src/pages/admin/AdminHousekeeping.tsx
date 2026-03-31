@@ -60,6 +60,7 @@ interface HousekeepingStats {
   assigned: number;
   inProgress: number;
   completed: number;
+  inspected: number;
   cancelled: number;
   avgDuration: number;
 }
@@ -200,6 +201,7 @@ function AdminHousekeeping() {
         assigned: 0,
         inProgress: 0,
         completed: 0,
+        inspected: 0,
         cancelled: 0,
         avgDuration: 0
       };
@@ -221,6 +223,9 @@ function AdminHousekeeping() {
             case 'completed':
               transformedStats.completed = count;
               break;
+            case 'inspected':
+              transformedStats.inspected = count;
+              break;
             case 'cancelled':
               transformedStats.cancelled = count;
               break;
@@ -241,6 +246,7 @@ function AdminHousekeeping() {
         assigned: 0,
         inProgress: 0,
         completed: 0,
+        inspected: 0,
         cancelled: 0,
         avgDuration: 0
       });
@@ -357,7 +363,7 @@ function AdminHousekeeping() {
   }, [isConnected]); // Only re-run when connection state changes, not when on/off change
 
   // Handle status update
-  const handleStatusUpdate = async (taskId: string, newStatus: 'assigned' | 'in_progress' | 'completed' | 'cancelled') => {
+  const handleStatusUpdate = async (taskId: string, newStatus: 'assigned' | 'in_progress' | 'completed' | 'inspected' | 'cancelled') => {
     try {
       setUpdating(true);
       await adminService.updateHousekeepingTask(taskId, { status: newStatus });
@@ -732,7 +738,7 @@ function AdminHousekeeping() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 lg:gap-6">
           <Card className="bg-gradient-to-br from-white to-blue-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
             <CardContent className="p-3 sm:p-4 lg:p-6">
               <div className="flex items-center">
@@ -784,6 +790,19 @@ function AdminHousekeeping() {
                 <div className="ml-2 sm:ml-3 lg:ml-4">
                   <p className="text-xs sm:text-sm font-semibold text-gray-600">Completed</p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{formatNumber(stats?.completed || 0)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-white to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl shadow-md">
+                  <CheckSquare className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Inspected</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{formatNumber(stats?.inspected || 0)}</p>
                 </div>
               </div>
             </CardContent>
@@ -872,6 +891,7 @@ function AdminHousekeeping() {
                   <option value="assigned">Assigned</option>
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Completed</option>
+                  <option value="inspected">Inspected</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
@@ -1118,6 +1138,18 @@ function AdminHousekeeping() {
               }`}
             >
               Completed ({stats?.completed || 0})
+            </Button>
+            <Button
+              variant={filters.status === 'inspected' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => applyFilters({ status: filters.status === 'inspected' ? undefined : 'inspected' })}
+              className={`text-xs px-3 py-1.5 rounded-full transition-all duration-200 ${
+                filters.status === 'inspected'
+                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md'
+                  : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              Inspected ({stats?.inspected || 0})
             </Button>
             <Button
               variant={filters.assignedToUserId === 'unassigned' ? 'default' : 'outline'}

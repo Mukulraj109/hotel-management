@@ -34,7 +34,6 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
   const {
     register,
     handleSubmit,
-    watch,
     setValue,
     formState: { isDirty }
   } = useForm<StaffNotificationFormData>({
@@ -50,23 +49,22 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
     }
   });
 
-  const watchedValues = watch();
-
   // Load saved notification preferences from backend
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const { data } = await api.get('/staff/notification-preferences');
-        const prefs = data?.data;
+        const { data } = await api.get('/notifications/preferences');
+        const prefs = data?.data?.preferences;
         if (prefs) {
-          setValue('workAssignments', prefs.workAssignments ?? true, { shouldDirty: false });
-          setValue('guestRequests', prefs.guestRequests ?? true, { shouldDirty: false });
-          setValue('scheduleChanges', prefs.scheduleChanges ?? true, { shouldDirty: false });
-          setValue('emergencyAlerts', prefs.emergencyAlerts ?? true, { shouldDirty: false });
-          setValue('maintenanceAlerts', prefs.maintenanceAlerts ?? true, { shouldDirty: false });
-          setValue('inventoryUpdates', prefs.inventoryUpdates ?? false, { shouldDirty: false });
-          setValue('sound', prefs.sound ?? true, { shouldDirty: false });
-          setValue('vibration', prefs.vibration ?? true, { shouldDirty: false });
+          const inAppTypes = prefs.inApp?.types || {};
+          setValue('workAssignments', inAppTypes.booking_confirmation ?? true, { shouldDirty: false });
+          setValue('guestRequests', inAppTypes.service_booking ?? true, { shouldDirty: false });
+          setValue('scheduleChanges', inAppTypes.booking_reminder ?? true, { shouldDirty: false });
+          setValue('emergencyAlerts', inAppTypes.system_alert ?? true, { shouldDirty: false });
+          setValue('maintenanceAlerts', inAppTypes.service_reminder ?? true, { shouldDirty: false });
+          setValue('inventoryUpdates', inAppTypes.special_offer ?? false, { shouldDirty: false });
+          setValue('sound', prefs.inApp?.sound ?? true, { shouldDirty: false });
+          setValue('vibration', prefs.inApp?.vibration ?? true, { shouldDirty: false });
         }
       } catch {
         // Use defaults if preferences not yet saved
@@ -85,7 +83,24 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
   // Save notification settings mutation
   const saveNotificationMutation = useMutation({
     mutationFn: async (data: StaffNotificationFormData) => {
-      const { data: result } = await api.put('/staff/notification-preferences', data);
+      const channelSettings = {
+        enabled: true,
+        sound: data.sound,
+        vibration: data.vibration,
+        showBadge: true,
+        types: {
+          booking_confirmation: data.workAssignments,
+          service_booking: data.guestRequests,
+          booking_reminder: data.scheduleChanges,
+          system_alert: data.emergencyAlerts,
+          service_reminder: data.maintenanceAlerts,
+          special_offer: data.inventoryUpdates
+        }
+      };
+      const { data: result } = await api.patch('/notifications/preferences', {
+        channel: 'inApp',
+        settings: channelSettings
+      });
       return result;
     },
     onSuccess: () => {

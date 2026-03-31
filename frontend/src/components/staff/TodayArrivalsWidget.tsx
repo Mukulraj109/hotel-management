@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { staffBookingService, StaffUpcomingBooking, StaffUpcomingStats } from '../../services/staffBookingService';
-import { format, parseISO, isToday, isTomorrow } from 'date-fns';
+import { parseISO, isToday, isTomorrow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -43,12 +43,51 @@ export default function TodayArrivalsWidget() {
     }
   };
 
+  const parseBookingDate = (value: unknown): Date | null => {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === 'number') {
+      const fromNumber = new Date(value);
+      return Number.isNaN(fromNumber.getTime()) ? null : fromNumber;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsedIso = parseISO(trimmed);
+      if (!Number.isNaN(parsedIso.getTime())) return parsedIso;
+      const parsedDate = new Date(trimmed);
+      return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+    }
+
+    if (typeof value === 'object') {
+      const candidate = value as { $date?: unknown; date?: unknown };
+      return parseBookingDate(candidate.$date ?? candidate.date ?? null);
+    }
+
+    return null;
+  };
+
   const getTodayBookings = () => {
-    return bookings.filter(booking => isToday(parseISO(booking.checkIn))).slice(0, 4);
+    return bookings
+      .filter((booking) => {
+        const checkInDate = parseBookingDate(booking.checkIn);
+        return checkInDate ? isToday(checkInDate) : false;
+      })
+      .slice(0, 4);
   };
 
   const getTomorrowBookings = () => {
-    return bookings.filter(booking => isTomorrow(parseISO(booking.checkIn))).slice(0, 2);
+    return bookings
+      .filter((booking) => {
+        const checkInDate = parseBookingDate(booking.checkIn);
+        return checkInDate ? isTomorrow(checkInDate) : false;
+      })
+      .slice(0, 2);
   };
 
   const getBookingPriority = (booking: StaffUpcomingBooking) => {

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Search, Eye, Download, Mail, User, Building, FileText } from 'lucide-react';
+import { Plus, Search, Eye, Download, Mail, User, Building, FileText, Calendar } from 'lucide-react';
 import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
@@ -63,6 +63,8 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const invoiceTypes = [
     { value: 'guest_folio', label: 'Guest Folio' },
@@ -82,13 +84,12 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
   ];
 
   useEffect(() => {
-    fetchInvoices();
-  }, [filterType, filterStatus, dateRange]);
-
-  // Reset pagination when filters change
-  useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterType, filterStatus, dateRange]);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [searchTerm, filterType, filterStatus, dateRange, currentPage]);
 
 
   const fetchInvoices = async () => {
@@ -100,6 +101,9 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
       if (filterStatus) filters.status = filterStatus;
       if (dateRange.start) filters.startDate = dateRange.start;
       if (dateRange.end) filters.endDate = dateRange.end;
+      if (searchTerm.trim()) filters.customer = searchTerm.trim();
+      filters.page = currentPage;
+      filters.limit = ITEMS_PER_PAGE;
       
       
       const response = await financialService.getInvoices(filters);
@@ -107,6 +111,11 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
       const invoicesData = response.data?.invoices || [];
       
       setInvoices(invoicesData);
+      const pagination = response.data?.pagination || response.pagination;
+      const total = pagination?.total || 0;
+      const pages = pagination?.pages || 1;
+      setTotalInvoices(total);
+      setTotalPages(Math.max(1, pages));
       
     } catch (error: unknown) {
       toast.error('Failed to fetch invoices: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -144,20 +153,6 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
         return <span className="w-4 h-4 text-lg font-bold">₹</span>;
     }
   };
-
-  const filteredInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice =>
-    invoice.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    invoice.customer?.details?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    invoice.customer?.details?.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Log state changes for debugging
-
-  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / ITEMS_PER_PAGE));
-  const paginatedInvoices = filteredInvoices.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
 
   const totalAmount = (Array.isArray(invoices) ? invoices : []).reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
   const paidInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => invoice.status === 'paid').length;
@@ -269,7 +264,7 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
              <span className="h-4 w-4 text-muted-foreground text-lg font-bold">₹</span>
            </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{filteredInvoices.length}</div>
+            <div className="text-2xl font-bold">{totalInvoices}</div>
             <p className="text-xs text-muted-foreground">
               Total amount: {formatCurrency(totalAmount)}
             </p>
@@ -379,7 +374,7 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
       {/* Invoices Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Invoices ({filteredInvoices.length})</CardTitle>
+              <CardTitle>Invoices ({totalInvoices})</CardTitle>
           <CardDescription>
             All invoices and billing records
           </CardDescription>
@@ -399,7 +394,7 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedInvoices.length === 0 && (
+              {invoices.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12">
                     <div className="text-gray-400 mb-2">
@@ -410,7 +405,7 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
                   </TableCell>
                 </TableRow>
               )}
-              {paginatedInvoices.map((invoice) => (
+              {invoices.map((invoice) => (
                 <TableRow key={invoice._id}>
                   <TableCell className="font-mono font-medium">
                     {invoice.invoiceNumber || invoice.invoiceId}
@@ -467,12 +462,12 @@ const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ readOnly = false 
             </TableBody>
           </Table>
           {/* Pagination Controls */}
-          {filteredInvoices.length > ITEMS_PER_PAGE && (
+          {totalInvoices > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t">
               <p className="text-sm text-gray-600">
                 Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
-                {Math.min(currentPage * ITEMS_PER_PAGE, filteredInvoices.length)} of{' '}
-                {filteredInvoices.length} invoices
+                {Math.min(currentPage * ITEMS_PER_PAGE, totalInvoices)} of{' '}
+                {totalInvoices} invoices
               </p>
               <div className="flex space-x-2">
                 <Button

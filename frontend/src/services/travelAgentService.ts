@@ -370,8 +370,37 @@ class TravelAgentService {
     agentId?: string;
   }): Promise<unknown> {
     try {
-      const response = await api.get('/admin/travel-dashboard/analytics', { params });
-      return response.data.data;
+      // Travel-agent role cannot access admin analytics endpoints.
+      // Compose analytics from role-appropriate travel-agent endpoints.
+      const [trendsResponse, performanceResponse] = await Promise.all([
+        api.get('/travel-agents/analytics/trends', { params }),
+        api.get('/travel-agents/analytics/performance', { params })
+      ]);
+
+      const trends = trendsResponse.data?.data;
+      const performance = performanceResponse.data?.data || {};
+
+      const bookingTrends = Array.isArray(trends?.trends)
+        ? trends.trends
+        : Array.isArray(trends)
+        ? trends
+        : [];
+
+      const revenueData = Array.isArray(trends?.revenue)
+        ? trends.revenue
+        : bookingTrends.map((item: Record<string, unknown>) => ({
+            period: item.period,
+            revenue: item.revenue || 0
+          }));
+
+      const commissionData = Array.isArray(performance?.commissionData)
+        ? performance.commissionData
+        : bookingTrends.map((item: Record<string, unknown>) => ({
+            period: item.period,
+            commission: item.commission || 0
+          }));
+
+      return { bookingTrends, revenueData, commissionData };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -740,7 +769,20 @@ class TravelAgentService {
 
     try {
       const response = await api.post('/travel-agents/multi-booking', transformedData);
-      return response.data;
+      const payload = response.data?.data?.multiBooking || response.data?.multiBooking || {};
+      return {
+        confirmationNumber: payload.groupReferenceId || payload.confirmationNumber || '',
+        multiBookingId: payload._id || '',
+        roomConfirmations: Array.isArray(payload.bookings)
+          ? payload.bookings.map((booking: Record<string, unknown>) => ({
+              roomId: String(booking.roomTypeId || ''),
+              confirmationNumber: String(booking.bookingId || ''),
+              status: String(booking.status || 'pending')
+            }))
+          : [],
+        totalAmount: Number(payload.pricing?.totalAmount || 0),
+        commissionAmount: Number(payload.commission?.finalCommission || 0)
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -780,8 +822,50 @@ class TravelAgentService {
     appliedDiscounts: string[];
   }> {
     try {
-      const response = await api.post('/travel-agents/calculate-bulk-pricing', data);
-      return response.data.pricing;
+      const transformedData = {
+        bookings: data.rooms.map((room) => {
+          const nights = Math.max(
+            1,
+            Math.ceil(
+              (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          );
+          return {
+            roomTypeId: room.roomTypeId,
+            quantity: 1,
+            ratePerNight: 0,
+            specialRate: undefined,
+            nights
+          };
+        })
+      };
+
+      const response = await api.post('/travel-agents/multi-booking/calculate-pricing', transformedData);
+      const pricing = response.data?.data?.pricing;
+      if (!pricing) {
+        throw new Error('Bulk pricing response is missing pricing data');
+      }
+
+      return {
+        subtotal: pricing.subtotal || 0,
+        taxes: pricing.totalTaxes || 0,
+        fees: 0,
+        discounts: pricing.bulkDiscount || 0,
+        totalAmount: pricing.totalAmount || 0,
+        commissionAmount: pricing.commission?.totalCommission || 0,
+        roomBreakdown: Array.isArray(pricing.bookingBreakdown)
+          ? pricing.bookingBreakdown.map((item: Record<string, unknown>) => ({
+              roomId: String(item.roomTypeId || ''),
+              roomTotal: Number(item.totalAmount || 0),
+              commission:
+                ((Number(item.totalAmount || 0) * Number(pricing.commission?.rate || 0)) / 100) +
+                ((Number(item.totalAmount || 0) * Number(pricing.commission?.bulkBonusRate || 0)) / 100)
+            }))
+          : [],
+        discountTiers: [],
+        appliedDiscounts: pricing.bulkDiscountRate ? [`${pricing.bulkDiscountRate}% bulk discount`] : []
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -912,8 +996,12 @@ class TravelAgentService {
     total: number;
   }> {
     try {
-      const response = await api.get('/travel-agents/me/multi-bookings', { params: filters });
-      return response.data;
+      const response = await api.get('/travel-agents/multi-booking', { params: filters });
+      const payload = response.data?.data || {};
+      return {
+        multiBookings: payload.multiBookings || [],
+        total: payload.pagination?.totalItems || 0
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

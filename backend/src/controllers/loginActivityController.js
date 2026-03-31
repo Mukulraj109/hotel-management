@@ -1,15 +1,71 @@
 import loginAnalyticsService from '../services/loginAnalyticsService.js';
 import LoginSession from '../models/LoginSession.js';
-import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { assertUserCanAccessHotel, refToHotelIdString } from '../middleware/propertyAccess.js';
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
+const parsePagination = (queryPage, queryLimit, fallbackLimit = DEFAULT_LIMIT) => {
+  const page = Math.max(parseInt(queryPage, 10) || DEFAULT_PAGE, 1);
+  const rawLimit = parseInt(queryLimit, 10) || fallbackLimit;
+  const limit = Math.min(Math.max(rawLimit, 1), MAX_LIMIT);
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit
+  };
+};
+
+const resolveScopedHotelId = async (req) => {
+  const requestedHotelId = refToHotelIdString(req.query?.hotelId);
+  if (requestedHotelId) {
+    await assertUserCanAccessHotel(req.user, requestedHotelId);
+    return requestedHotelId;
+  }
+
+  if (req.property?._id) {
+    return req.property._id.toString();
+  }
+
+  const userHotelId = refToHotelIdString(req.user?.hotelId || req.user?.hotel);
+  if (!userHotelId) {
+    throw new ApplicationError('No property context available for this request', 400);
+  }
+  return userHotelId;
+};
+
+const createLoginActivityAudit = async ({ req, hotelId, recordId, changeType, details }) => {
+  await AuditLog.logChange({
+    hotelId,
+    tableName: 'User',
+    recordId,
+    changeType,
+    userId: req.user?._id,
+    userEmail: req.user?.email,
+    userRole: req.user?.role,
+    source: 'api',
+    sourceDetails: {
+      apiEndpoint: req.originalUrl,
+      userAgent: req.get('User-Agent'),
+      ipAddress: req.ip
+    },
+    newValues: details,
+    metadata: {
+      priority: 'high',
+      tags: ['login_activity', 'security']
+    }
+  });
+};
 
 // Get comprehensive login analytics
 export const getLoginAnalytics = catchAsync(async (req, res) => {
   const { dateRange, groupBy } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -21,7 +77,7 @@ export const getLoginAnalytics = catchAsync(async (req, res) => {
   }
   if (groupBy) options.groupBy = groupBy;
 
-  const analytics = await loginAnalyticsService.getLoginAnalytics(req.user.hotelId, options);
+  const analytics = await loginAnalyticsService.getLoginAnalytics(hotelId, options);
 
   res.json({
     status: 'success',
@@ -32,6 +88,7 @@ export const getLoginAnalytics = catchAsync(async (req, res) => {
 // Get login patterns and trends
 export const getLoginPatterns = catchAsync(async (req, res) => {
   const { dateRange, patternType } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -43,7 +100,7 @@ export const getLoginPatterns = catchAsync(async (req, res) => {
   }
   if (patternType) options.patternType = patternType;
 
-  const patterns = await loginAnalyticsService.getLoginPatterns(req.user.hotelId, options);
+  const patterns = await loginAnalyticsService.getLoginPatterns(hotelId, options);
 
   res.json({
     status: 'success',
@@ -54,6 +111,7 @@ export const getLoginPatterns = catchAsync(async (req, res) => {
 // Get security metrics and threat analysis
 export const getSecurityMetrics = catchAsync(async (req, res) => {
   const { dateRange } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -64,7 +122,7 @@ export const getSecurityMetrics = catchAsync(async (req, res) => {
     }
   }
 
-  const metrics = await loginAnalyticsService.getSecurityMetrics(req.user.hotelId, options);
+  const metrics = await loginAnalyticsService.getSecurityMetrics(hotelId, options);
 
   res.json({
     status: 'success',
@@ -75,6 +133,7 @@ export const getSecurityMetrics = catchAsync(async (req, res) => {
 // Get user behavior analysis
 export const getUserBehaviorAnalysis = catchAsync(async (req, res) => {
   const { dateRange, userId } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -86,7 +145,7 @@ export const getUserBehaviorAnalysis = catchAsync(async (req, res) => {
   }
   if (userId) options.userId = userId;
 
-  const analysis = await loginAnalyticsService.getUserBehaviorAnalysis(req.user.hotelId, options);
+  const analysis = await loginAnalyticsService.getUserBehaviorAnalysis(hotelId, options);
 
   res.json({
     status: 'success',
@@ -97,6 +156,7 @@ export const getUserBehaviorAnalysis = catchAsync(async (req, res) => {
 // Get compliance reporting
 export const getComplianceReport = catchAsync(async (req, res) => {
   const { dateRange, complianceType } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -108,7 +168,7 @@ export const getComplianceReport = catchAsync(async (req, res) => {
   }
   if (complianceType) options.complianceType = complianceType;
 
-  const report = await loginAnalyticsService.getComplianceReport(req.user.hotelId, options);
+  const report = await loginAnalyticsService.getComplianceReport(hotelId, options);
 
   res.json({
     status: 'success',
@@ -118,18 +178,34 @@ export const getComplianceReport = catchAsync(async (req, res) => {
 
 // Get active sessions
 export const getActiveSessions = catchAsync(async (req, res) => {
-  const { userId, minRiskScore, limit = 50 } = req.query;
+  const { userId, minRiskScore } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit, 50);
   
   const options = {};
   if (userId) options.userId = userId;
   if (minRiskScore) options.minRiskScore = parseInt(minRiskScore);
 
-  const sessions = await LoginSession.getActiveSessions(req.user.hotelId, options)
-    .limit(parseInt(limit));
+  const baseQuery = LoginSession.getActiveSessions(hotelId, options);
+  const [sessions, total] = await Promise.all([
+    baseQuery.clone().skip(skip).limit(limit),
+    LoginSession.countDocuments({
+      isActive: true,
+      hotelId,
+      ...(options.userId ? { userId: options.userId } : {}),
+      ...(options.minRiskScore ? { riskScore: { $gte: options.minRiskScore } } : {})
+    })
+  ]);
 
   res.json({
     status: 'success',
     results: sessions.length,
+    pagination: {
+      current: page,
+      pages: Math.ceil(total / limit),
+      total,
+      limit
+    },
     data: { sessions }
   });
 });
@@ -137,10 +213,11 @@ export const getActiveSessions = catchAsync(async (req, res) => {
 // Get session details
 export const getSessionDetails = catchAsync(async (req, res) => {
   const { sessionId } = req.params;
+  const hotelId = await resolveScopedHotelId(req);
 
   const session = await LoginSession.findOne({
     sessionId,
-    hotelId: req.user.hotelId
+    hotelId
   }).populate('userId', 'name email role');
 
   if (!session) {
@@ -156,10 +233,11 @@ export const getSessionDetails = catchAsync(async (req, res) => {
 // End session
 export const endSession = catchAsync(async (req, res) => {
   const { sessionId } = req.params;
+  const hotelId = await resolveScopedHotelId(req);
 
   const session = await LoginSession.findOne({
     sessionId,
-    hotelId: req.user.hotelId
+    hotelId
   });
 
   if (!session) {
@@ -173,18 +251,16 @@ export const endSession = catchAsync(async (req, res) => {
   await session.endSession();
 
   // Log the session end
-  await AuditLog.create({
-    user: {
-      _id: session.userId,
-      name: 'System',
-      email: 'system@hotel.com',
-      role: 'system'
-    },
-    action: 'session_ended',
-    details: `Session ended for user ${session.userId}`,
-    timestamp: new Date(),
-    ipAddress: req.ip,
-    userAgent: req.get('User-Agent')
+  await createLoginActivityAudit({
+    req,
+    hotelId,
+    recordId: session._id || session.sessionId,
+    changeType: 'security_event',
+    details: {
+      event: 'session_ended',
+      sessionId: session.sessionId,
+      targetUserId: session.userId?.toString?.() || String(session.userId)
+    }
   });
 
   res.json({
@@ -196,15 +272,23 @@ export const endSession = catchAsync(async (req, res) => {
 
 // Get suspicious sessions
 export const getSuspiciousSessions = catchAsync(async (req, res) => {
-  const { limit = 20 } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit, 20);
 
-  const sessions = await LoginSession.detectSuspiciousSessions(req.user.hotelId, {
-    limit: parseInt(limit)
-  });
+  const [sessions, total] = await Promise.all([
+    LoginSession.detectSuspiciousSessions(hotelId, { skip, limit }),
+    LoginSession.countSuspiciousSessions(hotelId)
+  ]);
 
   res.json({
     status: 'success',
     results: sessions.length,
+    pagination: {
+      current: page,
+      pages: Math.ceil(total / limit),
+      total,
+      limit
+    },
     data: { sessions }
   });
 });
@@ -213,6 +297,7 @@ export const getSuspiciousSessions = catchAsync(async (req, res) => {
 export const updateSessionRiskScore = catchAsync(async (req, res) => {
   const { sessionId } = req.params;
   const { riskScore, reason } = req.body;
+  const hotelId = await resolveScopedHotelId(req);
 
   if (riskScore < 0 || riskScore > 100) {
     throw new ApplicationError('Risk score must be between 0 and 100', 400);
@@ -220,7 +305,7 @@ export const updateSessionRiskScore = catchAsync(async (req, res) => {
 
   const session = await LoginSession.findOne({
     sessionId,
-    hotelId: req.user.hotelId
+    hotelId
   });
 
   if (!session) {
@@ -234,18 +319,17 @@ export const updateSessionRiskScore = catchAsync(async (req, res) => {
   await session.save();
 
   // Log the risk score update
-  await AuditLog.create({
-    user: {
-      _id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role
-    },
-    action: 'risk_score_updated',
-    details: `Risk score updated to ${riskScore} for session ${sessionId}. Reason: ${reason || 'Manual review'}`,
-    timestamp: new Date(),
-    ipAddress: req.ip,
-    userAgent: req.get('User-Agent')
+  await createLoginActivityAudit({
+    req,
+    hotelId,
+    recordId: session._id || session.sessionId,
+    changeType: 'security_event',
+    details: {
+      event: 'risk_score_updated',
+      sessionId,
+      riskScore,
+      reason: reason || 'Manual review'
+    }
   });
 
   res.json({
@@ -259,6 +343,7 @@ export const updateSessionRiskScore = catchAsync(async (req, res) => {
 export const addSecurityFlag = catchAsync(async (req, res) => {
   const { sessionId } = req.params;
   const { flag, reason } = req.body;
+  const hotelId = await resolveScopedHotelId(req);
 
   const validFlags = [
     'suspicious_ip',
@@ -280,7 +365,7 @@ export const addSecurityFlag = catchAsync(async (req, res) => {
 
   const session = await LoginSession.findOne({
     sessionId,
-    hotelId: req.user.hotelId
+    hotelId
   });
 
   if (!session) {
@@ -290,18 +375,17 @@ export const addSecurityFlag = catchAsync(async (req, res) => {
   await session.addSecurityFlag(flag);
 
   // Log the security flag addition
-  await AuditLog.create({
-    user: {
-      _id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role
-    },
-    action: 'security_flag_added',
-    details: `Security flag '${flag}' added to session ${sessionId}. Reason: ${reason || 'Manual review'}`,
-    timestamp: new Date(),
-    ipAddress: req.ip,
-    userAgent: req.get('User-Agent')
+  await createLoginActivityAudit({
+    req,
+    hotelId,
+    recordId: session._id || session.sessionId,
+    changeType: 'security_event',
+    details: {
+      event: 'security_flag_added',
+      sessionId,
+      flag,
+      reason: reason || 'Manual review'
+    }
   });
 
   res.json({
@@ -314,11 +398,13 @@ export const addSecurityFlag = catchAsync(async (req, res) => {
 // Get session history for user
 export const getUserSessionHistory = catchAsync(async (req, res) => {
   const { userId } = req.params;
-  const { page = 1, limit = 20, dateRange } = req.query;
+  const { dateRange } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit, 20);
 
   const query = {
     userId: new mongoose.Types.ObjectId(userId),
-    hotelId: req.user.hotelId
+    hotelId
   };
 
   if (dateRange) {
@@ -332,8 +418,6 @@ export const getUserSessionHistory = catchAsync(async (req, res) => {
       throw new ApplicationError('Invalid date range format', 400);
     }
   }
-
-  const skip = (page - 1) * limit;
 
   const [sessions, total] = await Promise.all([
     LoginSession.find(query)
@@ -359,13 +443,14 @@ export const getUserSessionHistory = catchAsync(async (req, res) => {
 // Get real-time login monitoring
 export const getRealTimeMonitoring = catchAsync(async (req, res) => {
   const { timeWindow = 300 } = req.query; // 5 minutes default
+  const hotelId = await resolveScopedHotelId(req);
 
   const timeThreshold = new Date(Date.now() - (timeWindow * 1000));
 
   const pipeline = [
     {
       $match: {
-        hotelId: req.user.hotelId,
+        hotelId,
         loginTime: { $gte: timeThreshold }
       }
     },
@@ -406,10 +491,11 @@ export const getRealTimeMonitoring = catchAsync(async (req, res) => {
   const [monitoringData, suspiciousActivities] = await Promise.all([
     LoginSession.aggregate(pipeline),
     AuditLog.find({
-      'user.hotelId': req.user.hotelId,
-      timestamp: { $gte: timeThreshold },
-      action: { $in: ['failed_login', 'suspicious_activity', 'security_alert'] }
-    }).sort({ timestamp: -1 }).limit(10)
+      hotelId,
+      createdAt: { $gte: timeThreshold },
+      changeType: 'security_event',
+      'metadata.tags': 'login_activity'
+    }).sort({ createdAt: -1 }).limit(10).lean()
   ]);
 
   const result = monitoringData[0] || {
@@ -436,6 +522,7 @@ export const getRealTimeMonitoring = catchAsync(async (req, res) => {
 // Export login analytics
 export const exportLoginAnalytics = catchAsync(async (req, res) => {
   const { format = 'json', dateRange } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
   
   const options = {};
   if (dateRange) {
@@ -446,7 +533,7 @@ export const exportLoginAnalytics = catchAsync(async (req, res) => {
     }
   }
 
-  const analytics = await loginAnalyticsService.getLoginAnalytics(req.user.hotelId, options);
+  const analytics = await loginAnalyticsService.getLoginAnalytics(hotelId, options);
 
   if (format === 'csv') {
     const csvData = convertAnalyticsToCSV(analytics);
@@ -463,25 +550,39 @@ export const exportLoginAnalytics = catchAsync(async (req, res) => {
 
 // Get security alerts
 export const getSecurityAlerts = catchAsync(async (req, res) => {
-  const { severity, limit = 50 } = req.query;
+  const { severity } = req.query;
+  const hotelId = await resolveScopedHotelId(req);
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit, 50);
 
   const matchStage = {
-    'user.hotelId': req.user.hotelId,
-    action: { $in: ['security_alert', 'suspicious_activity', 'failed_login', 'privilege_escalation'] }
+    hotelId,
+    changeType: 'security_event',
+    'metadata.tags': 'login_activity'
   };
 
   if (severity) {
-    matchStage.severity = severity;
+    matchStage['metadata.priority'] = severity;
   }
 
-  const alerts = await AuditLog.find(matchStage)
-    .populate('user', 'name email role')
-    .sort({ timestamp: -1 })
-    .limit(parseInt(limit)).lean();
+  const [alerts, total] = await Promise.all([
+    AuditLog.find(matchStage)
+      .populate('userId', 'name email role')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    AuditLog.countDocuments(matchStage)
+  ]);
 
   res.json({
     status: 'success',
     results: alerts.length,
+    pagination: {
+      current: page,
+      pages: Math.ceil(total / limit),
+      total,
+      limit
+    },
     data: { alerts }
   });
 });

@@ -21,10 +21,7 @@ import {
   MessageSquare,
   Smartphone,
   Clock,
-  Volume2,
-  VolumeX,
   Settings,
-  User,
   Shield,
   Zap,
   CheckCircle,
@@ -152,7 +149,7 @@ export default function NotificationPreferences({ isOpen, onClose }: Notificatio
   // Update preferences mutation
   const updatePreferencesMutation = useMutation({
     mutationFn: (data: { channel: string; settings: Record<string, unknown> }) =>
-      notificationService.updateNotificationPreferences(data.settings),
+      notificationService.updateNotificationPreferences(data.channel, data.settings),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
       toast.success('Preferences updated successfully');

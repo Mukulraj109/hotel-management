@@ -873,11 +873,7 @@ export const removeStaffFromService = catchAsync(async (req, res) => {
 export const getAvailableStaff = catchAsync(async (req, res) => {
   const User = mongoose.model('User');
 
-  let hotelId;
-  if (req.user.role === 'admin') {
-    hotelId = req.user.hotelId;
-  }
-
+  const hotelId = req.query.hotelId || req.user.hotelId;
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }

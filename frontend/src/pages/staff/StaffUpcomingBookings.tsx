@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,6 @@ import {
   Eye,
   RefreshCw,
   CalendarDays,
-  MapPin,
   Phone,
   Mail,
   CreditCard,
@@ -29,7 +28,7 @@ import {
 } from 'lucide-react';
 
 function StaffUpcomingBookings() {
-  const { user } = useAuth();
+  useAuth();
   const [bookings, setBookings] = useState<StaffUpcomingBooking[]>([]);
   const [stats, setStats] = useState<StaffUpcomingStats>({
     todayArrivals: 0,
@@ -71,6 +70,35 @@ function StaffUpcomingBookings() {
     fetchUpcomingBookings();
   }, [filters.days, filters.page]);
 
+  const parseBookingDate = (value: unknown): Date | null => {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === 'number') {
+      const fromNumber = new Date(value);
+      return Number.isNaN(fromNumber.getTime()) ? null : fromNumber;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsedIso = parseISO(trimmed);
+      if (!Number.isNaN(parsedIso.getTime())) return parsedIso;
+      const parsedDate = new Date(trimmed);
+      return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+    }
+
+    if (typeof value === 'object') {
+      const candidate = value as { $date?: unknown; date?: unknown };
+      return parseBookingDate(candidate.$date ?? candidate.date ?? null);
+    }
+
+    return null;
+  };
+
   // Filter bookings by search term
   const filteredBookings = bookings.filter(booking => {
     if (!filters.search) return true;
@@ -84,8 +112,11 @@ function StaffUpcomingBookings() {
   });
 
   // Get arrival priority (today = high, tomorrow = medium, later = low)
-  const getArrivalPriority = (checkIn: string) => {
-    const date = parseISO(checkIn);
+  const getArrivalPriority = (checkIn: unknown) => {
+    const date = parseBookingDate(checkIn);
+    if (!date) {
+      return { level: 'low', label: 'Date TBD', color: 'bg-gray-100 text-gray-800 border-gray-200' };
+    }
     if (isToday(date)) return { level: 'high', label: 'Today', color: 'bg-red-100 text-red-800 border-red-200' };
     if (isTomorrow(date)) return { level: 'medium', label: 'Tomorrow', color: 'bg-orange-100 text-orange-800 border-orange-200' };
     return { level: 'low', label: format(date, 'MMM dd'), color: 'bg-gray-100 text-gray-800 border-gray-200' };
@@ -102,9 +133,18 @@ function StaffUpcomingBookings() {
   };
 
   // Separate bookings by priority
-  const todayBookings = filteredBookings.filter(booking => isToday(parseISO(booking.checkIn)));
-  const tomorrowBookings = filteredBookings.filter(booking => isTomorrow(parseISO(booking.checkIn)));
-  const laterBookings = filteredBookings.filter(booking => !isToday(parseISO(booking.checkIn)) && !isTomorrow(parseISO(booking.checkIn)));
+  const todayBookings = filteredBookings.filter((booking) => {
+    const checkInDate = parseBookingDate(booking.checkIn);
+    return checkInDate ? isToday(checkInDate) : false;
+  });
+  const tomorrowBookings = filteredBookings.filter((booking) => {
+    const checkInDate = parseBookingDate(booking.checkIn);
+    return checkInDate ? isTomorrow(checkInDate) : false;
+  });
+  const laterBookings = filteredBookings.filter((booking) => {
+    const checkInDate = parseBookingDate(booking.checkIn);
+    return checkInDate ? !isToday(checkInDate) && !isTomorrow(checkInDate) : false;
+  });
 
   // Render booking card
   const renderBookingCard = (booking: StaffUpcomingBooking) => {
@@ -571,11 +611,21 @@ function StaffUpcomingBookings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Check-in:</span>
-                    <p className="font-medium">{format(parseISO(selectedBooking.checkIn), 'PPP')}</p>
+                    <p className="font-medium">
+                      {(() => {
+                        const checkInDate = parseBookingDate(selectedBooking.checkIn);
+                        return checkInDate ? format(checkInDate, 'PPP') : 'N/A';
+                      })()}
+                    </p>
                   </div>
                   <div>
                     <span className="text-gray-600">Check-out:</span>
-                    <p className="font-medium">{format(parseISO(selectedBooking.checkOut), 'PPP')}</p>
+                    <p className="font-medium">
+                      {(() => {
+                        const checkOutDate = parseBookingDate(selectedBooking.checkOut);
+                        return checkOutDate ? format(checkOutDate, 'PPP') : 'N/A';
+                      })()}
+                    </p>
                   </div>
                   <div>
                     <span className="text-gray-600">Duration:</span>

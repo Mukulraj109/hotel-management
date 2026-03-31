@@ -389,11 +389,27 @@ loginSessionSchema.statics.detectSuspiciousSessions = function(hotelId, options 
     }
   ];
   
+  if (options.skip) {
+    pipeline.push({ $skip: options.skip });
+  }
+
   if (options.limit) {
     pipeline.push({ $limit: options.limit });
   }
   
   return this.aggregate(pipeline);
+};
+
+loginSessionSchema.statics.countSuspiciousSessions = function(hotelId) {
+  return this.countDocuments({
+    hotelId,
+    $or: [
+      { riskScore: { $gt: 50 } },
+      { 'securityFlags.0': { $exists: true } },
+      { securityFlags: 'unusual_location' },
+      { securityFlags: 'multiple_devices' }
+    ]
+  });
 };
 
 // Instance method to update activity

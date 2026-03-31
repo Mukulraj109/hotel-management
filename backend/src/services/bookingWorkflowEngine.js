@@ -224,7 +224,7 @@ class BookingWorkflowEngine {
 
     try {
       logger.debug(`Processing workflow trigger: ${triggerType}`, {
-        bookingId: booking._id,
+        bookingId: booking._id?.toString?.() ?? booking._id,
         bookingNumber: booking.bookingNumber
       });
 
@@ -240,7 +240,7 @@ class BookingWorkflowEngine {
           
           if (conditionMet) {
             logger.info(`Executing workflow rule: ${rule.id}`, {
-              bookingId: booking._id
+              bookingId: booking._id?.toString?.() ?? booking._id
             });
 
             // Execute action
@@ -258,12 +258,17 @@ class BookingWorkflowEngine {
           }
 
         } catch (error) {
-          logger.error(`Workflow rule ${rule.id} failed:`, error);
+          logger.error(`Workflow rule ${rule.id} failed`, {
+            ruleId: rule.id,
+            bookingId: booking._id?.toString?.() ?? booking._id,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
           
           results.push({
             ruleId: rule.id,
             success: false,
-            error: error.message
+            error: error instanceof Error ? error.message : String(error)
           });
         }
       }
@@ -271,7 +276,10 @@ class BookingWorkflowEngine {
       return results;
 
     } catch (error) {
-      logger.error(`Workflow trigger processing failed:`, error);
+      logger.error('Workflow trigger processing failed', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return [];
     }
   }
@@ -285,7 +293,10 @@ class BookingWorkflowEngine {
       try {
         await this.checkExpiredReservations();
       } catch (error) {
-        logger.error('Expired reservations check failed:', error);
+        logger.error('Expired reservations check failed', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
       }
     }, 5 * 60 * 1000);
 
@@ -294,7 +305,10 @@ class BookingWorkflowEngine {
       try {
         await this.checkForNoShows();
       } catch (error) {
-        logger.error('No-show check failed:', error);
+        logger.error('No-show check failed', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
       }
     }, 30 * 60 * 1000);
 
@@ -303,7 +317,10 @@ class BookingWorkflowEngine {
       try {
         await this.checkOverdueCheckouts();
       } catch (error) {
-        logger.error('Overdue checkout check failed:', error);
+        logger.error('Overdue checkout check failed', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
       }
     }, 60 * 60 * 1000);
 
@@ -383,7 +400,8 @@ class BookingWorkflowEngine {
         logger.info(`Processed ${potentialNoShows.length} potential no-shows`);
       }
     } catch (error) {
-      throw new Error(`${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(msg || 'checkForNoShows failed');
     }
   }
 
@@ -544,23 +562,35 @@ class BookingWorkflowEngine {
    */
   async sendOverdueCheckoutAlert(booking) {
     try {
-      // Scoped to hotel tenant
-      const hotelId = booking.hotelId?.toString();
+      // Scoped to hotel tenant (booking may be plain object from .lean())
+      const hotelId = booking.hotelId?.toString?.() ?? booking.hotelId;
+      const guestName =
+        booking.guestInfo?.name ||
+        booking.primaryGuest?.name ||
+        booking.guestName ||
+        'Guest';
+
       if (hotelId) {
-        websocketService.broadcastToHotel(hotelId, 'overdue_checkout', {
+        const room0 = Array.isArray(booking.rooms) ? booking.rooms[0] : undefined;
+        await websocketService.broadcastToHotel(hotelId, 'overdue_checkout', {
           bookingId: booking._id,
           bookingNumber: booking.bookingNumber,
-          guestName: booking.guestInfo.name,
-          roomNumber: booking.rooms[0]?.roomNumber,
+          guestName,
+          roomNumber: room0?.roomNumber,
           checkOutTime: booking.checkOut,
-          hoursOverdue: Math.floor((new Date() - new Date(booking.checkOut)) / (1000 * 60 * 60))
+          hoursOverdue: Math.floor((Date.now() - new Date(booking.checkOut).getTime()) / (1000 * 60 * 60))
         });
       }
 
       logger.info(`Overdue checkout alert sent for booking ${booking.bookingNumber}`);
 
     } catch (error) {
-      logger.error('Failed to send overdue checkout alert:', error);
+      logger.error('Failed to send overdue checkout alert', {
+        bookingId: booking?._id?.toString?.() ?? booking?._id,
+        bookingNumber: booking?.bookingNumber,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
     }
   }
 
@@ -571,7 +601,7 @@ class BookingWorkflowEngine {
     try {
       // This could be stored in a separate audit collection
       logger.info('Workflow execution logged', {
-        bookingId,
+        bookingId: bookingId?.toString?.() ?? bookingId,
         ruleId,
         result,
         timestamp: new Date()

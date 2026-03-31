@@ -4,7 +4,25 @@ import AuditLog from '../models/AuditLog.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+const TENANT_SCOPED_ROLES = ['admin', 'manager', 'staff', 'frontdesk'];
+
+const buildTenantScopedUserFilter = (req, userId) => {
+  const baseFilter = { _id: userId };
+  if (TENANT_SCOPED_ROLES.includes(req.user.role)) {
+    baseFilter.hotelId = req.user.hotelId;
+  }
+  return baseFilter;
+};
+
+const ensureUserBelongsToTenant = async (req, userId) => {
+  const scopedUser = await User.findOne(buildTenantScopedUserFilter(req, userId))
+    .select('_id')
+    .lean();
+
+  if (!scopedUser) {
+    throw new ApplicationError('User not found', 404);
+  }
+};
 
 // Get comprehensive user analytics
 export const getUserAnalytics = catchAsync(async (req, res) => {
@@ -163,12 +181,7 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
   const parsedPage = Math.max(1, parseInt(rawPage) || 1);
   const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
-  const query = {
-    $or: [
-      { role: 'guest' },
-      { hotelId: req.user.hotelId }
-    ]
-  };
+  const query = { hotelId: req.user.hotelId };
 
   // Apply filters
   if (role && role !== 'all') query.role = role;
@@ -176,17 +189,11 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
 
   if (search) {
     const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    query.$and = [
-      { $or: query.$or },
-      {
-        $or: [
-          { name: { $regex: escapedSearch, $options: 'i' } },
-          { email: { $regex: escapedSearch, $options: 'i' } },
-          { phone: { $regex: escapedSearch, $options: 'i' } }
-        ]
-      }
+    query.$or = [
+      { name: { $regex: escapedSearch, $options: 'i' } },
+      { email: { $regex: escapedSearch, $options: 'i' } },
+      { phone: { $regex: escapedSearch, $options: 'i' } }
     ];
-    delete query.$or;
   }
 
   // Date range filter
@@ -360,8 +367,13 @@ export const importUsers = catchAsync(async (req, res) => {
   };
 
   // Batch: check which users already exist in a single query
-  const emails = usersData.filter(u => u.email).map(u => u.email);
-  const existingUsers = await User.find({ email: { $in: emails } }).lean();
+  const emails = usersData
+    .filter(u => u.email)
+    .map(u => String(u.email).toLowerCase());
+  const existingUsers = await User.find({
+    email: { $in: emails },
+    hotelId: req.user.hotelId
+  }).lean();
   const existingByEmail = new Map(existingUsers.map(u => [u.email, u]));
 
   const updateOps = [];
@@ -377,7 +389,8 @@ export const importUsers = catchAsync(async (req, res) => {
         continue;
       }
 
-      const existingUser = existingByEmail.get(userData.email);
+      const normalizedEmail = String(userData.email).toLowerCase();
+      const existingUser = existingByEmail.get(normalizedEmail);
 
       if (existingUser) {
         const updateData = {
@@ -393,7 +406,7 @@ export const importUsers = catchAsync(async (req, res) => {
 
         updateOps.push({
           updateOne: {
-            filter: { _id: existingUser._id },
+            filter: { _id: existingUser._id, hotelId: req.user.hotelId },
             update: { $set: updateData }
           }
         });
@@ -402,7 +415,7 @@ export const importUsers = catchAsync(async (req, res) => {
         // Create new user
         const newUserData = {
           name: userData.name,
-          email: userData.email,
+          email: normalizedEmail,
           phone: userData.phone,
           password: userData.password || require('crypto').randomBytes(12).toString('base64url'),
           role: userData.role || 'guest',
@@ -439,12 +452,7 @@ export const importUsers = catchAsync(async (req, res) => {
 export const exportUsers = catchAsync(async (req, res) => {
   const { format = 'json', filters = {} } = req.query;
   
-  const query = {
-    $or: [
-      { role: 'guest' },
-      { hotelId: req.user.hotelId }
-    ]
-  };
+  const query = { hotelId: req.user.hotelId };
 
   // Apply filters
   if (filters.role && filters.role !== 'all') query.role = filters.role;
@@ -476,6 +484,8 @@ export const getUserActivityTimeline = catchAsync(async (req, res) => {
   if (!userId) {
     throw new ApplicationError('User ID is required', 400);
   }
+
+  await ensureUserBelongsToTenant(req, userId);
 
   const matchStage = {
     'user._id': new mongoose.Types.ObjectId(userId)
@@ -513,6 +523,8 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
     throw new ApplicationError('User ID is required', 400);
   }
 
+  await ensureUserBelongsToTenant(req, userId);
+
   const options = {};
   if (dateRange) {
     try {
@@ -531,7 +543,7 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
   }
 
   const [user, performanceMetrics, activities] = await Promise.all([
-    User.findById(userId).select('-password'),
+    User.findOne(buildTenantScopedUserFilter(req, userId)).select('-password'),
     userAnalyticsService.getUserPerformanceMetrics(req.user.hotelId, { ...options, userId }),
     AuditLog.find(matchStage).sort({ timestamp: -1 }).limit(50).lean()
   ]);
@@ -566,10 +578,7 @@ export const getUserHealthMonitoring = catchAsync(async (req, res) => {
   const pipeline = [
     {
       $match: {
-        $or: [
-          { role: 'guest' },
-          { hotelId: req.user.hotelId }
-        ]
+        hotelId: req.user.hotelId
       }
     },
     {
@@ -665,16 +674,9 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
   }
 
   if (req.user.role === 'guest') {
-    user = await User.findById(userId);
+    user = await User.findOne({ _id: userId, hotelId: req.user.hotelId });
   } else {
-    // Staff/admin can update guests or users in their hotel
-    user = await User.findOne({
-      _id: userId,
-      $or: [
-        { role: 'guest' },
-        { hotelId: req.user.hotelId }
-      ]
-    });
+    user = await User.findOne(buildTenantScopedUserFilter(req, userId));
   }
 
   if (!user) {
@@ -715,15 +717,9 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId).select('name email billingDetails guestType');
+    user = await User.findOne({ _id: userId, hotelId: req.user.hotelId }).select('name email billingDetails guestType');
   } else {
-    user = await User.findOne({
-      _id: userId,
-      $or: [
-        { role: 'guest' },
-        { hotelId: req.user.hotelId }
-      ]
-    }).select('name email billingDetails guestType role');
+    user = await User.findOne(buildTenantScopedUserFilter(req, userId)).select('name email billingDetails guestType role');
   }
 
   if (!user) {
@@ -759,15 +755,9 @@ export const updateUserProfile = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId);
+    user = await User.findOne({ _id: userId, hotelId: req.user.hotelId });
   } else {
-    user = await User.findOne({
-      _id: userId,
-      $or: [
-        { role: 'guest' },
-        { hotelId: req.user.hotelId }
-      ]
-    });
+    user = await User.findOne(buildTenantScopedUserFilter(req, userId));
   }
 
   if (!user) {

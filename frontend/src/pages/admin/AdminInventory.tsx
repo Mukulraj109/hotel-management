@@ -242,16 +242,9 @@ function AdminInventory() {
   const handleRestock = async (itemId: string, quantity: number, costPerUnit: number) => {
     try {
       setUpdating(true);
-      const currentItem = items.find(item => item._id === itemId);
-      if (!currentItem) return;
-
-      const newQuantity = currentItem.quantity + quantity;
-      const newCostPerUnit = costPerUnit > 0 ? costPerUnit : currentItem.costPerUnit;
-
-      await adminService.updateInventoryItem(itemId, {
-        quantity: newQuantity,
-        costPerUnit: newCostPerUnit,
-        lastRestocked: new Date().toISOString()
+      await adminService.restockInventoryItem(itemId, {
+        quantity,
+        ...(costPerUnit > 0 ? { costPerUnit } : {})
       });
 
       toast.success('Item restocked successfully');
@@ -349,16 +342,9 @@ function AdminInventory() {
     try {
       setUpdating(true);
       const promises = selectedItems.map(itemId => {
-        const item = items.find(i => i._id === itemId);
-        if (!item) return Promise.resolve();
-        
-        const newQuantity = item.quantity + quantity;
-        const newCostPerUnit = costPerUnit > 0 ? costPerUnit : item.costPerUnit;
-        
-        return adminService.updateInventoryItem(itemId, {
-          quantity: newQuantity,
-          costPerUnit: newCostPerUnit,
-          lastRestocked: new Date().toISOString()
+        return adminService.restockInventoryItem(itemId, {
+          quantity,
+          ...(costPerUnit > 0 ? { costPerUnit } : {})
         });
       });
       

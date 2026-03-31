@@ -6,7 +6,7 @@ import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw, User, Calendar, F
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { maintenanceService, MaintenanceTask } from '../../services/maintenanceService';
-import { useAuth } from '../../context/AuthContext';
+import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
 
 interface GroupedTasks {
@@ -17,7 +17,6 @@ interface GroupedTasks {
 }
 
 export default function StaffMaintenance() {
-  const { user } = useAuth();
   const [tasks, setTasks] = useState<GroupedTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +25,7 @@ export default function StaffMaintenance() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { connect, on, off, isConnected } = useRealTime();
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -36,7 +36,28 @@ export default function StaffMaintenance() {
 
   useEffect(() => {
     fetchTasks();
-  }, []);
+    connect().catch(() => {
+      // Keep page functional if socket connection is unavailable.
+    });
+  }, [connect]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleMaintenanceRealtimeUpdate = () => {
+      fetchTasks();
+    };
+
+    on('maintenance:created', handleMaintenanceRealtimeUpdate);
+    on('maintenance:updated', handleMaintenanceRealtimeUpdate);
+    on('maintenance:status_changed', handleMaintenanceRealtimeUpdate);
+
+    return () => {
+      off('maintenance:created', handleMaintenanceRealtimeUpdate);
+      off('maintenance:updated', handleMaintenanceRealtimeUpdate);
+      off('maintenance:status_changed', handleMaintenanceRealtimeUpdate);
+    };
+  }, [isConnected, on, off]);
 
 
   const fetchTasks = async () => {
@@ -105,8 +126,9 @@ export default function StaffMaintenance() {
     try {
       setActionLoading(selectedTask._id);
       await maintenanceService.completeTask(selectedTask._id, {
-        completedSteps: completedSteps,
-        completedAt: new Date().toISOString()
+        completionNotes: completedSteps.length > 0
+          ? `Completed steps: ${completedSteps.join(', ')}`
+          : 'Task completed'
       });
       await fetchTasks(); // Refresh data
       setShowCompletionModal(false);
@@ -307,10 +329,10 @@ export default function StaffMaintenance() {
                                 <Calendar className="h-3 w-3 mr-1" />
                                 Reported: {formatTimeAgo(task.createdAt)}
                               </div>
-                              {task.assignedBy && (
+                              {task.reportedBy && (
                                 <div className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">
                                   <User className="h-3 w-3 mr-1" />
-                                  By: {task.assignedBy.firstName || 'Admin'}
+                                  By: {task.reportedBy.name || 'Admin'}
                                 </div>
                               )}
                             </div>
@@ -405,10 +427,10 @@ export default function StaffMaintenance() {
                                   Due: {new Date(task.dueDate).toLocaleDateString()}
                                 </div>
                               )}
-                              {task.assignedBy && (
+                              {task.reportedBy && (
                                 <div className="flex items-center bg-indigo-100 text-indigo-800 px-2 py-1 rounded-lg">
                                   <User className="h-3 w-3 mr-1" />
-                                  By: {task.assignedBy.firstName || 'Admin'}
+                                  By: {task.reportedBy.name || 'Admin'}
                                 </div>
                               )}
                             </div>
@@ -496,10 +518,10 @@ export default function StaffMaintenance() {
                                 <Calendar className="h-3 w-3 mr-1" />
                                 Started: {formatTimeAgo(task.updatedAt)}
                               </div>
-                              {task.assignedBy && (
+                              {task.reportedBy && (
                                 <div className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">
                                   <User className="h-3 w-3 mr-1" />
-                                  By: {task.assignedBy.firstName || 'Admin'}
+                                  By: {task.reportedBy.name || 'Admin'}
                                 </div>
                               )}
                             </div>
@@ -587,10 +609,10 @@ export default function StaffMaintenance() {
                                 <Calendar className="h-3 w-3 mr-1" />
                                 Completed: {task.completedDate ? formatTimeAgo(task.completedDate) : formatTimeAgo(task.updatedAt)}
                               </div>
-                              {task.assignedBy && (
+                              {task.reportedBy && (
                                 <div className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">
                                   <User className="h-3 w-3 mr-1" />
-                                  By: {task.assignedBy.firstName || 'Admin'}
+                                  By: {task.reportedBy.name || 'Admin'}
                                 </div>
                               )}
                             </div>

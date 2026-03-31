@@ -1,5 +1,5 @@
 import { ApiResponse } from '../types/api';
-import { api } from './api';
+import { api, normalizeListParams } from './api';
 
 export interface HousekeepingTask {
   _id: string;
@@ -7,7 +7,7 @@ export interface HousekeepingTask {
   description: string;
   taskType: 'cleaning' | 'maintenance' | 'inspection' | 'deep_clean' | 'checkout_clean';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'inspected' | 'cancelled';
   roomId: {
     _id: string;
     roomNumber: string;
@@ -27,15 +27,26 @@ export interface HousekeepingTask {
   createdAt: string;
 }
 
+export type HousekeepingTaskStatus =
+  'pending' |
+  'assigned' |
+  'in_progress' |
+  'completed' |
+  'inspected' |
+  'cancelled';
+
 class HousekeepingService {
   private baseURL = '/housekeeping';
 
-  async getTasks(assignedToUserId?: string): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
+  async getTasks(assignedToUserId?: string, page?: number, limit?: number): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
     try {
+      const normalizedParams = normalizeListParams({ page, limit });
       const queryParams = new URLSearchParams();
       if (assignedToUserId) {
         queryParams.append('assignedToUserId', assignedToUserId);
       }
+      queryParams.append('page', normalizedParams.page.toString());
+      queryParams.append('limit', normalizedParams.limit.toString());
 
       const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
       const response = await api.get(`${this.baseURL}${endpoint}`);
@@ -45,7 +56,7 @@ class HousekeepingService {
     }
   }
 
-  async updateTaskStatus(taskId: string, status: string): Promise<ApiResponse<{ task: HousekeepingTask }>> {
+  async updateTaskStatus(taskId: string, status: HousekeepingTaskStatus): Promise<ApiResponse<{ task: HousekeepingTask }>> {
     try {
       const response = await api.patch(`${this.baseURL}/${taskId}`, { status });
       return response.data;
@@ -55,9 +66,9 @@ class HousekeepingService {
   }
 
   async completeTask(taskId: string, completionData: {
-    status: string;
-    completedSteps: string[];
-    completedAt: string;
+    status: HousekeepingTaskStatus;
+    notes?: string;
+    completedAt?: string;
   }): Promise<ApiResponse<{ task: HousekeepingTask }>> {
     try {
       const response = await api.patch(`${this.baseURL}/${taskId}`, completionData);

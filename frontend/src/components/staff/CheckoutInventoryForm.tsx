@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   X, 
@@ -117,7 +116,8 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
   const fetchBookings = async () => {
     try {
       const response = await bookingService.getBookings({ status: 'checked_in', limit: 100 });
-      const bookingsData = Array.isArray(response.data) ? response.data : [];
+      const raw = response?.data;
+      const bookingsData = Array.isArray(raw?.bookings) ? raw.bookings : Array.isArray(raw) ? raw : [];
       setBookings(bookingsData);
     } catch (error) {
       toast.error('Failed to load bookings');
@@ -133,7 +133,6 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
       // If error is 404, no existing inventory found - this is normal
       if (error.response?.status === 404) {
         setExistingInventory(null);
-      } else {
       }
     } finally {
       setCheckingExisting(false);
@@ -206,8 +205,6 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
   };
 
   const getSelectedBooking = bookings.find(b => b._id === selectedBooking);
-  const getSelectedRoom = getSelectedBooking?.rooms.find(r => r.roomId._id === selectedRoom);
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'intact': return 'bg-green-100 text-green-800';

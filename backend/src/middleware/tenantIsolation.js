@@ -18,13 +18,16 @@ const ensureTenantContext = (req, res, next) => {
   // Extract hotelId from authenticated user (may be ObjectId or populated hotel doc)
   const hotelId = req.user.hotelId || req.user.hotel;
   const hotelIdStr = refToHotelIdString(hotelId);
+
+  // Guests and travel agents may book or load data for properties other than their profile hotel.
+  // Never overwrite req.body / req.query hotelId for them — that breaks public booking and
+  // causes ensurePropertyAccess + populate to run against the wrong tenant.
+  if (req.user.role === 'guest' || req.user.role === 'travel_agent') {
+    req.tenantId = hotelIdStr || null;
+    return next();
+  }
+
   if (!hotelIdStr) {
-    // Guest users may not have a hotelId — they access data via their userId.
-    // Allow them through; controllers must filter by userId for guests.
-    if (req.user.role === 'guest') {
-      req.tenantId = null;
-      return next();
-    }
     return res.status(403).json({
       success: false,
       error: { code: 'NO_TENANT', message: 'User is not associated with any property' },

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Star,
@@ -31,8 +31,8 @@ const ServiceDetailsPage: React.FC = () => {
 
   // Fetch service details
   const { data: service, isLoading, error } = useQuery({
-    queryKey: ['service-details', serviceId],
-    queryFn: () => hotelServicesService.getServiceDetails(serviceId!),
+    queryKey: ['service-details', publicHotelId, serviceId],
+    queryFn: () => hotelServicesService.getServiceDetails(serviceId!, publicHotelId),
     enabled: !!serviceId,
   });
 

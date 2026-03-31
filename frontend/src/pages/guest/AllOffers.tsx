@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Gift,
@@ -56,15 +56,21 @@ const getOfferTypeColor = (type: string) => {
 };
 
 export default function AllOffers() {
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [redeemingOffer, setRedeemingOffer] = useState<string | null>(null);
   const [redemptionError, setRedemptionError] = useState<unknown>(null);
+  const [page, setPage] = useState<number>(1);
+  const PAGE_SIZE = 12;
 
-  const { data: offers = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['loyalty-offers', selectedCategory],
-    queryFn: () => loyaltyService.getOffers(selectedCategory || undefined),
+  useEffect(() => {
+    setPage(1);
+  }, [selectedCategory]);
+
+  const { data: offersResponse, isLoading, error, refetch } = useQuery({
+    queryKey: ['loyalty-offers', selectedCategory, page],
+    queryFn: () => loyaltyService.getOffers(selectedCategory === 'all' ? undefined : selectedCategory, page, PAGE_SIZE),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -148,7 +154,10 @@ export default function AllOffers() {
     }
   };
 
-  // Filter offers based on search term
+  const offers = offersResponse?.offers || [];
+  const pagination = offersResponse?.pagination;
+
+  // Search is client-side on the current paginated response
   const filteredOffers = offers.filter(offer =>
     offer.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     offer.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -242,7 +251,7 @@ export default function AllOffers() {
             <SelectValue placeholder="All categories" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All categories</SelectItem>
+            <SelectItem value="all">All categories</SelectItem>
             <SelectItem value="room">Room</SelectItem>
             <SelectItem value="dining">Dining</SelectItem>
             <SelectItem value="spa">Spa</SelectItem>
@@ -388,6 +397,32 @@ export default function AllOffers() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination && (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-gray-600">
+            Page {pagination.currentPage} of {pagination.totalPages} ({pagination.totalItems} total offers)
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={!pagination.hasPrev}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => prev + 1)}
+              disabled={!pagination.hasNext}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
 

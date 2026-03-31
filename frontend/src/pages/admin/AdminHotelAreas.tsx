@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef} from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Building, Plus, Edit, Trash2, Users, Home, BarChart3, MapPin, Settings, AlertCircle } from 'lucide-react';
+import { Building, Plus, Edit, Trash2, Users, Home, BarChart3, MapPin, AlertCircle } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import HotelAreaForm from '../../components/admin/HotelAreaForm';
 import HotelLayoutVisualizer from '../../components/admin/HotelLayoutVisualizer';
@@ -93,14 +93,13 @@ const AdminHotelAreas: React.FC = () => {
   const [showHierarchy, setShowHierarchy] = useState(false);
 
   // Multi-property support
-  const { selectedProperty, selectedPropertyId } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
   const [showSuccess, setShowSuccess] = useState(false);
 
   const {
     useInheritanceStatus,
     applySettings,
-    isUpdating,
     updateError,
     showConfirmation,
     pendingUpdate,
@@ -145,7 +144,7 @@ const AdminHotelAreas: React.FC = () => {
   useEffect(() => {
     fetchAreas();
     fetchAreaStatistics();
-  }, [filters, currentPage, showHierarchy]);
+  }, [filters, currentPage, showHierarchy, selectedPropertyId]);
 
   const fetchAreas = async () => {
     try {
@@ -158,7 +157,12 @@ const AdminHotelAreas: React.FC = () => {
         ...filters
       });
 
-      const { data } = await api.get(`/hotel-areas/${localStorage.getItem('hotelId')}/areas?${queryParams}`);
+      if (!selectedPropertyId) {
+        setAreas([]);
+        setTotalPages(1);
+        return;
+      }
+      const { data } = await api.get(`/hotel-areas/${selectedPropertyId}/areas?${queryParams}`);
       setAreas(data.data.areas);
       if (data.data.pagination) {
         setTotalPages(data.data.pagination.totalPages);
@@ -172,7 +176,11 @@ const AdminHotelAreas: React.FC = () => {
 
   const fetchAreaStatistics = async () => {
     try {
-      const { data } = await api.get(`/hotel-areas/${localStorage.getItem('hotelId')}/areas/statistics`);
+      if (!selectedPropertyId) {
+        setSummary(null);
+        return;
+      }
+      const { data } = await api.get(`/hotel-areas/${selectedPropertyId}/areas/statistics`);
       setSummary(data.data.summary);
     } catch {
       // Error handled silently
@@ -238,7 +246,8 @@ const AdminHotelAreas: React.FC = () => {
         setApplyToScope('single');
         fetchAreas();
       } else {
-        await api.patch(`/hotel-areas/${localStorage.getItem('hotelId')}/areas/bulk-status`, {
+        if (!selectedPropertyId) return;
+        await api.patch(`/hotel-areas/${selectedPropertyId}/areas/bulk-status`, {
           areaIds: selectedAreas,
           status
         });

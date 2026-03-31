@@ -57,8 +57,8 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const { data } = await api.get('/staff/availability');
-        const prefs = data?.data;
+        const { data } = await api.get('/user-preferences/staff');
+        const prefs = data?.data?.staff?.availability;
         if (prefs) {
           setValue('status', prefs.status || 'available', { shouldDirty: false });
           setValue('autoStatusChange', prefs.autoStatusChange ?? true, { shouldDirty: false });
@@ -66,15 +66,12 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
           setValue('breakDuration', prefs.breakDuration ?? 15, { shouldDirty: false });
           setValue('maxTasksPerHour', prefs.maxTasksPerHour ?? 8, { shouldDirty: false });
         }
-        // Load work info summary if available
-        if (data?.data?.workInfo) {
-          setWorkInfo({
-            todayStatus: data.data.workInfo.todayStatus || 'Off Shift',
-            hoursWorked: data.data.workInfo.hoursWorked || '0h 0m',
-            tasksCompleted: String(data.data.workInfo.tasksCompleted ?? 0),
-            nextBreak: data.data.workInfo.nextBreak || 'N/A'
-          });
-        }
+        setWorkInfo({
+          todayStatus: prefs?.status || 'Off Shift',
+          hoursWorked: 'N/A',
+          tasksCompleted: 'N/A',
+          nextBreak: 'N/A'
+        });
       } catch {
         // Use defaults if preferences not yet saved
         setWorkInfo({
@@ -98,7 +95,9 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
   // Save availability settings mutation
   const saveAvailabilityMutation = useMutation({
     mutationFn: async (data: StaffAvailabilityFormData) => {
-      const { data: result } = await api.put('/staff/availability', data);
+      const { data: result } = await api.put('/user-preferences/staff', {
+        availability: data
+      });
       return result;
     },
     onSuccess: () => {
@@ -219,7 +218,7 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
                       Max Tasks Per Hour
                     </label>
                     <input
-                      {...register('maxTasksPerHour', { min: 1, max: 20 })}
+                      {...register('maxTasksPerHour', { min: 1, max: 20, valueAsNumber: true })}
                       type="number"
                       min="1"
                       max="20"
@@ -263,7 +262,7 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
                       Break Duration (minutes)
                     </label>
                     <select
-                      {...register('breakDuration')}
+                      {...register('breakDuration', { valueAsNumber: true })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value={10}>10 minutes</option>

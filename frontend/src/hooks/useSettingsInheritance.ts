@@ -50,6 +50,11 @@ interface SettingsUpdateOptions {
   skipConfirmation?: boolean;
 }
 
+interface ResolvedSettingsPayload {
+  settingType: string;
+  settingUpdates: Record<string, unknown>;
+}
+
 /**
  * Custom hook for managing settings inheritance
  *
@@ -60,7 +65,40 @@ interface SettingsUpdateOptions {
  * - Error handling and loading states
  */
 export function useSettingsInheritance() {
-  const { selectedPropertyId, selectedProperty } = useProperty();
+  const resolveSettingsPayload = useCallback(
+    (settingType: string | undefined, settingUpdates: Record<string, unknown>): ResolvedSettingsPayload => {
+      switch (settingType) {
+        case 'system':
+          return {
+            settingType: 'hotel_settings',
+            settingUpdates,
+          };
+        case 'integrations':
+          return {
+            settingType: 'hotel_settings',
+            settingUpdates: { integrations: settingUpdates },
+          };
+        case 'operations':
+          return {
+            settingType: 'hotel_settings',
+            settingUpdates: { operations: settingUpdates },
+          };
+        case 'cancellation_policies':
+          return {
+            settingType: 'hotel_settings',
+            settingUpdates: { policies: settingUpdates },
+          };
+        default:
+          return {
+            settingType: settingType || 'hotel_settings',
+            settingUpdates,
+          };
+      }
+    },
+    []
+  );
+
+  const { selectedPropertyId } = useProperty();
   const queryClient = useQueryClient();
 
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -135,15 +173,9 @@ export function useSettingsInheritance() {
    * Generic settings update mutation
    */
   const updateSettingsMutation = useMutation({
-    mutationFn: async ({
-      endpoint,
-      payload,
-    }: {
-      endpoint: string;
-      payload: Record<string, unknown>;
-    }) => {
+    mutationFn: async (payload: Record<string, unknown>) => {
       try {
-        const response = await api.put(`/settings/${endpoint}`, payload);
+        const response = await api.post('/settings/apply', payload);
         return response.data.data as SettingsUpdateResult;
       } catch (error: unknown) {
         throw error instanceof Error ? error : new Error('Failed to update settings');
@@ -170,44 +202,21 @@ export function useSettingsInheritance() {
         return null;
       }
 
-      // Build the payload
-      const payload: Record<string, unknown> = {
-        ...settingUpdates,
-        applyToAll: scope === 'all',
-        applyToGroup: scope === 'group',
-      };
-
-      // Add propertyId if not applying to all
-      if (scope !== 'all') {
-        if (!propertyId && !selectedPropertyId) {
-          throw new Error('Property ID is required');
-        }
-        payload.propertyId = propertyId || selectedPropertyId;
+      const effectivePropertyId = propertyId || selectedPropertyId;
+      if (!effectivePropertyId) {
+        throw new Error('Property ID is required');
       }
 
-      // Determine endpoint based on setting type
-      let endpoint = 'general';
+      const resolved = resolveSettingsPayload(settingType, settingUpdates);
 
-      if (settingType === 'checkInOut') {
-        endpoint = 'check-in-out';
-      } else if (settingType === 'currency') {
-        endpoint = 'currency';
-      } else if (settingType === 'timezone') {
-        endpoint = 'timezone';
-      } else if (settingType === 'cancellationPolicy') {
-        endpoint = 'cancellation-policy';
-      } else if (settingType) {
-        // For general endpoint, add settingType to payload
-        payload.settingType = settingType;
-      }
-
-      // Execute the mutation
       return updateSettingsMutation.mutateAsync({
-        endpoint,
-        payload,
+        scope,
+        propertyId: effectivePropertyId,
+        settingType: resolved.settingType,
+        settingUpdates: resolved.settingUpdates,
       });
     },
-    [selectedPropertyId, updateSettingsMutation]
+    [selectedPropertyId, updateSettingsMutation, resolveSettingsPayload]
   );
 
   /**

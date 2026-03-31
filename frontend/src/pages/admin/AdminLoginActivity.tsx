@@ -176,7 +176,7 @@ const AdminLoginActivity: React.FC = () => {
 
       const queryParams = new URLSearchParams();
       if (filters.dateRange) queryParams.append('dateRange', filters.dateRange);
-      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
+      if (selectedPropertyId) queryParams.append('hotelId', selectedPropertyId);
 
       const [analyticsRes, activeSessionsRes, suspiciousRes, alertsRes] = await Promise.all([
         api.get(`/login-activity/analytics?${queryParams}`),

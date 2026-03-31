@@ -77,6 +77,8 @@ interface ServiceRequest {
 interface GuestServiceFilters {
   status?: string;
   serviceType?: string;
+  serviceTypes?: string;
+  excludeServiceVariation?: string;
   priority?: string;
   assignedTo?: string;
   page?: number;
@@ -207,6 +209,8 @@ export default function AdminServiceRequests() {
   const [updating, setUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<GuestServiceFilters>({
+    serviceTypes: 'room_service,housekeeping,maintenance,concierge,transport,spa,laundry,other',
+    excludeServiceVariation: 'inventory_request',
     page: 1,
     limit: 20
   });
@@ -237,31 +241,11 @@ export default function AdminServiceRequests() {
       } as GuestServiceFilters & { hotelId?: string };
       const response = await adminGuestServicesService.getServices(filtersWithHotel);
 
-      // Filter for general service requests (exclude inventory and supply requests)
-      // This client-side filter is a safety net; server already filters by serviceType
-      const serviceRequests = (response.data?.serviceRequests || []).filter((service: ServiceRequest) => {
-        // Exclude inventory requests
-        const isNotInventory = !(service.serviceType === 'other' &&
-          (service.serviceVariation === 'inventory_request' ||
-           service.serviceVariations?.includes('inventory_request') ||
-           service.title?.toLowerCase().includes('inventory')));
-
-        // Exclude supply requests (if they have specific identifiers)
-        const isNotSupply = !service.title?.toLowerCase().includes('supply');
-
-        // Include general service types
-        const isGeneralService = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry'].includes(service.serviceType) ||
-          (service.serviceType === 'other' && service.serviceVariation === 'multiple_services');
-
-        return isGeneralService && isNotInventory && isNotSupply;
-      });
-
+      const serviceRequests = response.data?.serviceRequests || [];
       setRequests(serviceRequests);
-      // Since we do client-side filtering (exclude inventory/supply), use the
-      // filtered count for pagination so the total reflects what admin actually sees.
       setPagination({
-        total: serviceRequests.length,
-        pages: Math.ceil(serviceRequests.length / (filters.limit || 20))
+        total: response.data?.pagination?.total || serviceRequests.length,
+        pages: response.data?.pagination?.pages || 1
       });
     } catch (error) {
       toast.error('Failed to load service requests');
@@ -317,11 +301,25 @@ export default function AdminServiceRequests() {
       on('guest_service_created', handleServiceUpdate);
       on('guest_service_updated', handleServiceUpdate);
       on('guest_service_status_updated', handleServiceUpdate);
+      on('guest-services:created', handleServiceUpdate);
+      on('guest-services:updated', handleServiceUpdate);
+      on('guest-services:assigned', handleServiceUpdate);
+      on('guest-services:completed', handleServiceUpdate);
+      on('guest-services:cancelled', handleServiceUpdate);
+      on('guest-services:status_changed', handleServiceUpdate);
+      on('guest-services:*', handleServiceUpdate);
 
       return () => {
         off('guest_service_created', handleServiceUpdate);
         off('guest_service_updated', handleServiceUpdate);
         off('guest_service_status_updated', handleServiceUpdate);
+        off('guest-services:created', handleServiceUpdate);
+        off('guest-services:updated', handleServiceUpdate);
+        off('guest-services:assigned', handleServiceUpdate);
+        off('guest-services:completed', handleServiceUpdate);
+        off('guest-services:cancelled', handleServiceUpdate);
+        off('guest-services:status_changed', handleServiceUpdate);
+        off('guest-services:*', handleServiceUpdate);
       };
     }
   }, [isConnected, on, off]);
@@ -586,7 +584,14 @@ export default function AdminServiceRequests() {
               <label className="block text-sm font-semibold text-gray-700">Service Type</label>
               <select
                 value={filters.serviceType || ''}
-                onChange={(e) => setFilters(prev => ({ ...prev, serviceType: e.target.value || undefined }))}
+                onChange={(e) => {
+                  const value = e.target.value || undefined;
+                  setFilters(prev => ({
+                    ...prev,
+                    serviceType: value,
+                    serviceTypes: value ? undefined : 'room_service,housekeeping,maintenance,concierge,transport,spa,laundry,other'
+                  }));
+                }}
                 className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 text-sm"
               >
                 <option value="">All Services</option>
@@ -620,7 +625,15 @@ export default function AdminServiceRequests() {
 
           <div className="mt-4 flex justify-end">
             <Button
-              onClick={() => { setFilters({ page: 1, limit: 20 }); setSearchQuery(''); }}
+              onClick={() => {
+                setFilters({
+                  serviceTypes: 'room_service,housekeeping,maintenance,concierge,transport,spa,laundry,other',
+                  excludeServiceVariation: 'inventory_request',
+                  page: 1,
+                  limit: 20
+                });
+                setSearchQuery('');
+              }}
               variant="outline"
               className="text-sm px-4 py-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200"
             >

@@ -3,6 +3,7 @@ import HotelSettings from '../models/HotelSettings.js';
 import Hotel from '../models/Hotel.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { assertUserCanAccessHotel } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -11,6 +12,36 @@ import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const MASKED_SECRET_VALUE = '***masked***';
+
+const maskSecret = (value) => (value ? MASKED_SECRET_VALUE : '');
+
+const sanitizeIntegrationsForResponse = (integrations = {}) => {
+  const safeIntegrations = JSON.parse(JSON.stringify(integrations));
+
+  if (safeIntegrations.payment?.stripe) {
+    safeIntegrations.payment.stripe.secretKey = maskSecret(safeIntegrations.payment.stripe.secretKey);
+    safeIntegrations.payment.stripe.webhookSecret = maskSecret(safeIntegrations.payment.stripe.webhookSecret);
+  }
+
+  if (safeIntegrations.payment?.razorpay) {
+    safeIntegrations.payment.razorpay.keySecret = maskSecret(safeIntegrations.payment.razorpay.keySecret);
+  }
+
+  if (safeIntegrations.ota?.booking) {
+    safeIntegrations.ota.booking.apiKey = maskSecret(safeIntegrations.ota.booking.apiKey);
+  }
+
+  if (safeIntegrations.ota?.expedia) {
+    safeIntegrations.ota.expedia.apiKey = maskSecret(safeIntegrations.ota.expedia.apiKey);
+  }
+
+  if (safeIntegrations.analytics?.mixpanel) {
+    safeIntegrations.analytics.mixpanel.token = maskSecret(safeIntegrations.analytics.mixpanel.token);
+  }
+
+  return safeIntegrations;
+};
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
@@ -143,19 +174,7 @@ router.get('/', catchAsync(async (req, res, next) => {
   // Don't expose sensitive data
   const safeSettings = JSON.parse(JSON.stringify(settings));
   if (safeSettings.integrations) {
-    // Mask sensitive keys
-    if (safeSettings.integrations.payment?.stripe?.secretKey) {
-      safeSettings.integrations.payment.stripe.secretKey = '***masked***';
-    }
-    if (safeSettings.integrations.payment?.razorpay?.keySecret) {
-      safeSettings.integrations.payment.razorpay.keySecret = '***masked***';
-    }
-    if (safeSettings.integrations.ota?.booking?.apiKey) {
-      safeSettings.integrations.ota.booking.apiKey = '***masked***';
-    }
-    if (safeSettings.integrations.ota?.expedia?.apiKey) {
-      safeSettings.integrations.ota.expedia.apiKey = '***masked***';
-    }
+    safeSettings.integrations = sanitizeIntegrationsForResponse(safeSettings.integrations);
   }
 
   res.status(200).json({
@@ -216,10 +235,14 @@ router.get('/:section', catchAsync(async (req, res, next) => {
   }
 
   const settings = await HotelSettings.getOrCreateForHotel(hotelId);
+  const sectionData = settings[section] || {};
+  const safeSectionData = section === 'integrations'
+    ? sanitizeIntegrationsForResponse(sectionData)
+    : sectionData;
 
   res.status(200).json({
     status: 'success',
-    data: { [section]: settings[section] || {} }
+    data: { [section]: safeSectionData }
   });
 }));
 
@@ -314,26 +337,36 @@ router.put('/integrations', validate(hotelSettingsSchemas.integrations), catchAs
   const currentSettings = await HotelSettings.findOne({ hotelId }).lean();
 
   // If masked values are sent back, preserve the existing stored values
-  if (integrationData.payment?.stripe?.secretKey === '***masked***' && currentSettings?.integrations?.payment?.stripe?.secretKey) {
+  if (integrationData.payment?.stripe?.secretKey === MASKED_SECRET_VALUE && currentSettings?.integrations?.payment?.stripe?.secretKey) {
     integrationData.payment.stripe.secretKey = currentSettings.integrations.payment.stripe.secretKey;
   }
-  if (integrationData.payment?.razorpay?.keySecret === '***masked***' && currentSettings?.integrations?.payment?.razorpay?.keySecret) {
+  if (integrationData.payment?.stripe?.webhookSecret === MASKED_SECRET_VALUE && currentSettings?.integrations?.payment?.stripe?.webhookSecret) {
+    integrationData.payment.stripe.webhookSecret = currentSettings.integrations.payment.stripe.webhookSecret;
+  }
+  if (integrationData.payment?.razorpay?.keySecret === MASKED_SECRET_VALUE && currentSettings?.integrations?.payment?.razorpay?.keySecret) {
     integrationData.payment.razorpay.keySecret = currentSettings.integrations.payment.razorpay.keySecret;
   }
-  if (integrationData.ota?.booking?.apiKey === '***masked***' && currentSettings?.integrations?.ota?.booking?.apiKey) {
+  if (integrationData.ota?.booking?.apiKey === MASKED_SECRET_VALUE && currentSettings?.integrations?.ota?.booking?.apiKey) {
     integrationData.ota.booking.apiKey = currentSettings.integrations.ota.booking.apiKey;
   }
-  if (integrationData.ota?.expedia?.apiKey === '***masked***' && currentSettings?.integrations?.ota?.expedia?.apiKey) {
+  if (integrationData.ota?.expedia?.apiKey === MASKED_SECRET_VALUE && currentSettings?.integrations?.ota?.expedia?.apiKey) {
     integrationData.ota.expedia.apiKey = currentSettings.integrations.ota.expedia.apiKey;
+  }
+  if (integrationData.analytics?.mixpanel?.token === MASKED_SECRET_VALUE && currentSettings?.integrations?.analytics?.mixpanel?.token) {
+    integrationData.analytics.mixpanel.token = currentSettings.integrations.analytics.mixpanel.token;
   }
 
   const updates = { 'integrations': integrationData };
   const settings = await HotelSettings.updateHotelSettings(hotelId, updates);
+  const safeUpdatedSettings = JSON.parse(JSON.stringify(settings));
+  if (safeUpdatedSettings.integrations) {
+    safeUpdatedSettings.integrations = sanitizeIntegrationsForResponse(safeUpdatedSettings.integrations);
+  }
 
   res.status(200).json({
     status: 'success',
     message: 'Integration settings updated successfully',
-    data: { settings }
+    data: { settings: safeUpdatedSettings }
   });
 }));
 
@@ -621,6 +654,7 @@ router.get('/booking-rules', catchAsync(async (req, res, next) => {
   if (!propertyId) {
     return next(new ApplicationError('Property ID is required', 400));
   }
+  await assertUserCanAccessHotel(req.user, propertyId);
 
   const settings = await HotelSettings.getOrCreateForHotel(propertyId);
 
@@ -649,6 +683,7 @@ router.put('/booking-rules', validate(hotelSettingsSchemas.bookingRules), catchA
   if (!targetPropertyId) {
     return next(new ApplicationError('Property ID is required', 400));
   }
+  await assertUserCanAccessHotel(req.user, targetPropertyId);
 
   const { error } = hotelSettingsSchemas.bookingRules.validate(bookingRulesData);
   if (error) {

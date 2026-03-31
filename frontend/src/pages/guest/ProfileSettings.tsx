@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
 import { userService } from '../../services/userService';
+import { api } from '../../services/api';
 
 interface ProfileFormData {
   name: string;
@@ -26,16 +27,29 @@ const ProfileSettings: React.FC = () => {
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<ProfileFormData>();
 
   useEffect(() => {
-    if (user) {
-      setValue('name', user.name || '');
-      setValue('email', user.email || '');
-      setValue('phone', user.phone || '');
-      setValue('dateOfBirth', (user as Record<string, unknown>).dateOfBirth ? String((user as Record<string, unknown>).dateOfBirth).split('T')[0] : '');
-      setValue('nationality', (user as Record<string, unknown>).nationality as string || '');
-      setValue('avatar', user.avatar || '');
-      setValue('timezone', (user as Record<string, unknown>).timezone as string || 'UTC');
-      setValue('language', (user as Record<string, unknown>).language as string || 'en');
-    }
+    const loadProfileData = async () => {
+      if (user) {
+        setValue('name', user.name || '');
+        setValue('email', user.email || '');
+        setValue('phone', user.phone || '');
+        setValue('dateOfBirth', (user as Record<string, unknown>).dateOfBirth ? String((user as Record<string, unknown>).dateOfBirth).split('T')[0] : '');
+        setValue('nationality', (user as Record<string, unknown>).nationality as string || '');
+      }
+
+      try {
+        const { data } = await api.get('/user-preferences/profile');
+        const profilePrefs = data?.data?.profile || {};
+        setValue('avatar', profilePrefs.avatar || user?.avatar || '');
+        setValue('timezone', profilePrefs.timezone || 'UTC');
+        setValue('language', profilePrefs.language || 'en');
+      } catch {
+        setValue('avatar', user?.avatar || '');
+        setValue('timezone', 'UTC');
+        setValue('language', 'en');
+      }
+    };
+
+    loadProfileData();
   }, [user, setValue]);
 
   const onSubmit = async (data: ProfileFormData) => {
@@ -43,8 +57,12 @@ const ProfileSettings: React.FC = () => {
     try {
       const response = await userService.updateProfile({
         name: data.name.trim(),
-        phone: data.phone?.trim() || undefined,
-        preferences: user?.preferences
+        phone: data.phone?.trim() || undefined
+      });
+      await api.put('/user-preferences/profile', {
+        timezone: data.timezone,
+        language: data.language,
+        avatar: data.avatar || ''
       });
       updateUser(response.user);
       showToast('Profile updated successfully', 'success');

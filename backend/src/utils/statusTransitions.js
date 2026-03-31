@@ -8,11 +8,12 @@
 
 // ── Housekeeping tasks ──────────────────────────────────────────────────
 export const HOUSEKEEPING_TRANSITIONS = {
-  pending:     ['assigned'],
-  assigned:    ['in_progress', 'pending'],       // can be unassigned back to pending
-  in_progress: ['completed', 'assigned'],        // can be reassigned
-  completed:   ['inspected', 'assigned'],        // failed inspection -> reassign
-  inspected:   [],                               // terminal
+  pending:     ['assigned', 'cancelled'],
+  assigned:    ['in_progress', 'pending', 'cancelled'], // can be unassigned or cancelled
+  in_progress: ['completed', 'assigned', 'cancelled'],  // can be reassigned or cancelled
+  completed:   ['inspected', 'assigned'],                // failed inspection -> reassign
+  inspected:   [],                                       // terminal
+  cancelled:   []                                        // terminal
 };
 
 // ── Maintenance requests ────────────────────────────────────────────────

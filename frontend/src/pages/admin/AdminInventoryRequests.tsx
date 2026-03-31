@@ -98,7 +98,8 @@ export default function AdminInventoryRequests() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [filters, setFilters] = useState<GuestServiceFilters>({ 
-    serviceType: 'other', // Only inventory requests
+    serviceType: 'other',
+    serviceVariation: 'inventory_request',
     page: 1, 
     limit: 20 
   });
@@ -136,24 +137,7 @@ export default function AdminInventoryRequests() {
         ...filters,
         hotelId: selectedPropertyId
       } as GuestServiceFilters & { hotelId?: string });
-
-      // Filter for only inventory requests with enhanced matching
-      let inventoryRequests = (response.data.serviceRequests || []).filter(service => {
-        // Primary filter: serviceType is 'other' AND has inventory-related serviceVariation
-        const isInventoryByType = service.serviceType === 'other' &&
-          (service.serviceVariation === 'inventory_request' ||
-           service.serviceVariations?.includes('inventory_request'));
-
-        // Secondary filter: title contains inventory-related keywords
-        const isInventoryByTitle = service.title?.toLowerCase().includes('inventory') ||
-          service.title?.toLowerCase().includes('missing') ||
-          service.title?.toLowerCase().includes('damaged') ||
-          service.title?.toLowerCase().includes('towel') ||
-          service.title?.toLowerCase().includes('pillow') ||
-          service.title?.toLowerCase().includes('amenity');
-
-        return isInventoryByType || isInventoryByTitle;
-      });
+      let inventoryRequests = response.data.serviceRequests || [];
 
       // Apply search filter if search term exists
       if (searchTerm.trim()) {
@@ -175,8 +159,8 @@ export default function AdminInventoryRequests() {
 
       setRequests(inventoryRequests);
       setPagination({
-        total: inventoryRequests.length,
-        pages: Math.ceil(inventoryRequests.length / (filters.limit || 20))
+        total: response.data.pagination?.total || inventoryRequests.length,
+        pages: response.data.pagination?.pages || 1
       });
     } catch (error) {
       toast.error('Failed to load inventory requests');
@@ -709,7 +693,7 @@ export default function AdminInventoryRequests() {
 
             <div className="flex items-end animate-slide-in-left animate-stagger-4">
               <Button
-                onClick={() => setFilters({ serviceType: 'other', page: 1, limit: 20 })}
+                onClick={() => setFilters({ serviceType: 'other', serviceVariation: 'inventory_request', page: 1, limit: 20 })}
                 className="w-full bg-gradient-to-r from-gray-500 to-gray-700 hover:from-gray-600 hover:to-gray-800 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />

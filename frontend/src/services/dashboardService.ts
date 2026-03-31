@@ -191,12 +191,14 @@ class DashboardService {
    */
   async getStaffPerformance(
     hotelId: string,
+    period?: string,
     department?: string,
     staffId?: string
   ): Promise<ApiResponse<StaffPerformanceData>> {
     try {
       const params = new URLSearchParams();
       params.append('hotelId', hotelId);
+      if (period) params.append('period', period);
       if (department) params.append('department', department);
       if (staffId) params.append('staffId', staffId);
 
@@ -331,22 +333,22 @@ class DashboardService {
       const params = new URLSearchParams();
       params.append('hotelId', hotelId);
       params.append('reportType', reportType);
-    
+
       if (options) {
-        Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            params.append(key, value.toString());
-          }
-        });
+        if (options.startDate) params.append('startDate', options.startDate);
+        if (options.endDate) params.append('endDate', options.endDate);
+        if (options.groupBy) params.append('groupBy', options.groupBy);
+        if (options.format) params.append('format', options.format);
+        if (typeof options.includeCharts === 'boolean') params.append('includeCharts', String(options.includeCharts));
       }
 
-      // Use the dedicated reports API endpoint
-      const response = await api.get(`/reports/revenue?${params.toString()}`);
-    
-      // Transform the response to match the expected ReportData format
+      // Route to the admin dashboard reporting engine.
+      const response = await api.get(`${this.baseUrl}/reports?${params.toString()}`);
+      const payload = response.data;
+
       const reportData: ReportData = {
-        reportType: reportType,
-        generatedAt: new Date().toISOString(),
+        reportType,
+        generatedAt: payload?.metadata?.generatedAt || new Date().toISOString(),
         parameters: {
           hotelId,
           startDate: options?.startDate || '',
@@ -355,21 +357,18 @@ class DashboardService {
           filters: options?.filters || {},
         },
         summary: {
-          totalRecords: response.data.data.breakdown?.length || 0,
+          totalRecords: 1,
           dateRange: {
             start: options?.startDate || '',
             end: options?.endDate || '',
           },
-          keyMetrics: response.data.data.summary || {},
+          keyMetrics: payload?.data?.[reportType]?.summary || {},
         },
-        data: response.data.data,
-        charts: [], // Charts will be generated on frontend
+        data: payload?.data || {},
+        charts: [],
       };
 
-      return {
-        status: 'success',
-        data: reportData,
-      };
+      return { status: payload?.status || 'success', data: reportData };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -417,12 +416,33 @@ class DashboardService {
     try {
       const searchParams = new URLSearchParams(params);
       searchParams.append('format', format);
+      const toBlob = (data: unknown, mime: string) =>
+        data instanceof Blob ? data : new Blob([typeof data === 'string' ? data : JSON.stringify(data, null, 2)], { type: mime });
 
-      const response = await api.get(`${this.baseUrl}/${endpoint}/export?${searchParams.toString()}`, {
-        responseType: 'blob'
-      });
-    
-      return response.data;
+      if (endpoint === 'revenue') {
+        const response = await api.get(`${this.baseUrl}/revenue/export?${searchParams.toString()}`, {
+          responseType: 'blob'
+        });
+        return toBlob(response.data, format === 'csv' ? 'text/csv' : 'application/json');
+      }
+
+      const reportTypeMap: Record<string, string> = {
+        occupancy: 'operational',
+        'guest-satisfaction': 'guest_analytics',
+        'staff-performance': 'staff_performance',
+        reports: (params.reportType as string) || 'comprehensive'
+      };
+
+      const reportType = reportTypeMap[endpoint] || 'comprehensive';
+      searchParams.set('reportType', reportType);
+
+      const response = await api.get(`${this.baseUrl}/reports?${searchParams.toString()}`);
+      const content =
+        format === 'csv'
+          ? `reportType,generatedAt\n${reportType},${response.data?.metadata?.generatedAt || new Date().toISOString()}\n`
+          : response.data;
+
+      return toBlob(content, format === 'csv' ? 'text/csv' : 'application/json');
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

@@ -62,6 +62,7 @@ interface Document {
     size: number;
     mimeType: string;
   };
+  fileSize?: number;
 }
 
 interface DocumentStats {
@@ -101,17 +102,35 @@ export default function StaffDocuments() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [currentPage, statusFilter, categoryFilter]);
 
   const fetchDocuments = async () => {
     try {
       setLoading(true);
-      const { data } = await api.get('/documents/my-documents', { params: { userType: 'staff' } });
-      setDocuments(data.documents);
-      calculateStats(data.documents);
+      const skip = (currentPage - 1) * pageLimit;
+      const params: Record<string, string | number> = {
+        userType: 'staff',
+        limit: pageLimit,
+        skip
+      };
+      if (statusFilter !== 'all') params.status = statusFilter;
+      if (categoryFilter !== 'all') params.category = categoryFilter;
+
+      const { data } = await api.get('/documents', { params });
+      const fetchedDocs = data?.data?.documents || [];
+      const count = data?.totalCount || 0;
+      const pages = data?.totalPages || 1;
+      setDocuments(fetchedDocs);
+      setTotalCount(count);
+      setTotalPages(pages);
+      calculateStats(fetchedDocs);
     } catch (error) {
       toast.error('Error loading documents');
     } finally {
@@ -196,8 +215,8 @@ export default function StaffDocuments() {
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.originalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          staffDocumentCategories[doc.category]?.label.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || doc.category === categoryFilter;
+    const matchesStatus = true;
+    const matchesCategory = true;
 
     return matchesSearch && matchesStatus && matchesCategory;
   });
@@ -219,7 +238,7 @@ export default function StaffDocuments() {
   };
 
   const TabButton = ({ tab, label, icon: Icon }: { tab: string; label: string; icon: React.ComponentType<{ className?: string }> }) => (
-    <button aria-label="Close"
+    <button aria-label={label}
       onClick={() => setActiveTab(tab as unknown)}
       className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeTab === tab
@@ -367,7 +386,7 @@ export default function StaffDocuments() {
                         <div>
                           <p className="font-medium text-sm">{doc.originalName}</p>
                           <p className="text-xs text-gray-500">
-                            {category?.label} • {formatDate(doc.uploadedAt)} • {formatFileSize(doc.metadata.size)}
+                            {category?.label} • {formatDate(doc.uploadedAt)} • {formatFileSize(doc.metadata?.size || doc.fileSize || 0)}
                           </p>
                         </div>
                       </div>
@@ -402,7 +421,10 @@ export default function StaffDocuments() {
                   <Input
                     placeholder="Search documents..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
                     className="pl-10"
                   />
                 </div>
@@ -412,7 +434,10 @@ export default function StaffDocuments() {
                 <label className="block text-sm font-medium mb-1">Status</label>
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">All Statuses</option>
@@ -428,7 +453,10 @@ export default function StaffDocuments() {
                 <label className="block text-sm font-medium mb-1">Category</label>
                 <select
                   value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
+                    onChange={(e) => {
+                      setCategoryFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">All Categories</option>
@@ -446,7 +474,7 @@ export default function StaffDocuments() {
           <Card className="p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">
-                My Documents ({filteredDocuments.length})
+                My Documents ({totalCount})
               </h3>
               <Button
                 variant="outline"
@@ -494,7 +522,7 @@ export default function StaffDocuments() {
                             <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                               <span>Uploaded: {formatDate(doc.uploadedAt)}</span>
                               <span>•</span>
-                              <span>Size: {formatFileSize(doc.metadata.size)}</span>
+                              <span>Size: {formatFileSize(doc.metadata?.size || doc.fileSize || 0)}</span>
                               {doc.verifiedAt && (
                                 <>
                                   <span>•</span>
@@ -541,6 +569,31 @@ export default function StaffDocuments() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {totalPages > 1 && (
+              <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                <p className="text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
           </Card>

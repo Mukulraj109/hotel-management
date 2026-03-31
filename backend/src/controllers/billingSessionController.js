@@ -287,21 +287,29 @@ export const checkoutSession = catchAsync(async (req, res) => {
     updateFields.notes = notes;
   }
 
+  // Scope by hotelId so authorization is enforced atomically
+  const matchQuery = {
+    _id: id,
+    status: 'draft',
+    'items.0': { $exists: true }
+  };
+  if (req.user.hotelId) {
+    matchQuery.hotelId = req.user.hotelId;
+  }
+
   const billingSession = await BillingSession.findOneAndUpdate(
-    {
-      _id: id,
-      status: 'draft',
-      'items.0': { $exists: true } // ensure at least one item exists
-    },
+    matchQuery,
     { $set: updateFields },
     { new: true }
   );
 
   if (!billingSession) {
-    // Determine the specific error
     const existing = await BillingSession.findById(id).lean();
     if (!existing) {
       throw new ApplicationError('Billing session not found', 404);
+    }
+    if (req.user.hotelId && existing.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('You can only checkout billing sessions for your hotel', 403);
     }
     if (existing.status !== 'draft') {
       throw new ApplicationError('Only draft billing sessions can be checked out', 400);
@@ -309,14 +317,7 @@ export const checkoutSession = catchAsync(async (req, res) => {
     if (existing.items.length === 0) {
       throw new ApplicationError('Cannot checkout empty billing session', 400);
     }
-    throw new ApplicationError('You can only checkout billing sessions for your hotel', 403);
-  }
-
-  // Check access permissions (post-update verification)
-  if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    // Revert the status change since the user doesn't have permission
-    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { 'payment.paidAt': 1 } }, { new: true });
-    throw new ApplicationError('You can only checkout billing sessions for your hotel', 403);
+    throw new ApplicationError('Checkout failed', 400);
   }
 
   // Automatically create/update settlement if session is room_charged or paid
@@ -365,8 +366,13 @@ export const voidSession = catchAsync(async (req, res) => {
     updateFields.notes = reason;
   }
 
+  const voidMatchQuery = { _id: id, status: { $ne: 'void' } };
+  if (req.user.hotelId) {
+    voidMatchQuery.hotelId = req.user.hotelId;
+  }
+
   const billingSession = await BillingSession.findOneAndUpdate(
-    { _id: id, status: { $ne: 'void' } },
+    voidMatchQuery,
     { $set: updateFields },
     { new: true }
   );
@@ -376,14 +382,10 @@ export const voidSession = catchAsync(async (req, res) => {
     if (!existing) {
       throw new ApplicationError('Billing session not found', 404);
     }
+    if (req.user.hotelId && existing.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('You can only void billing sessions for your hotel', 403);
+    }
     throw new ApplicationError('Billing session is already voided', 400);
-  }
-
-  // Check access permissions (post-update verification)
-  if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    // Revert the void since the user doesn't have permission
-    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { voidedAt: 1 } }, { new: true });
-    throw new ApplicationError('You can only void billing sessions for your hotel', 403);
   }
 
   res.json({

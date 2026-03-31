@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import { travelAgentService } from '../../services/travelAgentService';
 
 interface BookingPreferences {
   autoConfirm: boolean;
@@ -57,53 +57,61 @@ const TravelAgentSettings: React.FC = () => {
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<TravelAgentFormData>();
 
   useEffect(() => {
-    // Load existing settings
-    if (user) {
+    const loadSettings = async () => {
+      if (!user) return;
+
       setValue('profile.name', user.name || '');
       setValue('profile.email', user.email || '');
       setValue('profile.phone', user.phone || '');
-      setValue('profile.language', user.language || 'en');
-      setValue('profile.timezone', user.timezone || 'UTC');
+      setValue('profile.language', 'en');
+      setValue('profile.timezone', 'UTC');
 
-      if (user.travelAgentSettings) {
-        const settings = user.travelAgentSettings;
-
-        // Business Info
-        setValue('businessInfo.companyName', settings.businessInfo?.companyName || '');
-        setValue('businessInfo.licenseNumber', settings.businessInfo?.licenseNumber || '');
-        setValue('businessInfo.taxId', settings.businessInfo?.taxId || '');
-        setValue('businessInfo.address', settings.businessInfo?.address || '');
-        setValue('businessInfo.website', settings.businessInfo?.website || '');
-        setValue('businessInfo.description', settings.businessInfo?.description || '');
-        setValue('businessInfo.businessType', settings.businessInfo?.businessType || '');
-
-        // Booking Preferences
-        setValue('bookingPreferences.autoConfirm', settings.bookingPreferences?.autoConfirm || false);
-        setValue('bookingPreferences.defaultCommission', settings.bookingPreferences?.defaultCommission || 10);
-        setValue('bookingPreferences.paymentTerms', settings.bookingPreferences?.paymentTerms || 'immediate');
-        setValue('bookingPreferences.minimumStayRequirement', settings.bookingPreferences?.minimumStayRequirement || 1);
-
-        if (settings.bookingPreferences?.preferredRoomTypes) {
-          setSelectedRoomTypes(settings.bookingPreferences.preferredRoomTypes);
-        }
-
-        // Notifications
-        setValue('notifications.commissionUpdates', settings.notifications?.commissionUpdates !== false);
-        setValue('notifications.rateChanges', settings.notifications?.rateChanges !== false);
-        setValue('notifications.bookingConfirmations', settings.notifications?.bookingConfirmations !== false);
+      try {
+        const profile = await travelAgentService.getMyTravelAgentProfile();
+        setValue('businessInfo.companyName', profile.companyName || '');
+        setValue('businessInfo.licenseNumber', profile.businessDetails?.licenseNumber || '');
+        setValue('businessInfo.taxId', profile.businessDetails?.gstNumber || '');
+        setValue(
+          'businessInfo.address',
+          [profile.address?.street, profile.address?.city, profile.address?.state, profile.address?.country]
+            .filter(Boolean)
+            .join(', ')
+        );
+        setValue('businessInfo.businessType', profile.businessDetails?.businessType || '');
+        setValue('bookingPreferences.defaultCommission', profile.commissionStructure?.defaultRate || 10);
+        setValue(
+          'bookingPreferences.paymentTerms',
+          profile.paymentTerms?.preferredPaymentMethod === 'bank_transfer' ? 'net_30' : 'immediate'
+        );
+      } catch {
+        // Keep auth defaults if profile fetch fails.
       }
-    }
+    };
+
+    loadSettings();
   }, [user, setValue]);
 
   const onSubmit = async (data: TravelAgentFormData) => {
     setIsLoading(true);
     try {
-      await api.put('/settings/travel-agent/settings', {
-        ...data,
-        bookingPreferences: {
-          ...data.bookingPreferences,
-          preferredRoomTypes: selectedRoomTypes
-        }
+      await travelAgentService.updateAgentProfile({
+        companyName: data.businessInfo.companyName || data.profile.name,
+        contactPerson: data.profile.name,
+        email: data.profile.email,
+        phone: data.profile.phone,
+        businessDetails: {
+          licenseNumber: data.businessInfo.licenseNumber,
+          gstNumber: data.businessInfo.taxId,
+          businessType: (data.businessInfo.businessType as 'domestic' | 'international' | 'both') || 'domestic'
+        },
+        notes: [
+          data.businessInfo.description?.trim(),
+          data.businessInfo.website?.trim() ? `Website: ${data.businessInfo.website.trim()}` : '',
+          selectedRoomTypes.length ? `Preferred room types: ${selectedRoomTypes.join(', ')}` : '',
+          data.communicationChannel ? `Preferred channel: ${data.communicationChannel}` : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
       });
 
       showToast('Settings updated successfully', 'success');

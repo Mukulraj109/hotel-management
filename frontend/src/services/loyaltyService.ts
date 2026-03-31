@@ -77,6 +77,18 @@ export interface TransactionHistory {
   };
 }
 
+export interface OffersResponse {
+  offers: Offer[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
 export interface RedemptionResult {
   message: string;
   transaction: LoyaltyTransaction;
@@ -107,14 +119,23 @@ class LoyaltyService {
   /**
    * Get available loyalty offers (with pagination support)
    */
-  async getOffers(category?: string, page = 1, limit = 50): Promise<Offer[]> {
+  async getOffers(category?: string, page = 1, limit = 20): Promise<OffersResponse> {
     try {
       const params: Record<string, unknown> = { page, limit };
       if (category) params.category = category;
       const response = await api.get('/loyalty/offers', { params });
-      // Backend returns { data: { offers, pagination } } - extract offers array
       const data = response.data.data;
-      return Array.isArray(data) ? data : (data.offers || []);
+      return {
+        offers: Array.isArray(data) ? data : (data.offers || []),
+        pagination: data?.pagination || {
+          currentPage: page,
+          totalPages: 1,
+          totalItems: Array.isArray(data) ? data.length : (data?.offers?.length || 0),
+          itemsPerPage: limit,
+          hasNext: false,
+          hasPrev: page > 1
+        }
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -316,7 +337,8 @@ class LoyaltyService {
    * Get offers by category
    */
   async getOffersByCategory(category: string): Promise<Offer[]> {
-    return this.getOffers(category);
+    const result = await this.getOffers(category, 1, 20);
+    return result.offers;
   }
 
 

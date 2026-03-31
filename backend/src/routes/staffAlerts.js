@@ -2,15 +2,32 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import StaffAlert from '../models/StaffAlert.js';
+import User from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import logger from '../utils/logger.js';
 import websocketService from '../services/websocketService.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const ALLOWED_ASSIGNEE_ROLES = ['staff', 'admin', 'manager', 'frontdesk'];
+
+const validateAssignedUser = async (assignedTo, hotelId) => {
+  if (!assignedTo) return;
+
+  const assignee = await User.findOne({
+    _id: assignedTo,
+    hotelId,
+    role: { $in: ALLOWED_ASSIGNEE_ROLES }
+  }).select('_id');
+
+  if (!assignee) {
+    throw new ApplicationError('Assigned user must belong to the same hotel and have an allowed role', 400);
+  }
+};
 
 // @desc    Get staff alerts summary
 // @route   GET /api/v1/staff/alerts/summary
@@ -109,6 +126,7 @@ router.get('/', authenticate, ensurePropertyAccess, authorizePolicy('staffAlerts
 // @access  Private (staff, admin, manager)
 router.post('/', authenticate, ensurePropertyAccess, authorizePolicy('staffAlerts', 'staffAccess'), validate(mutationBaselineSchema), asyncHandler(async (req, res) => {
   const { hotelId, _id: createdBy } = req.user;
+  await validateAssignedUser(req.body.assignedTo, hotelId);
 
   const alertData = {
     ...req.body,
@@ -131,11 +149,6 @@ router.post('/', authenticate, ensurePropertyAccess, authorizePolicy('staffAlert
     if (alert.assignedTo) {
       await websocketService.sendToUser(alert.assignedTo._id, 'staff-alert:assigned', alert);
     }
-
-    // Send to all staff/admin/managers
-    await websocketService.broadcastToRole('staff', 'staff-alert:created', alert);
-    await websocketService.broadcastToRole('admin', 'staff-alert:created', alert);
-    await websocketService.broadcastToRole('manager', 'staff-alert:created', alert);
   } catch (wsError) {
     logger.warn('Failed to broadcast staff alert creation', { error: wsError.message, alertId: alert._id });
   }
@@ -153,6 +166,7 @@ router.post('/', authenticate, ensurePropertyAccess, authorizePolicy('staffAlert
 // @access  Private (staff, admin, manager)
 router.put('/:id', authenticate, ensurePropertyAccess, authorizePolicy('staffAlerts', 'staffAccess'), validate(mutationBaselineSchema), asyncHandler(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
+  await validateAssignedUser(req.body.assignedTo, hotelId);
 
   let alert = await StaffAlert.findOne({
     _id: req.params.id,
@@ -190,11 +204,6 @@ router.put('/:id', authenticate, ensurePropertyAccess, authorizePolicy('staffAle
     if (alert.assignedTo) {
       await websocketService.sendToUser(alert.assignedTo._id, 'staff-alert:updated', alert);
     }
-
-    // Send to all staff/admin/managers
-    await websocketService.broadcastToRole('staff', 'staff-alert:updated', alert);
-    await websocketService.broadcastToRole('admin', 'staff-alert:updated', alert);
-    await websocketService.broadcastToRole('manager', 'staff-alert:updated', alert);
   } catch (wsError) {
     logger.warn('Failed to broadcast staff alert update', { error: wsError.message, alertId: alert._id });
   }
@@ -243,11 +252,6 @@ router.patch('/:id/acknowledge', authenticate, ensurePropertyAccess, authorizePo
   // Emit real-time notification
   try {
     await websocketService.broadcastToHotel(hotelId, 'staff-alert:acknowledged', alert);
-
-    // Send to all staff/admin/managers
-    await websocketService.broadcastToRole('staff', 'staff-alert:acknowledged', alert);
-    await websocketService.broadcastToRole('admin', 'staff-alert:acknowledged', alert);
-    await websocketService.broadcastToRole('manager', 'staff-alert:acknowledged', alert);
   } catch (wsError) {
     logger.warn('Failed to broadcast staff alert acknowledgment', { error: wsError.message, alertId: alert._id });
   }
@@ -283,11 +287,6 @@ router.delete('/:id', authenticate, ensurePropertyAccess, authorizePolicy('staff
   // Emit real-time notification
   try {
     await websocketService.broadcastToHotel(hotelId, 'staff-alert:deleted', { alertId: req.params.id });
-
-    // Send to all staff/admin/managers
-    await websocketService.broadcastToRole('staff', 'staff-alert:deleted', { alertId: req.params.id });
-    await websocketService.broadcastToRole('admin', 'staff-alert:deleted', { alertId: req.params.id });
-    await websocketService.broadcastToRole('manager', 'staff-alert:deleted', { alertId: req.params.id });
   } catch (wsError) {
     logger.warn('Failed to broadcast staff alert deletion', { error: wsError.message, alertId: req.params.id });
   }

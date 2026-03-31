@@ -8,11 +8,6 @@ interface PrivacyFormData {
   dataSharing: boolean;
   locationTracking: boolean;
   analyticsTracking: boolean;
-  marketingEmails: boolean;
-  thirdPartySharing: boolean;
-  profileVisibility: boolean;
-  bookingHistoryVisibility: boolean;
-  personalizedExperience: boolean;
 }
 
 interface DataDownloadRequest {
@@ -29,7 +24,7 @@ const PrivacySettings: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<PrivacyFormData>();
+  const { register, handleSubmit, setValue } = useForm<PrivacyFormData>();
 
   useEffect(() => {
     // Load existing privacy settings from user preferences
@@ -41,29 +36,27 @@ const PrivacySettings: React.FC = () => {
           setValue('dataSharing', privacy.dataSharing ?? false);
           setValue('locationTracking', privacy.locationTracking ?? false);
           setValue('analyticsTracking', privacy.analyticsTracking ?? false);
+        } else {
+          setValue('dataSharing', false);
+          setValue('locationTracking', false);
+          setValue('analyticsTracking', false);
         }
       } catch {
         // Fall back to defaults if preferences not yet created
+        setValue('dataSharing', false);
+        setValue('locationTracking', false);
+        setValue('analyticsTracking', false);
       }
     };
 
     loadPrivacySettings();
 
-    // Check for existing data download requests
-    fetchDataDownloadRequest();
   }, [user, setValue]);
 
   const fetchDataDownloadRequest = async () => {
     try {
-      // Use the user-preferences export endpoint to check for data export availability
-      const { data } = await api.get('/user-preferences/export');
-      if (data?.data) {
-        setDataDownloadRequest({
-          requestDate: data.data.exportedAt,
-          status: 'ready',
-          downloadUrl: undefined
-        });
-      }
+      // No persisted async export job currently; keep this nullable state clear.
+      setDataDownloadRequest(null);
     } catch {
       // No existing data download request -- this is expected for new users
     }
@@ -119,15 +112,8 @@ const PrivacySettings: React.FC = () => {
   };
 
   const deleteAccount = async () => {
-    try {
-      // Reset all user preferences as a soft-delete / data removal step
-      await api.delete('/user-preferences');
-
-      showToast('Account data has been cleared. Contact support to complete account deletion.', 'success');
-      setShowDeleteModal(false);
-    } catch (error) {
-      showToast('Failed to process request. Please contact support.', 'error');
-    }
+    setShowDeleteModal(false);
+    showToast('Contact support to complete account deletion. This action is not available in self-service yet.', 'error');
   };
 
   return (
@@ -192,13 +178,14 @@ const PrivacySettings: React.FC = () => {
                   Personalized Experience
                 </label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Use your data to personalize your experience and provide tailored recommendations.
+                  Personalization follows your analytics and location preferences above.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer ml-4">
                 <input
                   type="checkbox"
-                  {...register('personalizedExperience')}
+                  disabled
+                  checked={false}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -223,13 +210,14 @@ const PrivacySettings: React.FC = () => {
                   Third-Party Data Sharing
                 </label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Allow sharing of anonymized data with trusted third-party partners for research and improvement purposes.
+                  Third-party sharing is controlled by the core data-sharing toggle.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer ml-4">
                 <input
                   type="checkbox"
-                  {...register('thirdPartySharing')}
+                  disabled
+                  checked={false}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
@@ -242,13 +230,14 @@ const PrivacySettings: React.FC = () => {
                   Marketing Communications
                 </label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Receive marketing emails, special offers, and promotional content based on your preferences.
+                  Marketing consent is managed in your preferences settings.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer ml-4">
                 <input
                   type="checkbox"
-                  {...register('marketingEmails')}
+                  disabled
+                  checked={false}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
@@ -274,13 +263,14 @@ const PrivacySettings: React.FC = () => {
                   Public Profile Visibility
                 </label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Make your basic profile information visible to other guests and hotel staff.
+                  Profile visibility controls are currently managed by hotel staff policy.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer ml-4">
                 <input
                   type="checkbox"
-                  {...register('profileVisibility')}
+                  disabled
+                  checked={false}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
@@ -293,13 +283,14 @@ const PrivacySettings: React.FC = () => {
                   Booking History Visibility
                 </label>
                 <p className="text-sm text-gray-500 mt-1">
-                  Allow hotel staff to access your booking history to provide better personalized service.
+                  Booking history visibility follows role-based access controls.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer ml-4">
                 <input
                   type="checkbox"
-                  {...register('bookingHistoryVisibility')}
+                  disabled
+                  checked={true}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
@@ -315,11 +306,6 @@ const PrivacySettings: React.FC = () => {
             onClick={() => {
               setValue('analyticsTracking', false);
               setValue('locationTracking', false);
-              setValue('personalizedExperience', false);
-              setValue('thirdPartySharing', false);
-              setValue('marketingEmails', false);
-              setValue('profileVisibility', false);
-              setValue('bookingHistoryVisibility', true);
               setValue('dataSharing', false);
             }}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"

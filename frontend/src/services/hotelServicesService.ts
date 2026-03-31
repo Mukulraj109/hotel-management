@@ -1,4 +1,10 @@
-import { api } from './api';
+import { DEFAULT_PUBLIC_HOTEL_ID } from '../constants/publicHotel';
+import { api, normalizeListParams, unwrapApiData } from './api';
+
+function tenantHotelIdForServices(hotelId?: string | null): string {
+  const h = typeof hotelId === 'string' ? hotelId.trim() : '';
+  return h || DEFAULT_PUBLIC_HOTEL_ID;
+}
 
 export interface HotelService {
   _id: string;
@@ -108,6 +114,16 @@ export interface ServiceBookingsResponse {
   };
 }
 
+export interface HotelServicesResponse {
+  services: HotelService[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
 class HotelServicesService {
   /**
    * Get all hotel services with pagination
@@ -118,26 +134,56 @@ class HotelServicesService {
     featured?: boolean;
     page?: number;
     limit?: number;
+    hotelId?: string | null;
   }): Promise<HotelService[]> {
     try {
-      const paginatedParams = {
-        page: 1,
-        limit: 20,
-        ...params,
-      };
-      const response = await api.get('/hotel-services', { params: paginatedParams });
-      return response.data.data;
+      const paginatedParams = normalizeListParams(params);
+      const response = await api.get('/hotel-services', {
+        params: {
+          ...paginatedParams,
+          hotelId: tenantHotelIdForServices(params?.hotelId)
+        }
+      });
+      return unwrapApiData<HotelService[]>(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
+  async getServicesWithPagination(params?: {
+    type?: string;
+    search?: string;
+    featured?: boolean;
+    page?: number;
+    limit?: number;
+    hotelId?: string | null;
+  }): Promise<HotelServicesResponse> {
+    const paginatedParams = normalizeListParams(params);
+    const response = await api.get('/hotel-services', {
+      params: {
+        ...paginatedParams,
+        hotelId: tenantHotelIdForServices(params?.hotelId)
+      }
+    });
+    return {
+      services: unwrapApiData<HotelService[]>(response.data) || [],
+      pagination: response.data?.pagination || {
+        page: paginatedParams.page,
+        limit: paginatedParams.limit,
+        totalCount: 0,
+        totalPages: 1
+      }
+    };
+  }
+
   /**
    * Get specific hotel service details
    */
-  async getService(serviceId: string): Promise<HotelService> {
+  async getService(serviceId: string, hotelId?: string | null): Promise<HotelService> {
     try {
-      const response = await api.get(`/hotel-services/${serviceId}`);
+      const response = await api.get(`/hotel-services/${serviceId}`, {
+        params: { hotelId: tenantHotelIdForServices(hotelId) }
+      });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -147,8 +193,8 @@ class HotelServicesService {
   /**
    * Get service details (alias for getService for consistency)
    */
-  async getServiceDetails(serviceId: string): Promise<HotelService> {
-    return this.getService(serviceId);
+  async getServiceDetails(serviceId: string, hotelId?: string | null): Promise<HotelService> {
+    return this.getService(serviceId, hotelId);
   }
 
   /**
@@ -193,8 +239,9 @@ class HotelServicesService {
     status?: string;
   }): Promise<ServiceBookingsResponse> {
     try {
-      const response = await api.get('/hotel-services/bookings', { params });
-      return response.data.data;
+      const normalizedParams = normalizeListParams(params);
+      const response = await api.get('/hotel-services/bookings', { params: normalizedParams });
+      return unwrapApiData<ServiceBookingsResponse>(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -242,9 +289,11 @@ class HotelServicesService {
   /**
    * Get featured services
    */
-  async getFeaturedServices(): Promise<HotelService[]> {
+  async getFeaturedServices(hotelId?: string | null): Promise<HotelService[]> {
     try {
-      const response = await api.get('/hotel-services/featured');
+      const response = await api.get('/hotel-services/featured', {
+        params: { hotelId: tenantHotelIdForServices(hotelId) }
+      });
       return response.data.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -485,8 +534,19 @@ class HotelServicesService {
     };
   }> {
     try {
-      const response = await api.get('/admin/hotel-services', { params });
-      return response.data.data;
+      const normalizedParams = normalizeListParams(params);
+      const response = await api.get('/admin/hotel-services', { params: normalizedParams });
+      return unwrapApiData<{
+        services: HotelService[];
+        pagination: {
+          page: number;
+          limit: number;
+          total: number;
+          pages: number;
+          hasNext: boolean;
+          hasPrev: boolean;
+        };
+      }>(response.data);
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

@@ -71,6 +71,30 @@ router.post('/process-checkout', authorizePolicy('inventoryAutomation', 'staffAc
     throw new ApplicationError('Booking ID and Room ID are required', 400);
   }
 
+  // Enforce tenant ownership and booking-room relation before automation.
+  const Booking = (await import('../models/Booking.js')).default;
+  const Room = (await import('../models/Room.js')).default;
+  const [booking, room] = await Promise.all([
+    Booking.findOne({ _id: bookingId, hotelId }).lean(),
+    Room.findOne({ _id: roomId, hotelId }).lean()
+  ]);
+
+  if (!booking) {
+    throw new ApplicationError('Booking not found', 404);
+  }
+  if (!room) {
+    throw new ApplicationError('Room not found', 404);
+  }
+
+  const bookingHasRoom = Array.isArray(booking.rooms) && booking.rooms.some((rb) => {
+    if (!rb?.roomId) return false;
+    const bookingRoomId = rb.roomId?._id ? rb.roomId._id.toString() : rb.roomId.toString();
+    return bookingRoomId === roomId.toString();
+  });
+  if (!bookingHasRoom) {
+    throw new ApplicationError('Room does not belong to the booking', 400);
+  }
+
   // Import inventory automation service
   const { default: inventoryAutomationService } = await import('../services/inventoryAutomationService.js');
   

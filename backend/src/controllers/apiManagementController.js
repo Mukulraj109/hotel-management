@@ -9,6 +9,39 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
+const MASKED_SECRET = '********';
+
+const sanitizeAPIKeyResponse = (apiKey, options = {}) => {
+  if (!apiKey) return apiKey;
+  const { includeRawKey = false } = options;
+  const keyObj = typeof apiKey.toObject === 'function' ? apiKey.toObject() : { ...apiKey };
+  const rawKey = keyObj.keyId;
+
+  delete keyObj.keyHash;
+
+  if (!includeRawKey) {
+    delete keyObj.keyId;
+  }
+
+  if (includeRawKey && rawKey) {
+    keyObj.key = rawKey;
+  }
+
+  return keyObj;
+};
+
+const sanitizeWebhookResponse = (webhook, options = {}) => {
+  if (!webhook) return webhook;
+  const { includeSecret = false } = options;
+  const webhookObj = typeof webhook.toObject === 'function' ? webhook.toObject() : { ...webhook };
+
+  if (Object.prototype.hasOwnProperty.call(webhookObj, 'secret')) {
+    webhookObj.secret = includeSecret ? webhookObj.secret : MASKED_SECRET;
+  }
+
+  return webhookObj;
+};
+
 const apiManagementController = {
   
   // ===== API KEYS MANAGEMENT =====
@@ -54,11 +87,7 @@ const apiManagementController = {
       APIKey.countDocuments(filter)
     ]);
 
-    const keysWithUsage = apiKeys.map(key => {
-      const keyObj = { ...key };
-      delete keyObj.keyHash;
-      return keyObj;
-    });
+    const keysWithUsage = apiKeys.map(key => sanitizeAPIKeyResponse(key));
 
     res.json({
       success: true,
@@ -89,12 +118,9 @@ const apiManagementController = {
       throw new ApplicationError('API key not found', 404);
     }
 
-    const keyObj = { ...apiKey };
-    delete keyObj.keyHash;
-
     res.json({
       success: true,
-      data: keyObj
+      data: sanitizeAPIKeyResponse(apiKey)
     });
   }),
 
@@ -122,9 +148,7 @@ const apiManagementController = {
     await apiKey.save();
 
     // Return the key only once (for security)
-    const response = apiKey.toObject();
-    response.key = apiKey.keyId; // Show the actual key only on creation
-    delete response.keyHash;
+    const response = sanitizeAPIKeyResponse(apiKey, { includeRawKey: true });
 
     logger.info('API key created', {
       keyId: apiKey.keyId.substring(0, 10) + '...',
@@ -172,7 +196,7 @@ const apiManagementController = {
 
     res.json({
       success: true,
-      data: apiKey,
+      data: sanitizeAPIKeyResponse(apiKey),
       message: 'API key updated successfully'
     });
   }),
@@ -234,7 +258,7 @@ const apiManagementController = {
 
     res.json({
       success: true,
-      data: apiKey,
+      data: sanitizeAPIKeyResponse(apiKey),
       message: `API key ${apiKey.isActive ? 'activated' : 'deactivated'} successfully`
     });
   }),
@@ -274,10 +298,12 @@ const apiManagementController = {
       WebhookEndpoint.countDocuments(filter)
     ]);
 
+    const sanitizedWebhooks = webhooks.map(webhook => sanitizeWebhookResponse(webhook));
+
     res.json({
       success: true,
       data: {
-        webhooks,
+        webhooks: sanitizedWebhooks,
         pagination: {
           current: parsedPage,
           pages: Math.ceil(total / parsedLimit),
@@ -304,7 +330,7 @@ const apiManagementController = {
 
     res.json({
       success: true,
-      data: webhook
+      data: sanitizeWebhookResponse(webhook)
     });
   }),
 
@@ -346,7 +372,7 @@ const apiManagementController = {
 
     res.status(201).json({
       success: true,
-      data: webhook,
+      data: sanitizeWebhookResponse(webhook),
       message: 'Webhook endpoint created successfully'
     });
   }),
@@ -382,7 +408,7 @@ const apiManagementController = {
 
     res.json({
       success: true,
-      data: webhook,
+      data: sanitizeWebhookResponse(webhook),
       message: 'Webhook endpoint updated successfully'
     });
   }),

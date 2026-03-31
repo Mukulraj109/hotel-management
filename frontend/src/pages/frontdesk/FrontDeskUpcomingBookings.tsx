@@ -13,6 +13,8 @@ import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { realTimeService } from '../../services/realTimeService';
+import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
 import {
   Calendar,
   Users,
@@ -35,6 +37,8 @@ interface UpcomingBookingsStats {
 }
 
 function FrontDeskUpcomingBookings() {
+  const { user } = useAuth();
+  const { selectedPropertyId } = useProperty();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<UpcomingBookingsStats>({
     todayArrivals: 0,
@@ -65,7 +69,8 @@ function FrontDeskUpcomingBookings() {
       const response = await adminService.getUpcomingBookings({
         days: filters.days,
         page: filters.page,
-        limit: filters.limit
+        limit: filters.limit,
+        hotelId: selectedPropertyId || user?.hotelId || undefined
       });
 
       setBookings(response.data || []);
@@ -85,7 +90,7 @@ function FrontDeskUpcomingBookings() {
 
   useEffect(() => {
     fetchUpcomingBookings();
-  }, [filters.days, filters.page]);
+  }, [filters.days, filters.page, selectedPropertyId, user?.hotelId]);
 
   // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
@@ -110,7 +115,7 @@ function FrontDeskUpcomingBookings() {
       realTimeService.off('booking_cancelled', handleBookingEvent);
       realTimeService.off('booking:modification_requested', handleBookingEvent);
     };
-  }, [filters.days, filters.page]);
+  }, [filters.days, filters.page, selectedPropertyId, user?.hotelId]);
 
   // Filter bookings by search term and remove invalid entries
   const filteredBookings = bookings

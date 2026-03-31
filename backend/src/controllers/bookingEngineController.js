@@ -6,6 +6,78 @@ import { validateTransition, atomicStatusTransition } from '../utils/bookingStat
 
 const bookingEngineService = new BookingEngineService();
 
+const removeUndefinedDeep = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(removeUndefinedDeep);
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, nestedValue]) => {
+      if (nestedValue !== undefined) {
+        acc[key] = removeUndefinedDeep(nestedValue);
+      }
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const buildPromoPayload = (payload = {}, options = {}) => {
+  const { includeDefaults = false } = options;
+  const discount = payload.discount || {};
+  const conditions = payload.conditions || {};
+  const validity = payload.validity || {};
+  const usage = payload.usage || {};
+  const targeting = payload.targeting || {};
+
+  const resolvedCode = payload.code ? payload.code.toString().toUpperCase() : undefined;
+
+  const mappedPayload = {
+    codeId: payload.codeId || (includeDefaults ? uuidv4() : undefined),
+    code: resolvedCode,
+    name: payload.name,
+    description: payload.description,
+    type: payload.type,
+    discount: {
+      value: discount.value ?? payload.discountValue,
+      maxAmount: discount.maxAmount ?? payload.maxAmount,
+      freeNights: discount.freeNights,
+      upgradeRoomType: discount.upgradeRoomType
+    },
+    conditions: {
+      minBookingValue: conditions.minBookingValue ?? payload.minBookingValue,
+      minNights: conditions.minNights ?? payload.minNights,
+      maxNights: conditions.maxNights ?? payload.maxNights,
+      applicableRoomTypes: conditions.applicableRoomTypes ?? payload.applicableRoomTypes ?? (includeDefaults ? [] : undefined),
+      firstTimeGuests: conditions.firstTimeGuests ?? payload.firstTimeGuests ?? (includeDefaults ? false : undefined),
+      maxUsagePerGuest: conditions.maxUsagePerGuest ?? payload.maxUsagePerGuest ?? (includeDefaults ? 1 : undefined),
+      combinableWithOtherOffers: conditions.combinableWithOtherOffers ?? payload.combinableWithOtherOffers ?? (includeDefaults ? false : undefined),
+      validDaysOfWeek: conditions.validDaysOfWeek,
+      blackoutDates: conditions.blackoutDates,
+      advanceBookingDays: conditions.advanceBookingDays
+    },
+    validity: {
+      startDate: validity.startDate ?? payload.startDate,
+      endDate: validity.endDate ?? payload.endDate,
+      bookingWindow: validity.bookingWindow
+    },
+    usage: {
+      totalUsageLimit: usage.totalUsageLimit ?? payload.totalUsageLimit,
+      currentUsage: usage.currentUsage ?? payload.currentUsage ?? (includeDefaults ? 0 : undefined),
+      usagePerDay: usage.usagePerDay,
+      dailyUsage: usage.dailyUsage
+    },
+    targeting: {
+      guestSegments: targeting.guestSegments ?? payload.guestSegments ?? (includeDefaults ? [] : undefined),
+      channels: targeting.channels ?? payload.channels ?? (includeDefaults ? [] : undefined),
+      geolocations: targeting.geolocations,
+      membershipTiers: targeting.membershipTiers
+    },
+    isActive: includeDefaults ? payload.isActive !== false : payload.isActive
+  };
+
+  return includeDefaults ? mappedPayload : removeUndefinedDeep(mappedPayload);
+};
+
 // Booking Widget Management
 export const createBookingWidget = async (req, res) => {
   try {
@@ -148,46 +220,15 @@ export const getWidgetCode = async (req, res) => {
 // Promo Code Management
 export const createPromoCode = async (req, res) => {
   try {
-    const {
-      code, name, description, type, discountValue, maxAmount, minBookingValue,
-      minNights, maxNights, applicableRoomTypes, firstTimeGuests, maxUsagePerGuest,
-      combinableWithOtherOffers, startDate, endDate, totalUsageLimit, guestSegments,
-      channels, isActive
-    } = req.body;
-
+    const promoPayload = buildPromoPayload(req.body, { includeDefaults: true });
     const promoData = {
-      codeId: req.body.codeId || uuidv4(),
+      ...promoPayload,
       hotelId: req.user?.hotelId,
-      code: code.toUpperCase(),
-      name,
-      description,
-      type,
-      discount: {
-        value: discountValue,
-        maxAmount
-      },
-      conditions: {
-        minBookingValue,
-        minNights,
-        maxNights,
-        applicableRoomTypes: applicableRoomTypes || [],
-        firstTimeGuests: firstTimeGuests || false,
-        maxUsagePerGuest: maxUsagePerGuest || 1,
-        combinableWithOtherOffers: combinableWithOtherOffers || false
-      },
       validity: {
-        startDate: new Date(startDate),
-        endDate: new Date(endDate)
-      },
-      usage: {
-        totalUsageLimit,
-        currentUsage: 0
-      },
-      targeting: {
-        guestSegments: guestSegments || [],
-        channels: channels || []
-      },
-      isActive: isActive !== false
+        ...promoPayload.validity,
+        startDate: promoPayload.validity.startDate ? new Date(promoPayload.validity.startDate) : undefined,
+        endDate: promoPayload.validity.endDate ? new Date(promoPayload.validity.endDate) : undefined
+      }
     };
 
     const promoCode = new PromoCode(promoData);
@@ -257,9 +298,20 @@ export const updatePromoCode = async (req, res) => {
   try {
     const findFilter = { _id: req.params.id };
     if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const promoPayload = buildPromoPayload(req.body, { includeDefaults: false });
+    const updatePayload = {
+      ...promoPayload,
+      validity: {
+        ...promoPayload.validity,
+        startDate: promoPayload.validity.startDate ? new Date(promoPayload.validity.startDate) : undefined,
+        endDate: promoPayload.validity.endDate ? new Date(promoPayload.validity.endDate) : undefined
+      }
+    };
+    delete updatePayload.hotelId;
+
     const promoCode = await PromoCode.findOneAndUpdate(
       findFilter,
-      req.body,
+      updatePayload,
       { new: true, runValidators: true }
     );
     
@@ -470,7 +522,9 @@ export const sendEmailCampaign = async (req, res) => {
 
 export const getCampaignAnalytics = async (req, res) => {
   try {
-    const campaign = await EmailCampaign.findById(req.params.id).lean();
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const campaign = await EmailCampaign.findOne(findFilter).lean();
     
     if (!campaign) {
       return res.status(404).json({
@@ -504,7 +558,8 @@ export const createLoyaltyProgram = async (req, res) => {
   try {
     const programData = {
       ...req.body,
-      programId: uuidv4()
+      programId: uuidv4(),
+      hotelId: req.user?.hotelId
     };
     
     const program = new LoyaltyProgram(programData);
@@ -568,7 +623,8 @@ export const createLandingPage = async (req, res) => {
   try {
     const pageData = {
       ...req.body,
-      pageId: uuidv4()
+      pageId: uuidv4(),
+      hotelId: req.user?.hotelId
     };
     
     // Generate SEO content
@@ -615,7 +671,9 @@ export const getLandingPages = async (req, res) => {
 
 export const getLandingPageAnalytics = async (req, res) => {
   try {
-    const page = await LandingPage.findById(req.params.id).lean();
+    const findFilter = { _id: req.params.id };
+    if (req.user?.hotelId) findFilter.hotelId = req.user.hotelId;
+    const page = await LandingPage.findOne(findFilter).lean();
     
     if (!page) {
       return res.status(404).json({
@@ -639,7 +697,10 @@ export const getLandingPageAnalytics = async (req, res) => {
 // Review Management
 export const createReview = async (req, res) => {
   try {
-    const review = await bookingEngineService.processReview(req.body);
+    const review = await bookingEngineService.processReview({
+      ...req.body,
+      hotelId: req.user?.hotelId
+    });
     
     res.status(201).json({
       success: true,
@@ -981,6 +1042,16 @@ export const getWidgetAnalytics = async (req, res) => {
   try {
     const { widgetId } = req.params;
     const { dateRange = 7 } = req.query;
+    const widgetFilter = { widgetId };
+    if (req.user?.hotelId) widgetFilter.hotelId = req.user.hotelId;
+    const widget = await BookingWidget.findOne(widgetFilter).select('_id').lean();
+
+    if (!widget) {
+      return res.status(404).json({
+        success: false,
+        message: 'Widget not found'
+      });
+    }
 
     // Get basic performance metrics
     const performance = await WidgetTracking.getWidgetPerformance(widgetId, parseInt(dateRange));
@@ -1008,6 +1079,25 @@ export const getWidgetAnalytics = async (req, res) => {
       }
     });
 
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const getBookingPackages = async (req, res) => {
+  try {
+    const filter = { type: 'package' };
+    if (req.user?.hotelId) filter.hotelId = req.user.hotelId;
+    const packages = await LandingPage.find(filter)
+      .sort({ createdAt: -1 }).lean().limit(100);
+
+    res.json({
+      success: true,
+      data: packages
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -1283,6 +1373,7 @@ export default {
   processLoyaltyPoints,
   createLandingPage,
   getLandingPages,
+  getBookingPackages,
   getLandingPageAnalytics,
   createReview,
   getReviews,

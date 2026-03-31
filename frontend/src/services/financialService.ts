@@ -1,4 +1,4 @@
-import { api as apiClient } from './api';
+import { api as apiClient, normalizeListParams } from './api';
 
 // All paths use /financial/* which combines with axios baseURL /api/v1 to form /api/v1/financial/*
 
@@ -278,14 +278,19 @@ class FinancialService {
     endDate?: string; 
     account?: string; 
     journal?: string; 
-    status?: string 
+    status?: string;
+    page?: number;
+    limit?: number;
   }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.account) params.append('account', filters.account);
-    if (filters?.journal) params.append('journal', filters.journal);
-    if (filters?.status) params.append('status', filters.status);
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    if (normalizedFilters.account) params.append('account', normalizedFilters.account);
+    if (normalizedFilters.journal) params.append('journal', normalizedFilters.journal);
+    if (normalizedFilters.status) params.append('status', normalizedFilters.status);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
     
     const response = await apiClient.get(`/financial/journal-entries?${params}`);
     return response.data;
@@ -307,14 +312,19 @@ class FinancialService {
     type?: string; 
     customer?: string; 
     startDate?: string; 
-    endDate?: string 
+    endDate?: string;
+    page?: number;
+    limit?: number;
   }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.type) params.append('type', filters.type);
-    if (filters?.customer) params.append('customer', filters.customer);
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (normalizedFilters.status) params.append('status', normalizedFilters.status);
+    if (normalizedFilters.type) params.append('type', normalizedFilters.type);
+    if (normalizedFilters.customer) params.append('customer', normalizedFilters.customer);
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
     
     const response = await apiClient.get(`/financial/invoices?${params}`);
     return response.data;
@@ -338,14 +348,19 @@ class FinancialService {
     startDate?: string;
     endDate?: string;
     includeStats?: boolean;
+    page?: number;
+    limit?: number;
   }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.method) params.append('method', filters.method);
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.type) params.append('type', filters.type);
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.includeStats) params.append('includeStats', 'true');
+    if (normalizedFilters.method) params.append('method', normalizedFilters.method);
+    if (normalizedFilters.status) params.append('status', normalizedFilters.status);
+    if (normalizedFilters.type) params.append('type', normalizedFilters.type);
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    if (normalizedFilters.includeStats) params.append('includeStats', 'true');
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
 
     const response = await apiClient.get(`/financial/payments?${params}`);
     return response.data;
@@ -438,10 +453,13 @@ class FinancialService {
   }
 
   async getReports(filters?: { reportType?: string; startDate?: string; endDate?: string }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.reportType) params.append('reportType', filters.reportType);
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (normalizedFilters.reportType) params.append('reportType', normalizedFilters.reportType);
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
     
     const response = await apiClient.get(`/financial/reports?${params}`);
     return response.data;
@@ -605,14 +623,15 @@ class FinancialService {
   async getAccountTransactions(accountId: string, filters?: { 
     startDate?: string; 
     endDate?: string; 
+    page?: number;
     limit?: number;
-    offset?: number;
   }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.offset) params.append('offset', filters.offset.toString());
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
     
     const response = await apiClient.get(`/financial/chart-of-accounts/${accountId}/transactions?${params}`);
     return response.data;
@@ -638,14 +657,15 @@ class FinancialService {
   async getBankTransactions(accountId: string, filters?: { 
     startDate?: string; 
     endDate?: string; 
+    page?: number;
     limit?: number;
-    offset?: number;
   }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.offset) params.append('offset', filters.offset.toString());
+    if (normalizedFilters.startDate) params.append('startDate', normalizedFilters.startDate);
+    if (normalizedFilters.endDate) params.append('endDate', normalizedFilters.endDate);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
     
     const response = await apiClient.get(`/financial/bank-accounts/${accountId}/transactions?${params}`);
     return response.data;

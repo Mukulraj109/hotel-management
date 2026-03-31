@@ -9,6 +9,16 @@ import analyticsService from '../services/analyticsService.js';
 import emailNotificationService from '../services/emailNotificationService.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
+const isSuperAdmin = (user) => user?.role === 'super_admin';
+
+const buildScopedTravelAgentQuery = (req, id) => {
+  const query = { _id: id };
+  if (!isSuperAdmin(req.user) && req.user?.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
+  return query;
+};
+
 /**
  * @swagger
  * components:
@@ -236,7 +246,8 @@ export const getAllTravelAgents = catchAsync(async (req, res) => {
 export const getTravelAgentById = catchAsync(async (req, res) => {
   const { id } = req.params;
 
-  const travelAgent = await TravelAgent.findById(id)
+  const query = buildScopedTravelAgentQuery(req, id);
+  const travelAgent = await TravelAgent.findOne(query)
     .populate('userId', 'name email phone')
     .populate('hotelId', 'name address').lean();
 
@@ -287,7 +298,8 @@ export const updateTravelAgent = catchAsync(async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
-  const travelAgent = await TravelAgent.findById(id).lean();
+  const query = buildScopedTravelAgentQuery(req, id);
+  const travelAgent = await TravelAgent.findOne(query).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
   }
@@ -305,7 +317,7 @@ export const updateTravelAgent = catchAsync(async (req, res) => {
   }
 
   const updatedAgent = await TravelAgent.findByIdAndUpdate(
-    id,
+    travelAgent._id,
     updates,
     { new: true, runValidators: true }
   ).populate('userId', 'name email');
@@ -429,7 +441,8 @@ export const getTravelAgentPerformance = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { startDate, endDate } = req.query;
 
-  const travelAgent = await TravelAgent.findById(id).lean();
+  const query = buildScopedTravelAgentQuery(req, id);
+  const travelAgent = await TravelAgent.findOne(query).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
   }
@@ -831,6 +844,7 @@ export const getBookingTrends = catchAsync(async (req, res) => {
   const filters = { granularity };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
+  if (req.user?.hotelId) filters.hotelId = req.user.hotelId;
 
   // If user is a travel agent, only show their own data
   if (req.user.role === 'travel_agent') {
@@ -877,6 +891,7 @@ export const getRevenueForecast = catchAsync(async (req, res) => {
   const { periodsAhead = 6, granularity = 'month' } = req.query;
 
   const filters = { granularity };
+  if (req.user?.hotelId) filters.hotelId = req.user.hotelId;
 
   // If user is a travel agent, only show their own forecast
   if (req.user.role === 'travel_agent') {
@@ -924,6 +939,7 @@ export const getPerformanceMetrics = catchAsync(async (req, res) => {
   const filters = {};
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
+  if (req.user?.hotelId) filters.hotelId = req.user.hotelId;
 
   // If user is a travel agent, only show their own metrics
   if (req.user.role === 'travel_agent') {

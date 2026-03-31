@@ -60,8 +60,45 @@ interface IntegrationSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
+const DEFAULT_INTEGRATION_VALUES: IntegrationFormData = {
+  payment: {
+    stripe: {
+      enabled: false,
+      publicKey: '',
+      secretKey: ''
+    },
+    razorpay: {
+      enabled: false,
+      keyId: '',
+      keySecret: ''
+    }
+  },
+  ota: {
+    booking: {
+      enabled: false,
+      apiKey: '',
+      hotelId: ''
+    },
+    expedia: {
+      enabled: false,
+      apiKey: '',
+      hotelId: ''
+    }
+  },
+  analytics: {
+    googleAnalytics: {
+      enabled: false,
+      trackingId: ''
+    },
+    mixpanel: {
+      enabled: false,
+      token: ''
+    }
+  }
+};
+
 export default function IntegrationSettings({ onSettingsChange }: IntegrationSettingsProps = {}) {
-  const { selectedProperty, selectedPropertyId } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
@@ -94,42 +131,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     reset,
     formState: { isDirty }
   } = useForm<IntegrationFormData>({
-    defaultValues: {
-      payment: {
-        stripe: {
-          enabled: false,
-          publicKey: '',
-          secretKey: ''
-        },
-        razorpay: {
-          enabled: false,
-          keyId: '',
-          keySecret: ''
-        }
-      },
-      ota: {
-        booking: {
-          enabled: false,
-          apiKey: '',
-          hotelId: ''
-        },
-        expedia: {
-          enabled: false,
-          apiKey: '',
-          hotelId: ''
-        }
-      },
-      analytics: {
-        googleAnalytics: {
-          enabled: false,
-          trackingId: ''
-        },
-        mixpanel: {
-          enabled: false,
-          token: ''
-        }
-      }
-    }
+    defaultValues: DEFAULT_INTEGRATION_VALUES
   });
 
   const watchedValues = watch();
@@ -148,8 +150,8 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     const loadIntegrationSettings = async () => {
       try {
         setIsLoading(true);
-        const { data } = await api.get('/integrations/settings');
-        reset(data.data);
+        const { data } = await api.get('/hotel-settings/integrations');
+        reset(data?.data?.integrations || DEFAULT_INTEGRATION_VALUES);
       } catch (error) {
         toast.error('Failed to load integration settings');
       } finally {
@@ -158,7 +160,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     };
 
     loadIntegrationSettings();
-  }, [reset]);
+  }, [reset, selectedPropertyId]);
 
   // Watch for form changes
   useEffect(() => {

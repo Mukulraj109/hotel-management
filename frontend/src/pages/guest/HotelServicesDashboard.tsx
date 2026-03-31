@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -26,16 +26,21 @@ import { useRealTime } from '../../services/realTimeService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 function HotelServicesDashboard() {
   const [selectedType, setSelectedType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [filterFeatured, setFilterFeatured] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const publicHotelId = useMemo(() => resolvePublicHotelId(searchParams), [searchParams]);
   const queryClient = useQueryClient();
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const { connectionState, connect, on, off } = useRealTime();
 
   // WebSocket connection setup
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
@@ -48,14 +53,30 @@ function HotelServicesDashboard() {
     if (connectionState !== 'connected') return;
 
     const handleServiceUpdated = (data: Record<string, unknown>) => {
-      const updatedService = data.service;
+      const wrappedData = (data.data && typeof data.data === 'object')
+        ? data.data as Record<string, unknown>
+        : data;
+      const updatedService = wrappedData.service as HotelService | undefined;
+      if (!updatedService?._id) return;
       
       // Update services cache
-      queryClient.setQueryData(['hotel-services'], (oldData: Record<string, unknown>) => {
+      queryClient.setQueriesData({ queryKey: ['hotel-services'] }, (oldData: unknown) => {
         if (!oldData) return oldData;
-        return oldData.map((service: HotelService) => 
-          service._id === updatedService._id ? updatedService : service
-        );
+        if (Array.isArray(oldData)) {
+          return oldData.map((service: HotelService) =>
+            service._id === updatedService._id ? updatedService : service
+          );
+        }
+
+        const paginated = oldData as { services?: HotelService[] };
+        if (!Array.isArray(paginated.services)) return oldData;
+
+        return {
+          ...paginated,
+          services: paginated.services.map((service) =>
+            service._id === updatedService._id ? updatedService : service
+          )
+        };
       });
 
       // Update featured services cache if applicable
@@ -64,14 +85,14 @@ function HotelServicesDashboard() {
       }
 
       // Show notification for price changes or availability updates
-      if (data.priceChanged) {
+      if (wrappedData.priceChanged) {
         toast(`Price updated for ${updatedService.name}`, {
           duration: 4000,
           icon: '💰'
         });
       }
 
-      if (data.availabilityChanged) {
+      if (wrappedData.availabilityChanged) {
         toast(`Availability updated for ${updatedService.name}`, {
           duration: 3000,
           icon: updatedService.isActive ? '✅' : '❌'
@@ -98,8 +119,8 @@ function HotelServicesDashboard() {
       const service = data.service;
       
       // Update cache to reflect unavailable status
-      queryClient.setQueryData(['hotel-services'], (oldData: Record<string, unknown>) => {
-        if (!oldData) return oldData;
+      queryClient.setQueriesData({ queryKey: ['hotel-services'] }, (oldData: unknown) => {
+        if (!Array.isArray(oldData)) return oldData;
         return oldData.map((s: HotelService) =>
           s._id === service._id ? { ...s, isActive: false } : s
         );
@@ -151,13 +172,20 @@ function HotelServicesDashboard() {
     if (selectedType) params.type = selectedType;
     if (searchTerm) params.search = searchTerm;
     if (filterFeatured) params.featured = true;
+    params.page = currentPage;
+    params.limit = PAGE_SIZE;
+    params.hotelId = publicHotelId;
     return params;
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedType, searchTerm, filterFeatured, publicHotelId]);
+
   // Queries
-  const { data: services, isLoading: servicesLoading, error: servicesError, refetch: refetchServices } = useQuery({
-    queryKey: ['hotel-services', getServicesQuery()],
-    queryFn: () => hotelServicesService.getServices(getServicesQuery()),
+  const { data: servicesData, isLoading: servicesLoading, error: servicesError, refetch: refetchServices } = useQuery({
+    queryKey: ['hotel-services', publicHotelId, getServicesQuery()],
+    queryFn: () => hotelServicesService.getServicesWithPagination(getServicesQuery()),
     staleTime: 5 * 60 * 1000
   });
 
@@ -168,15 +196,18 @@ function HotelServicesDashboard() {
   });
 
   const { data: featuredServices, isLoading: featuredLoading } = useQuery({
-    queryKey: ['featured-services'],
-    queryFn: hotelServicesService.getFeaturedServices,
+    queryKey: ['featured-services', publicHotelId],
+    queryFn: () => hotelServicesService.getFeaturedServices(publicHotelId),
     staleTime: 5 * 60 * 1000
   });
 
   // Filter services based on favorites if needed
-  const filteredServices = services?.filter(service =>
+  const services = servicesData?.services || [];
+  const servicesPagination = servicesData?.pagination;
+
+  const filteredServices = services.filter(service =>
     !filterFeatured || service.featured
-  ) || [];
+  );
 
   const handleServiceClick = (service: HotelService) => {
     navigate(`/app/services/${service._id}`);
@@ -526,6 +557,32 @@ function HotelServicesDashboard() {
             )}
           </div>
         </Card>
+
+        {servicesPagination && servicesPagination.totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Page {servicesPagination.page} of {servicesPagination.totalPages} ({servicesPagination.totalCount} total)
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage <= 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(servicesPagination.totalPages, prev + 1))}
+                disabled={currentPage >= servicesPagination.totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,5 @@
 import { ApiResponse } from '../types/api';
-import { API_CONFIG } from '../config/api';
-import { api } from './api';
+import { api, normalizeEntityId } from './api';
 
 export interface GuestService {
   _id: string;
@@ -49,6 +48,9 @@ export interface AssignServiceData {
 export interface GuestServiceFilters {
   status?: string;
   serviceType?: string;
+  serviceTypes?: string;
+  serviceVariation?: string;
+  excludeServiceVariation?: string;
   priority?: string;
   assignedTo?: string;
   userId?: string;
@@ -68,33 +70,28 @@ class AdminGuestServicesService {
     const basePath = options.basePath !== undefined ? options.basePath : this.basePath;
     const url = `${basePath}${endpoint}`;
 
-    try {
-      let response;
-      const method = (options.method || 'GET').toUpperCase();
+    let response;
+    const method = (options.method || 'GET').toUpperCase();
 
-      switch (method) {
-        case 'POST':
-          response = await api.post(url, options.data);
-          break;
-        case 'PUT':
-          response = await api.put(url, options.data);
-          break;
-        case 'PATCH':
-          response = await api.patch(url, options.data);
-          break;
-        case 'DELETE':
-          response = await api.delete(url);
-          break;
-        default:
-          response = await api.get(url);
-          break;
-      }
-
-      return response.data;
-    } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
-      throw error;
+    switch (method) {
+      case 'POST':
+        response = await api.post(url, options.data);
+        break;
+      case 'PUT':
+        response = await api.put(url, options.data);
+        break;
+      case 'PATCH':
+        response = await api.patch(url, options.data);
+        break;
+      case 'DELETE':
+        response = await api.delete(url);
+        break;
+      default:
+        response = await api.get(url);
+        break;
     }
+
+    return response.data;
   }
 
   private async getUserHotelId(): Promise<string> {
@@ -102,6 +99,14 @@ class AdminGuestServicesService {
     const now = Date.now();
     if (this.hotelIdCache && now < this.hotelIdCacheExpiry) {
       return this.hotelIdCache;
+    }
+
+    // Prefer selected property context when available (multi-property admin flow)
+    const selectedPropertyId = typeof window !== 'undefined' ? localStorage.getItem('selectedPropertyId') : null;
+    if (selectedPropertyId) {
+      this.hotelIdCache = selectedPropertyId;
+      this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
+      return selectedPropertyId;
     }
 
     // Get hotelId from user profile API using the configured api instance
@@ -148,20 +153,23 @@ class AdminGuestServicesService {
   }
 
   async getServiceById(serviceId: string): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}`);
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}`);
   }
 
   async updateService(serviceId: string, updates: Partial<GuestService>): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}`, {
+    const hotelId = await this.getUserHotelId();
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}`, {
       method: 'PATCH',
-      data: updates,
+      data: { ...updates, hotelId },
     });
   }
 
   async assignService(serviceId: string, assignData: AssignServiceData): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}`, {
+    const hotelId = await this.getUserHotelId();
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}`, {
       method: 'PATCH',
       data: {
+        hotelId,
         assignedTo: assignData.assignedTo,
         notes: assignData.notes,
         scheduledTime: assignData.scheduledTime,
@@ -171,7 +179,7 @@ class AdminGuestServicesService {
   }
 
   async updateStatus(serviceId: string, status: string, notes?: string): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}`, {
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}`, {
       method: 'PATCH',
       data: { status, notes },
     });
@@ -231,7 +239,7 @@ class AdminGuestServicesService {
 
   // Add internal notes to a service
   async addInternalNotes(serviceId: string, notes: string): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}/notes`, {
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}/notes`, {
       method: 'POST',
       data: { notes },
     });
@@ -239,7 +247,7 @@ class AdminGuestServicesService {
 
   // Update service cost (when completed)
   async updateCost(serviceId: string, actualCost: number): Promise<ApiResponse<GuestService>> {
-    return this.apiRequest(`/${serviceId}/cost`, {
+    return this.apiRequest(`/${normalizeEntityId(serviceId)}/cost`, {
       method: 'PATCH',
       data: { actualCost },
     });
@@ -247,21 +255,23 @@ class AdminGuestServicesService {
 
   // Bulk operations
   async bulkAssign(serviceIds: string[], assignedTo: string): Promise<ApiResponse<{ updated: number }>> {
+    const hotelId = await this.getUserHotelId();
     return this.apiRequest('/bulk/assign', {
       method: 'PATCH',
-      data: { serviceIds, assignedTo },
+      data: { serviceIds, assignedTo, hotelId },
     });
   }
 
   async bulkUpdateStatus(serviceIds: string[], status: string): Promise<ApiResponse<{ updated: number }>> {
+    const hotelId = await this.getUserHotelId();
     return this.apiRequest('/bulk/status', {
       method: 'PATCH',
-      data: { serviceIds, status },
+      data: { serviceIds, status, hotelId },
     });
   }
 
   // Export services data for reporting
-  async exportServices(filters?: GuestServiceFilters, format: 'csv' | 'excel' = 'csv', hotelId?: string): Promise<Blob> {
+  async exportServices(filters?: GuestServiceFilters, format: 'csv' | 'json' = 'csv', hotelId?: string): Promise<Blob> {
     try {
       const queryParams = new URLSearchParams();
 

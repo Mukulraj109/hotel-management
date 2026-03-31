@@ -55,10 +55,6 @@ const TravelAgentDashboard: React.FC = () => {
   
   // Determine initial tab based on current URL
   const getInitialTab = (): 'overview' | 'bookings' | 'commission' | 'analytics' | 'profile' => {
-    if (location.pathname.includes('/bookings')) {
-      return 'bookings';
-    }
-    
     // Check for tab query parameter
     const urlParams = new URLSearchParams(location.search);
     const tabParam = urlParams.get('tab');
@@ -121,7 +117,7 @@ const TravelAgentDashboard: React.FC = () => {
       setBookings(safeBookings);
 
       // Calculate stats with safe data
-      calculateStats(safeBookings, agentProfile);
+      calculateStats(safeBookings, agentProfile || null);
     } catch (error) {
       toast.error('Failed to load dashboard data');
       
@@ -164,7 +160,7 @@ const TravelAgentDashboard: React.FC = () => {
     }
   };
 
-  const calculateStats = (bookings: TravelAgentBooking[], agent: TravelAgent) => {
+  const calculateStats = (bookings: TravelAgentBooking[], agent: TravelAgent | null) => {
     // Add null checks to prevent errors
     const safeBookings = bookings || [];
     
@@ -301,13 +297,7 @@ const TravelAgentDashboard: React.FC = () => {
                   onClick={() => {
                     setSelectedTab(tab as unknown);
                     // Navigate to appropriate URL
-                    if (tab === 'overview') {
-                      navigate('/travel-agent');
-                    } else if (tab === 'bookings') {
-                      navigate('/travel-agent/bookings');
-                    } else {
-                      navigate(`/travel-agent?tab=${tab}`);
-                    }
+                    navigate(tab === 'overview' ? '/travel-agent' : `/travel-agent?tab=${tab}`);
                   }}
                   className={`px-6 py-3 text-sm font-medium capitalize ${
                     selectedTab === tab
@@ -549,9 +539,10 @@ const TravelAgentDashboard: React.FC = () => {
                         Commission: ₹{(booking.commission.amount + (booking.commission.bonusAmount || 0)).toLocaleString()}
                       </p>
                     </div>
-                    <button aria-label="View"
-                      onClick={() => navigate(`/travel-agent/booking/${booking._id}`)}
-                      className="ml-4 p-2 text-gray-600 hover:text-indigo-600"
+                    <button
+                      type="button"
+                      className="ml-4 p-2 text-gray-400 cursor-not-allowed"
+                      title="Booking detail page is not available in travel-agent routes"
                     >
                       <Eye className="h-5 w-5" />
                     </button>
@@ -675,12 +666,9 @@ const TravelAgentDashboard: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => navigate(`/travel-agent/booking/${booking._id}`)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-4"
-                        >
+                        <span className="text-gray-400 mr-4" title="Booking detail page is not available in travel-agent routes">
                           View
-                        </button>
+                        </span>
                         <button aria-label="Download" className="text-gray-600 hover:text-gray-900">
                           <Download className="h-4 w-4 inline" />
                         </button>

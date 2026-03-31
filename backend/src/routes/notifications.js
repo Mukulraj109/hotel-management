@@ -13,6 +13,7 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
 import { notificationEmitter } from '../services/notificationEmitter.js';
+import websocketService from '../services/websocketService.js';
 import optimizedNotificationService from '../services/optimizedNotificationService.js';
 import rateLimiter from '../services/rateLimiter.js';
 import logger from '../utils/logger.js';
@@ -28,9 +29,19 @@ router.use(authorizePolicy('notifications', 'baseAccess'));
 
 // GET /api/v1/notifications - Get user notifications with pagination and filters
 router.get('/', catchAsync(async (req, res, next) => {
-  const { page = 1, limit = 20, status, type, unreadOnly = false } = req.query;
+  const {
+    page = 1,
+    limit = 20,
+    status,
+    type,
+    priority,
+    search,
+    unreadOnly = false,
+    readOnly = false,
+    propertyId
+  } = req.query;
   const userId = req.user._id;
-  const hotelId = req.user.hotelId;
+  const hotelId = propertyId || req.user.hotelId;
 
   // Enforce max limit to prevent unbounded queries
   const safeLimit = Math.min(parseInt(limit) || 20, 100);
@@ -48,10 +59,26 @@ router.get('/', catchAsync(async (req, res, next) => {
   if (type) {
     query.type = type;
   }
+
+  if (priority) {
+    query.priority = priority;
+  }
+
+  if (search) {
+    const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.$or = [
+      { title: { $regex: escaped, $options: 'i' } },
+      { message: { $regex: escaped, $options: 'i' } }
+    ];
+  }
   
   if (unreadOnly === 'true') {
     query.status = { $in: ['sent', 'delivered'] };
     query.readAt = { $exists: false };
+  }
+
+  if (readOnly === 'true') {
+    query.readAt = { $exists: true };
   }
   
   // Calculate pagination
@@ -775,6 +802,25 @@ router.patch('/:id([0-9a-fA-F]{24})/read', validate(mutationBaselineSchema), cat
   }
 
   await notification.markAsRead();
+  const notificationId = notification._id.toString();
+
+  try {
+    const readPayload = {
+      type: 'notification_read',
+      id: notificationId,
+      _id: notificationId,
+      notificationId,
+      readAt: notification.readAt || new Date().toISOString()
+    };
+    notificationEmitter.emit(`user:${userId}`, readPayload);
+    await websocketService.sendToUser(userId, 'notification:read', readPayload);
+  } catch (emitError) {
+    logger.warn('Failed to emit notification read event', {
+      userId: userId?.toString?.() || String(userId),
+      notificationId,
+      error: emitError.message
+    });
+  }
 
   res.status(200).json({
     status: 'success',
@@ -789,6 +835,29 @@ router.post('/mark-read', validate(schemas.markNotificationsRead), catchAsync(as
   const hotelId = req.user.hotelId;
 
   const result = await Notification.markAsRead(userId, notificationIds, hotelId);
+  if (result.modifiedCount > 0) {
+    try {
+      const readPayload = {
+        type: 'notification_read',
+        notificationIds,
+        count: result.modifiedCount
+      };
+      notificationEmitter.emit(`user:${userId}`, {
+        ...readPayload,
+        id: notificationIds?.[0]
+      });
+      await websocketService.sendToUser(userId, 'notifications:bulk-update', {
+        ...readPayload,
+        action: 'read'
+      });
+    } catch (emitError) {
+      logger.warn('Failed to emit bulk notification read event', {
+        userId: userId?.toString?.() || String(userId),
+        count: result.modifiedCount,
+        error: emitError.message
+      });
+    }
+  }
   
   res.status(200).json({
     status: 'success',
@@ -803,6 +872,26 @@ router.post('/mark-all-read', validate(mutationBaselineSchema), catchAsync(async
   const hotelId = req.user.hotelId;
 
   const result = await Notification.markAllAsRead(userId, hotelId);
+  if (result.modifiedCount > 0) {
+    try {
+      const readPayload = {
+        type: 'notification_read',
+        count: result.modifiedCount,
+        markAll: true
+      };
+      notificationEmitter.emit(`user:${userId}`, readPayload);
+      await websocketService.sendToUser(userId, 'notifications:bulk-update', {
+        ...readPayload,
+        action: 'read'
+      });
+    } catch (emitError) {
+      logger.warn('Failed to emit mark-all notification read event', {
+        userId: userId?.toString?.() || String(userId),
+        count: result.modifiedCount,
+        error: emitError.message
+      });
+    }
+  }
   
   res.status(200).json({
     status: 'success',
@@ -826,6 +915,24 @@ router.delete('/:id([0-9a-fA-F]{24})', validate(mutationBaselineSchema), catchAs
   
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
+  }
+
+  const notificationId = notification._id.toString();
+  try {
+    const deletedPayload = {
+      type: 'notification_deleted',
+      id: notificationId,
+      _id: notificationId,
+      notificationId
+    };
+    notificationEmitter.emit(`user:${userId}`, deletedPayload);
+    await websocketService.sendToUser(userId, 'notification:deleted', deletedPayload);
+  } catch (emitError) {
+    logger.warn('Failed to emit notification deleted event', {
+      userId: userId?.toString?.() || String(userId),
+      notificationId,
+      error: emitError.message
+    });
   }
   
   res.status(200).json({
@@ -1146,6 +1253,29 @@ router.delete('/bulk', validate(schemas.deleteNotifications), catchAsync(async (
   }
 
   const result = await Notification.deleteMany(deleteQuery);
+  if (result.deletedCount > 0) {
+    try {
+      const deletedPayload = {
+        type: 'notification_deleted',
+        notificationIds,
+        count: result.deletedCount
+      };
+      notificationEmitter.emit(`user:${userId}`, {
+        ...deletedPayload,
+        id: notificationIds?.[0]
+      });
+      await websocketService.sendToUser(userId, 'notifications:bulk-update', {
+        ...deletedPayload,
+        action: 'deleted'
+      });
+    } catch (emitError) {
+      logger.warn('Failed to emit bulk notification deleted event', {
+        userId: userId?.toString?.() || String(userId),
+        count: result.deletedCount,
+        error: emitError.message
+      });
+    }
+  }
 
   res.status(200).json({
     status: 'success',

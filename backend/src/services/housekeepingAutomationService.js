@@ -94,12 +94,34 @@ class HousekeepingAutomationService {
       };
 
       // Get booking and room details
-      const booking = await Booking.findById(bookingId).populate('rooms.roomId').lean();
-      const room = await Room.findById(roomId).lean();
-      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
+      const bookingFilter = { _id: bookingId };
+      if (options.hotelId) {
+        bookingFilter.hotelId = options.hotelId;
+      }
+      const roomFilter = { _id: roomId };
+      if (options.hotelId) {
+        roomFilter.hotelId = options.hotelId;
+      }
+      const roomInventoryFilter = { roomId };
+      if (options.hotelId) {
+        roomInventoryFilter.hotelId = options.hotelId;
+      }
+
+      const booking = await Booking.findOne(bookingFilter).populate('rooms.roomId').lean();
+      const room = await Room.findOne(roomFilter).lean();
+      const roomInventory = await RoomInventory.findOne(roomInventoryFilter).lean();
 
       if (!booking || !room) {
         throw new Error('Booking or room not found');
+      }
+
+      const bookingHasRoom = Array.isArray(booking.rooms) && booking.rooms.some((rb) => {
+        if (!rb?.roomId) return false;
+        const bookingRoomId = rb.roomId?._id ? rb.roomId._id.toString() : rb.roomId.toString();
+        return bookingRoomId === roomId.toString();
+      });
+      if (!bookingHasRoom) {
+        throw new Error('Room does not belong to booking');
       }
 
       // Step 1: Determine required task types
@@ -604,7 +626,7 @@ class HousekeepingAutomationService {
         if (task.success && task.taskId) {
           try {
             const staff = availableStaff[staffIndex % availableStaff.length];
-            await this.assignTaskToStaff(task.taskId, staff._id);
+            await this.assignTaskToStaff(task.taskId, staff._id, options.hotelId);
             task.assignedTo = staff._id;
             task.assignedToName = staff.name;
             assignedCount++;
@@ -662,9 +684,13 @@ class HousekeepingAutomationService {
    * @param {string} taskId - Task ID
    * @param {string} staffId - Staff member ID
    */
-  async assignTaskToStaff(taskId, staffId) {
+  async assignTaskToStaff(taskId, staffId, hotelId) {
     try {
-      const task = await Housekeeping.findById(taskId);
+      const taskFilter = { _id: taskId };
+      if (hotelId) {
+        taskFilter.hotelId = hotelId;
+      }
+      const task = await Housekeeping.findOne(taskFilter);
       if (!task) {
         throw new Error('Task not found');
       }

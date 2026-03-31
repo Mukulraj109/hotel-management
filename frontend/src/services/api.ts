@@ -3,6 +3,86 @@ import toast from 'react-hot-toast';
 import { API_CONFIG } from '../config/api';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
+export const DEFAULT_PAGE = 1;
+export const DEFAULT_LIMIT = 20;
+export const MAX_LIMIT = 100;
+
+export type SortOrder = 'asc' | 'desc';
+
+export const normalizeListParams = <
+  T extends {
+    page?: number;
+    limit?: number;
+    sort?: string;
+    order?: SortOrder;
+    sortBy?: string;
+    sortOrder?: SortOrder;
+  }
+>(
+  params: T = {} as T,
+  defaults: { page?: number; limit?: number } = {}
+) => {
+  const defaultPage = defaults.page ?? DEFAULT_PAGE;
+  const defaultLimit = defaults.limit ?? DEFAULT_LIMIT;
+  const page = Math.max(1, Number(params.page ?? defaultPage));
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Number(params.limit ?? defaultLimit)));
+  const sort = params.sort ?? params.sortBy;
+  const order = params.order ?? params.sortOrder;
+
+  return {
+    ...params,
+    page,
+    limit,
+    ...(sort ? { sort } : {}),
+    ...(order ? { order } : {}),
+  };
+};
+
+export const unwrapApiData = <T>(payload: unknown): T => {
+  const body = (payload || {}) as { data?: unknown };
+  return (body.data ?? body) as T;
+};
+
+const bytesToHex = (bytes: number[]): string =>
+  bytes
+    .map((b) => Number(b).toString(16).padStart(2, '0'))
+    .join('');
+
+export const normalizeEntityId = (raw: unknown): string => {
+  if (raw == null) return '';
+  if (typeof raw === 'string' || typeof raw === 'number') return String(raw);
+
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const nested = obj._id ?? obj.id ?? obj.$oid ?? obj;
+
+    if (typeof nested === 'string' || typeof nested === 'number') {
+      return String(nested);
+    }
+
+    if (nested && typeof nested === 'object') {
+      const nestedObj = nested as Record<string, unknown>;
+      const bufferLike = nestedObj.buffer ?? nestedObj.data;
+
+      if (Array.isArray(bufferLike)) {
+        return bytesToHex(bufferLike as number[]);
+      }
+
+      if (bufferLike && typeof bufferLike === 'object') {
+        const orderedBytes = Object.keys(bufferLike)
+          .filter((k) => /^\d+$/.test(k))
+          .sort((a, b) => Number(a) - Number(b))
+          .map((k) => Number((bufferLike as Record<string, unknown>)[k]));
+        if (orderedBytes.length > 0) return bytesToHex(orderedBytes);
+      }
+
+      const maybeString = nestedObj.toString?.();
+      if (maybeString && maybeString !== '[object Object]') return maybeString;
+    }
+  }
+
+  return String(raw);
+};
 
 // Create axios instance
 const api = axios.create({
@@ -52,6 +132,24 @@ function sanitizeStoredPropertyId(raw: string | null): string | null {
   return t;
 }
 
+function getCookieValue(name: string): string | null {
+  if (typeof document === 'undefined' || !document.cookie) return null;
+  const parts = document.cookie.split(';');
+  for (const part of parts) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === name) {
+      const raw = rest.join('=');
+      if (!raw) return null;
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
+  }
+  return null;
+}
+
 const isIdempotentProtectedMutation = (config: { method?: string; url?: string }) => {
   const method = (config.method || '').toLowerCase();
   if (!['post', 'put', 'patch'].includes(method)) {
@@ -75,10 +173,7 @@ api.interceptors.request.use(
 
     // Add CSRF token from cookie for state-changing requests
     if (['post', 'put', 'patch', 'delete'].includes(config.method || '')) {
-      const csrfToken = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('csrfToken='))
-        ?.split('=')[1];
+      const csrfToken = getCookieValue('csrfToken');
       if (csrfToken) {
         config.headers['X-CSRF-Token'] = csrfToken;
       }
@@ -91,13 +186,24 @@ api.interceptors.request.use(
       config.headers['Expires'] = '0';
     }
 
-    // Drop bogus hotelId from params (avoids hotelId=undefined in query string)
+    // Drop bogus tenant/property IDs from params (avoids [object Object]/undefined in query string)
     if (config.method?.toUpperCase() === 'GET' && config.params && typeof config.params === 'object') {
       const p = config.params as Record<string, unknown>;
       if ('hotelId' in p) {
         const ok = sanitizeStoredPropertyId(p.hotelId == null ? null : String(p.hotelId));
         if (!ok) delete p.hotelId;
         else p.hotelId = ok;
+      }
+      if ('propertyId' in p) {
+        const rawProperty = p.propertyId;
+        if (rawProperty && typeof rawProperty === 'object') {
+          const propertyObj = rawProperty as Record<string, unknown>;
+          const candidate = propertyObj._id ?? propertyObj.id ?? null;
+          p.propertyId = candidate == null ? '' : String(candidate);
+        }
+        const okProperty = sanitizeStoredPropertyId(p.propertyId == null ? null : String(p.propertyId));
+        if (!okProperty) delete p.propertyId;
+        else p.propertyId = okProperty;
       }
     }
 

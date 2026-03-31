@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, Clock, CheckCircle, MessageSquare, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Users, Clock, CheckCircle, MessageSquare, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps, getServiceVariationSteps } from '../../components/staff/TaskCompletionModal';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
-import { formatDate } from '../../utils/formatters';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function StaffGuestServices() {
+  const { user } = useAuth();
+  const { isConnected, connect, on, off } = useRealTime();
+  const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -17,14 +21,56 @@ export default function StaffGuestServices() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (currentUserId) {
+      fetchRequests();
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    connect().catch(() => {
+      // Manual refresh remains available if realtime is unavailable.
+    });
+  }, [connect]);
+
+  useEffect(() => {
+    if (!isConnected || !currentUserId) return;
+
+    const handleGuestServiceEvent = () => {
+      fetchRequests();
+    };
+
+    on('guest-services:created', handleGuestServiceEvent);
+    on('guest-services:updated', handleGuestServiceEvent);
+    on('guest-services:status_changed', handleGuestServiceEvent);
+    on('guest-services:assigned', handleGuestServiceEvent);
+    on('guest-services:in_progress', handleGuestServiceEvent);
+    on('guest-services:completed', handleGuestServiceEvent);
+    on('guest-services:cancelled', handleGuestServiceEvent);
+
+    return () => {
+      off('guest-services:created', handleGuestServiceEvent);
+      off('guest-services:updated', handleGuestServiceEvent);
+      off('guest-services:status_changed', handleGuestServiceEvent);
+      off('guest-services:assigned', handleGuestServiceEvent);
+      off('guest-services:in_progress', handleGuestServiceEvent);
+      off('guest-services:completed', handleGuestServiceEvent);
+      off('guest-services:cancelled', handleGuestServiceEvent);
+    };
+  }, [isConnected, currentUserId, on, off]);
 
 
   const fetchRequests = async () => {
+    if (!currentUserId) {
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const response = await guestServiceService.getServiceRequests({ limit: 100 });
+      const response = await guestServiceService.getServiceRequests({
+        limit: 100,
+        assignedTo: currentUserId
+      });
       setRequests(response.data.serviceRequests || []);
     } catch (error) {
       toast.error('Failed to load service requests');
@@ -36,7 +82,14 @@ export default function StaffGuestServices() {
   const updateRequestStatus = async (requestId: string, newStatus: string) => {
     try {
       setUpdating(requestId);
-      await guestServiceService.updateServiceRequest(requestId, { status: newStatus });
+      if (newStatus === 'assigned') {
+        await guestServiceService.updateServiceRequest(requestId, {
+          assignedTo: currentUserId,
+          status: 'assigned'
+        });
+      } else {
+        await guestServiceService.updateServiceRequest(requestId, { status: newStatus });
+      }
       toast.success('Request status updated successfully');
       fetchRequests(); // Refresh the list
     } catch (error) {
@@ -70,8 +123,12 @@ export default function StaffGuestServices() {
       // Check if all service variations are completed
       const allServicesCompleted = selectedRequest.serviceVariations?.length === completedServiceVariations.length;
       
-      await guestServiceService.updateServiceRequest(selectedRequest._id, { 
-        status: allServicesCompleted ? 'completed' : 'in_progress',
+      await guestServiceService.updateServiceRequest(selectedRequest._id, {
+        ...(allServicesCompleted
+          ? { status: 'completed' }
+          : selectedRequest.status === 'in_progress'
+            ? {}
+            : { status: 'in_progress' }),
         completedServiceVariations: completedServiceVariations,
         completedSteps: completedSteps,
         completedTime: allServicesCompleted ? new Date().toISOString() : undefined
@@ -85,28 +142,6 @@ export default function StaffGuestServices() {
       toast.error('Failed to update request');
     } finally {
       setUpdating(null);
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-orange-50 border-orange-200 text-orange-600';
-      case 'assigned': return 'bg-blue-50 border-blue-200 text-blue-600';
-      case 'in_progress': return 'bg-yellow-50 border-yellow-200 text-yellow-600';
-      case 'completed': return 'bg-green-50 border-green-200 text-green-600';
-      case 'cancelled': return 'bg-red-50 border-red-200 text-red-600';
-      default: return 'bg-gray-50 border-gray-200 text-gray-600';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <Clock className="h-5 w-5 mr-2 text-orange-600" />;
-      case 'assigned': return <Users className="h-5 w-5 mr-2 text-blue-600" />;
-      case 'in_progress': return <MessageSquare className="h-5 w-5 mr-2 text-yellow-600" />;
-      case 'completed': return <CheckCircle className="h-5 w-5 mr-2 text-green-600" />;
-      case 'cancelled': return <AlertTriangle className="h-5 w-5 mr-2 text-red-600" />;
-      default: return <Clock className="h-5 w-5 mr-2 text-gray-600" />;
     }
   };
 
@@ -159,10 +194,30 @@ export default function StaffGuestServices() {
     return requests.filter(request => request.status === status);
   };
 
-  const getTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
+  const parseDateValue = (value: unknown): Date | null => {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'number') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof value === 'string') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof value === 'object') {
+      const candidate = value as { $date?: unknown; date?: unknown };
+      return parseDateValue(candidate.$date ?? candidate.date ?? null);
+    }
+    return null;
+  };
+
+  const getTimeAgo = (dateString: unknown) => {
+    const date = parseDateValue(dateString);
+    if (!date) return 'N/A';
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    if (Number.isNaN(diffInMinutes) || diffInMinutes < 0) return 'N/A';
     
     if (diffInMinutes < 60) {
       return `${diffInMinutes} min ago`;
@@ -173,6 +228,10 @@ export default function StaffGuestServices() {
       const days = Math.floor(diffInMinutes / 1440);
       return `${days} day${days > 1 ? 's' : ''} ago`;
     }
+  };
+
+  const getRequestedTimeAgo = (request: GuestServiceRequest) => {
+    return getTimeAgo(request.createdAt || request.updatedAt || request.scheduledTime);
   };
 
   if (loading) {
@@ -224,10 +283,11 @@ export default function StaffGuestServices() {
                           : request.title}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
+                        Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} - {request.serviceType.replace('_', ' ')}
+                        {request.bookingId?.bookingNumber && <span className="text-xs ml-1">(#{request.bookingId.bookingNumber})</span>}
                       </p>
                       <p className="text-xs text-orange-600">
-                        Requested: {getTimeAgo(request.createdAt)}
+                        Requested: {getRequestedTimeAgo(request)}
                       </p>
                       {/* Show multiple service variations */}
                       {request.serviceVariations && request.serviceVariations.length > 1 && (
@@ -281,7 +341,8 @@ export default function StaffGuestServices() {
                           : request.title}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
+                        Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} - {request.serviceType.replace('_', ' ')}
+                        {request.bookingId?.bookingNumber && <span className="text-xs ml-1">(#{request.bookingId.bookingNumber})</span>}
                       </p>
                       <p className="text-xs text-blue-600">
                         Assigned: {getTimeAgo(request.updatedAt)}
@@ -338,7 +399,8 @@ export default function StaffGuestServices() {
                           : request.title}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
+                        Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} - {request.serviceType.replace('_', ' ')}
+                        {request.bookingId?.bookingNumber && <span className="text-xs ml-1">(#{request.bookingId.bookingNumber})</span>}
                       </p>
                       <p className="text-xs text-yellow-600">
                         Started: {getTimeAgo(request.updatedAt)}
@@ -399,7 +461,8 @@ export default function StaffGuestServices() {
                           : request.title}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
+                        Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} - {request.serviceType.replace('_', ' ')}
+                        {request.bookingId?.bookingNumber && <span className="text-xs ml-1">(#{request.bookingId.bookingNumber})</span>}
                       </p>
                       <p className="text-xs text-green-600">
                         Completed: {getTimeAgo(request.completedTime || request.updatedAt)}

@@ -6,6 +6,16 @@ import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
+const TENANT_SCOPED_ROLES = ['staff', 'frontdesk', 'manager'];
+
+const buildGuestByIdFilter = (req, guestId) => {
+  const filter = { _id: guestId, role: 'guest' };
+  if (TENANT_SCOPED_ROLES.includes(req.user.role)) {
+    filter.hotelId = req.user.hotelId;
+  }
+  return filter;
+};
+
 // Get all guests with advanced filtering and search
 export const getAllGuests = catchAsync(async (req, res) => {
   const { hotelId } = req.user;
@@ -144,11 +154,11 @@ export const getAllGuests = catchAsync(async (req, res) => {
 
 // Get guest by ID with detailed information
 export const getGuest = catchAsync(async (req, res) => {
-  const guest = await User.findById(req.params.id)
+  const guest = await User.findOne(buildGuestByIdFilter(req, req.params.id))
     .populate('salutationId', 'title fullForm')
     .select('-password -passwordResetToken -passwordResetExpires').lean();
 
-  if (!guest || guest.role !== 'guest') {
+  if (!guest) {
     throw new ApplicationError('Guest not found', 404);
   }
 
@@ -181,7 +191,7 @@ export const getGuest = catchAsync(async (req, res) => {
   ]);
 
   const guestWithDetails = {
-    ...guest.toObject(),
+    ...guest,
     stats: {
       bookings: bookingStats[0] || {
         totalBookings: 0,
@@ -221,15 +231,15 @@ export const createGuest = catchAsync(async (req, res) => {
 
 // Update guest
 export const updateGuest = catchAsync(async (req, res) => {
-  const guest = await User.findByIdAndUpdate(
-    req.params.id,
+  const guest = await User.findOneAndUpdate(
+    buildGuestByIdFilter(req, req.params.id),
     req.body,
     { new: true, runValidators: true }
   )
     .populate('salutationId', 'title fullForm')
     .select('-password -passwordResetToken -passwordResetExpires');
 
-  if (!guest || guest.role !== 'guest') {
+  if (!guest) {
     throw new ApplicationError('Guest not found', 404);
   }
 
@@ -241,9 +251,9 @@ export const updateGuest = catchAsync(async (req, res) => {
 
 // Delete guest
 export const deleteGuest = catchAsync(async (req, res) => {
-  const guest = await User.findById(req.params.id).lean();
+  const guest = await User.findOne(buildGuestByIdFilter(req, req.params.id)).lean();
 
-  if (!guest || guest.role !== 'guest') {
+  if (!guest) {
     throw new ApplicationError('Guest not found', 404);
   }
 
@@ -253,7 +263,7 @@ export const deleteGuest = catchAsync(async (req, res) => {
     throw new ApplicationError('Cannot delete guest with existing bookings', 400);
   }
 
-  await User.findByIdAndDelete(req.params.id);
+  await User.findOneAndDelete(buildGuestByIdFilter(req, req.params.id));
 
   res.status(204).json({
     status: 'success',

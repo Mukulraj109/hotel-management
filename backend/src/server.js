@@ -478,7 +478,16 @@ app.use('/api/v1/travel-agents', piiResponseFilter);
 // Maintenance mode middleware (returns 503 for non-health routes when enabled)
 app.use(maintenanceMode);
 
-// Serve static files for uploaded photos
+// Block direct public access to sensitive document uploads.
+// Documents must be accessed through authenticated document routes.
+app.use('/uploads/documents', (_req, res) => {
+    res.status(404).json({
+        status: 'error',
+        message: 'Not found'
+    });
+});
+
+// Keep non-document uploads publicly accessible (e.g. non-sensitive assets/photos).
 app.use('/uploads', express.static('uploads'));
 
 // API Documentation

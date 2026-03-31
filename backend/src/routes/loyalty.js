@@ -37,6 +37,12 @@ function canRedeemOffer(offer, userTier, userPoints) {
   return true;
 }
 
+function parseBoundedInt(value, defaultValue, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return defaultValue;
+  return Math.min(Math.max(parsed, min), max);
+}
+
 // Apply authentication, tenant isolation, and property access to all loyalty routes
 router.use(authenticate);
 router.use(ensureTenantContext);
@@ -171,8 +177,8 @@ router.get('/dashboard', catchAsync(async (req, res) => {
 // FIX: Added pagination to the offers endpoint
 router.get('/offers', catchAsync(async (req, res) => {
   const { category, page = 1, limit = 20 } = req.query;
-  const parsedPage = parseInt(page) || 1;
-  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+  const parsedPage = parseBoundedInt(page, 1, 1, 10000);
+  const parsedLimit = parseBoundedInt(limit, 20, 1, 100);
   const skip = (parsedPage - 1) * parsedLimit;
 
   const user = await User.findById(req.user._id).select('+loyalty').lean();
@@ -262,8 +268,8 @@ router.get('/offers', catchAsync(async (req, res) => {
  */
 router.get('/transactions', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
-  const parsedLimit = Math.min(parseInt(limit) || 20, 100);
-  const parsedPage = parseInt(page) || 1;
+  const parsedLimit = parseBoundedInt(limit, 20, 1, 100);
+  const parsedPage = parseBoundedInt(page, 1, 1, 10000);
   const skip = (parsedPage - 1) * parsedLimit;
 
   // Build query - FIX: Include hotelId for tenant isolation
@@ -334,9 +340,14 @@ router.post('/redeem',
     logger.debug('Loyalty redeem - starting redemption process', { userId: req.user?._id });
 
     const { offerId } = req.body;
+    const tenantHotelId = req.user?.hotelId || req.tenant?.hotelId;
 
     // FIX: Do NOT use .lean() -- we need Mongoose documents for instance methods
-    const offer = await Offer.findById(offerId);
+    const offerQuery = { _id: offerId };
+    if (tenantHotelId) {
+      offerQuery.hotelId = tenantHotelId;
+    }
+    const offer = await Offer.findOne(offerQuery);
     if (!offer) {
       logger.debug('Offer not found for redemption', { offerId });
       throw new ApplicationError('Offer not found', 404);
@@ -397,6 +408,7 @@ router.post('/redeem',
     const updatedOffer = await Offer.findOneAndUpdate(
       {
         _id: offer._id,
+        ...(tenantHotelId ? { hotelId: tenantHotelId } : {}),
         $or: [
           { maxRedemptions: { $exists: false } },
           { maxRedemptions: null },
@@ -477,17 +489,53 @@ router.post('/redeem',
  */
 router.get('/history', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
+  const parsedPage = parseBoundedInt(page, 1, 1, 10000);
+  const parsedLimit = parseBoundedInt(limit, 20, 1, 100);
+  const tenantHotelId = req.user?.hotelId || req.tenant?.hotelId;
 
   const options = {
-    page: parseInt(page) || 1,
-    limit: Math.min(parseInt(limit) || 20, 100)
+    page: parsedPage,
+    limit: parsedLimit
   };
 
   if (type) {
     options.type = type;
   }
 
-  const result = await Loyalty.getUserHistory(req.user._id, options);
+  let result;
+
+  if (tenantHotelId) {
+    const query = { userId: req.user._id, hotelId: tenantHotelId };
+    if (type) {
+      query.type = type;
+    }
+
+    const skip = (parsedPage - 1) * parsedLimit;
+    const [transactions, total] = await Promise.all([
+      Loyalty.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
+        .populate('offerId', 'title category')
+        .populate('hotelId', 'name')
+        .lean(),
+      Loyalty.countDocuments(query)
+    ]);
+
+    result = {
+      transactions,
+      pagination: {
+        currentPage: parsedPage,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
+        totalItems: total,
+        hasNext: parsedPage * parsedLimit < total,
+        hasPrev: parsedPage > 1
+      }
+    };
+  } else {
+    result = await Loyalty.getUserHistory(req.user._id, options);
+  }
 
   res.json({
     status: 'success',
@@ -551,9 +599,14 @@ router.get('/points', catchAsync(async (req, res) => {
  */
 router.get('/offers/:offerId', catchAsync(async (req, res) => {
   const { offerId } = req.params;
+  const tenantHotelId = req.user?.hotelId || req.tenant?.hotelId;
 
   // FIX: Use .lean() and local helper instead of instance method
-  const offer = await Offer.findById(offerId)
+  const offerQuery = { _id: offerId };
+  if (tenantHotelId) {
+    offerQuery.hotelId = tenantHotelId;
+  }
+  const offer = await Offer.findOne(offerQuery)
     .populate('hotelId', 'name').lean();
 
   if (!offer) {

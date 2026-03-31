@@ -107,7 +107,11 @@ export default function InventoryRequests() {
   const fetchBookings = useCallback(async () => {
     try {
       const response = await bookingService.getUserBookings({ page: 1, limit: 50 });
-      const bookingsData = Array.isArray(response.data) ? response.data : [];
+      const bookingsData = Array.isArray(response.data?.bookings)
+        ? response.data.bookings
+        : Array.isArray(response.data)
+          ? response.data
+          : [];
       setBookings(bookingsData.filter((b: Booking) => ['confirmed', 'checked_in'].includes(b.status)));
     } catch {
       // Bookings fetch is non-critical; guest can still view existing requests

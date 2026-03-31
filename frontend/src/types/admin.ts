@@ -11,7 +11,7 @@ export interface HousekeepingTask {
   title: string;
   description?: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'inspected' | 'cancelled';
   assignedToUserId?: {
     _id: string;
     name: string;

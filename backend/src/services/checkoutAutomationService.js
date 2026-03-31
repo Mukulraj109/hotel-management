@@ -24,7 +24,7 @@ class CheckoutAutomationService {
    * @param {boolean} context.forceProcessing - Force processing even if already processed
    */
   async processCheckout(bookingId, context = {}) {
-    const { processedBy, forceProcessing = false } = context;
+    const { processedBy, forceProcessing = false, hotelId } = context;
     
     // Prevent duplicate processing
     if (this.isProcessing.has(bookingId) && !forceProcessing) {
@@ -38,7 +38,11 @@ class CheckoutAutomationService {
       logger.info('Starting checkout automation', { bookingId, processedBy });
       
       // Get booking details
-      const booking = await Booking.findById(bookingId).populate('rooms.roomId').lean();
+      const bookingFilter = { _id: bookingId };
+      if (hotelId) {
+        bookingFilter.hotelId = hotelId;
+      }
+      const booking = await Booking.findOne(bookingFilter).populate('rooms.roomId').lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -121,7 +125,12 @@ class CheckoutAutomationService {
       });
 
       // Update booking with automation status
-      await this.updateBookingAutomationStatus(bookingId, overallSuccess ? 'completed' : 'partial_success', results);
+      await this.updateBookingAutomationStatus(
+        bookingId,
+        overallSuccess ? 'completed' : 'partial_success',
+        results,
+        booking.hotelId
+      );
 
       logger.info('Checkout automation completed', { 
         bookingId, 
@@ -150,7 +159,7 @@ class CheckoutAutomationService {
       });
 
       // Update booking with failed status
-      await this.updateBookingAutomationStatus(bookingId, 'failed', { error: error.message });
+      await this.updateBookingAutomationStatus(bookingId, 'failed', { error: error.message }, hotelId);
 
       return {
         success: false,
@@ -800,7 +809,7 @@ class CheckoutAutomationService {
     const roomIdsToUpdate = booking.rooms.map(r => r.roomId._id);
     if (roomIdsToUpdate.length > 0) {
       await Room.updateMany(
-        { _id: { $in: roomIdsToUpdate } },
+        { _id: { $in: roomIdsToUpdate }, hotelId: booking.hotelId },
         { $set: { status: 'dirty', lastUpdated: new Date(), lastUpdatedBy: processedBy } }
       );
     }
@@ -880,9 +889,13 @@ class CheckoutAutomationService {
    * @param {string} status - Automation status
    * @param {Object} results - Automation results
    */
-  async updateBookingAutomationStatus(bookingId, status, results) {
+  async updateBookingAutomationStatus(bookingId, status, results, hotelId) {
     try {
-      return await Booking.findByIdAndUpdate(bookingId, {
+      const bookingFilter = { _id: bookingId };
+      if (hotelId) {
+        bookingFilter.hotelId = hotelId;
+      }
+      return await Booking.findOneAndUpdate(bookingFilter, {
         automationStatus: status,
         automationResults: results,
         automationCompletedAt: new Date()
@@ -898,9 +911,13 @@ class CheckoutAutomationService {
    * Get automation status for a booking
    * @param {string} bookingId - Booking ID
    */
-  async getAutomationStatus(bookingId) {
+  async getAutomationStatus(bookingId, context = {}) {
     try {
-      const booking = await Booking.findById(bookingId).select('automationStatus automationResults automationCompletedAt').lean();
+      const bookingFilter = { _id: bookingId };
+      if (context.hotelId) {
+        bookingFilter.hotelId = context.hotelId;
+      }
+      const booking = await Booking.findOne(bookingFilter).select('automationStatus automationResults automationCompletedAt').lean();
       const logs = await CheckoutAutomationLog.find({ bookingId }).sort({ processedAt: -1 }).lean().limit(1000);
     
       return {

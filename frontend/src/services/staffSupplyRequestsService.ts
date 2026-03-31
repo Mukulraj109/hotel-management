@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { API_CONFIG } from '../config/api';
+import { api } from './api';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
 
@@ -85,6 +86,13 @@ export interface StaffSupplyRequestFilters {
   startDate?: string;
   endDate?: string;
   overdue?: boolean;
+}
+
+export interface SupplyRequestStatsFilters {
+  startDate?: string;
+  endDate?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface DepartmentBudget {
@@ -174,9 +182,66 @@ export interface StaffSupplyRequestStats {
 }
 
 class StaffSupplyRequestsService {
+  private readonly validItemCategories = new Set([
+    'cleaning',
+    'toiletries',
+    'linens',
+    'food',
+    'beverage',
+    'office',
+    'maintenance',
+    'technology',
+    'furniture',
+    'other',
+  ]);
+
+  private normalizeItemCategory(category: string | undefined): string {
+    const raw = String(category || '').trim().toLowerCase();
+    if (!raw) return 'other';
+    if (this.validItemCategories.has(raw)) return raw;
+
+    const aliasMap: Record<string, string> = {
+      consumables: 'toiletries',
+      ingredients: 'food',
+      kitchen: 'food',
+      stationery: 'office',
+      stationary: 'office',
+      safety: 'maintenance',
+      electronics: 'technology',
+      devices: 'technology',
+      equipment: 'maintenance',
+    };
+
+    return aliasMap[raw] || 'other';
+  }
+
+  private clampLimit(limit: number): number {
+    return Math.min(100, Math.max(1, limit));
+  }
+
+  private getCookieValue(name: string): string | null {
+    if (typeof document === 'undefined' || !document.cookie) return null;
+    const parts = document.cookie.split(';');
+    for (const part of parts) {
+      const [k, ...rest] = part.trim().split('=');
+      if (k === name) {
+        const raw = rest.join('=');
+        if (!raw) return null;
+        try {
+          return decodeURIComponent(raw);
+        } catch {
+          return raw;
+        }
+      }
+    }
+    return null;
+  }
+
   private getAuthHeaders() {
+    const csrfToken = this.getCookieValue('csrfToken');
     return {
       'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
     };
   }
 
@@ -190,9 +255,14 @@ class StaffSupplyRequestsService {
   async getMyRequests(filters: StaffSupplyRequestFilters = {}) {
     try {
       const params = new URLSearchParams();
+      const normalizedFilters = { ...filters };
+
+      if (normalizedFilters.limit !== undefined) {
+        normalizedFilters.limit = this.clampLimit(normalizedFilters.limit);
+      }
 
       // Add filters to params
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== '') {
           params.append(key, value.toString());
         }
@@ -216,10 +286,18 @@ class StaffSupplyRequestsService {
     }
   }
 
-  async getMyStats() {
+  async getMyStats(filters: SupplyRequestStatsFilters = {}) {
     try {
+      const params = new URLSearchParams();
+      const startDate = filters.startDate || filters.dateFrom;
+      const endDate = filters.endDate || filters.dateTo;
+
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+
+      const queryString = params.toString();
       const response = await axios.get(
-        `${API_BASE_URL}/supply-requests/stats`,
+        `${API_BASE_URL}/supply-requests/stats${queryString ? `?${queryString}` : ''}`,
         this.getRequestConfig()
       );
 
@@ -235,11 +313,14 @@ class StaffSupplyRequestsService {
 
   async createRequest(requestData: CreateSupplyRequestData) {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/supply-requests`,
-        requestData,
-        this.getRequestConfig()
-      );
+      const normalizedPayload: CreateSupplyRequestData = {
+        ...requestData,
+        items: (requestData.items || []).map((item) => ({
+          ...item,
+          category: this.normalizeItemCategory(item.category),
+        })),
+      };
+      const response = await api.post('/supply-requests', normalizedPayload);
 
       return {
         success: true,
@@ -325,6 +406,7 @@ class StaffSupplyRequestsService {
           withCredentials: true,
           headers: {
             'Content-Type': 'multipart/form-data',
+            ...(this.getCookieValue('csrfToken') ? { 'X-CSRF-Token': this.getCookieValue('csrfToken') as string } : {}),
           }
         }
       );
@@ -362,14 +444,15 @@ class StaffSupplyRequestsService {
 
   async getRecentRequests(limit: number = 5) {
     try {
+      const safeLimit = this.clampLimit(limit);
       const response = await this.getMyRequests({
-        limit,
+        limit: safeLimit,
         page: 1
       });
 
       return {
         success: true,
-        data: response.data.requests.slice(0, limit)
+        data: response.data.requests.slice(0, safeLimit)
       };
     } catch (error: unknown) {
       throw new Error('Failed to fetch recent requests');
@@ -378,9 +461,10 @@ class StaffSupplyRequestsService {
 
   async getDepartmentRequests(department: string, limit: number = 10) {
     try {
+      const safeLimit = this.clampLimit(limit);
       const response = await this.getMyRequests({
         department,
-        limit,
+        limit: safeLimit,
         page: 1
       });
 
@@ -429,23 +513,8 @@ class StaffSupplyRequestsService {
         data: transformedBudget
       };
     } catch (error: unknown) {
-      // Return mock data for demo purposes
-      const mockBudget: DepartmentBudget = {
-        department: department || 'housekeeping',
-        monthlyAllocation: 25000,
-        quarterlyAllocation: 75000,
-        yearlyAllocation: 300000,
-        currentSpent: 18500,
-        pendingCommitments: 4200,
-        remainingBudget: 2300,
-        utilizationPercentage: 91.2,
-        lastUpdated: new Date().toISOString()
-      };
-
-      return {
-        success: true,
-        data: mockBudget
-      };
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      throw new Error(axiosErr.response?.data?.message || 'Failed to fetch department budget');
     }
   }
 
@@ -728,7 +797,7 @@ class StaffSupplyRequestsService {
 
   // Check if request can be cancelled
   canCancel(request: SupplyRequest, currentUserId: string): boolean {
-    return ['pending', 'approved'].includes(request.status) &&
+    return request.status === 'pending' &&
            request.requestedBy._id === currentUserId;
   }
 
@@ -740,7 +809,7 @@ class StaffSupplyRequestsService {
         params.append('department', department);
       }
 
-      const response = await axios.get(
+      await axios.get(
         `${API_BASE_URL}/request-templates?${params.toString()}`,
         this.getRequestConfig()
       );
@@ -1173,7 +1242,7 @@ class StaffSupplyRequestsService {
     }
   }
 
-  async getBulkOrderingSuggestions(department: string) {
+  async getBulkOrderingSuggestions() {
     try {
       // Mock bulk ordering suggestions based on historical data
       const suggestions = [

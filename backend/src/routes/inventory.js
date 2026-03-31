@@ -41,6 +41,35 @@ const supplyRequestSchema = Joi.object({
   reason: Joi.string().max(500).allow('').optional()
 }).unknown(false);
 
+const updateInventorySchema = Joi.object({
+  name: Joi.string().trim().min(1).max(200).optional(),
+  sku: Joi.string().trim().min(1).max(100).optional(),
+  category: Joi.string().valid('linens', 'toiletries', 'cleaning', 'maintenance', 'food_beverage', 'other').optional(),
+  quantity: Joi.number().integer().min(0).optional(),
+  unit: Joi.string().valid('pieces', 'bottles', 'rolls', 'kg', 'liters', 'sets').optional(),
+  minimumThreshold: Joi.number().integer().min(0).optional(),
+  maximumCapacity: Joi.number().integer().min(1).optional(),
+  costPerUnit: Joi.number().min(0).optional(),
+  supplier: Joi.object({
+    name: Joi.string().allow('').optional(),
+    contact: Joi.string().allow('').optional(),
+    email: Joi.string().email({ tlds: false }).allow('').optional()
+  }).optional(),
+  location: Joi.object({
+    building: Joi.string().allow('').optional(),
+    floor: Joi.string().allow('').optional(),
+    room: Joi.string().allow('').optional(),
+    shelf: Joi.string().allow('').optional()
+  }).optional(),
+  lastRestocked: Joi.date().iso().optional(),
+  expiryDate: Joi.date().iso().optional()
+}).min(1).unknown(false);
+
+const restockInventorySchema = Joi.object({
+  quantity: Joi.number().integer().min(1).required(),
+  costPerUnit: Joi.number().min(0).optional()
+}).unknown(false);
+
 // Get inventory stats (aggregated across ALL items, not just current page)
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   if (!req.user.hotelId) {
@@ -160,10 +189,39 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('inventory',
 }));
 
 // Update inventory item
-router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, validate(updateInventorySchema), catchAsync(async (req, res) => {
   const item = await Inventory.findOneAndUpdate(
     { _id: req.params.id, hotelId: req.user.hotelId },
     req.body,
+    { new: true, runValidators: true }
+  );
+
+  if (!item) {
+    throw new ApplicationError('Inventory item not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { item }
+  });
+}));
+
+// Restock inventory item atomically
+router.post('/:id/restock', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, validate(restockInventorySchema), catchAsync(async (req, res) => {
+  const { quantity, costPerUnit } = req.body;
+
+  const update = {
+    $inc: { quantity },
+    $set: { lastRestocked: new Date() }
+  };
+
+  if (typeof costPerUnit === 'number') {
+    update.$set.costPerUnit = costPerUnit;
+  }
+
+  const item = await Inventory.findOneAndUpdate(
+    { _id: req.params.id, hotelId: req.user.hotelId, isActive: true },
+    update,
     { new: true, runValidators: true }
   );
 

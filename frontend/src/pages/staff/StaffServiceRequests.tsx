@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { adminGuestServicesService } from '../../services/adminGuestServicesService';
+import { guestServiceRequestService } from '../../services/guestServiceRequestService';
 import { 
   Clock, 
   CheckCircle, 
@@ -74,6 +74,7 @@ interface GuestServiceFilters {
 
 export default function StaffServiceRequests() {
   const { user } = useAuth();
+  const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -89,17 +90,18 @@ export default function StaffServiceRequests() {
       setLoading(true);
       const filters = {
         serviceType: serviceTypeFilter === 'all' ? undefined : serviceTypeFilter,
-        assignedTo: user?.id,
+        assignedTo: currentUserId,
         status: statusFilter === 'all' ? undefined : statusFilter,
-        limit: 100
+        limit: 100,
+        page: 1
       };
 
-      const response = await adminGuestServicesService.getServices(filters);
+      const response = await guestServiceRequestService.getServiceRequests(filters);
       
       // Filter for general service requests assigned to current user
-      const myServiceRequests = (response.data.serviceRequests || []).filter(service => {
+      const myServiceRequests = (response.serviceRequests || []).filter(service => {
         // Must be assigned to current user
-        const isAssignedToMe = service.assignedTo?._id === user?.id;
+        const isAssignedToMe = service.assignedTo?._id === currentUserId;
         
         // Exclude inventory requests
         const isNotInventory = !(service.serviceType === 'other' && 
@@ -126,38 +128,42 @@ export default function StaffServiceRequests() {
   };
 
   useEffect(() => {
-    if (user && user.role === 'staff') {
+    if (user && user.role === 'staff' && currentUserId) {
       fetchMyServiceRequests();
     }
-  }, [user, statusFilter, serviceTypeFilter]);
+  }, [user, currentUserId, statusFilter, serviceTypeFilter]);
 
   // Real-time updates
   useEffect(() => {
     if (isConnected) {
       const handleServiceUpdate = (data: Record<string, unknown>) => {
-        if (data.assignedTo === user?.id) {
+        const payloadRequest = data.serviceRequest as { assignedTo?: { _id?: string } } | undefined;
+        const payloadAssignedTo = (data.assignedTo as string | undefined) || payloadRequest?.assignedTo?._id;
+        if (payloadAssignedTo === currentUserId) {
           fetchMyServiceRequests();
         }
       };
 
-      on('guest_service_created', handleServiceUpdate);
-      on('guest_service_updated', handleServiceUpdate);
-      on('guest_service_status_updated', handleServiceUpdate);
-      on('guest_service_assigned', handleServiceUpdate);
+      on('guest-services:created', handleServiceUpdate);
+      on('guest-services:updated', handleServiceUpdate);
+      on('guest-services:completed', handleServiceUpdate);
+      on('guest-services:cancelled', handleServiceUpdate);
+      on('guest-services:assigned', handleServiceUpdate);
 
       return () => {
-        off('guest_service_created', handleServiceUpdate);
-        off('guest_service_updated', handleServiceUpdate);
-        off('guest_service_status_updated', handleServiceUpdate);
-        off('guest_service_assigned', handleServiceUpdate);
+        off('guest-services:created', handleServiceUpdate);
+        off('guest-services:updated', handleServiceUpdate);
+        off('guest-services:completed', handleServiceUpdate);
+        off('guest-services:cancelled', handleServiceUpdate);
+        off('guest-services:assigned', handleServiceUpdate);
       };
     }
-  }, [isConnected, on, off, user?.id]);
+  }, [isConnected, on, off, currentUserId]);
 
   const handleUpdateStatus = async (requestId: string, status: string, notes?: string) => {
     try {
       setUpdating(requestId);
-      await adminGuestServicesService.updateStatus(requestId, status, notes);
+      await guestServiceRequestService.updateServiceRequest(requestId, { status: status as ServiceRequest['status'], notes });
       
       const statusLabels: { [key: string]: string } = {
         'in_progress': 'started',
@@ -168,7 +174,8 @@ export default function StaffServiceRequests() {
       toast.success(`Service request ${statusLabels[status] || status.replace('_', ' ')}`);
       fetchMyServiceRequests();
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Failed to update status');
+      const maybeAxios = error as { response?: { data?: { message?: string } } };
+      toast.error(maybeAxios.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(null);
     }

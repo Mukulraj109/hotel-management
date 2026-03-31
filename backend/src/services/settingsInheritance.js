@@ -2,6 +2,7 @@ import Hotel from '../models/Hotel.js';
 import PropertyGroup from '../models/PropertyGroup.js';
 import SettingsInheritance from '../models/SettingsInheritance.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { checkPropertyAccess, getUserPropertyIds } from '../middleware/propertyAccess.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -331,14 +332,18 @@ export class SettingsInheritanceService {
    * @param {string} options.userId - User performing the action
    * @returns {Promise<Object>} Application result
    */
-  static async applySettingsByScope({ scope, propertyId, settingType, settingUpdates, userId }) {
+  static async applySettingsByScope({ scope, propertyId, settingType, settingUpdates, userId, user }) {
     try {
+      if (!await checkPropertyAccess(userId, propertyId, user)) {
+        throw new ApplicationError('Access denied to this property', 403);
+      }
       const property = await Hotel.findById(propertyId).populate('propertyGroupId').lean();
 
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
 
+      const userPropertyIds = await getUserPropertyIds(userId, user);
       let propertiesToUpdate = [];
       let affectedProperties = [];
 
@@ -355,6 +360,7 @@ export class SettingsInheritanceService {
           }
           affectedProperties = await Hotel.find({
             propertyGroupId: property.propertyGroupId._id,
+            _id: { $in: userPropertyIds },
             isActive: true
           }).lean().limit(1000);
           propertiesToUpdate = affectedProperties.map(p => p._id);
@@ -362,7 +368,7 @@ export class SettingsInheritanceService {
 
         case 'all':
           affectedProperties = await Hotel.find({
-            ownerId: property.ownerId,
+            _id: { $in: userPropertyIds },
             isActive: true
           }).lean().limit(1000);
           propertiesToUpdate = affectedProperties.map(p => p._id);
@@ -458,14 +464,18 @@ export class SettingsInheritanceService {
    * @param {Object} options - Options
    * @returns {Promise<number>} Count of affected properties
    */
-  static async getAffectedPropertiesCount({ scope, propertyId }) {
+  static async getAffectedPropertiesCount({ scope, propertyId, userId, user }) {
     try {
+      if (userId && !await checkPropertyAccess(userId, propertyId, user)) {
+        return 0;
+      }
       const property = await Hotel.findById(propertyId).lean();
 
       if (!property) {
         return 0;
       }
 
+      const userPropertyIds = userId ? await getUserPropertyIds(userId, user) : [];
       switch (scope) {
         case 'single':
           return 1;
@@ -474,12 +484,13 @@ export class SettingsInheritanceService {
           if (!property.propertyGroupId) return 1;
           return await Hotel.countDocuments({
             propertyGroupId: property.propertyGroupId,
+            ...(userId ? { _id: { $in: userPropertyIds } } : {}),
             isActive: true
           });
 
         case 'all':
           return await Hotel.countDocuments({
-            ownerId: property.ownerId,
+            ...(userId ? { _id: { $in: userPropertyIds } } : { ownerId: property.ownerId }),
             isActive: true
           });
 
@@ -651,8 +662,11 @@ export class SettingsInheritanceService {
    * @param {Object} options - Preview options
    * @returns {Promise<Object>} Preview data
    */
-  static async previewChanges({ scope, propertyId, settingType, settingUpdates }) {
+  static async previewChanges({ scope, propertyId, settingType, settingUpdates, userId, user }) {
     try {
+      if (userId && !await checkPropertyAccess(userId, propertyId, user)) {
+        throw new ApplicationError('Access denied to this property', 403);
+      }
       // Get affected properties
       const property = await Hotel.findById(propertyId).lean();
 
@@ -662,6 +676,7 @@ export class SettingsInheritanceService {
 
       let properties = [];
 
+      const userPropertyIds = userId ? await getUserPropertyIds(userId, user) : [];
       switch (scope) {
         case 'single':
           properties = [property];
@@ -673,13 +688,14 @@ export class SettingsInheritanceService {
           }
           properties = await Hotel.find({
             propertyGroupId: property.propertyGroupId,
+            ...(userId ? { _id: { $in: userPropertyIds } } : {}),
             isActive: true
           }).lean().limit(1000);
           break;
 
         case 'all':
           properties = await Hotel.find({
-            ownerId: property.ownerId,
+            ...(userId ? { _id: { $in: userPropertyIds } } : { ownerId: property.ownerId }),
             isActive: true
           }).lean().limit(1000);
           break;

@@ -94,7 +94,7 @@ const AdminGuestUpload: React.FC = () => {
       formData.append('file', file);
       formData.append('skipHeader', 'true');
       if (selectedPropertyId) {
-        formData.append('propertyId', selectedPropertyId);
+        formData.append('hotelId', selectedPropertyId);
       }
 
       const { data } = await api.post('/guest-import/upload', formData, {
@@ -122,7 +122,7 @@ const AdminGuestUpload: React.FC = () => {
 
     try {
       const { data } = await api.post('/guest-import/import', {
-        propertyId: selectedPropertyId,
+        hotelId: selectedPropertyId,
         guestData: importResult.preview // In a real implementation, you'd send all valid data
       });
       toast.success(`Successfully imported ${data.data.imported} guests`);
@@ -160,7 +160,7 @@ const AdminGuestUpload: React.FC = () => {
     try {
       const params = new URLSearchParams();
       if (selectedPropertyId) {
-        params.append('propertyId', selectedPropertyId);
+        params.append('hotelId', selectedPropertyId);
       }
 
       const { data } = await api.get(`/guest-import/statistics?${params.toString()}`);

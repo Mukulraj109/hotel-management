@@ -1222,6 +1222,11 @@ bookingSchema.pre('save', function(next) {
   if (!this.isNew && this.isModified('status')) {
     // Store original status before the change (this requires custom tracking)
     const previousStatus = this._previousStatus || 'unknown';
+
+    // Legacy / imported bookings may not have statusHistory initialized
+    if (!Array.isArray(this.statusHistory)) {
+      this.statusHistory = [];
+    }
     
     // Add to status history
     this.statusHistory.push({

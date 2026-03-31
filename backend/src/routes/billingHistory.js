@@ -7,13 +7,43 @@ import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensurePropertyAccess, refToHotelIdString } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
+
+const ALLOWED_HISTORY_TYPES = new Set(['all', 'invoice', 'payment', 'refund', 'booking', 'checkout_charges']);
+const ALLOWED_PERIODS = new Set(['week', 'month', 'quarter', 'year']);
+const ALLOWED_INVOICE_STATUSES = new Set(['draft', 'issued', 'paid', 'partially_paid', 'overdue', 'cancelled', 'refunded']);
+const ALLOWED_PAYMENT_STATUSES = new Set(['pending', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded']);
+const ALLOWED_BOOKING_STATUSES = new Set(['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show']);
+const ALLOWED_CHECKOUT_CHARGE_STATUSES = new Set(['pending', 'paid', 'failed']);
+const ALLOWED_BILLING_STATUSES = new Set([
+  ...ALLOWED_INVOICE_STATUSES,
+  ...ALLOWED_PAYMENT_STATUSES,
+  ...ALLOWED_BOOKING_STATUSES,
+  ...ALLOWED_CHECKOUT_CHARGE_STATUSES
+]);
+
+const parseDateParam = (dateString, fieldName) => {
+  if (!dateString) return null;
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ApplicationError(`Invalid ${fieldName}. Expected a valid date string`, 400);
+  }
+  return parsed;
+};
+
+const parseObjectIdParam = (value, fieldName) => {
+  if (!value) return null;
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw new ApplicationError(`Invalid ${fieldName}. Expected a valid ObjectId`, 400);
+  }
+  return new mongoose.Types.ObjectId(value);
+};
 
 // All routes require rate limiting, authentication, and tenant isolation
 router.use(financialRateLimiter);
@@ -133,7 +163,7 @@ router.get('/user', catchAsync(async (req, res) => {
  *         name: type
  *         schema:
  *           type: string
- *           enum: [all, invoice, payment, refund, booking]
+ *           enum: [all, invoice, payment, refund, booking, checkout_charges]
  *           default: all
  *       - in: query
  *         name: status
@@ -205,43 +235,56 @@ router.get('/user', catchAsync(async (req, res) => {
  *                       type: object
  */
 router.get('/', catchAsync(async (req, res) => {
-    const {
-      type = 'all',
-      status,
-      startDate,
-      endDate,
-      guestId,
-      search
-    } = req.query;
+  const {
+    type = 'all',
+    status,
+    startDate,
+    endDate,
+    guestId,
+    search
+  } = req.query;
+
+  if (!ALLOWED_HISTORY_TYPES.has(type)) {
+    throw new ApplicationError(`Invalid type. Allowed values: ${Array.from(ALLOWED_HISTORY_TYPES).join(', ')}`, 400);
+  }
+  if (status && !ALLOWED_BILLING_STATUSES.has(status)) {
+    throw new ApplicationError(`Invalid status. Allowed values: ${Array.from(ALLOWED_BILLING_STATUSES).join(', ')}`, 400);
+  }
+
+  const parsedStartDate = parseDateParam(startDate, 'startDate');
+  const parsedEndDate = parseDateParam(endDate, 'endDate');
+  if (parsedStartDate && parsedEndDate && parsedStartDate > parsedEndDate) {
+    throw new ApplicationError('Invalid date range. startDate must be less than or equal to endDate', 400);
+  }
 
   // Parse and clamp pagination params to prevent unbounded queries
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
-  // Build base query based on user role - hotelId is always mandatory for tenant isolation
-  // SECURITY FIX: Use tenant-scoped hotelId from ensureTenantContext (overrides any client-provided value)
-  let baseQuery = {};
-  const targetHotelId = req.tenantId || req.user.hotelId;
-
-  if (!targetHotelId) {
-    throw new ApplicationError('Hotel ID is required', 400);
-  }
-
-  baseQuery.hotelId = new mongoose.Types.ObjectId(targetHotelId);
+  // Tenant isolation: staff use hotelId; guests often have no tenant (ensureTenantContext sets req.tenantId null).
+  // For guests, scope by guestId / userId on each record only — no hotel filter on baseQuery.
+  const baseQuery = {};
+  const targetHotelId = req.tenantId || refToHotelIdString(req.user.hotelId);
+  let scopedGuestId = null;
 
   if (req.user.role === 'guest') {
-    baseQuery.guestId = req.user._id;
+    scopedGuestId = req.user._id;
+  } else {
+    if (!targetHotelId) {
+      throw new ApplicationError('Hotel ID is required', 400);
+    }
+    baseQuery.hotelId = new mongoose.Types.ObjectId(targetHotelId);
   }
 
   // Apply additional filters
-  if (guestId && ['staff', 'admin'].includes(req.user.role)) {
-    baseQuery.guestId = new mongoose.Types.ObjectId(guestId);
+  if (guestId && ['staff', 'admin', 'manager'].includes(req.user.role)) {
+    scopedGuestId = parseObjectIdParam(guestId, 'guestId');
   }
 
   // Date range filter
   const dateFilter = {};
-  if (startDate) dateFilter.$gte = new Date(startDate);
-  if (endDate) dateFilter.$lte = new Date(endDate);
+  if (parsedStartDate) dateFilter.$gte = parsedStartDate;
+  if (parsedEndDate) dateFilter.$lte = parsedEndDate;
 
   const skip = (page - 1) * limit;
   let historyItems = [];
@@ -259,6 +302,9 @@ router.get('/', catchAsync(async (req, res) => {
   // Fetch invoices
   if (type === 'all' || type === 'invoice') {
     const invoiceQuery = { ...baseQuery };
+    if (scopedGuestId) {
+      invoiceQuery.guestId = scopedGuestId;
+    }
     if (Object.keys(dateFilter).length > 0) {
       invoiceQuery.issueDate = dateFilter;
     }
@@ -308,6 +354,9 @@ router.get('/', catchAsync(async (req, res) => {
   if (type === 'all' || type === 'payment') {
     // Get invoices that have payments
     const invoicePaymentQuery = { ...baseQuery };
+    if (scopedGuestId) {
+      invoicePaymentQuery.guestId = scopedGuestId;
+    }
     if (Object.keys(dateFilter).length > 0) {
       invoicePaymentQuery.issueDate = dateFilter;
     }
@@ -362,6 +411,7 @@ router.get('/', catchAsync(async (req, res) => {
   if (type === 'all' || type === 'refund') {
     const refundInvoices = await Invoice.find({
       ...baseQuery,
+      ...(scopedGuestId ? { guestId: scopedGuestId } : {}),
       status: 'refunded'
     })
       .populate('bookingId', 'bookingNumber')
@@ -397,6 +447,9 @@ router.get('/', catchAsync(async (req, res) => {
   // Include bookings as potential billing items (especially pending ones without invoices)
   if (type === 'all' || type === 'booking') {
     const bookingQuery = { ...baseQuery };
+    if (scopedGuestId) {
+      bookingQuery.userId = scopedGuestId;
+    }
     if (Object.keys(dateFilter).length > 0) {
       bookingQuery.createdAt = dateFilter;
     }
@@ -445,6 +498,56 @@ router.get('/', catchAsync(async (req, res) => {
     });
   }
 
+  // Include guest checkout inventory charges recorded on User.billingHistory
+  // For staff/admin/manager, include these entries only when guestId scope is provided.
+  const canViewScopedCheckoutCharges =
+    req.user.role === 'guest' || (['staff', 'admin', 'manager'].includes(req.user.role) && scopedGuestId);
+  if (canViewScopedCheckoutCharges && (type === 'all' || type === 'checkout_charges')) {
+    const checkoutGuestId = req.user.role === 'guest' ? req.user._id : scopedGuestId;
+    const guestLookup = { _id: checkoutGuestId };
+    if (targetHotelId && req.user.role !== 'guest') {
+      guestLookup.hotelId = new mongoose.Types.ObjectId(targetHotelId);
+    }
+    const guestUser = await User.findOne(guestLookup)
+      .select('name email billingHistory')
+      .populate({
+        path: 'billingHistory.bookingId',
+        select: 'bookingNumber'
+      })
+      .lean();
+
+    const checkoutCharges = (guestUser?.billingHistory || []).filter(entry => entry?.type === 'checkout_charges');
+
+    checkoutCharges.forEach((entry, index) => {
+      if (status && entry.paymentStatus !== status) {
+        return;
+      }
+
+      const entryDate = entry.createdAt || entry.paidAt;
+      if (Object.keys(dateFilter).length > 0 && entryDate) {
+        const entryDateObj = new Date(entryDate);
+        if (dateFilter.$gte && entryDateObj < dateFilter.$gte) return;
+        if (dateFilter.$lte && entryDateObj > dateFilter.$lte) return;
+      }
+
+      historyItems.push({
+        id: entry._id ? String(entry._id) : `${checkoutGuestId}-checkout-${index}`,
+        type: 'checkout_charges',
+        subType: entry.type,
+        date: entryDate || new Date(),
+        amount: entry.totalAmount || 0,
+        status: entry.paymentStatus || 'pending',
+        description: entry.description || 'Checkout inventory charges',
+        bookingId: entry.bookingId?._id || entry.bookingId,
+        bookingNumber: entry.bookingId?.bookingNumber,
+        guestName: guestUser?.name,
+        guestEmail: guestUser?.email,
+        paymentMethod: entry.paymentMethod,
+        itemCount: Array.isArray(entry.items) ? entry.items.length : 0
+      });
+    });
+  }
+
   // Apply search filter to consolidated results if needed
   if (search && type === 'all') {
     const searchLower = search.toLowerCase();
@@ -471,10 +574,12 @@ router.get('/', catchAsync(async (req, res) => {
     paymentCount: historyItems.filter(item => item.type === 'payment').length,
     refundCount: historyItems.filter(item => item.type === 'refund').length,
     bookingCount: historyItems.filter(item => item.type === 'booking').length,
+    checkoutChargeCount: historyItems.filter(item => item.type === 'checkout_charges').length,
     totalInvoiceAmount: historyItems.filter(item => item.type === 'invoice').reduce((sum, item) => sum + item.amount, 0),
     totalPaymentAmount: historyItems.filter(item => item.type === 'payment').reduce((sum, item) => sum + item.amount, 0),
     totalRefundAmount: historyItems.filter(item => item.type === 'refund').reduce((sum, item) => sum + item.amount, 0),
-    totalBookingAmount: historyItems.filter(item => item.type === 'booking').reduce((sum, item) => sum + item.amount, 0)
+    totalBookingAmount: historyItems.filter(item => item.type === 'booking').reduce((sum, item) => sum + item.amount, 0),
+    totalCheckoutChargeAmount: historyItems.filter(item => item.type === 'checkout_charges').reduce((sum, item) => sum + item.amount, 0)
   };
 
   logger.debug('Billing history final results', {
@@ -520,11 +625,14 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Billing statistics and analytics
  */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
   const { period = 'month' } = req.query;
+  if (!ALLOWED_PERIODS.has(period)) {
+    throw new ApplicationError(`Invalid period. Allowed values: ${Array.from(ALLOWED_PERIODS).join(', ')}`, 400);
+  }
 
   // SECURITY FIX: Always use tenant-scoped hotelId from ensureTenantContext
-  const targetHotelId = req.tenantId || req.user.hotelId;
+  const targetHotelId = req.tenantId || refToHotelIdString(req.user.hotelId);
 
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -689,12 +797,23 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Export data or download link
  */
-router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/export', authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
   const { format = 'csv', startDate, endDate, type = 'all' } = req.query;
+  if (!['csv', 'excel', 'pdf'].includes(format)) {
+    throw new ApplicationError('Invalid format. Allowed values: csv, excel, pdf', 400);
+  }
+  if (!['all', 'invoice', 'payment', 'refund'].includes(type)) {
+    throw new ApplicationError('Invalid type. Allowed values: all, invoice, payment, refund', 400);
+  }
+  const parsedStartDate = parseDateParam(startDate, 'startDate');
+  const parsedEndDate = parseDateParam(endDate, 'endDate');
+  if (parsedStartDate && parsedEndDate && parsedStartDate > parsedEndDate) {
+    throw new ApplicationError('Invalid date range. startDate must be less than or equal to endDate', 400);
+  }
   const exportLimit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 500));
 
   // SECURITY FIX: Always use tenant-scoped hotelId from ensureTenantContext
-  const targetHotelId = req.tenantId || req.user.hotelId;
+  const targetHotelId = req.tenantId || refToHotelIdString(req.user.hotelId);
 
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -703,8 +822,8 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
   const baseQuery = { hotelId: new mongoose.Types.ObjectId(targetHotelId) };
 
   const dateFilter = {};
-  if (startDate) dateFilter.$gte = new Date(startDate);
-  if (endDate) dateFilter.$lte = new Date(endDate);
+  if (parsedStartDate) dateFilter.$gte = parsedStartDate;
+  if (parsedEndDate) dateFilter.$lte = parsedEndDate;
 
   let exportData = [];
 

@@ -34,6 +34,7 @@ export default function StaffPerformance() {
 
   const staffQuery = useStaffPerformance(
     activeHotelId,
+    filters.period,
     filters.department,
     filters.staffId
   );

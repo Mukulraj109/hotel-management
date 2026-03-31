@@ -44,6 +44,8 @@ function AdminNotifications() {
 
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const getNotificationId = (notification: Partial<Notification> & { id?: string }) =>
+    String(notification._id || notification.id || '');
 
   // Real-time connection setup with singleton pattern
   useEffect(() => {
@@ -73,12 +75,19 @@ function AdminNotifications() {
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
     };
 
+    const handleNotificationDeleted = (data: Record<string, unknown>) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+    };
+
     on('notification:new', handleNewNotification);
     on('notification:read', handleNotificationRead);
+    on('notification:deleted', handleNotificationDeleted);
 
     return () => {
       off('notification:new', handleNewNotification);
       off('notification:read', handleNotificationRead);
+      off('notification:deleted', handleNotificationDeleted);
     };
   }, [connectionState, on, off, queryClient]);
 
@@ -205,7 +214,7 @@ function AdminNotifications() {
   };
 
   const selectAllNotifications = () => {
-    const allIds = notificationsData?.notifications.map(n => n._id) || [];
+    const allIds = notificationsData?.notifications.map(n => getNotificationId(n)).filter(Boolean) || [];
     setSelectedNotifications(
       selectedNotifications.length === allIds.length ? [] : allIds
     );
@@ -499,9 +508,11 @@ function AdminNotifications() {
                 </div>
 
                 {/* Notifications */}
-                {notificationsData?.notifications.map((notification) => (
+                {notificationsData?.notifications.map((notification) => {
+                  const notificationId = getNotificationId(notification);
+                  return (
                   <div
-                    key={notification._id}
+                    key={notificationId}
                     className={`p-4 rounded-lg border transition-all ${
                       notificationService.isUnread(notification)
                         ? 'bg-blue-50 border-blue-200'
@@ -511,8 +522,8 @@ function AdminNotifications() {
                     <div className="flex items-start space-x-4">
                       <input
                         type="checkbox"
-                        checked={selectedNotifications.includes(notification._id)}
-                        onChange={() => toggleNotificationSelection(notification._id)}
+                        checked={selectedNotifications.includes(notificationId)}
+                        onChange={() => toggleNotificationSelection(notificationId)}
                         className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
 
@@ -559,7 +570,7 @@ function AdminNotifications() {
                               notificationService.isUnread(notification)
                                 ? 'text-gray-800'
                                 : 'text-gray-600'
-                            } ${expandedNotification === notification._id ? '' : 'line-clamp-2'}`}>
+                            } ${expandedNotification === notificationId ? '' : 'line-clamp-2'}`}>
                               {notification.message}
                             </p>
 
@@ -569,11 +580,11 @@ function AdminNotifications() {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => setExpandedNotification(
-                                    expandedNotification === notification._id ? null : notification._id
+                                    expandedNotification === notificationId ? null : notificationId
                                   )}
                                   className="text-xs"
                                 >
-                                  {expandedNotification === notification._id ? (
+                                  {expandedNotification === notificationId ? (
                                     <>
                                       <ChevronUp className="h-3 w-3 mr-1" />
                                       Show Less
@@ -586,7 +597,7 @@ function AdminNotifications() {
                                   )}
                                 </Button>
 
-                                {expandedNotification === notification._id && (
+                                {expandedNotification === notificationId && (
                                   <div className="mt-2 p-3 bg-gray-50 rounded-md">
                                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
                                       {JSON.stringify(notification.data, null, 2)}
@@ -604,7 +615,7 @@ function AdminNotifications() {
                               <div className="flex items-center space-x-2">
                                 {notificationService.isUnread(notification) && (
                                   <Button
-                                    onClick={() => handleMarkAsRead(notification._id)}
+                                    onClick={() => handleMarkAsRead(notificationId)}
                                     disabled={markAsReadMutation.isPending}
                                     variant="ghost"
                                     size="sm"
@@ -616,7 +627,7 @@ function AdminNotifications() {
                                 )}
 
                                 <Button
-                                  onClick={() => handleDeleteNotification(notification._id)}
+                                  onClick={() => handleDeleteNotification(notificationId)}
                                   disabled={deleteNotificationMutation.isPending}
                                   variant="ghost"
                                   size="sm"
@@ -631,19 +642,23 @@ function AdminNotifications() {
                       </div>
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
             )}
           </div>
 
           {/* Pagination */}
-          {notificationsData && notificationsData.totalPages > 1 && (
+          {notificationsData && notificationsData.pagination.totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-700">
-                  Showing {((currentPage - 1) * 20) + 1} to{' '}
-                  {Math.min(currentPage * 20, notificationsData.totalCount)} of{' '}
-                  {notificationsData.totalCount} notifications
+                  Showing {((notificationsData.pagination.currentPage - 1) * notificationsData.pagination.itemsPerPage) + 1} to{' '}
+                  {Math.min(
+                    notificationsData.pagination.currentPage * notificationsData.pagination.itemsPerPage,
+                    notificationsData.pagination.totalItems
+                  )} of{' '}
+                  {notificationsData.pagination.totalItems} notifications
                 </p>
 
                 <div className="flex space-x-2">
@@ -657,12 +672,12 @@ function AdminNotifications() {
                   </Button>
 
                   <span className="flex items-center px-3 py-1 text-sm text-gray-700">
-                    Page {currentPage} of {notificationsData.totalPages}
+                    Page {notificationsData.pagination.currentPage} of {notificationsData.pagination.totalPages}
                   </span>
 
                   <Button
-                    onClick={() => setCurrentPage(Math.min(notificationsData.totalPages, currentPage + 1))}
-                    disabled={currentPage === notificationsData.totalPages}
+                    onClick={() => setCurrentPage(Math.min(notificationsData.pagination.totalPages, currentPage + 1))}
+                    disabled={currentPage === notificationsData.pagination.totalPages}
                     variant="outline"
                     size="sm"
                   >

@@ -18,12 +18,45 @@ import { validateStatusTransition, GUEST_SERVICE_TRANSITIONS } from '../utils/st
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const ASSIGNABLE_ROLES = ['staff', 'frontdesk'];
+const GUEST_SERVICE_LIST_CREATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
+const GUEST_SERVICE_UPDATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
+
+const authorizeRoles = (allowedRoles) => (req, _res, next) => {
+  if (!allowedRoles.includes(req.user?.role)) {
+    return next(new ApplicationError('Insufficient permissions for guest services', 403));
+  }
+  return next();
+};
+
+const toIdString = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  return (value._id || value).toString();
+};
+
+const buildHotelSafeServicePayload = (serviceRequest) => ({
+  _id: toIdString(serviceRequest?._id),
+  hotelId: toIdString(serviceRequest?.hotelId),
+  userId: toIdString(serviceRequest?.userId),
+  bookingId: toIdString(serviceRequest?.bookingId),
+  serviceType: serviceRequest?.serviceType,
+  serviceVariation: serviceRequest?.serviceVariation,
+  serviceVariations: serviceRequest?.serviceVariations,
+  title: serviceRequest?.title,
+  priority: serviceRequest?.priority,
+  status: serviceRequest?.status,
+  assignedTo: toIdString(serviceRequest?.assignedTo),
+  scheduledTime: serviceRequest?.scheduledTime,
+  createdAt: serviceRequest?.createdAt,
+  updatedAt: serviceRequest?.updatedAt,
+  completedTime: serviceRequest?.completedTime
+});
 
 // All routes require authentication, tenant isolation, and property access
 router.use(authenticate);
 router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
-router.use(authorizePolicy('guestServices', 'baseAccess'));
 
 /**
  * @swagger
@@ -82,7 +115,7 @@ router.use(authorizePolicy('guestServices', 'baseAccess'));
  *       201:
  *         description: Service request created successfully
  */
-router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     serviceType,
@@ -192,33 +225,26 @@ router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(asyn
 
   // Real-time WebSocket notifications for guest service request
   try {
-    // Notify hotel staff and admins of new guest service request
-    await websocketService.broadcastToHotel(booking.hotelId, 'guest-service:created', {
-      serviceRequest,
-      booking,
-      guest: serviceRequest.userId
+    const hotelSafeServiceRequest = buildHotelSafeServicePayload(serviceRequest);
+    await websocketService.broadcastToHotel(booking.hotelId, 'guest-services:created', {
+      serviceRequest: hotelSafeServiceRequest
     });
 
-    // Notify the assigned staff member specifically
-    if (assignedTo) {
-      await websocketService.sendToUser(assignedTo.toString(), 'guest-service:assigned', {
+    if (serviceRequest.assignedTo) {
+      const assigneeId = typeof serviceRequest.assignedTo === 'object'
+        ? (serviceRequest.assignedTo._id || serviceRequest.assignedTo).toString()
+        : serviceRequest.assignedTo.toString();
+      await websocketService.sendToUser(assigneeId, 'guest-services:assigned', {
         serviceRequest,
         booking
       });
     }
 
-    // Notify all staff roles
-    await websocketService.broadcastToRole('staff', 'guest-service:created', serviceRequest);
-    await websocketService.broadcastToRole('admin', 'guest-service:created', serviceRequest);
-    await websocketService.broadcastToRole('manager', 'guest-service:created', serviceRequest);
-
-    // Notify the guest who created the request
-    await websocketService.sendToUser(serviceRequest.userId.toString(), 'guest-service:created', {
+    await websocketService.sendToUser(serviceRequest.userId.toString(), 'guest-services:created', {
       serviceRequest,
       status: 'confirmed'
     });
   } catch (wsError) {
-    // Log WebSocket errors but don't fail the service request creation
     logger.warn('Failed to send real-time guest service notification', { error: wsError.message });
   }
 
@@ -271,14 +297,19 @@ router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(asyn
  *       200:
  *         description: List of service requests
  */
-router.get('/', authenticate, catchAsync(async (req, res) => {
+router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
     status,
     serviceType,
+    serviceTypes,
+    serviceVariation,
+    excludeServiceVariation,
     priority,
-    assignedTo
+    assignedTo,
+    bookingId,
+    userId
   } = req.query;
 
   const query = {};
@@ -297,8 +328,42 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
   // Apply filters
   if (status) query.status = status;
   if (serviceType) query.serviceType = serviceType;
+  if (serviceTypes) {
+    const types = String(serviceTypes)
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (types.length > 0) {
+      query.serviceType = { $in: types };
+    }
+  }
+  if (serviceVariation) {
+    const variation = String(serviceVariation).trim();
+    if (variation) {
+      query.$or = [
+        { serviceVariation: variation },
+        { serviceVariations: variation }
+      ];
+    }
+  }
+  if (excludeServiceVariation) {
+    const excluded = String(excludeServiceVariation).trim();
+    if (excluded) {
+      query.$and = (query.$and || []).concat([
+        { serviceVariation: { $ne: excluded } },
+        { serviceVariations: { $nin: [excluded] } }
+      ]);
+    }
+  }
   if (priority) query.priority = priority;
   if (assignedTo) query.assignedTo = assignedTo;
+  if (bookingId) query.bookingId = bookingId;
+  if (userId && req.user.role !== 'guest') query.userId = userId;
+
+  // Staff users are always scoped to their own assignments.
+  if (req.user.role === 'staff') {
+    query.assignedTo = req.user._id;
+  }
 
   const parsedPage = parseInt(page, 10) || 1;
   const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
@@ -469,7 +534,7 @@ router.get('/available-staff', authenticate, authorizePolicy('guestServices', 's
   const User = mongoose.model('User');
   const staffMembers = await User.find({
     hotelId: hotelId,
-    role: 'staff',
+    role: { $in: ASSIGNABLE_ROLES },
     isActive: true
   }).select('_id name email department').lean().limit(1000);
   
@@ -507,10 +572,38 @@ router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'sta
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
+  const User = mongoose.model('User');
+  const assignee = await User.findOne({
+    _id: assignedTo,
+    hotelId,
+    role: { $in: ASSIGNABLE_ROLES },
+    isActive: true
+  }).select('_id').lean();
+  if (!assignee) {
+    throw new ApplicationError('assignedTo must be an active staff/frontdesk user in the same hotel', 400);
+  }
   const result = await GuestService.updateMany(
     { _id: { $in: serviceIds }, hotelId },
     { $set: { assignedTo, status: 'assigned', updatedAt: new Date() } }
   );
+
+  try {
+    await websocketService.broadcastToHotel(hotelId, 'guest-services:assigned', {
+      bulkOperation: true,
+      serviceIds,
+      assignedTo,
+      updated: result.modifiedCount
+    });
+    await websocketService.broadcastToHotel(hotelId, 'guest-services:updated', {
+      bulkOperation: true,
+      serviceIds,
+      assignedTo,
+      updated: result.modifiedCount
+    });
+  } catch (wsError) {
+    logger.warn('Failed to send guest-services bulk assignment notification', { error: wsError.message });
+  }
+
   res.json({ status: 'success', data: { updated: result.modifiedCount } });
 }));
 
@@ -534,6 +627,26 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
     { _id: { $in: serviceIds }, hotelId: bulkHotelId },
     { $set: updateData }
   );
+
+  try {
+    await websocketService.broadcastToHotel(bulkHotelId, 'guest-services:status_changed', {
+      bulkOperation: true,
+      serviceIds,
+      status,
+      newStatus: status,
+      updated: result.modifiedCount
+    });
+    await websocketService.broadcastToHotel(bulkHotelId, 'guest-services:updated', {
+      bulkOperation: true,
+      serviceIds,
+      status,
+      newStatus: status,
+      updated: result.modifiedCount
+    });
+  } catch (wsError) {
+    logger.warn('Failed to send guest-services bulk status notification', { error: wsError.message });
+  }
+
   res.json({ status: 'success', data: { updated: result.modifiedCount } });
 }));
 
@@ -558,7 +671,7 @@ router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAcces
     const headers = ['ID', 'Service Type', 'Guest', 'Priority', 'Status', 'Assigned To', 'Cost', 'Created', 'Completed'];
     const rows = services.map(s => [
       s._id, s.serviceType || '', s.userId?.name || '', s.priority || '',
-      s.status || '', s.assignedTo?.name || '', s.cost || 0,
+      s.status || '', s.assignedTo?.name || '', s.actualCost || s.cost || 0,
       s.createdAt ? new Date(s.createdAt).toISOString() : '',
       s.completedTime ? new Date(s.completedTime).toISOString() : ''
     ]);
@@ -588,7 +701,7 @@ router.delete('/:id', authenticate, authorizePolicy('guestServices', 'staffAcces
   res.json({ status: 'success', message: 'Service request deleted successfully' });
 }));
 
-router.get('/:id', authenticate, catchAsync(async (req, res) => {
+router.get('/:id', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), catchAsync(async (req, res) => {
   const serviceRequest = await GuestService.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('userId', 'name email phone')
@@ -611,8 +724,14 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
     throw new ApplicationError('You can only view your own service requests', 403);
   }
 
-  if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && serviceRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only view requests for your hotel', 403);
+  if (req.user.role !== 'guest') {
+    const requesterHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+    if (!requesterHotelId) {
+      throw new ApplicationError('Hotel context required', 400);
+    }
+    if (serviceRequest.hotelId._id.toString() !== requesterHotelId.toString()) {
+      throw new ApplicationError('You can only view requests for your hotel', 403);
+    }
   }
 
   res.json({
@@ -658,7 +777,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Service request updated successfully
  */
-router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // First fetch current state to validate permissions and transitions
   const currentRequest = await GuestService.findById(req.params.id).lean();
 
@@ -679,14 +798,34 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
     feedback
   } = req.body;
 
+  const scopedHotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user?.hotelId);
+  if (['admin', 'manager'].includes(req.user.role) && !scopedHotelId) {
+    throw new ApplicationError('Hotel context required for this update', 400);
+  }
+
   // Permission checks
   const canUpdate =
-    req.user.role === 'admin' ||
-    ((req.user.role === 'staff' || req.user.role === 'frontdesk') && currentRequest.hotelId.toString() === req.user.hotelId.toString()) ||
+    (req.user.role === 'admin' && currentRequest.hotelId.toString() === scopedHotelId?.toString()) ||
+    ((req.user.role === 'staff' || req.user.role === 'frontdesk' || req.user.role === 'manager') &&
+      currentRequest.hotelId.toString() === scopedHotelId?.toString()) ||
     (req.user.role === 'guest' && currentRequest.userId.toString() === req.user._id.toString());
 
   if (!canUpdate) {
     throw new ApplicationError('You do not have permission to update this request', 403);
+  }
+
+  // Staff can only mutate requests assigned to them, except self-claiming unassigned requests.
+  if (req.user.role === 'staff') {
+    const assignedToStaff = currentRequest.assignedTo && currentRequest.assignedTo.toString() === req.user._id.toString();
+    const isClaimingUnassigned =
+      !currentRequest.assignedTo &&
+      assignedTo &&
+      assignedTo.toString() === req.user._id.toString() &&
+      (!status || status === 'assigned');
+
+    if (!assignedToStaff && !isClaimingUnassigned) {
+      throw new ApplicationError('Staff can only update requests assigned to them', 403);
+    }
   }
 
   const setFields = {};
@@ -715,15 +854,34 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
   } else {
     // Staff/admin updates - validate transition if status is changing
     if (status !== undefined) {
-      const staffTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, status);
-      if (!staffTransition.valid) {
-        throw new ApplicationError(staffTransition.error, 400);
+      // Allow idempotent status updates for partial progress updates.
+      if (status !== currentRequest.status) {
+        const staffTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, status);
+        if (!staffTransition.valid) {
+          throw new ApplicationError(staffTransition.error, 400);
+        }
       }
       setFields.status = status;
       if (status === 'completed') setFields.completedTime = new Date();
       setFields.statusUpdatedAt = new Date();
     }
-    if (assignedTo !== undefined) setFields.assignedTo = assignedTo;
+    if (assignedTo !== undefined) {
+      if (!assignedTo) {
+        setFields.assignedTo = null;
+      } else {
+        const User = mongoose.model('User');
+        const assignee = await User.findOne({
+          _id: assignedTo,
+          hotelId: currentRequest.hotelId,
+          role: { $in: ASSIGNABLE_ROLES },
+          isActive: true
+        }).select('_id').lean();
+        if (!assignee) {
+          throw new ApplicationError('assignedTo must be an active staff/frontdesk user in the same hotel', 400);
+        }
+        setFields.assignedTo = assignedTo;
+      }
+    }
     if (notes !== undefined) setFields.notes = notes;
     if (actualCost !== undefined) setFields.actualCost = actualCost;
     if (scheduledTime !== undefined) setFields.scheduledTime = scheduledTime;
@@ -749,6 +907,48 @@ router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(
 
   if (!serviceRequest) {
     throw new ApplicationError('Service request was modified concurrently. Please retry.', 409);
+  }
+
+  // Emit realtime update for status/assignment changes
+  try {
+    if (status !== undefined || assignedTo !== undefined) {
+      const previousStatus = currentRequest.status;
+      const eventType = status === 'completed' ? 'guest-services:completed'
+        : status === 'cancelled' ? 'guest-services:cancelled'
+        : status === 'in_progress' ? 'guest-services:in_progress'
+        : assignedTo !== undefined ? 'guest-services:assigned'
+        : 'guest-services:updated';
+      const hotelSafeServiceRequest = buildHotelSafeServicePayload(serviceRequest);
+
+      await websocketService.broadcastToHotel(
+        serviceRequest.hotelId?._id || serviceRequest.hotelId,
+        eventType,
+        { serviceRequest: hotelSafeServiceRequest }
+      );
+      await websocketService.broadcastToHotel(
+        serviceRequest.hotelId?._id || serviceRequest.hotelId,
+        'guest-services:updated',
+        { serviceRequest: hotelSafeServiceRequest }
+      );
+      if (status !== undefined) {
+        await websocketService.broadcastToHotel(
+          serviceRequest.hotelId?._id || serviceRequest.hotelId,
+          'guest-services:status_changed',
+          { serviceRequest: hotelSafeServiceRequest, status, previousStatus, newStatus: status }
+        );
+      }
+
+      if (serviceRequest.userId) {
+        const userId = serviceRequest.userId?._id || serviceRequest.userId;
+        await websocketService.sendToUser(userId.toString(), eventType, { serviceRequest });
+        await websocketService.sendToUser(userId.toString(), 'guest-services:updated', { serviceRequest });
+        if (status !== undefined) {
+          await websocketService.sendToUser(userId.toString(), 'guest-services:status_changed', { serviceRequest, status, previousStatus, newStatus: status });
+        }
+      }
+    }
+  } catch (wsError) {
+    logger.warn('Failed to send guest-service update notification', { error: wsError.message });
   }
 
   res.json({

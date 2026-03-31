@@ -43,6 +43,21 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 const dashboardCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+const isSuperAdmin = (user) => user?.role === 'super_admin';
+
+const resolveScopedHotelId = (req, requestedHotelId) => {
+  if (!isSuperAdmin(req.user)) {
+    if (!req.user?.hotelId) {
+      throw new ApplicationError('Hotel context required', 400);
+    }
+    return req.user.hotelId;
+  }
+  if (requestedHotelId && requestedHotelId !== 'all') {
+    return requestedHotelId;
+  }
+  return null;
+};
+
 // Clean up expired cache entries every 10 minutes to prevent memory leaks
 setInterval(() => {
   const now = Date.now();
@@ -706,15 +721,12 @@ export const exportTravelData = catchAsync(async (req, res) => {
 export const getAdvancedBookingTrends = catchAsync(async (req, res) => {
   const { startDate, endDate, granularity = 'month', hotelId } = req.query;
 
-  const resolvedHotelId = hotelId || req.user?.hotelId;
-  if (!resolvedHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
-  }
+  const resolvedHotelId = resolveScopedHotelId(req, hotelId);
 
   const filters = { granularity };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
-  filters.hotelId = resolvedHotelId;
+  if (resolvedHotelId) filters.hotelId = resolvedHotelId;
 
   const analytics = await analyticsService.analyzeBookingTrends(filters);
 
@@ -755,13 +767,10 @@ export const getAdvancedBookingTrends = catchAsync(async (req, res) => {
 export const getRevenueForecastAnalytics = catchAsync(async (req, res) => {
   const { periodsAhead = 6, granularity = 'month', hotelId } = req.query;
 
-  const resolvedHotelId = hotelId || req.user?.hotelId;
-  if (!resolvedHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
-  }
+  const resolvedHotelId = resolveScopedHotelId(req, hotelId);
 
   const filters = { granularity };
-  filters.hotelId = resolvedHotelId;
+  if (resolvedHotelId) filters.hotelId = resolvedHotelId;
 
   const forecast = await analyticsService.forecastRevenue(filters, parseInt(periodsAhead));
 
@@ -800,11 +809,13 @@ export const getRevenueForecastAnalytics = catchAsync(async (req, res) => {
  *         description: Commission projections
  */
 export const getCommissionProjections = catchAsync(async (req, res) => {
-  const { startDate, endDate, projectionMonths = 6 } = req.query;
+  const { startDate, endDate, projectionMonths = 6, hotelId } = req.query;
+  const resolvedHotelId = resolveScopedHotelId(req, hotelId);
 
   const filters = { projectionMonths: parseInt(projectionMonths) };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
+  if (resolvedHotelId) filters.hotelId = resolvedHotelId;
 
   const projections = await analyticsService.calculateCommissionProjections(filters);
 
@@ -844,11 +855,13 @@ export const getCommissionProjections = catchAsync(async (req, res) => {
  *         description: Performance metrics for all agents
  */
 export const getAllPerformanceMetrics = catchAsync(async (req, res) => {
-  const { startDate, endDate, comparisonPeriod = 'previous_period' } = req.query;
+  const { startDate, endDate, comparisonPeriod = 'previous_period', hotelId } = req.query;
+  const resolvedHotelId = resolveScopedHotelId(req, hotelId);
 
   const filters = { comparisonPeriod };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
+  if (resolvedHotelId) filters.hotelId = resolvedHotelId;
 
   const metrics = await analyticsService.calculatePerformanceMetrics(filters);
 
@@ -894,11 +907,13 @@ export const getAllPerformanceMetrics = catchAsync(async (req, res) => {
  *         description: Time-series analytics data
  */
 export const getTimeSeriesAnalytics = catchAsync(async (req, res) => {
-  const { metric = 'revenue', startDate, endDate, granularity = 'day' } = req.query;
+  const { metric = 'revenue', startDate, endDate, granularity = 'day', hotelId } = req.query;
+  const resolvedHotelId = resolveScopedHotelId(req, hotelId);
 
   const filters = { granularity };
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
+  if (resolvedHotelId) filters.hotelId = resolvedHotelId;
 
   const timeSeries = await analyticsService.processTimeSeriesData(filters, metric);
 
@@ -956,6 +971,14 @@ export const createComprehensiveExport = catchAsync(async (req, res) => {
     includeInvoices = false,
     includeAnalytics = true
   } = req.body;
+
+  const requestedHotelId = filters?.hotelId;
+  const resolvedHotelId = resolveScopedHotelId(req, requestedHotelId);
+  if (resolvedHotelId) {
+    filters.hotelId = resolvedHotelId;
+  } else {
+    delete filters.hotelId;
+  }
 
   const exportOptions = {
     formats,

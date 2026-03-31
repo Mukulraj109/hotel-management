@@ -101,7 +101,8 @@ class InventoryAutomationService {
         roomId,
         inventoryAssessment,
         replacementItems,
-        processedBy
+        processedBy,
+        options
       );
       results.steps.push({
         step: 'inventory_status_update',
@@ -167,7 +168,12 @@ class InventoryAutomationService {
    */
   async assessRoomInventory(roomId, options = {}) {
     try {
-      const roomInventory = await RoomInventory.findOne({ roomId })
+      const roomInventoryFilter = { roomId };
+      if (options.hotelId) {
+        roomInventoryFilter.hotelId = options.hotelId;
+      }
+
+      const roomInventory = await RoomInventory.findOne(roomInventoryFilter)
         .populate('items.itemId', 'name category unitPrice replacementPrice')
         .populate('roomId', 'roomNumber type floor').lean();
 
@@ -569,9 +575,14 @@ class InventoryAutomationService {
    * @param {Object} replacementItems - Replacement items plan
    * @param {string} processedBy - User ID
    */
-  async updateRoomInventoryStatus(roomId, assessment, replacementItems, processedBy) {
+  async updateRoomInventoryStatus(roomId, assessment, replacementItems, processedBy, options = {}) {
     try {
-      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
+      const roomInventoryFilter = { roomId };
+      if (options.hotelId) {
+        roomInventoryFilter.hotelId = options.hotelId;
+      }
+
+      const roomInventory = await RoomInventory.findOne(roomInventoryFilter);
       if (!roomInventory) {
         throw new Error('Room inventory not found');
       }

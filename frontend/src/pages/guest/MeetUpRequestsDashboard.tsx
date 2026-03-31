@@ -644,15 +644,11 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }: {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch hotel data
-        const hotelResponse = await api.get('/contact/hotels');
-        const hotels = hotelResponse.data.data?.hotels || hotelResponse.data.hotels || [];
-        
-        if (hotels && hotels.length > 0) {
-          const hotel = hotels[0];
-          const hotelId = hotel.id || hotel._id;
+        // Resolve active hotel from authenticated booking context
+        const hotelResponse = await api.get('/bookings/current-hotel');
+        const hotelId = hotelResponse.data?.data?.hotelId;
+        if (hotelId) {
           setFormData(prev => ({ ...prev, hotelId }));
-        } else {
         }
       } catch (error) {
         toast.error('Failed to fetch hotel information');

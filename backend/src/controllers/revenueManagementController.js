@@ -6,13 +6,20 @@ import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import RoomType from '../models/RoomType.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { refToHotelIdString } from '../middleware/propertyAccess.js';
 
 const pricingEngine = new DynamicPricingEngine();
+
+const resolveHotelScopeId = (req) => {
+  const candidateHotelId = req.query?.hotelId || req.body?.hotelId || req.user?.hotelId;
+  const validatedHotelId = refToHotelIdString(candidateHotelId);
+  return validatedHotelId || refToHotelIdString(req.property?._id);
+};
 
 // Pricing Rules Management
 export const createPricingRule = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const ruleData = {
       ...req.body,
       hotelId,
@@ -36,7 +43,7 @@ export const createPricingRule = async (req, res) => {
 
 export const getPricingRules = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rules = await PricingRule.find({ hotelId })
       .populate('applicableRoomTypes', 'name')
       .sort({ priority: -1, createdAt: -1 }).lean().limit(1000);
@@ -55,7 +62,7 @@ export const getPricingRules = async (req, res) => {
 
 export const updatePricingRule = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rule = await PricingRule.findOneAndUpdate(
       { _id: req.params.id, hotelId },
       req.body,
@@ -83,7 +90,7 @@ export const updatePricingRule = async (req, res) => {
 
 export const deletePricingRule = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rule = await PricingRule.findOneAndDelete({ _id: req.params.id, hotelId });
 
     if (!rule) {
@@ -175,7 +182,7 @@ export const generateDemandForecast = async (req, res) => {
 export const getDemandForecast = async (req, res) => {
   try {
     const { startDate, endDate, roomTypeId } = req.query;
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const filter = { hotelId };
     
     if (startDate && endDate) {
@@ -205,7 +212,7 @@ export const getDemandForecast = async (req, res) => {
 // Rate Shopping
 export const addCompetitorRate = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rateData = new RateShopping({ ...req.body, hotelId });
     await rateData.save();
     
@@ -224,7 +231,7 @@ export const addCompetitorRate = async (req, res) => {
 export const getCompetitorRates = async (req, res) => {
   try {
     const { date, competitorId } = req.query;
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const filter = { hotelId, isActive: true };
 
     if (competitorId) {
@@ -250,13 +257,13 @@ export const getCompetitorRates = async (req, res) => {
         if (filteredRateEntries.length === 0 && rateDoc.rates.length > 0) {
           const sortedRates = [...rateDoc.rates].sort((a, b) => new Date(b.date) - new Date(a.date));
           return {
-            ...rateDoc.toObject(),
+            ...rateDoc,
             rates: sortedRates.slice(0, 1) // Take the most recent rate
           };
         }
 
         return {
-          ...rateDoc.toObject(),
+          ...rateDoc,
           rates: filteredRateEntries
         };
       }).filter(rateDoc => rateDoc.rates && rateDoc.rates.length > 0);
@@ -281,7 +288,7 @@ export const getCompetitorRates = async (req, res) => {
 
 export const updateCompetitorRates = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const { competitorId, rates } = req.body;
 
     const competitor = await RateShopping.findOneAndUpdate(
@@ -315,7 +322,7 @@ export const updateCompetitorRates = async (req, res) => {
 // Packages Management
 export const createPackage = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const packageData = {
       ...req.body,
       hotelId,
@@ -339,7 +346,7 @@ export const createPackage = async (req, res) => {
 
 export const getPackages = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const packages = await Package.find({ hotelId, isActive: true })
       .sort({ createdAt: -1 }).lean().limit(1000);
 
@@ -358,7 +365,7 @@ export const getPackages = async (req, res) => {
 
 export const updatePackage = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const updatedPackage = await Package.findOneAndUpdate(
       { _id: req.params.id, hotelId },
       req.body,
@@ -387,7 +394,7 @@ export const updatePackage = async (req, res) => {
 // Corporate Rates
 export const createCorporateRate = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rateData = {
       ...req.body,
       hotelId,
@@ -411,7 +418,7 @@ export const createCorporateRate = async (req, res) => {
 
 export const getCorporateRates = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rates = await CorporateRate.find({ hotelId, isActive: true })
       .populate('company', 'name')
       .populate('roomTypes.roomType', 'name')
@@ -431,7 +438,7 @@ export const getCorporateRates = async (req, res) => {
 
 export const updateCorporateRate = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const updatedRate = await CorporateRate.findOneAndUpdate(
       { _id: req.params.id, hotelId },
       req.body,
@@ -459,7 +466,7 @@ export const updateCorporateRate = async (req, res) => {
 
 export const deleteCorporateRate = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const rate = await CorporateRate.findOneAndDelete({ _id: req.params.id, hotelId });
 
     if (!rate) {
@@ -483,7 +490,7 @@ export const deleteCorporateRate = async (req, res) => {
 
 export const deletePackage = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const pkg = await Package.findOneAndDelete({ _id: req.params.id, hotelId });
 
     if (!pkg) {
@@ -509,7 +516,7 @@ export const deletePackage = async (req, res) => {
 export const getRevenueAnalytics = async (req, res) => {
   try {
     const { startDate, endDate, roomTypeId, groupBy = 'day' } = req.query;
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
     
     if (startDate && endDate) {
@@ -601,7 +608,7 @@ export const getRevenueSummary = async (req, res) => {
     // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
 
     
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const summary = await RevenueAnalytics.aggregate([
       { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), date: dateRange } },
       {
@@ -643,7 +650,7 @@ export const getRevenueSummary = async (req, res) => {
 // Optimization Recommendations
 export const getOptimizationRecommendations = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const recommendations = [];
 
     // Analyze recent performance
@@ -742,7 +749,7 @@ export const getOptimizationRecommendations = async (req, res) => {
 // Dashboard Metrics - Get real data from bookings
 export const getDashboardMetrics = async (req, res) => {
   try {
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
 
     const { startDate, endDate } = req.query;
     const today = new Date();
@@ -1125,7 +1132,7 @@ export const updateRoomTypeRate = async (req, res) => {
     }
 
     // Update room type with new rate information (scoped to hotel)
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     const updatedRoomType = await RoomType.findOneAndUpdate(
       { _id: id, hotelId },
       {
@@ -1188,7 +1195,7 @@ export const bulkUpdateRoomTypeRates = async (req, res) => {
     const results = [];
     const errors = [];
 
-    const hotelId = req.user?.hotelId;
+    const hotelId = resolveHotelScopeId(req);
     for (const update of updates) {
       try {
         const { id, ...updateData } = update;
@@ -1243,7 +1250,7 @@ export const bulkUpdateRoomTypeRates = async (req, res) => {
 // Get room types for dynamic pricing configuration
 export const getRoomTypesForPricing = async (req, res) => {
   try {
-    const hotelId = req.user.hotelId;
+    const hotelId = resolveHotelScopeId(req);
 
     // Get room types with their current rates and occupancy data
     const roomTypes = await RoomType.find({

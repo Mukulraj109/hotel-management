@@ -227,6 +227,15 @@ class EnhancedLogger {
 
   // Sanitize sensitive data
   sanitizeMeta(meta) {
+    if (meta instanceof Error) {
+      return {
+        name: meta.name,
+        message: meta.message,
+        stack: meta.stack,
+        ...(meta.code != null && { code: meta.code }),
+        ...(meta.statusCode != null && { statusCode: meta.statusCode })
+      };
+    }
     if (!meta || typeof meta !== 'object') return meta;
 
     const sanitized = { ...meta };

@@ -33,6 +33,7 @@ interface InventoryRequest extends GuestService {
 
 export default function StaffInventoryRequests() {
   const { user } = useAuth();
+  const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -43,15 +44,15 @@ export default function StaffInventoryRequests() {
 
   useEffect(() => {
     fetchRequests();
-  }, [statusFilter]);
+  }, [statusFilter, currentUserId]);
 
 
   const fetchRequests = async () => {
     try {
       setLoading(true);
       const filters = {
-        serviceType: 'other', // Only inventory requests
-        assignedTo: user?.id, // Only requests assigned to current staff member
+        serviceType: 'other',
+        assignedTo: currentUserId,
         status: statusFilter === 'all' ? undefined : statusFilter,
         page: 1,
         limit: 20

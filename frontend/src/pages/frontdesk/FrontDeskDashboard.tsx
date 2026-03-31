@@ -72,15 +72,30 @@ export default function FrontDeskDashboard() {
     enabled: !!user && !!selectedProperty,
   });
 
-  // Fetch today's arrivals and departures for the schedule section
-  const { data: todayBookings } = useQuery({
-    queryKey: ['frontdesk-today-bookings', selectedProperty?._id],
+  // Fetch today's arrivals for the schedule section
+  const { data: todayArrivals } = useQuery({
+    queryKey: ['frontdesk-today-arrivals', selectedProperty?._id],
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const response = await api.get('/bookings', {
         params: { hotelId: selectedProperty?._id, checkIn: today, limit: 20 }
       });
       // Backend returns { data: bookings[] } where data is the array directly
+      const raw = response.data?.data;
+      return Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
+    },
+    enabled: !!selectedProperty,
+    refetchInterval: 30000,
+  });
+
+  // Fetch today's departures using checkout date (not the check-in list)
+  const { data: todayDepartures } = useQuery({
+    queryKey: ['frontdesk-today-departures', selectedProperty?._id],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await api.get('/bookings', {
+        params: { hotelId: selectedProperty?._id, checkOut: today, limit: 20 }
+      });
       const raw = response.data?.data;
       return Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);
     },
@@ -133,7 +148,8 @@ export default function FrontDeskDashboard() {
   useEffect(() => {
     const invalidateAll = () => {
       queryClient.invalidateQueries({ queryKey: ['frontdesk-dashboard-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['frontdesk-today-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-today-arrivals'] });
+      queryClient.invalidateQueries({ queryKey: ['frontdesk-today-departures'] });
       queryClient.invalidateQueries({ queryKey: ['frontdesk-room-status'] });
       queryClient.invalidateQueries({ queryKey: ['pending-approvals-count'] });
     };
@@ -147,16 +163,22 @@ export default function FrontDeskDashboard() {
     realTimeService.on('booking:updated', invalidateAll);
     realTimeService.on('booking_cancelled', invalidateAll);
     realTimeService.on('room_status_changed', invalidateAll);
-    realTimeService.on('guest-service:created', handleGuestServiceEvent);
-    realTimeService.on('guest-service:assigned', handleGuestServiceEvent);
+    realTimeService.on('guest-services:created', handleGuestServiceEvent);
+    realTimeService.on('guest-services:assigned', handleGuestServiceEvent);
+    realTimeService.on('guest-services:updated', handleGuestServiceEvent);
+    realTimeService.on('guest-services:status_changed', handleGuestServiceEvent);
+    realTimeService.on('guest-services:*', handleGuestServiceEvent);
 
     return () => {
       realTimeService.off('booking:created', invalidateAll);
       realTimeService.off('booking:updated', invalidateAll);
       realTimeService.off('booking_cancelled', invalidateAll);
       realTimeService.off('room_status_changed', invalidateAll);
-      realTimeService.off('guest-service:created', handleGuestServiceEvent);
-      realTimeService.off('guest-service:assigned', handleGuestServiceEvent);
+      realTimeService.off('guest-services:created', handleGuestServiceEvent);
+      realTimeService.off('guest-services:assigned', handleGuestServiceEvent);
+      realTimeService.off('guest-services:updated', handleGuestServiceEvent);
+      realTimeService.off('guest-services:status_changed', handleGuestServiceEvent);
+      realTimeService.off('guest-services:*', handleGuestServiceEvent);
     };
   }, [selectedProperty?._id, queryClient]);
 
@@ -411,8 +433,8 @@ export default function FrontDeskDashboard() {
             </span>
           </div>
           <div className="space-y-3">
-            {todayBookings && todayBookings.length > 0 ? (
-              todayBookings.filter((b: any) => b.status === 'confirmed').slice(0, 5).map((booking: any) => (
+            {todayArrivals && todayArrivals.length > 0 ? (
+              todayArrivals.filter((b: any) => b.status === 'confirmed').slice(0, 5).map((booking: any) => (
                 <div key={booking._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium text-gray-900 text-sm">{booking.guestName || booking.userId?.name || 'Guest'}</p>
@@ -444,8 +466,8 @@ export default function FrontDeskDashboard() {
             </span>
           </div>
           <div className="space-y-3">
-            {todayBookings && todayBookings.length > 0 ? (
-              todayBookings.filter((b: any) => b.status === 'checked_in').slice(0, 5).map((booking: any) => (
+            {todayDepartures && todayDepartures.length > 0 ? (
+              todayDepartures.filter((b: any) => b.status === 'checked_in').slice(0, 5).map((booking: any) => (
                 <div key={booking._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium text-gray-900 text-sm">{booking.guestName || booking.userId?.name || 'Guest'}</p>

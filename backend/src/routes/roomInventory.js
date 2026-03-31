@@ -290,22 +290,26 @@ router.get('/rooms/:roomId', catchAsync(async (req, res) => {
   // Build query - always filter by roomId
   const query = { roomId: new mongoose.Types.ObjectId(roomId) };
 
-  // For non-guest roles, enforce hotelId tenant isolation
-  // For guests, verify they have an active booking for this room
-  if (req.user.hotelId) {
-    query.hotelId = req.user.hotelId;
-  } else if (req.user.role === 'guest') {
-    // Verify the guest has a current booking for this room
+  // Guests often book properties other than `user.hotelId` (public / multi-property).
+  // Always scope RoomInventory by the booking that actually contains this room — not the profile hotel.
+  if (req.user.role === 'guest') {
     const Booking = mongoose.model('Booking');
     const hasAccess = await Booking.findOne({
       userId: req.user._id,
       'rooms.roomId': new mongoose.Types.ObjectId(roomId),
       status: { $in: ['confirmed', 'checked_in'] }
-    }).select('_id hotelId').lean();
+    })
+      .select('_id hotelId')
+      .lean();
     if (!hasAccess) {
       throw new ApplicationError('Room inventory not found', 404);
     }
     query.hotelId = hasAccess.hotelId;
+  } else {
+    if (!req.user.hotelId) {
+      throw new ApplicationError('Hotel ID is required', 400);
+    }
+    query.hotelId = req.user.hotelId;
   }
 
   const roomInventory = await RoomInventory.findOne(query)
@@ -314,6 +318,26 @@ router.get('/rooms/:roomId', catchAsync(async (req, res) => {
     .populate('currentBookingId').lean();
 
   if (!roomInventory) {
+    // Many properties never create a RoomInventory row per room; guests still need the app to load.
+    if (req.user.role === 'guest') {
+      return res.json({
+        status: 'success',
+        data: {
+          roomInventory: {
+            roomId: new mongoose.Types.ObjectId(roomId),
+            hotelId: query.hotelId,
+            items: [],
+            status: 'clean',
+            conditionScore: 0,
+            lastInspectionDate: null,
+            lastCleaningDate: null,
+            templateId: null,
+            currentBookingId: null
+          },
+          inventoryNotConfigured: true
+        }
+      });
+    }
     throw new ApplicationError('Room inventory not found', 404);
   }
 

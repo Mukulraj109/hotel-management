@@ -271,11 +271,12 @@ router.get('/:serviceId', optionalAuth, catchAsync(async (req, res) => {
   const { serviceId } = req.params;
   const user = req.user;
   const resolvedHotelId = user?.hotelId || req.query.hotelId;
+  if (!resolvedHotelId) {
+    throw new ApplicationError('Hotel context is required', 400);
+  }
 
   const query = { _id: serviceId, isActive: true };
-  if (resolvedHotelId) {
-    query.hotelId = resolvedHotelId;
-  }
+  query.hotelId = resolvedHotelId;
 
   const service = await HotelService.findOne(query)
     .populate('hotelId', 'name address').lean();
@@ -330,11 +331,12 @@ router.get('/:serviceId/availability', optionalAuth, catchAsync(async (req, res)
   // Verify service exists and belongs to hotel context
   const user = req.user;
   const resolvedHotelId = user?.hotelId || req.query.hotelId;
-  if (resolvedHotelId) {
-    const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId, isActive: true }).lean();
-    if (!service) {
-      throw new ApplicationError('Service not found', 404);
-    }
+  if (!resolvedHotelId) {
+    throw new ApplicationError('Hotel context is required', 400);
+  }
+  const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId, isActive: true }).lean();
+  if (!service) {
+    throw new ApplicationError('Service not found', 404);
   }
 
   const availability = await ServiceBooking.checkAvailability(
@@ -395,9 +397,13 @@ router.post('/:serviceId/bookings',
   catchAsync(async (req, res) => {
     const { serviceId } = req.params;
     const { bookingDate, numberOfPeople, specialRequests } = req.body;
+    const resolvedHotelId = req.user?.hotelId || req.body.hotelId || req.query.hotelId;
+    if (!resolvedHotelId) {
+      throw new ApplicationError('Hotel context is required', 400);
+    }
     
     // Get the service
-    const service = await HotelService.findById(serviceId).lean();
+    const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId }).lean();
     if (!service) {
       throw new ApplicationError('Service not found', 404);
     }
@@ -488,6 +494,10 @@ router.post('/bookings/:bookingId/cancel',
     const booking = await ServiceBooking.findById(bookingId);
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
+    }
+    const currentHotelId = req.user?.hotelId || req.query.hotelId;
+    if (!currentHotelId || booking.hotelId.toString() !== currentHotelId.toString()) {
+      throw new ApplicationError('Not authorized to cancel this booking', 403);
     }
 
     // Check if user owns this booking

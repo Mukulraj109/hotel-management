@@ -19,6 +19,19 @@ import Review from '../models/Review.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+const resolveHotelIdFromRequest = (req) => req.query.hotelId || req.body.hotelId || req.user?.hotelId;
+
+const getValidatedHotelObjectId = (req) => {
+  const resolvedHotelId = resolveHotelIdFromRequest(req);
+  if (!resolvedHotelId) {
+    return { error: { status: 400, body: { status: 'error', message: 'Hotel context required' } } };
+  }
+  if (!mongoose.Types.ObjectId.isValid(resolvedHotelId)) {
+    return { error: { status: 400, body: { status: 'error', message: 'Invalid hotelId' } } };
+  }
+  return { hotelObjectId: new mongoose.Types.ObjectId(resolvedHotelId) };
+};
+
 // Checkout Inventory Analytics Report
 router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
@@ -137,19 +150,18 @@ router.get('/revenue', authenticate, authorize('admin', 'staff'), ensureProperty
   }
 
   const matchQuery = {
-    // paymentStatus: 'paid', // Temporarily removed for debugging
-    // createdAt: {  // Temporarily removed for debugging
-    //   $gte: new Date(startDate),
-    //   $lte: new Date(endDate)
-    // }
+    createdAt: {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate)
+    }
   };
 
   // Mandatory hotel filtering for tenant isolation
-  const resolvedRevenueHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
-  if (!resolvedRevenueHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  const { hotelObjectId: revenueHotelObjectId, error: revenueHotelError } = getValidatedHotelObjectId(req);
+  if (revenueHotelError) {
+    return res.status(revenueHotelError.status).json(revenueHotelError.body);
   }
-  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedRevenueHotelId);
+  matchQuery.hotelId = revenueHotelObjectId;
 
   // Group by format
   let dateFormat;
@@ -301,20 +313,19 @@ router.get('/bookings', authenticate, authorize('admin', 'staff'), ensurePropert
 
   const matchQuery = {};
   
-  // Temporarily removed date filtering for debugging
-  // if (startDate && endDate) {
-  //   matchQuery.createdAt = {
-  //     $gte: new Date(startDate),
-  //     $lte: new Date(endDate)
-  //   };
-  // }
+  if (startDate && endDate) {
+    matchQuery.createdAt = {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate)
+    };
+  }
 
   // Mandatory hotel filtering for tenant isolation
-  const resolvedBookingsHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
-  if (!resolvedBookingsHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  const { hotelObjectId: bookingsHotelObjectId, error: bookingsHotelError } = getValidatedHotelObjectId(req);
+  if (bookingsHotelError) {
+    return res.status(bookingsHotelError.status).json(bookingsHotelError.body);
   }
-  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedBookingsHotelId);
+  matchQuery.hotelId = bookingsHotelObjectId;
 
   const pipeline = [
     { $match: matchQuery },
@@ -356,20 +367,19 @@ router.get('/bookings/stats', authenticate, authorize('admin', 'staff', 'frontde
 
   const matchQuery = {};
   
-  // Temporarily removed date filtering for debugging
-  // if (startDate && endDate) {
-  //   matchQuery.createdAt = {
-  //     $gte: new Date(startDate),
-  //     $lte: new Date(endDate)
-  //   };
-  // }
+  if (startDate && endDate) {
+    matchQuery.createdAt = {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate)
+    };
+  }
 
   // Mandatory hotel filtering for tenant isolation
-  const resolvedStatsHotelId = req.query.hotelId || req.body.hotelId || req.user?.hotelId;
-  if (!resolvedStatsHotelId) {
-    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  const { hotelObjectId: statsHotelObjectId, error: statsHotelError } = getValidatedHotelObjectId(req);
+  if (statsHotelError) {
+    return res.status(statsHotelError.status).json(statsHotelError.body);
   }
-  matchQuery.hotelId = new mongoose.Types.ObjectId(resolvedStatsHotelId);
+  matchQuery.hotelId = statsHotelObjectId;
 
   const pipeline = [
     { $match: matchQuery },

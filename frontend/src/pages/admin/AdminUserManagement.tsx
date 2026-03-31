@@ -144,7 +144,7 @@ const AdminUserManagement: React.FC = () => {
 
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', pagination.limit.toString());
-      queryParams.append('propertyId', selectedPropertyId);
+      queryParams.append('hotelId', selectedPropertyId);
 
       if (debouncedSearch) queryParams.append('search', debouncedSearch);
       if (filters.role !== 'all') queryParams.append('role', filters.role);

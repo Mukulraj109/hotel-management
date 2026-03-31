@@ -24,9 +24,9 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
 import { toast } from 'sonner';
-import { travelAgentService, TravelAgentRate } from '../../services/travelAgentService';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { api } from '../../services/api';
+import { useProperty } from '../../context/PropertyContext';
 
 interface RoomTypeRate {
   roomTypeId: string;
@@ -55,6 +55,7 @@ interface SeasonalRate {
 
 const ViewRates: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedPropertyId } = useProperty();
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'calendar' | 'seasonal'>('table');
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,14 +74,22 @@ const ViewRates: React.FC = () => {
 
   useEffect(() => {
     fetchRates();
-  }, []);
+  }, [selectedPropertyId]);
 
   const fetchRates = async () => {
     try {
       setLoading(true);
 
+      if (!selectedPropertyId) {
+        toast.error('Please select a property to view rates');
+        setRates([]);
+        setSeasonalRates([]);
+        setRoomTypes(['all']);
+        return;
+      }
+
       // Fetch real room types from the backend
-      const response = await api.get('/room-types', { params: { limit: 100 } });
+      const response = await api.get(`/room-types/hotel/${selectedPropertyId}`, { params: { limit: 100 } });
       if (!isMountedRef.current) return;
 
       const rawRoomTypes = response.data?.data?.roomTypes || response.data?.data || response.data?.roomTypes || [];

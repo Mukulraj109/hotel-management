@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
@@ -219,6 +220,100 @@ router.get('/', catchAsync(async (req, res) => {
         total,
         pages: Math.ceil(total / limit)
       }
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /invoices/stats:
+ *   get:
+ *     summary: Get invoice statistics
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/stats', authorizePolicy('invoices', 'getStats'), catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const [revenueStats, overdueInvoices] = await Promise.all([
+    Invoice.getRevenueStats(hotelId, startDate, endDate),
+    Invoice.getOverdueInvoices(hotelId)
+  ]);
+
+  const matchQuery = {
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    ...(startDate && endDate ? {
+      issueDate: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      }
+    } : {})
+  };
+
+  const overallStats = await Invoice.aggregate([
+    { $match: matchQuery },
+    {
+      $group: {
+        _id: null,
+        totalInvoices: { $sum: 1 },
+        totalRevenue: { $sum: '$totalAmount' },
+        totalPaid: { $sum: '$amountPaid' },
+        outstandingAmount: { $sum: '$amountRemaining' },
+        draftCount: { $sum: { $cond: [{ $eq: ['$status', 'draft'] }, 1, 0] } },
+        issuedCount: { $sum: { $cond: [{ $eq: ['$status', 'issued'] }, 1, 0] } },
+        paidCount: { $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] } },
+        overdueCount: {
+          $sum: { $cond: [{ $and: [{ $lt: ['$dueDate', new Date()] }, { $in: ['$status', ['issued', 'partially_paid']] }] }, 1, 0] }
+        }
+      }
+    }
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      overall: overallStats[0] || {},
+      revenue: revenueStats,
+      overdue: {
+        count: overdueInvoices.length,
+        totalAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amountRemaining, 0),
+        invoices: overdueInvoices.slice(0, 10)
+      }
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /invoices/overdue:
+ *   get:
+ *     summary: Get overdue invoices
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/overdue', authorizePolicy('invoices', 'getOverdue'), catchAsync(async (req, res) => {
+  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const overdueInvoices = await Invoice.getOverdueInvoices(hotelId);
+
+  res.json({
+    status: 'success',
+    data: {
+      invoices: overdueInvoices,
+      count: overdueInvoices.length,
+      totalAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amountRemaining, 0)
     }
   });
 }));
@@ -544,144 +639,6 @@ router.post('/:id/splits/:splitIndex/pay', authorizePolicy('invoices', 'paySplit
     status: 'success',
     message: 'Split marked as paid successfully',
     data: { invoice }
-  });
-}));
-
-/**
- * @swagger
- * /invoices/stats:
- *   get:
- *     summary: Get invoice statistics
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: hotelId
- *         schema:
- *           type: string
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Invoice statistics
- */
-router.get('/stats', authorizePolicy('invoices', 'getStats'), catchAsync(async (req, res) => {
-  const { startDate, endDate } = req.query;
-  
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
-  
-  if (!hotelId) {
-    throw new ApplicationError('Hotel ID is required', 400);
-  }
-
-  const [revenueStats, overdueInvoices] = await Promise.all([
-    Invoice.getRevenueStats(hotelId, startDate, endDate),
-    Invoice.getOverdueInvoices(hotelId)
-  ]);
-
-  // Get overall summary
-  const matchQuery = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    ...(startDate && endDate ? {
-      issueDate: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      }
-    } : {})
-  };
-
-  const overallStats = await Invoice.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: null,
-        totalInvoices: { $sum: 1 },
-        totalRevenue: { $sum: '$totalAmount' },
-        totalPaid: { $sum: '$amountPaid' },
-        outstandingAmount: { $sum: '$amountRemaining' },
-        draftCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'draft'] }, 1, 0] }
-        },
-        issuedCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'issued'] }, 1, 0] }
-        },
-        paidCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
-        },
-        overdueCount: {
-          $sum: { 
-            $cond: [
-              { 
-                $and: [
-                  { $lt: ['$dueDate', new Date()] },
-                  { $in: ['$status', ['issued', 'partially_paid']] }
-                ]
-              }, 
-              1, 
-              0 
-            ] 
-          }
-        }
-      }
-    }
-  ]);
-
-  res.json({
-    status: 'success',
-    data: {
-      overall: overallStats[0] || {},
-      revenue: revenueStats,
-      overdue: {
-        count: overdueInvoices.length,
-        totalAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amountRemaining, 0),
-        invoices: overdueInvoices.slice(0, 10) // First 10 overdue
-      }
-    }
-  });
-}));
-
-/**
- * @swagger
- * /invoices/overdue:
- *   get:
- *     summary: Get overdue invoices
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: hotelId
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Overdue invoices
- */
-router.get('/overdue', authorizePolicy('invoices', 'getOverdue'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
-  
-  if (!hotelId) {
-    throw new ApplicationError('Hotel ID is required', 400);
-  }
-
-  const overdueInvoices = await Invoice.getOverdueInvoices(hotelId);
-
-  res.json({
-    status: 'success',
-    data: {
-      invoices: overdueInvoices,
-      count: overdueInvoices.length,
-      totalAmount: overdueInvoices.reduce((sum, inv) => sum + inv.amountRemaining, 0)
-    }
   });
 }));
 

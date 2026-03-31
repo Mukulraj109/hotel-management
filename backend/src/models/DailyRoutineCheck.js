@@ -145,9 +145,19 @@ const dailyRoutineCheckSchema = new mongoose.Schema({
 
 // Indexes for efficient querying
 dailyRoutineCheckSchema.index({ hotelId: 1, checkDate: 1 });
-dailyRoutineCheckSchema.index({ hotelId: 1, roomId: 1, checkDate: 1 });
+dailyRoutineCheckSchema.index({ hotelId: 1, roomId: 1, checkDate: 1 }, { unique: true });
 dailyRoutineCheckSchema.index({ hotelId: 1, checkedBy: 1, checkDate: 1 });
 dailyRoutineCheckSchema.index({ hotelId: 1, status: 1, checkDate: 1 });
+
+// Normalize checkDate to day-start so unique index stays day-granular.
+dailyRoutineCheckSchema.pre('validate', function(next) {
+  if (this.checkDate) {
+    const normalizedCheckDate = new Date(this.checkDate);
+    normalizedCheckDate.setHours(0, 0, 0, 0);
+    this.checkDate = normalizedCheckDate;
+  }
+  next();
+});
 
 // Pre-save middleware to calculate total cost and duration
 dailyRoutineCheckSchema.pre('save', function(next) {

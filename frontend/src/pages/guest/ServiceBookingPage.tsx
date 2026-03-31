@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
@@ -20,10 +20,13 @@ import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 
 const ServiceBookingPage: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const publicHotelId = useMemo(() => resolvePublicHotelId(searchParams), [searchParams]);
   const queryClient = useQueryClient();
   
   const [formData, setFormData] = useState({
@@ -36,15 +39,15 @@ const ServiceBookingPage: React.FC = () => {
 
   // Fetch service details
   const { data: service, isLoading, error } = useQuery({
-    queryKey: ['service-details', serviceId],
-    queryFn: () => hotelServicesService.getServiceDetails(serviceId!),
+    queryKey: ['service-details', publicHotelId, serviceId],
+    queryFn: () => hotelServicesService.getServiceDetails(serviceId!, publicHotelId),
     enabled: !!serviceId,
   });
 
   // Check availability mutation
   const availabilityMutation = useMutation({
     mutationFn: ({ date, people }: { date: string; people: number }) =>
-      hotelServicesService.checkAvailability(serviceId!, date, people),
+      hotelServicesService.checkAvailability(serviceId!, date, people, publicHotelId),
     onSuccess: (data) => {
       if (data.available) {
         setAvailabilityChecked(true);

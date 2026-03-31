@@ -59,11 +59,27 @@ function maskValue(field, value) {
 }
 
 /**
+ * Only recurse into plain records created via `{}` / JSON. Dates, ObjectIds, Buffers,
+ * Decimal128, etc. must not be walked: Object.entries(Date) is empty and would replace
+ * the value with `{}`, breaking booking checkIn/checkOut/createdAt in guest responses.
+ */
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
  * Recursively mask PII fields in an object.
  * Tracks visited objects to avoid infinite recursion on circular references.
  */
 function maskPIIInObject(obj, mask = true, seen = new WeakSet()) {
-  if (!obj || typeof obj !== 'object') return obj;
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+
+  if (obj instanceof Date) {
+    return obj;
+  }
 
   // Prevent infinite recursion on circular references
   if (seen.has(obj)) return '[Circular]';
@@ -71,6 +87,13 @@ function maskPIIInObject(obj, mask = true, seen = new WeakSet()) {
 
   if (Array.isArray(obj)) {
     return obj.map(item => maskPIIInObject(item, mask, seen));
+  }
+
+  if (!isPlainObject(obj)) {
+    if (typeof obj.toHexString === 'function') {
+      return obj.toHexString();
+    }
+    return obj;
   }
 
   const result = {};

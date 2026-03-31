@@ -38,8 +38,9 @@ export default function StaffHousekeeping() {
   const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (!user?._id) return;
+    fetchTasks(user._id);
+  }, [user?._id]);
 
   // Real-time connection setup
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
@@ -51,20 +52,24 @@ export default function StaffHousekeeping() {
   useEffect(() => {
     if (!isConnected || !user?._id) return;
     
-    const handleTaskAssigned = (data: Record<string, unknown>) => {
-      if (data.assignedToUserId === user._id) {
-        fetchTasks();
-        toast.success(`New housekeeping task assigned: ${data.title}!`);
+    const handleTaskAssigned = (eventData: Record<string, unknown>) => {
+      const task = (eventData.task as Record<string, unknown> | undefined) ?? eventData;
+      const assignedToUserId = (task.assignedToUserId as string | undefined) ?? (eventData.assignedToUserId as string | undefined);
+      if (assignedToUserId === user._id) {
+        fetchTasks(user._id);
+        toast.success(`New housekeeping task assigned: ${String(task.title || 'Task')}!`);
       }
     };
     
-    const handleTaskUpdate = (data: Record<string, unknown>) => {
-      if (data.assignedToUserId === user._id) {
-        fetchTasks();
-        if (data.status === 'cancelled') {
-          toast.error(`Task cancelled: ${data.title}`);
+    const handleTaskUpdate = (eventData: Record<string, unknown>) => {
+      const task = (eventData.task as Record<string, unknown> | undefined) ?? eventData;
+      const assignedToUserId = (task.assignedToUserId as string | undefined) ?? (eventData.assignedToUserId as string | undefined);
+      if (assignedToUserId === user._id) {
+        fetchTasks(user._id);
+        if (task.status === 'cancelled') {
+          toast.error(`Task cancelled: ${String(task.title || 'Task')}`);
         } else {
-          toast.success(`Task updated: ${data.title}`);
+          toast.success(`Task updated: ${String(task.title || 'Task')}`);
         }
       }
     };
@@ -80,11 +85,15 @@ export default function StaffHousekeeping() {
     };
   }, [isConnected, on, off, user?._id]);
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (assignedToUserId?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await housekeepingService.getTasks(user?._id);
+      if (!assignedToUserId) {
+        setTasks([]);
+        return;
+      }
+      const data = await housekeepingService.getTasks(assignedToUserId);
       setTasks(data.data.tasks || []);
     } catch (error) {
       setError('Unable to connect to server. Please check your internet connection.');
@@ -98,7 +107,7 @@ export default function StaffHousekeeping() {
     try {
       setUpdating(true);
       await housekeepingService.updateTaskStatus(taskId, newStatus);
-      await fetchTasks();
+      await fetchTasks(user?._id);
       toast.success(`Task ${newStatus === 'in_progress' ? 'started' : 'updated'} successfully`);
     } catch {
       toast.error('Failed to update task status. Please try again.');
@@ -119,10 +128,9 @@ export default function StaffHousekeeping() {
       setUpdating(true);
       await housekeepingService.completeTask(selectedTask._id, {
         status: 'completed',
-        completedSteps: completedSteps,
-        completedAt: new Date().toISOString()
+        notes: completedSteps.length > 0 ? `Completed steps: ${completedSteps.join(', ')}` : 'Task completed'
       });
-      await fetchTasks();
+      await fetchTasks(user?._id);
       setShowCompletionModal(false);
       setSelectedTask(null);
       toast.success('Task completed successfully!');
@@ -171,7 +179,7 @@ export default function StaffHousekeeping() {
           <AlertTriangle className="mx-auto h-8 w-8 text-red-500 mb-3" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Unable to Load Tasks</h3>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={fetchTasks} className="flex items-center gap-2">
+          <Button onClick={() => fetchTasks(user?._id)} className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
             Try Again
           </Button>
@@ -199,7 +207,7 @@ export default function StaffHousekeeping() {
               <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
             )}
           </div>
-          <Button onClick={fetchTasks} variant="secondary" size="sm">
+          <Button onClick={() => fetchTasks(user?._id)} variant="secondary" size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
@@ -450,7 +458,7 @@ export default function StaffHousekeeping() {
                   setShowInventoryModal(false);
                   setInventoryTaskId(null);
                   toast.success('Inventory consumption logged successfully!');
-                  fetchTasks(); // Refresh tasks to show updated data
+                  fetchTasks(user?._id); // Refresh tasks to show updated data
                 }}
                 onCancel={() => {
                   setShowInventoryModal(false);

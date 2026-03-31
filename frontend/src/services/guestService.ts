@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, normalizeEntityId, normalizeListParams } from './api';
 
 export interface GuestServiceRequest {
   _id: string;
@@ -67,6 +67,7 @@ interface ServiceRequestFilters {
   status?: string;
   serviceType?: string;
   priority?: string;
+  assignedTo?: string;
   page?: number;
   limit?: number;
 }
@@ -96,9 +97,10 @@ class GuestServiceService {
 
   async getServiceRequests(filters: ServiceRequestFilters = {}): Promise<ApiResponse<{ serviceRequests: GuestServiceRequest[] }>> {
     try {
+      const normalizedFilters = normalizeListParams(filters);
       const params = new URLSearchParams();
     
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, value.toString());
         }
@@ -113,7 +115,7 @@ class GuestServiceService {
 
   async getServiceRequestById(id: string): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
     try {
-      const response = await api.get(`/guest-services/${id}`);
+      const response = await api.get(`/guest-services/${normalizeEntityId(id)}`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -122,7 +124,7 @@ class GuestServiceService {
 
   async updateServiceRequest(id: string, updates: Partial<GuestServiceRequest>): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
     try {
-      const response = await api.patch(`/guest-services/${id}`, updates);
+      const response = await api.patch(`/guest-services/${normalizeEntityId(id)}`, updates);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -131,7 +133,7 @@ class GuestServiceService {
 
   async cancelServiceRequest(id: string, reason?: string): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
     try {
-      const response = await api.patch(`/guest-services/${id}`, { status: 'cancelled', cancellationReason: reason });
+      const response = await api.patch(`/guest-services/${normalizeEntityId(id)}`, { status: 'cancelled', cancellationReason: reason });
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

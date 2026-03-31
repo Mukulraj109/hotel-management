@@ -104,6 +104,16 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
   };
 
   const filteredMeetUps = meetUpsData?.meetUps?.filter(meetUp => {
+    const q = searchTerm.trim().toLowerCase();
+    const matchesSearch = !q || (
+      meetUp.title?.toLowerCase().includes(q) ||
+      meetUp.description?.toLowerCase().includes(q) ||
+      meetUp.requesterId?.name?.toLowerCase().includes(q) ||
+      meetUp.targetUserId?.name?.toLowerCase().includes(q) ||
+      meetUp.location?.name?.toLowerCase().includes(q)
+    );
+    if (!matchesSearch) return false;
+
     if (safetyFilter === 'high-risk') {
       const priority = getSupervisionPriority(meetUp);
       return priority.priority === 'high';
@@ -269,7 +279,10 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                 type="text"
                 placeholder="Search meet-ups..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pl-10"
               />
             </div>
@@ -277,7 +290,10 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
             {/* Status Filter */}
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
               <option value="">All Statuses</option>
@@ -291,7 +307,10 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
             {/* Safety Filter */}
             <select
               value={safetyFilter}
-              onChange={(e) => setSafetyFilter(e.target.value)}
+              onChange={(e) => {
+                setSafetyFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
               <option value="">All Safety Levels</option>

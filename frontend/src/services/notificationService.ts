@@ -4,6 +4,7 @@ import { API_CONFIG } from '../config/api';
 // Interfaces
 export interface Notification {
   _id: string;
+  id?: string;
   userId: string;
   hotelId: string;
   type: NotificationTypeValue;
@@ -223,6 +224,15 @@ class NotificationService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private scheduledTimers: Set<ReturnType<typeof setTimeout>> = new Set();
 
+  private normalizeNotification(notification: Partial<Notification>): Notification {
+    const normalizedId = String(notification._id || notification.id || '');
+    return {
+      ...(notification as Notification),
+      _id: normalizedId,
+      id: notification.id ? String(notification.id) : normalizedId
+    };
+  }
+
   // Get notifications with pagination and filters
   async getNotifications(params?: {
     page?: number;
@@ -249,16 +259,34 @@ class NotificationService {
       if (params?.propertyId) searchParams.append('propertyId', params.propertyId);
 
       const response = await api.get(`/notifications?${searchParams.toString()}`);
-      return response.data.data;
+      const payload = response.data.data || {};
+      const notifications = Array.isArray(payload.notifications)
+        ? payload.notifications.map((notification: Partial<Notification>) => this.normalizeNotification(notification))
+        : [];
+      const pagination = payload.pagination || {
+        currentPage: params?.page || 1,
+        totalPages: 1,
+        totalItems: notifications.length,
+        itemsPerPage: params?.limit || 20
+      };
+
+      return {
+        ...payload,
+        notifications,
+        pagination,
+        totalPages: payload.totalPages ?? pagination.totalPages ?? 1
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   // Get unread notification count
-  async getUnreadCount(propertyId?: string): Promise<number> {
+  async getUnreadCount(propertyId?: string | { signal?: AbortSignal; queryKey?: unknown }): Promise<number> {
     try {
-      const params = propertyId ? `?propertyId=${propertyId}` : '';
+      // TanStack Query passes QueryFunctionContext as the first arg when used as `queryFn: this.getUnreadCount`
+      const pid = typeof propertyId === 'string' && propertyId.trim() !== '' ? propertyId.trim() : undefined;
+      const params = pid ? `?propertyId=${encodeURIComponent(pid)}` : '';
       const response = await api.get(`/notifications/unread-count${params}`);
       return response.data.data.unreadCount;
     } catch (error: unknown) {
@@ -876,23 +904,26 @@ class NotificationService {
 
   // Get notification URL for navigation
   private getNotificationUrl(notification: Notification): string {
+    const bookingId = notification.metadata?.bookingId?._id;
+    const paymentId = notification.metadata?.paymentId?._id;
+    const serviceBookingId = notification.metadata?.serviceBookingId?._id;
     const urlMap: Record<string, string> = {
-      booking_confirmation: `/bookings/${notification.metadata?.bookingId}`,
-      booking_reminder: `/bookings/${notification.metadata?.bookingId}`,
-      payment_success: `/payments/${notification.metadata?.paymentId}`,
-      payment_failed: `/payments/${notification.metadata?.paymentId}`,
-      service_request: `/services/${notification.metadata?.serviceId}`,
-      guest_request: `/requests/${notification.metadata?.requestId}`,
+      booking_confirmation: bookingId ? `/app/bookings/${bookingId}` : '/app/bookings',
+      booking_reminder: bookingId ? `/app/bookings/${bookingId}` : '/app/bookings',
+      payment_success: paymentId ? `/app/billing?paymentId=${paymentId}` : '/app/billing',
+      payment_failed: paymentId ? `/app/billing?paymentId=${paymentId}` : '/app/billing',
+      service_request: serviceBookingId ? `/app/services/bookings/confirmation/${serviceBookingId}` : '/app/services/bookings',
+      guest_request: '/app/requests',
       maintenance_alert: `/maintenance/${notification.metadata?.maintenanceId}`,
       inventory_alert: `/inventory`,
       system_alert: `/admin/alerts`,
-      check_in: `/bookings/${notification.metadata?.bookingId}`,
-      check_out: `/bookings/${notification.metadata?.bookingId}`,
-      promotional: `/offers`,
-      special_offer: `/offers/${notification.metadata?.offerId}`
+      check_in: bookingId ? `/app/bookings/${bookingId}` : '/app/bookings',
+      check_out: bookingId ? `/app/bookings/${bookingId}` : '/app/bookings',
+      promotional: `/app/loyalty/offers`,
+      special_offer: `/app/loyalty/offers`
     };
 
-    return urlMap[notification.type] || '/notifications';
+    return urlMap[notification.type] || '/app/notifications';
   }
 
   // Track notification events for analytics
@@ -944,24 +975,32 @@ class NotificationService {
   // Get notification preferences from user settings
   async getNotificationPreferences(): Promise<unknown> {
     try {
-      const response = await api.get('/user-preferences/notifications');
-      return response.data.data.notifications;
+      const response = await api.get('/notifications/preferences');
+      return response.data.data;
     } catch (error) {
       return {
-        channels: { inApp: true, email: true, sms: false, push: true },
-        sound: true,
-        desktop: true
+        preferences: {
+          inApp: { enabled: true, sound: true, vibration: true, types: {} },
+          email: { enabled: true, address: '', quietHours: { enabled: false, start: '22:00', end: '08:00' }, types: {} },
+          sms: { enabled: false, number: '', quietHours: { enabled: false, start: '22:00', end: '08:00' }, types: {} },
+          push: { enabled: true, quietHours: { enabled: false, start: '22:00', end: '08:00' }, types: {} }
+        }
       };
     }
   }
 
   // Update notification preferences
-  async updateNotificationPreferences(preferences: Record<string, unknown>): Promise<void> {
+  async updateNotificationPreferences(channel: string, settings: Record<string, unknown>): Promise<void> {
     try {
-      await api.put('/user-preferences/notifications', preferences);
+      await api.patch('/notifications/preferences', {
+        channel,
+        settings
+      });
 
       // Update browser notification enabled state
-      this.browserNotificationEnabled = preferences.channels?.push || false;
+      if (channel === 'push' && typeof settings.enabled === 'boolean') {
+        this.browserNotificationEnabled = settings.enabled;
+      }
     } catch {
       // Error handled silently
     }

@@ -50,6 +50,18 @@ export interface DailyCheckData {
   estimatedDuration: number;
 }
 
+export interface AssignedRoomData {
+  _id: string;
+  roomNumber: string;
+  type: string;
+  floor: string;
+  checkStatus: 'pending' | 'completed' | 'overdue';
+  lastChecked: string | null;
+  estimatedDuration: number;
+  fixedInventory?: RoomInventoryItem[];
+  dailyInventory?: RoomInventoryItem[];
+}
+
 export interface DailyCheckResult {
   roomId: string;
   checkedBy: string;
@@ -69,6 +81,7 @@ interface DailyCheckFilters {
   floor?: string;
   type?: string;
   assignedStaff?: string;
+  assignedToMe?: boolean;
   page?: number;
   limit?: number;
 }
@@ -87,6 +100,7 @@ class DailyRoutineCheckService {
       if (filters.floor) queryParams.append('floor', filters.floor);
       if (filters.type) queryParams.append('type', filters.type);
       if (filters.assignedStaff) queryParams.append('assignedStaff', filters.assignedStaff);
+      if (filters.assignedToMe !== undefined) queryParams.append('assignedToMe', String(filters.assignedToMe));
       if (filters.page) queryParams.append('page', filters.page.toString());
       if (filters.limit) queryParams.append('limit', filters.limit.toString());
 
@@ -166,7 +180,7 @@ class DailyRoutineCheckService {
   /**
    * Get staff member's assigned rooms for today
    */
-  async getMyAssignedRooms(): Promise<ApiResponse<{ rooms: DailyCheckData[] }>> {
+  async getMyAssignedRooms(): Promise<ApiResponse<{ rooms: AssignedRoomData[] }>> {
     try {
       const response = await api.get(`${this.baseURL}/my-assignments`);
       return response.data;

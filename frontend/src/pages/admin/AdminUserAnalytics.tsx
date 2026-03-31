@@ -191,7 +191,7 @@ const AdminUserAnalytics: React.FC = () => {
       if (filters.userId) queryParams.append('userId', filters.userId);
       if (filters.role) queryParams.append('role', filters.role);
       if (filters.segmentTags) queryParams.append('segmentTags', filters.segmentTags);
-      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
+      if (selectedPropertyId) queryParams.append('hotelId', selectedPropertyId);
 
       const [analyticsRes, behaviorRes, performanceRes, lifecycleRes] = await Promise.all([
         api.get(`/user-analytics/engagement?${queryParams}`),

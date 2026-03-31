@@ -96,7 +96,12 @@ mongoose.Schema.prototype.indexes = function patchedIndexes(...args) {
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+    const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL;
+    if (!mongoUri) {
+      throw new Error('Missing MongoDB URI. Set MONGO_URI (or MONGODB_URI / DATABASE_URL).');
+    }
+
+    const conn = await mongoose.connect(mongoUri, {
       maxPoolSize: 20,
       minPoolSize: 5,
       serverSelectionTimeoutMS: 10000,

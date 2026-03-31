@@ -277,6 +277,11 @@ export const getPredictiveAnalytics = catchAsync(async (req, res) => {
 export const getUserAnalyticsById = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const { dateRange, limit = 30 } = req.query;
+  const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 30, 1), 100);
+
+  if (!mongoose.isValidObjectId(userId)) {
+    throw new ApplicationError('Invalid user ID', 400);
+  }
 
   const query = {
     userId: new mongoose.Types.ObjectId(userId),
@@ -298,7 +303,7 @@ export const getUserAnalyticsById = catchAsync(async (req, res) => {
   const analytics = await UserAnalytics.find(query)
     .populate('userId', 'name email role')
     .sort({ date: -1 })
-    .limit(parseInt(limit)).lean();
+    .limit(safeLimit).lean();
 
   if (analytics.length === 0) {
     throw new ApplicationError('No analytics data found for this user', 404);
@@ -319,10 +324,30 @@ export const createOrUpdateUserAnalytics = catchAsync(async (req, res) => {
     throw new ApplicationError('User ID and date are required', 400);
   }
 
+  if (!mongoose.isValidObjectId(userId)) {
+    throw new ApplicationError('Invalid user ID', 400);
+  }
+
+  if (!mongoose.isValidObjectId(req.user.hotelId)) {
+    throw new ApplicationError('Invalid hotel context', 400);
+  }
+
+  const hotelObjectId = new mongoose.Types.ObjectId(req.user.hotelId);
+  const targetUser = await User.findOne({
+    _id: new mongoose.Types.ObjectId(userId),
+    hotelId: hotelObjectId
+  })
+    .select('_id')
+    .lean();
+
+  if (!targetUser) {
+    throw new ApplicationError('User not found for this hotel', 404);
+  }
+
   const analyticsData = {
     userId: new mongoose.Types.ObjectId(userId),
     date: new Date(date),
-    hotelId: req.user.hotelId,
+    hotelId: hotelObjectId,
     activityMetrics: activityMetrics || {},
     performanceMetrics: performanceMetrics || {},
     behaviorPatterns: behaviorPatterns || {}

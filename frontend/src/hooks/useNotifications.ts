@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
 import { useRealTime } from '../services/realTimeService';
 import { notificationService } from '../services/notificationService';
 import toast from 'react-hot-toast';
 
 export function useNotifications() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
 
@@ -64,9 +66,11 @@ export function useNotifications() {
   // Get unread count with real-time updates
   const { data: unreadCount, isLoading: isLoadingUnreadCount } = useQuery({
     queryKey: ['unreadCount'],
-    queryFn: notificationService.getUnreadCount,
-    refetchInterval: 30000, // Fallback polling
-    staleTime: 5000
+    queryFn: () => notificationService.getUnreadCount(),
+    enabled: isAuthenticated && !authLoading,
+    refetchInterval: isAuthenticated ? 30000 : false,
+    staleTime: 5000,
+    retry: false,
   });
 
   return {

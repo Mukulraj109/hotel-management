@@ -1,2 +1,11 @@
-// Exact copy of AdminFinancial.tsx with no modifications - Full Access
-export { default } from '../admin/AdminFinancial';
+import React from 'react';
+import FrontDeskFeatureNotice from './FrontDeskFeatureNotice';
+
+export default function FrontDeskBilling() {
+  return (
+    <FrontDeskFeatureNotice
+      title="Financial Administration Restricted"
+      description="Revenue analytics, financial configuration, and billing administration are restricted to admin/manager roles."
+    />
+  );
+}

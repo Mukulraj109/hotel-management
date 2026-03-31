@@ -7,28 +7,17 @@ import {
   Smartphone,
   QrCode,
   Key,
-  Wifi,
   Car,
   Utensils,
   Heart,
   ConciergeBell,
   MessageSquare,
-  MapPin,
   Clock,
-  Star,
-  CreditCard,
-  CheckCircle,
-  Bell,
-  Camera,
   Settings,
-  User,
   Calendar,
-  Receipt,
   Coffee,
   Dumbbell,
-  Navigation,
   Phone,
-  Mail,
   AlertCircle,
   Download,
   Share2,
@@ -41,6 +30,8 @@ import { withErrorBoundary } from '../ErrorBoundary';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { api } from '@/services/api';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useSearchParams } from 'react-router-dom';
+import { resolvePublicHotelId } from '@/utils/publicBookingHotel';
 
 interface GuestProfile {
   id: string;
@@ -85,6 +76,7 @@ interface DigitalKey {
 interface HotelService {
   id: string;
   name: string;
+  type?: string;
   category: string;
   description: string;
   icon: React.ComponentType<unknown>;
@@ -109,10 +101,12 @@ const ContactlessGuestApp: React.FC = () => {
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [digitalKey, setDigitalKey] = useState<DigitalKey | null>(null);
   const [hotelServices, setHotelServices] = useState<HotelService[]>([]);
+  const [activeBookingId, setActiveBookingId] = useState<string>('');
   const [newRequest, setNewRequest] = useState({ service: '', description: '', category: '' });
-  const [qrCodeScanned, setQrCodeScanned] = useState(false);
+  const [, setQrCodeScanned] = useState(false);
   const [loadingState, setLoadingState] = useState({ profile: true, services: true, key: true, requests: true });
   const isMountedRef = useRef(true);
+  const [searchParams] = useSearchParams();
   const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
@@ -152,8 +146,18 @@ const ContactlessGuestApp: React.FC = () => {
     try {
       const response = await api.get('/guest-services', { params: { limit: 10 } });
       if (!isMountedRef.current) return;
-      const data = response.data?.data || response.data?.serviceRequests || response.data || [];
-      setServiceRequests(Array.isArray(data) ? data : []);
+      const data = response.data?.data?.serviceRequests || response.data?.serviceRequests || response.data || [];
+      const normalized = (Array.isArray(data) ? data : []).map((item: Record<string, unknown>) => ({
+        id: String(item._id || item.id || ''),
+        service: String(item.serviceVariation || item.title || item.serviceType || ''),
+        category: String(item.serviceType || item.category || 'other'),
+        description: String(item.description || ''),
+        requestTime: String(item.createdAt || item.requestTime || new Date().toISOString()),
+        status: (item.status as ServiceRequest['status']) || 'pending',
+        estimatedTime: item.estimatedTime ? String(item.estimatedTime) : undefined,
+        priority: (item.priority as ServiceRequest['priority']) || 'medium'
+      }));
+      setServiceRequests(normalized);
     } catch {
       if (isMountedRef.current) setServiceRequests([]);
     } finally {
@@ -164,9 +168,10 @@ const ContactlessGuestApp: React.FC = () => {
   // Fetch digital key from API
   const fetchDigitalKey = useCallback(async () => {
     try {
-      const response = await api.get('/digital-keys/my-key');
+      const response = await api.get('/digital-keys', { params: { limit: 1, status: 'active' } });
       if (!isMountedRef.current) return;
-      const data = response.data?.data || response.data?.key || response.data || null;
+      const list = response.data?.data?.keys || response.data?.keys || [];
+      const data = Array.isArray(list) && list.length > 0 ? list[0] : null;
       setDigitalKey(data);
     } catch {
       if (isMountedRef.current) setDigitalKey(null);
@@ -175,19 +180,44 @@ const ContactlessGuestApp: React.FC = () => {
     }
   }, []);
 
+  // Resolve current booking context for guest-service creation
+  const fetchActiveBooking = useCallback(async () => {
+    try {
+      const response = await api.get('/bookings', { params: { page: 1, limit: 1, status: 'checked_in' } });
+      if (!isMountedRef.current) return;
+      const checkedIn = response.data?.data?.bookings || response.data?.bookings || [];
+      if (Array.isArray(checkedIn) && checkedIn[0]?._id) {
+        setActiveBookingId(String(checkedIn[0]._id));
+        return;
+      }
+
+      const fallback = await api.get('/bookings', { params: { page: 1, limit: 1, status: 'confirmed' } });
+      const confirmed = fallback.data?.data?.bookings || fallback.data?.bookings || [];
+      if (Array.isArray(confirmed) && confirmed[0]?._id) {
+        setActiveBookingId(String(confirmed[0]._id));
+      }
+    } catch {
+      if (isMountedRef.current) setActiveBookingId('');
+    }
+  }, []);
+
   // Fetch hotel services from API
   const fetchHotelServices = useCallback(async () => {
     try {
-      const response = await api.get('/hotel-services');
+      const hotelId = resolvePublicHotelId(searchParams);
+      const response = await api.get('/hotel-services', {
+        params: { page: 1, limit: 50, hotelId }
+      });
       if (!isMountedRef.current) return;
       const rawServices = response.data?.data || response.data?.services || response.data || [];
       const services: HotelService[] = (Array.isArray(rawServices) ? rawServices : []).map(
         (svc: Record<string, unknown>) => ({
           id: (svc._id || svc.id || '') as string,
           name: (svc.name || '') as string,
-          category: (svc.category || '') as string,
+          type: (svc.type || '') as string,
+          category: ((svc.category || svc.type || '') as string),
           description: (svc.description || '') as string,
-          icon: SERVICE_ICON_MAP[(svc.category as string) || ''] || ConciergeBell,
+          icon: SERVICE_ICON_MAP[((svc.category || svc.type) as string) || ''] || ConciergeBell,
           available: svc.available !== false,
           hours: (svc.hours || svc.operatingHours || '') as string,
           price: svc.price as number | undefined,
@@ -199,13 +229,14 @@ const ContactlessGuestApp: React.FC = () => {
     } finally {
       if (isMountedRef.current) setLoadingState(prev => ({ ...prev, services: false }));
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchServiceRequests();
     fetchDigitalKey();
     fetchHotelServices();
-  }, [fetchServiceRequests, fetchDigitalKey, fetchHotelServices]);
+    fetchActiveBooking();
+  }, [fetchServiceRequests, fetchDigitalKey, fetchHotelServices, fetchActiveBooking]);
 
   const requestService = async () => {
     if (!newRequest.service || !newRequest.description) {
@@ -216,18 +247,42 @@ const ContactlessGuestApp: React.FC = () => {
       });
       return;
     }
+    if (!activeBookingId) {
+      toast({
+        title: "No active booking",
+        description: "A confirmed or checked-in booking is required to place service requests.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     try {
+      const selectedService = hotelServices.find((svc) => svc.name === newRequest.service);
+      const mappedType = (selectedService?.type || selectedService?.category || '').toLowerCase();
+      const validTypes = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry'];
+      const serviceType = validTypes.includes(mappedType) ? mappedType : 'other';
+
       const response = await api.post('/guest-services', {
-        service: newRequest.service,
-        category: newRequest.category,
+        bookingId: activeBookingId,
+        serviceType,
+        serviceVariation: newRequest.service,
         description: newRequest.description,
         priority: 'medium'
       });
 
       const created = response.data?.data || response.data?.serviceRequest || response.data;
       if (created) {
-        setServiceRequests(prev => [...prev, created]);
+        const normalized = {
+          id: String(created._id || created.id || ''),
+          service: String(created.serviceVariation || created.title || created.serviceType || ''),
+          category: String(created.serviceType || 'other'),
+          description: String(created.description || ''),
+          requestTime: String(created.createdAt || new Date().toISOString()),
+          status: (created.status as ServiceRequest['status']) || 'pending',
+          estimatedTime: created.estimatedTime ? String(created.estimatedTime) : undefined,
+          priority: (created.priority as ServiceRequest['priority']) || 'medium'
+        };
+        setServiceRequests(prev => [...prev, normalized]);
       }
       setNewRequest({ service: '', description: '', category: '' });
 

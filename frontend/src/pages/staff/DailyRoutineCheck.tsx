@@ -62,7 +62,7 @@ export default function DailyRoutineCheck() {
   const fetchRooms = async () => {
     try {
       setLoading(true);
-      const response = await dailyRoutineCheckService.getRoomsForDailyCheck({ filter });
+      const response = await dailyRoutineCheckService.getRoomsForDailyCheck({ filter, assignedToMe: true });
       setRooms(response.data.rooms || []);
     } catch (error) {
       toast.error('Failed to load rooms for daily check');

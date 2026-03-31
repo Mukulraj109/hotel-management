@@ -17,6 +17,7 @@ export type HousekeepingStatus =
   | 'assigned'
   | 'in_progress'
   | 'completed'
+  | 'inspected'
   | 'cancelled';
 
 export type HousekeepingPriority = 'low' | 'medium' | 'high' | 'urgent';

@@ -18,6 +18,28 @@ import { escapeRegex } from '../utils/escapeRegex.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+const sanitizeDigitalKey = (digitalKey) => {
+  if (!digitalKey) return digitalKey;
+
+  const key = typeof digitalKey.toObject === 'function'
+    ? digitalKey.toObject({ virtuals: true })
+    : { ...digitalKey };
+
+  if (key.securitySettings) {
+    // Never expose hashed PIN material to clients.
+    const { pin, ...safeSecuritySettings } = key.securitySettings;
+    key.securitySettings = safeSecuritySettings;
+  }
+
+  // Remove internal metadata from general list/detail responses.
+  delete key.metadata;
+  delete key.__v;
+
+  return key;
+};
+
+const sanitizeDigitalKeys = (digitalKeys = []) => digitalKeys.map((key) => sanitizeDigitalKey(key));
+
 // Apply authentication, tenant isolation, and property access to all routes
 router.use(authenticate);
 router.use(ensureTenantContext);
@@ -27,9 +49,11 @@ router.use(authorizePolicy('digitalKeys', 'baseAccess'));
 // Get all digital keys for the authenticated user
 router.get('/', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, type } = req.query;
-  const skip = (page - 1) * limit;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (safePage - 1) * safeLimit;
   
-  const filter = { userId: req.user.id };
+  const filter = { userId: req.user.id, hotelId: req.user.hotelId };
   if (status) filter.status = status;
   if (type) filter.type = type;
   
@@ -39,20 +63,20 @@ router.get('/', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(safeLimit).lean();
   
   const total = await DigitalKey.countDocuments(filter);
   
   res.json({
     success: true,
     data: {
-      keys,
+      keys: sanitizeDigitalKeys(keys),
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: safePage,
+        totalPages: Math.ceil(total / safeLimit),
         totalItems: total,
         hasNext: skip + keys.length < total,
-        hasPrev: page > 1
+        hasPrev: safePage > 1
       }
     }
   });
@@ -61,11 +85,13 @@ router.get('/', catchAsync(async (req, res) => {
 // Get shared keys for the authenticated user
 router.get('/shared', catchAsync(async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
-  const skip = (page - 1) * limit;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (safePage - 1) * safeLimit;
   
   const keys = await DigitalKey.getSharedKeysForUser(req.user.id)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(safeLimit);
   
   const total = await DigitalKey.countDocuments({
     'sharedWith.userId': req.user.id,
@@ -77,15 +103,36 @@ router.get('/shared', catchAsync(async (req, res) => {
   res.json({
     success: true,
     data: {
-      keys,
+      keys: sanitizeDigitalKeys(keys),
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: safePage,
+        totalPages: Math.ceil(total / safeLimit),
         totalItems: total,
         hasNext: skip + keys.length < total,
-        hasPrev: page > 1
+        hasPrev: safePage > 1
       }
     }
+  });
+}));
+
+// Get the current user's most relevant active key (mobile compatibility endpoint)
+router.get('/my-key', catchAsync(async (req, res) => {
+  const now = new Date();
+  const key = await DigitalKey.findOne({
+    userId: req.user.id,
+    hotelId: req.user.hotelId,
+    status: 'active',
+    validUntil: { $gt: now }
+  })
+    .sort({ validUntil: 1, createdAt: -1 })
+    .populate('bookingId', 'bookingNumber checkIn checkOut')
+    .populate('roomId', 'number type floor')
+    .populate('hotelId', 'name address')
+    .lean();
+
+  res.json({
+    success: true,
+    data: sanitizeDigitalKey(key)
   });
 }));
 
@@ -97,6 +144,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   const booking = await Booking.findOne({ 
     _id: bookingId, 
     userId: req.user.id,
+    hotelId: req.user.hotelId,
     status: { $in: ['confirmed', 'checked_in'] }
   }).populate('hotelId').populate('rooms.roomId').lean();
   
@@ -112,6 +160,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   const existingKey = await DigitalKey.findOne({ 
     bookingId, 
     userId: req.user.id,
+    hotelId: req.user.hotelId,
     status: { $in: ['active', 'expired'] }
   }).lean();
   
@@ -175,7 +224,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   res.status(201).json({
     success: true,
     message: 'Digital key generated successfully',
-    data: digitalKey
+    data: sanitizeDigitalKey(digitalKey)
   });
 }));
 
@@ -217,7 +266,7 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
   res.json({
     success: true,
     data: {
-      keys,
+      keys: sanitizeDigitalKeys(keys),
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(total / limit),
@@ -750,6 +799,7 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
 router.get('/:keyId', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findOne({
     _id: req.params.keyId,
+    hotelId: req.user.hotelId,
     $or: [
       { userId: req.user.id },
       { 'sharedWith.userId': req.user.id, 'sharedWith.isActive': true }
@@ -766,7 +816,7 @@ router.get('/:keyId', catchAsync(async (req, res) => {
   
   res.json({
     success: true,
-    data: digitalKey
+    data: sanitizeDigitalKey(digitalKey)
   });
 }));
 
@@ -774,11 +824,31 @@ router.get('/:keyId', catchAsync(async (req, res) => {
 router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyCode } = req.params;
   const { pin, deviceInfo = {} } = req.body;
+  const now = new Date();
   
   const digitalKey = await DigitalKey.findByKeyCode(keyCode);
   
   if (!digitalKey) {
     throw new ApplicationError('Invalid key code', 404);
+  }
+
+  const requesterId = String(req.user.id);
+  const requesterHotelId = String(req.user.hotelId);
+  const keyOwnerId = String(digitalKey.userId?._id || digitalKey.userId);
+  const keyHotelId = String(digitalKey.hotelId?._id || digitalKey.hotelId);
+  const requesterEmail = req.user.email ? String(req.user.email).toLowerCase() : null;
+
+  const isOwner = keyOwnerId === requesterId;
+  const hasActiveShare = (digitalKey.sharedWith || []).some((share) => {
+    if (!share?.isActive) return false;
+    if (share.expiresAt && new Date(share.expiresAt) <= now) return false;
+    if (share.userId && String(share.userId?._id || share.userId) === requesterId) return true;
+    if (requesterEmail && share.email && String(share.email).toLowerCase() === requesterEmail) return true;
+    return false;
+  });
+
+  if (keyHotelId !== requesterHotelId || (!isOwner && !hasActiveShare)) {
+    throw new ApplicationError('You are not authorized to use this key', 403);
   }
   
   if (!digitalKey.canBeUsed) {
@@ -837,7 +907,7 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   // Find user by email if provided
   let sharedUserId = null;
   if (email) {
-    const sharedUser = await User.findOne({ email }).lean();
+    const sharedUser = await User.findOne({ email, hotelId: req.user.hotelId }).lean();
     if (sharedUser) {
       sharedUserId = sharedUser._id;
     }

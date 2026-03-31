@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { Route } from 'react-router-dom';
 import RouteLoadingFallback from '../components/ui/RouteLoadingFallback';
+import { ProtectedRoute } from '../components/ProtectedRoute';
 
 const AdminAddOnServices = React.lazy(() => import('../pages/admin/AdminAddOnServices'));
 const AdminAdvancedFeatures = React.lazy(() => import('../pages/admin/AdminAdvancedFeatures'));
@@ -43,6 +44,10 @@ function wrap(page: React.ReactNode) {
   return <Suspense fallback={<RouteLoadingFallback />}>{page}</Suspense>;
 }
 
+function adminOnly(page: React.ReactNode) {
+  return <ProtectedRoute allowedRoles={['admin']}>{wrap(page)}</ProtectedRoute>;
+}
+
 /**
  * Previously-unreferenced admin pages (see scripts/list-unrouted-admin-pages.cjs).
  * Must be a Fragment of `<Route>` nodes — use `{adminUnroutedRoutes}` inside a parent
@@ -76,15 +81,15 @@ export const adminUnroutedRoutes = (
       <Route path="vendor-management" element={wrap(<AdminVendorManagement />)} />
       <Route path="vip" element={wrap(<AdminVIP />)} />
       <Route path="web-optimization" element={wrap(<AdminWebOptimization />)} />
-      <Route path="alerts" element={wrap(<AlertsDashboard />)} />
-      <Route path="analytics/guest-satisfaction" element={wrap(<GuestSatisfaction />)} />
-      <Route path="analytics/occupancy" element={wrap(<OccupancyAnalytics />)} />
-      <Route path="analytics/staff-performance" element={wrap(<StaffPerformance />)} />
-      <Route path="reports/builder" element={wrap(<ReportBuilder />)} />
+      <Route path="alerts" element={adminOnly(<AlertsDashboard />)} />
+      <Route path="analytics/guest-satisfaction" element={adminOnly(<GuestSatisfaction />)} />
+      <Route path="analytics/occupancy" element={adminOnly(<OccupancyAnalytics />)} />
+      <Route path="analytics/staff-performance" element={adminOnly(<StaffPerformance />)} />
+      <Route path="reports/builder" element={adminOnly(<ReportBuilder />)} />
       <Route path="scheduled-updates" element={wrap(<ScheduledUpdates />)} />
       <Route path="settings/booking-rules" element={wrap(<BookingRulesSettings />)} />
       <Route path="settings/history" element={wrap(<SettingsHistory />)} />
-      <Route path="system/health" element={wrap(<SystemHealth />)} />
+      <Route path="system/health" element={adminOnly(<SystemHealth />)} />
       <Route path="walk-in-booking" element={wrap(<WalkInBooking />)} />
     </>
 );

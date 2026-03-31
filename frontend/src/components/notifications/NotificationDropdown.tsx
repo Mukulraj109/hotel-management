@@ -28,7 +28,7 @@ export default function NotificationDropdown({ isOpen, onToggle }: NotificationD
   const dropdownRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Real-time connection setup - FIXED: Don't disconnect singleton service
   useEffect(() => {
@@ -89,12 +89,13 @@ export default function NotificationDropdown({ isOpen, onToggle }: NotificationD
     };
   }, [connectionState, on, off, queryClient]);
 
-  // Fetch unread count
+  // Fetch unread count only once session is established (avoids 401 noise / refresh races)
   const { data: unreadCount } = useQuery({
     queryKey: ['unreadCount'],
-    queryFn: notificationService.getUnreadCount,
-    refetchInterval: 30000, // Refetch every 30 seconds as fallback
-    enabled: true
+    queryFn: () => notificationService.getUnreadCount(),
+    refetchInterval: isAuthenticated ? 30000 : false,
+    enabled: isAuthenticated && !authLoading,
+    retry: false,
   });
 
   // Fetch recent notifications when dropdown is open
@@ -108,8 +109,9 @@ export default function NotificationDropdown({ isOpen, onToggle }: NotificationD
       limit: showAll ? 10 : 5,
       unreadOnly: !showAll
     }),
-    enabled: isOpen,
-    refetchInterval: 30000
+    enabled: isOpen && isAuthenticated && !authLoading,
+    refetchInterval: isOpen && isAuthenticated ? 30000 : false,
+    retry: false,
   });
 
   // Mark as read mutation

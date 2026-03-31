@@ -107,7 +107,7 @@ function GuestRequests() {
   const [feedbackText, setFeedbackText] = useState('');
   const [confirmCancelRequestId, setConfirmCancelRequestId] = useState<string | null>(null);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const { connectionState, connect, on, off } = useRealTime();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -146,7 +146,11 @@ function GuestRequests() {
   const fetchBookings = useCallback(async () => {
     try {
       const response = await bookingService.getUserBookings({ limit: 100 });
-      const bookingsData = Array.isArray(response.data) ? response.data : [];
+      const bookingsData = Array.isArray(response.data?.bookings)
+        ? response.data.bookings
+        : Array.isArray(response.data)
+          ? response.data
+          : [];
       setBookings(bookingsData.filter((b: Booking) => ['confirmed', 'checked_in'].includes(b.status)));
     } catch {
       // Bookings fetch error handled silently - user can still view existing requests
@@ -179,7 +183,8 @@ function GuestRequests() {
     if (connectionState !== 'connected' || !user) return;
 
     const handleGuestServiceUpdated = (data: Record<string, unknown>) => {
-      const updatedRequest = data.serviceRequest as GuestServiceRequest;
+      const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
+      const updatedRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
       // Only update if this request belongs to the current user
       if (isSameUserId(user?._id, updatedRequest.userId)) {
@@ -188,7 +193,7 @@ function GuestRequests() {
         ));
 
         // Show toast notification for status changes
-        if (data.previousStatus && data.previousStatus !== updatedRequest.status) {
+        if (wrappedData.previousStatus && wrappedData.previousStatus !== updatedRequest.status) {
           const statusMessages: Record<string, string> = {
             'assigned': `Your ${updatedRequest.serviceType.replace('_', ' ')} request has been assigned to ${updatedRequest.assignedTo?.name || 'staff'}`,
             'in_progress': `Your ${updatedRequest.serviceType.replace('_', ' ')} request is now in progress`,
@@ -203,14 +208,15 @@ function GuestRequests() {
         }
 
         // Show notification for staff notes
-        if (updatedRequest.notes && (!data.previousNotes || data.previousNotes !== updatedRequest.notes)) {
+        if (updatedRequest.notes && (!wrappedData.previousNotes || wrappedData.previousNotes !== updatedRequest.notes)) {
           toast('Staff added a note to your request', { duration: 4000 });
         }
       }
     };
 
     const handleGuestServiceCreated = (data: Record<string, unknown>) => {
-      const newRequest = data.serviceRequest as GuestServiceRequest;
+      const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
+      const newRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
       // Only add if this request belongs to the current user
       const newUserId = typeof newRequest.userId === 'object' ? newRequest.userId?._id : newRequest.userId;
@@ -221,7 +227,8 @@ function GuestRequests() {
     };
 
     const handleGuestServiceCancelled = (data: Record<string, unknown>) => {
-      const cancelledRequest = data.serviceRequest as GuestServiceRequest;
+      const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
+      const cancelledRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
       // Only update if this request belongs to the current user
       if (isSameUserId(user?._id, cancelledRequest.userId)) {
@@ -235,11 +242,32 @@ function GuestRequests() {
     on('guest-service:updated', handleGuestServiceUpdated);
     on('guest-service:created', handleGuestServiceCreated);
     on('guest-service:cancelled', handleGuestServiceCancelled);
+    // Backward compatibility with underscored/socket event names
+    on('guest_service:updated', handleGuestServiceUpdated);
+    on('guest_service:created', handleGuestServiceCreated);
+    on('guest_service:cancelled', handleGuestServiceCancelled);
+    on('guest-services:updated', handleGuestServiceUpdated);
+    on('guest-services:created', handleGuestServiceCreated);
+    on('guest-services:cancelled', handleGuestServiceCancelled);
+    on('guest-services:assigned', handleGuestServiceUpdated);
+    on('guest-services:completed', handleGuestServiceUpdated);
+    on('guest-services:status_changed', handleGuestServiceUpdated);
+    on('guest-services:*', handleGuestServiceUpdated);
 
     return () => {
       off('guest-service:updated', handleGuestServiceUpdated);
       off('guest-service:created', handleGuestServiceCreated);
       off('guest-service:cancelled', handleGuestServiceCancelled);
+      off('guest_service:updated', handleGuestServiceUpdated);
+      off('guest_service:created', handleGuestServiceCreated);
+      off('guest_service:cancelled', handleGuestServiceCancelled);
+      off('guest-services:updated', handleGuestServiceUpdated);
+      off('guest-services:created', handleGuestServiceCreated);
+      off('guest-services:cancelled', handleGuestServiceCancelled);
+      off('guest-services:assigned', handleGuestServiceUpdated);
+      off('guest-services:completed', handleGuestServiceUpdated);
+      off('guest-services:status_changed', handleGuestServiceUpdated);
+      off('guest-services:*', handleGuestServiceUpdated);
     };
   }, [connectionState, on, off, user]);
 

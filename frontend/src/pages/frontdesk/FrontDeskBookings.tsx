@@ -52,6 +52,7 @@ function FrontDeskBookings() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
+  const activeHotelId = selectedPropertyId || user?.hotelId || '';
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,7 +116,7 @@ function FrontDeskBookings() {
   const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
-    hotelId: selectedPropertyId || user?.hotelId || '',
+    hotelId: activeHotelId,
     userId: '',
     roomIds: [] as string[],
     checkIn: '',
@@ -131,15 +132,39 @@ function FrontDeskBookings() {
     status: 'pending' as 'pending' | 'confirmed'
   });
 
+  const getBookingHotelId = (booking: AdminBooking): string => {
+    if (typeof booking.hotelId === 'string') return booking.hotelId;
+    return booking.hotelId?._id || '';
+  };
+
+  const assertBookingInScope = (booking: AdminBooking): boolean => {
+    if (!activeHotelId) {
+      toast.error('Select a property to continue.');
+      return false;
+    }
+    const bookingHotelId = getBookingHotelId(booking);
+    if (bookingHotelId && bookingHotelId !== activeHotelId) {
+      toast.error('This booking belongs to a different property.');
+      return false;
+    }
+    return true;
+  };
+
   // Fetch bookings
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
+    if (!activeHotelId) {
+      setBookings([]);
+      setPagination({ current: 1, pages: 1, total: 0 });
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
 
       // Add hotelId to filters to ensure we only get bookings for the correct hotel
       const bookingFilters = {
         ...filters,
-        hotelId: selectedPropertyId || user?.hotelId || ''
+        hotelId: activeHotelId
       };
 
       const response = await adminService.getFrontDeskBookings(bookingFilters);
@@ -185,15 +210,19 @@ function FrontDeskBookings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeHotelId, filters]);
 
   // Fetch stats
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    if (!activeHotelId) {
+      setStats(null);
+      return;
+    }
     try {
 
       // Pass hotelId filter to stats to match booking list
       const statsFilters = {
-        hotelId: selectedPropertyId || user?.hotelId || ''
+        hotelId: activeHotelId
       };
 
       const response = await adminService.getBookingStats(statsFilters);
@@ -202,12 +231,12 @@ function FrontDeskBookings() {
     } catch (error) {
       setStats(null);
     }
-  };
+  }, [activeHotelId]);
 
   useEffect(() => {
     fetchBookings();
     fetchStats();
-  }, [filters, selectedPropertyId]);
+  }, [fetchBookings, fetchStats]);
 
   // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
@@ -217,40 +246,31 @@ function FrontDeskBookings() {
 
   // Real-time: listen for booking events so guest actions (create, cancel, modify) reflect immediately
   useEffect(() => {
-    const handleBookingCreated = () => {
-      fetchBookings();
-      fetchStats();
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    };
-    const handleBookingUpdated = () => {
-      fetchBookings();
-      fetchStats();
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    };
-    const handleBookingCancelled = () => {
+    const handleRealtimeRefresh = () => {
       fetchBookings();
       fetchStats();
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     };
 
-    realTimeService.on('booking:created', handleBookingCreated);
-    realTimeService.on('booking:updated', handleBookingUpdated);
-    realTimeService.on('booking_cancelled', handleBookingCancelled);
-    realTimeService.on('booking:modification_requested', handleBookingUpdated);
-    realTimeService.on('booking:payment_updated', handleBookingUpdated);
+    realTimeService.on('booking:created', handleRealtimeRefresh);
+    realTimeService.on('booking:updated', handleRealtimeRefresh);
+    realTimeService.on('booking_cancelled', handleRealtimeRefresh);
+    realTimeService.on('booking:modification_requested', handleRealtimeRefresh);
+    realTimeService.on('booking:payment_updated', handleRealtimeRefresh);
 
     return () => {
-      realTimeService.off('booking:created', handleBookingCreated);
-      realTimeService.off('booking:updated', handleBookingUpdated);
-      realTimeService.off('booking_cancelled', handleBookingCancelled);
-      realTimeService.off('booking:modification_requested', handleBookingUpdated);
-      realTimeService.off('booking:payment_updated', handleBookingUpdated);
+      realTimeService.off('booking:created', handleRealtimeRefresh);
+      realTimeService.off('booking:updated', handleRealtimeRefresh);
+      realTimeService.off('booking_cancelled', handleRealtimeRefresh);
+      realTimeService.off('booking:modification_requested', handleRealtimeRefresh);
+      realTimeService.off('booking:payment_updated', handleRealtimeRefresh);
     };
-  }, [selectedPropertyId]);
+  }, [fetchBookings, fetchStats, queryClient, activeHotelId]);
 
   // Handle status update
   const handleStatusUpdate = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show') => {
     const booking = bookings.find(b => b._id === bookingId);
+    if (booking && !assertBookingInScope(booking)) return;
     
     // Check if this is a pending -> confirmed transition that needs room assignment
     if (booking?.status === 'pending' && newStatus === 'confirmed') {
@@ -283,6 +303,8 @@ function FrontDeskBookings() {
 
   // Handle booking cancellation
   const handleCancelBooking = async (bookingId: string, reason: string = 'Cancelled by admin') => {
+    const booking = bookings.find(b => b._id === bookingId);
+    if (booking && !assertBookingInScope(booking)) return;
     try {
       setUpdating(true);
       await adminService.cancelBooking(bookingId, reason);
@@ -314,7 +336,7 @@ function FrontDeskBookings() {
       if (!hotelId) {
 
         // Try to get hotelId from user context (if user is logged in and has hotelId)
-        const userHotelId = selectedPropertyId || user?.hotelId || '';
+        const userHotelId = activeHotelId;
 
         if (userHotelId) {
           hotelId = userHotelId;
@@ -411,6 +433,7 @@ function FrontDeskBookings() {
 
   // Handle check-in with payment collection
   const handleCheckIn = async (booking: AdminBooking) => {
+    if (!assertBookingInScope(booking)) return;
     // If payment is already completed, check-in directly without payment modal
     if (booking.paymentStatus === 'paid') {
       try {
@@ -510,6 +533,7 @@ function FrontDeskBookings() {
 
   // Handle check-out - Smart checkout with automatic payment collection
   const handleCheckOut = async (booking: AdminBooking) => {
+    if (!assertBookingInScope(booking)) return;
     try {
 
       // Calculate outstanding balance
@@ -733,6 +757,7 @@ function FrontDeskBookings() {
 
   // Handle bypass checkout - Show confirmation dialog
   const handleBypassCheckout = (booking: AdminBooking) => {
+    if (!assertBookingInScope(booking)) return;
     setSelectedBookingForBypass(booking);
     setBypassReason('');
     setBypassConfirmed(false);
@@ -828,13 +853,17 @@ function FrontDeskBookings() {
 
   // Handle create booking form submission
   const handleCreateBooking = async () => {
+    if (!activeHotelId) {
+      toast.error('Select a property before creating a booking.');
+      return;
+    }
     try {
       setCreating(true);
       await adminService.createBooking(createForm);
 
       // Reset form and close modal
       setCreateForm({
-        hotelId: selectedPropertyId || user?.hotelId || '',
+        hotelId: activeHotelId,
         userId: '',
         roomIds: [],
         checkIn: '',
@@ -891,6 +920,11 @@ function FrontDeskBookings() {
     const totalAmount = calculateTotalAmount();
     setCreateForm(prev => ({ ...prev, totalAmount }));
   }, [createForm.roomIds, createForm.checkIn, createForm.checkOut, availableRooms]);
+
+  useEffect(() => {
+    setCreateForm(prev => ({ ...prev, hotelId: activeHotelId, roomIds: [] }));
+    setAvailableRooms([]);
+  }, [activeHotelId]);
 
   // Fetch available rooms when dates change
   useEffect(() => {
@@ -1672,7 +1706,7 @@ function FrontDeskBookings() {
                  onClose={() => {
            setShowCreateModal(false);
            setCreateForm({
-             hotelId: selectedPropertyId || user?.hotelId || '',
+             hotelId: activeHotelId,
              userId: '',
              roomIds: [],
              checkIn: '',

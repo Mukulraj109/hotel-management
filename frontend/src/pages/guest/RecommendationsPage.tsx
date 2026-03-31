@@ -46,7 +46,7 @@ const RecommendationsPage: React.FC = () => {
     }
   };
 
-  const handleRedeemOffer = async (offerId: string, pointsRequired: number) => {
+  const handleRedeemOffer = async (offerId: string) => {
     try {
       setRedemptionError(null);
       const result = await loyaltyService.redeemPoints(offerId);
@@ -184,7 +184,7 @@ const RecommendationsPage: React.FC = () => {
                       </div>
 
                       <button
-                        onClick={() => handleRedeemOffer(offer._id, offer.pointsRequired)}
+                        onClick={() => handleRedeemOffer(offer._id)}
                         className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium"
                       >
                         Redeem Offer
@@ -263,7 +263,7 @@ const RecommendationsPage: React.FC = () => {
                       </div>
 
                       <button
-                        onClick={() => handleRedeemOffer(item.offerId, item.offer.pointsRequired)}
+                        onClick={() => handleRedeemOffer(item.offerId)}
                         className="w-full bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 transition-colors font-medium"
                       >
                         Redeem Offer

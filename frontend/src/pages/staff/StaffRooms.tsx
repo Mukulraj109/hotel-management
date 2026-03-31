@@ -31,9 +31,18 @@ export default function StaffRooms() {
   useEffect(() => {
     if (!isConnected) return;
     
+    const extractPayload = (data: Record<string, unknown>) => {
+      const wrapped = data?.data;
+      if (wrapped && typeof wrapped === 'object') {
+        return wrapped as Record<string, unknown>;
+      }
+      return data;
+    };
+
     const handleRoomStatusChanged = (data: Record<string, unknown>) => {
+      const payload = extractPayload(data);
       fetchRoomData();
-      toast.success(`Room ${data.roomNumber} status updated to ${data.status}`);
+      toast.success(`Room ${payload.roomNumber || 'N/A'} status updated to ${payload.status || 'updated'}`);
     };
     
     const handleBookingCheckedIn = (data: Record<string, unknown>) => {
@@ -55,7 +64,8 @@ export default function StaffRooms() {
       fetchRoomData();
     };
     
-    on('room:status_changed', handleRoomStatusChanged);
+    on('room_status_changed', handleRoomStatusChanged);
+    on('room_status_changed:updated', handleRoomStatusChanged);
     on('booking:checked_in', handleBookingCheckedIn);
     on('booking:checked_out', handleBookingCheckedOut);
     on('room:attention_required', handleRoomAttentionRequired);
@@ -63,7 +73,8 @@ export default function StaffRooms() {
     on('occupancy:changed', handleRoomUpdate);
     
     return () => {
-      off('room:status_changed', handleRoomStatusChanged);
+      off('room_status_changed', handleRoomStatusChanged);
+      off('room_status_changed:updated', handleRoomStatusChanged);
       off('booking:checked_in', handleBookingCheckedIn);
       off('booking:checked_out', handleBookingCheckedOut);
       off('room:attention_required', handleRoomAttentionRequired);
@@ -258,16 +269,21 @@ export default function StaffRooms() {
                 activityData.checkOuts.map((checkOut) => (
                   <div key={checkOut._id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
                     <div>
-                      <p className="font-medium">{checkOut.bookingNumber}</p>
+                      <p className="font-medium">{checkOut.bookingNumber || checkOut.bookingId?.bookingNumber || 'Checkout Activity'}</p>
                       <p className="text-sm text-gray-600">
-                        {checkOut.userId?.name || 'Guest'} - Room {checkOut.rooms?.map(r => r.roomId?.roomNumber).join(', ')}
+                        {(checkOut.userId?.name || checkOut.bookingId?.userId?.name || checkOut.checkedBy?.name || 'Guest')} - Room {(
+                          checkOut.rooms?.map(r => r.roomId?.roomNumber).filter(Boolean).join(', ') ||
+                          checkOut.roomId?.roomNumber ||
+                          checkOut.bookingId?.rooms?.map(r => r.roomId?.roomNumber).filter(Boolean).join(', ') ||
+                          'N/A'
+                        )}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Check-out: {new Date(checkOut.checkOut).toLocaleDateString()}
+                        Check-out: {new Date(checkOut.checkOut || checkOut.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <Badge variant="default" className="bg-orange-100 text-orange-800">
-                      {checkOut.status === 'checked_in' ? 'Checked In' : 'Confirmed'}
+                      {checkOut.status === 'checked_in' ? 'Checked In' : (checkOut.status === 'checked_out' ? 'Checked Out' : 'Completed')}
                     </Badge>
                   </div>
                 ))

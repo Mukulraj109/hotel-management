@@ -155,6 +155,10 @@ export default function AuditLog() {
           params.append(key, value.toString());
         }
       });
+      if (selectedPropertyId) {
+        params.append('hotelId', selectedPropertyId);
+        params.append('propertyId', selectedPropertyId);
+      }
       params.append('format', format);
 
       const response = await api.get(`/audit-log/export?${params.toString()}`, {

@@ -2,7 +2,7 @@ import { api } from './api';
 
 export interface BillingHistoryItem {
   id: string;
-  type: 'invoice' | 'payment' | 'refund' | 'booking';
+  type: 'invoice' | 'payment' | 'refund' | 'booking' | 'checkout_charges';
   subType: string;
   date: string;
   amount: number;
@@ -61,7 +61,7 @@ export interface BillingHistoryResponse {
 export interface BillingHistoryFilters {
   page?: number;
   limit?: number;
-  type?: 'all' | 'invoice' | 'payment' | 'refund' | 'booking';
+  type?: 'all' | 'invoice' | 'payment' | 'refund' | 'booking' | 'checkout_charges';
   status?: string;
   startDate?: string;
   endDate?: string;
@@ -397,6 +397,13 @@ class BillingHistoryService {
         }
       case 'refund':
         return 'purple';
+      case 'checkout_charges':
+        switch (status) {
+          case 'paid': return 'green';
+          case 'pending': return 'yellow';
+          case 'failed': return 'red';
+          default: return 'gray';
+        }
       default:
         return 'gray';
     }
@@ -410,6 +417,7 @@ class BillingHistoryService {
       case 'invoice': return '📄';
       case 'payment': return '💳';
       case 'refund': return '↩️';
+      case 'checkout_charges': return '🧾';
       default: return '📋';
     }
   }

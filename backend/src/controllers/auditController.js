@@ -1,10 +1,24 @@
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import otaPayloadService from '../services/otaPayloadService.js';
 import otaAuditService from '../services/otaAuditService.js';
 import payloadRetentionService from '../services/payloadRetentionService.js';
 import OTAPayload from '../models/OTAPayload.js';
 import AuditLog from '../models/AuditLog.js';
 import logger from '../utils/logger.js';
+
+const ALLOWED_AUDIT_SORT_FIELDS = new Set(['createdAt', 'tableName', 'changeType', 'source']);
+
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+};
+
+const parseDateSafe = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const resolveTenantHotelId = (req) => req.query?.hotelId || req.user?.hotelId || req.tenantId || null;
 
 /**
  * Get OTA payloads with filtering and pagination
@@ -24,9 +38,19 @@ export const getOTAPayloads = async (req, res) => {
       includeData,
       page = 1,
       limit = 50,
-      sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
+    const pageNumber = parsePositiveInt(page, 1);
+    const pageSize = Math.min(parsePositiveInt(limit, 50), 100);
+    const normalizedSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
+    const parsedStartDate = parseDateSafe(startDate);
+    const parsedEndDate = parseDateSafe(endDate);
+    if ((startDate && !parsedStartDate) || (endDate && !parsedEndDate)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid date format for startDate or endDate'
+      });
+    }
 
     const filters = {
       channel,
@@ -41,9 +65,9 @@ export const getOTAPayloads = async (req, res) => {
     };
 
     const options = {
-      limit: Math.min(parseInt(limit), 100), // Cap at 100
-      offset: (parseInt(page) - 1) * parseInt(limit),
-      sortOrder,
+      limit: pageSize,
+      offset: (pageNumber - 1) * pageSize,
+      sortOrder: normalizedSortOrder,
       includeData: includeData === 'true'
     };
 
@@ -58,8 +82,8 @@ export const getOTAPayloads = async (req, res) => {
     if (filters.correlationId) totalQuery.correlationId = filters.correlationId;
     if (filters.startDate || filters.endDate) {
       totalQuery.createdAt = {};
-      if (filters.startDate) totalQuery.createdAt.$gte = new Date(filters.startDate);
-      if (filters.endDate) totalQuery.createdAt.$lte = new Date(filters.endDate);
+      if (parsedStartDate) totalQuery.createdAt.$gte = parsedStartDate;
+      if (parsedEndDate) totalQuery.createdAt.$lte = parsedEndDate;
     }
 
     const total = await OTAPayload.countDocuments(totalQuery);
@@ -69,10 +93,10 @@ export const getOTAPayloads = async (req, res) => {
       data: {
         payloads,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNumber,
+          limit: pageSize,
           total,
-          pages: Math.ceil(total / parseInt(limit))
+          pages: Math.ceil(total / pageSize)
         },
         filters: filters
       }
@@ -96,7 +120,7 @@ export const getOTAPayload = async (req, res) => {
     const { includeRawData = 'false' } = req.query;
 
     const payload = await OTAPayload.findOne({ payloadId })
-      .populate('auditLogId', 'logId changeType createdAt').lean();
+      .populate('auditLogId', 'logId changeType createdAt');
 
     if (!payload) {
       return res.status(404).json({
@@ -302,10 +326,26 @@ export const getAuditLogs = async (req, res) => {
       startDate,
       endDate,
       page = 1,
-      limit = 50
+      limit = 50,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
     } = req.query;
+    const tenantHotelId = resolveTenantHotelId(req);
+    const pageNumber = parsePositiveInt(page, 1);
+    const pageSize = Math.min(parsePositiveInt(limit, 50), 100);
+    const normalizedSortBy = ALLOWED_AUDIT_SORT_FIELDS.has(sortBy) ? sortBy : 'createdAt';
+    const normalizedSortOrder = sortOrder === 'asc' ? 1 : -1;
+    const parsedStartDate = parseDateSafe(startDate);
+    const parsedEndDate = parseDateSafe(endDate);
+    if ((startDate && !parsedStartDate) || (endDate && !parsedEndDate)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid date format for startDate or endDate'
+      });
+    }
 
     const query = {};
+    if (tenantHotelId) query.hotelId = tenantHotelId;
     
     if (tableName) query.tableName = tableName;
     if (recordId) query.recordId = recordId;
@@ -315,15 +355,15 @@ export const getAuditLogs = async (req, res) => {
     
     if (startDate || endDate) {
       query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) query.createdAt.$lte = new Date(endDate);
+      if (parsedStartDate) query.createdAt.$gte = parsedStartDate;
+      if (parsedEndDate) query.createdAt.$lte = parsedEndDate;
     }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (pageNumber - 1) * pageSize;
     const logs = await AuditLog.find(query)
       .populate('userId', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
+      .sort({ [normalizedSortBy]: normalizedSortOrder })
+      .limit(pageSize)
       .skip(offset).lean();
 
     const total = await AuditLog.countDocuments(query);
@@ -333,10 +373,10 @@ export const getAuditLogs = async (req, res) => {
       data: {
         logs,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNumber,
+          limit: pageSize,
           total,
-          pages: Math.ceil(total / parseInt(limit))
+          pages: Math.ceil(total / pageSize)
         }
       }
     });
@@ -356,14 +396,18 @@ export const getAuditLogs = async (req, res) => {
 export const getAuditByCorrelation = async (req, res) => {
   try {
     const { correlationId } = req.params;
+    const tenantHotelId = resolveTenantHotelId(req);
 
     // Get payloads with this correlation ID
     const payloads = await otaPayloadService.searchPayloads({ correlationId });
 
     // Get related audit logs
-    const auditLogs = await AuditLog.find({
+    const auditQuery = {
       'metadata.correlationId': correlationId
-    })
+    };
+    if (tenantHotelId) auditQuery.hotelId = tenantHotelId;
+
+    const auditLogs = await AuditLog.find(auditQuery)
     .populate('userId', 'name email')
     .sort({ createdAt: 1 }).lean().limit(1000);
 
@@ -475,6 +519,9 @@ export const exportAuditData = async (req, res) => {
       tableName,
       includePayloads = 'false'
     } = req.query;
+    const tenantHotelId = resolveTenantHotelId(req);
+    const parsedStartDate = parseDateSafe(startDate);
+    const parsedEndDate = parseDateSafe(endDate);
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -482,13 +529,20 @@ export const exportAuditData = async (req, res) => {
         message: 'Start date and end date are required'
       });
     }
+    if (!parsedStartDate || !parsedEndDate) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid date format for startDate or endDate'
+      });
+    }
 
     const query = {
       createdAt: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: parsedStartDate,
+        $lte: parsedEndDate
       }
     };
+    if (tenantHotelId) query.hotelId = tenantHotelId;
 
     if (tableName) query.tableName = tableName;
 

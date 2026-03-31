@@ -153,6 +153,25 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
     );
   }
 
+  // Public booking / availability: guests and travel agents target a hotel from marketing flows
+  // (room catalog, contact list) — not necessarily the same as User.hotelId / User.properties.
+  const isBookingsRouter =
+    typeof req.baseUrl === 'string' && req.baseUrl.includes('/bookings');
+  const isPublicBookingOrAvailabilityPost =
+    req.method === 'POST' &&
+    isBookingsRouter &&
+    (req.path === '/' || req.path === '/check-availability');
+  if (
+    isPublicBookingOrAvailabilityPost &&
+    (req.user?.role === 'guest' || req.user?.role === 'travel_agent')
+  ) {
+    if (propertyExists.isActive === false) {
+      throw new ApplicationError('This property is not accepting bookings.', 403);
+    }
+    req.property = propertyExists;
+    return next();
+  }
+
   // Check if user has this property in their properties array or multiPropertyAccess
   const hotelIdStr = hotelId.toString();
   const userProperties = (req.user.properties || []).map(refToHotelIdString).filter(Boolean);

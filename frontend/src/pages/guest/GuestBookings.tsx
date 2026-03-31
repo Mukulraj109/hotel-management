@@ -31,24 +31,29 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { toEntityIdString } from '../../utils/entityId';
 import EmptyState from '../../components/ui/EmptyState';
 import toast from 'react-hot-toast';
 
 // Extended interface for bookings with populated hotel data
 interface BookingWithHotel extends Omit<Booking, 'hotelId'> {
-  hotelId: {
-    _id: string;
-    name: string;
-    address?: {
-      street: string;
-      city: string;
-      state: string;
-    };
-    contact?: {
-      phone: string;
-      email: string;
-    };
-  };
+  hotelId:
+    | string
+    | {
+        _id: string;
+        name: string;
+        address?: {
+          street?: string;
+          city?: string;
+          state?: string;
+        };
+        contact?: {
+          phone: string;
+          email: string;
+        };
+      };
+  /** Set on room-type-only holds when rooms[] is empty */
+  roomType?: string;
 }
 
 const getStatusColor = (status: string) => {
@@ -72,6 +77,22 @@ const getPaymentStatusColor = (status: string) => {
     default: return 'bg-gray-100 text-gray-800';
   }
 };
+
+function hotelNameFromBooking(booking: BookingWithHotel): string {
+  const h = booking.hotelId;
+  if (h && typeof h === 'object' && h !== null && 'name' in h && (h as { name?: string }).name) {
+    return (h as { name: string }).name;
+  }
+  return 'Hotel';
+}
+
+function hotelAddressLine(booking: BookingWithHotel): string | null {
+  const h = booking.hotelId;
+  if (!h || typeof h !== 'object' || !('address' in h) || !(h as { address?: unknown }).address) return null;
+  const a = (h as { address: { street?: string; city?: string; state?: string } }).address;
+  const parts = [a.street, a.city, a.state].filter((p) => p && String(p).trim());
+  return parts.length ? parts.join(', ') : null;
+}
 
 const getStatusIcon = (status: string) => {
   switch (status) {
@@ -131,7 +152,7 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
         <div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
             <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {booking.hotelId?.name || 'Hotel'}
+              {hotelNameFromBooking(booking)}
             </h3>
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getStatusColor(booking.status)}`}>
               {getStatusIcon(booking.status)}
@@ -139,12 +160,15 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
             </span>
           </div>
           <p className="text-sm text-gray-600 mb-1">Booking #{booking.bookingNumber}</p>
-          {booking.hotelId?.address && (
-            <div className="flex items-center text-sm text-gray-500">
-              <MapPin className="w-4 h-4 mr-1" />
-              {booking.hotelId.address.street}, {booking.hotelId.address.city}, {booking.hotelId.address.state}
-            </div>
-          )}
+          {(() => {
+            const line = hotelAddressLine(booking);
+            return line ? (
+              <div className="flex items-center text-sm text-gray-500">
+                <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="line-clamp-2">{line}</span>
+              </div>
+            ) : null;
+          })()}
         </div>
         <div className="text-left sm:text-right">
           {hasPriceAdjustments(booking) && (
@@ -210,8 +234,10 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
           <div>
             <p className="text-sm font-medium text-gray-900">Guests</p>
             <p className="text-sm text-gray-600">
-              {booking.guestDetails.adults} adults
-              {booking.guestDetails.children > 0 && `, ${booking.guestDetails.children} children`}
+              {booking.guestDetails.adults}{' '}
+              {booking.guestDetails.adults === 1 ? 'adult' : 'adults'}
+              {booking.guestDetails.children > 0 &&
+                `, ${booking.guestDetails.children} ${booking.guestDetails.children === 1 ? 'child' : 'children'}`}
             </p>
           </div>
         </div>
@@ -236,6 +262,12 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
               </p>
             </div>
           ))}
+          {(booking.rooms || []).length === 0 && booking.roomType && (
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-sm text-amber-900">
+              Room assignment pending — <span className="font-medium capitalize">{booking.roomType}</span> requested.
+              The property will assign a room before check-in.
+            </div>
+          )}
         </div>
       </div>
 
@@ -298,15 +330,26 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
           <span>Booked on {formatDate(booking.createdAt)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Button variant="ghost" size="sm" onClick={() => onNavigate(booking._id)} className="text-yellow-600 border-yellow-600 hover:bg-yellow-50">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const bid = toEntityIdString(booking._id);
+              if (bid) onNavigate(bid);
+              else toast.error('Unable to open booking details');
+            }}
+            className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+          >
             <Eye className="w-4 h-4 mr-1" /> View Details
           </Button>
-          {booking.hotelId?.contact?.phone && (
+          {typeof booking.hotelId === 'object' &&
+            booking.hotelId?.contact?.phone && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`tel:${booking.hotelId.contact!.phone}`)}>
               <Phone className="w-4 h-4 mr-1" /> Call Hotel
             </Button>
           )}
-          {booking.hotelId?.contact?.email && (
+          {typeof booking.hotelId === 'object' &&
+            booking.hotelId?.contact?.email && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`mailto:${booking.hotelId.contact!.email}`)}>
               <Mail className="w-4 h-4 mr-1" /> Email Hotel
             </Button>
@@ -325,7 +368,10 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
             </Button>
           )}
           {['pending', 'confirmed'].includes(booking.status) && new Date(booking.checkIn) > new Date(Date.now() + 24 * 60 * 60 * 1000) && (
-            <Button variant="ghost" size="sm" onClick={() => onCancel(booking._id)} className="text-red-600 border-red-600 hover:bg-red-50">
+            <Button variant="ghost" size="sm" onClick={() => {
+              const bid = toEntityIdString(booking._id);
+              if (bid) onCancel(bid);
+            }} className="text-red-600 border-red-600 hover:bg-red-50">
               <XCircle className="w-4 h-4 mr-1" /> Cancel
             </Button>
           )}
@@ -542,7 +588,7 @@ export default function GuestBookings() {
 
             return (
               <GuestBookingCard
-                key={booking._id}
+                key={toEntityIdString(booking._id) ?? booking.bookingNumber}
                 booking={booking}
                 hasDiscount={hasDiscount}
                 hasSurcharge={hasSurcharge}
@@ -598,17 +644,24 @@ export default function GuestBookings() {
               floor: '1'
             },
             hotelId: {
-              name: selectedBooking.hotelId.name,
-              address: selectedBooking.hotelId.address ? 
-                `${selectedBooking.hotelId.address.street}, ${selectedBooking.hotelId.address.city}, ${selectedBooking.hotelId.address.state}` : 
-                'Hotel Address'
+              name: hotelNameFromBooking(selectedBooking),
+              address: hotelAddressLine(selectedBooking) || 'Hotel Address'
             },
             checkIn: selectedBooking.checkIn,
             checkOut: selectedBooking.checkOut,
             status: selectedBooking.status,
             guest: {
-              name: selectedBooking.guestDetails.firstName + ' ' + selectedBooking.guestDetails.lastName,
-              email: selectedBooking.guestDetails.email
+              name: (() => {
+                const g = selectedBooking.guestDetails as {
+                  firstName?: string;
+                  lastName?: string;
+                  name?: string;
+                  email?: string;
+                };
+                const fromParts = [g.firstName, g.lastName].filter(Boolean).join(' ').trim();
+                return fromParts || g.name || 'Guest';
+              })(),
+              email: selectedBooking.guestDetails.email || ''
             }
           }}
           onClose={handleKeyGeneratorClose}

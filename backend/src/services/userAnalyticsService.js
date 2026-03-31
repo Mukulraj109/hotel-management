@@ -4,6 +4,32 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class UserAnalyticsService {
+  toObjectId(value, fieldName = 'id') {
+    if (!mongoose.isValidObjectId(value)) {
+      throw new ApplicationError(`Invalid ${fieldName}`, 400);
+    }
+    return new mongoose.Types.ObjectId(value);
+  }
+
+  getHotelUserMatch(hotelId) {
+    return { hotelId: this.toObjectId(hotelId, 'hotelId') };
+  }
+
+  getAuditLogHotelMatch(hotelId) {
+    const hotelObjectId = this.toObjectId(hotelId, 'hotelId');
+    return {
+      'user.hotelId': {
+        $in: [hotelObjectId, hotelObjectId.toString()]
+      }
+    };
+  }
+
+  normalizeLimit(limit, fallback = 10, max = 100) {
+    const parsed = Number.parseInt(limit, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, max);
+  }
+
   /**
    * Get comprehensive user analytics
    */
@@ -11,12 +37,7 @@ class UserAnalyticsService {
     try {
       const { dateRange, groupBy = 'day' } = options;
       
-      const matchStage = {
-        $or: [
-          { role: 'guest' },
-          { hotelId: new mongoose.Types.ObjectId(hotelId) }
-        ]
-      };
+      const matchStage = this.getHotelUserMatch(hotelId);
 
       if (dateRange && dateRange.start && dateRange.end) {
         matchStage.createdAt = {
@@ -92,15 +113,10 @@ class UserAnalyticsService {
     try {
       const { dateRange, userId } = options;
       
-      const matchStage = {
-        $or: [
-          { 'user.role': 'guest' },
-          { 'user.hotelId': new mongoose.Types.ObjectId(hotelId) }
-        ]
-      };
+      const matchStage = this.getAuditLogHotelMatch(hotelId);
 
       if (userId) {
-        matchStage['user._id'] = new mongoose.Types.ObjectId(userId);
+        matchStage['user._id'] = this.toObjectId(userId, 'userId');
       }
 
       if (dateRange && dateRange.start && dateRange.end) {
@@ -175,15 +191,10 @@ class UserAnalyticsService {
     try {
       const { dateRange, userId } = options;
       
-      const matchStage = {
-        $or: [
-          { role: 'guest' },
-          { hotelId: new mongoose.Types.ObjectId(hotelId) }
-        ]
-      };
+      const matchStage = this.getHotelUserMatch(hotelId);
 
       if (userId) {
-        matchStage._id = new mongoose.Types.ObjectId(userId);
+        matchStage._id = this.toObjectId(userId, 'userId');
       }
 
       const pipeline = [
@@ -275,12 +286,7 @@ class UserAnalyticsService {
     try {
       const { segmentBy = 'role' } = options;
       
-      const matchStage = {
-        $or: [
-          { role: 'guest' },
-          { hotelId: new mongoose.Types.ObjectId(hotelId) }
-        ]
-      };
+      const matchStage = this.getHotelUserMatch(hotelId);
 
       const pipeline = [
         { $match: matchStage },
@@ -337,12 +343,7 @@ class UserAnalyticsService {
     try {
       const { dateRange } = options;
       
-      const matchStage = {
-        $or: [
-          { 'user.role': 'guest' },
-          { 'user.hotelId': new mongoose.Types.ObjectId(hotelId) }
-        ]
-      };
+      const matchStage = this.getAuditLogHotelMatch(hotelId);
 
       if (dateRange && dateRange.start && dateRange.end) {
         matchStage.timestamp = {
@@ -409,15 +410,13 @@ class UserAnalyticsService {
    */
   async getRecentUsers(hotelId, limit = 10) {
     try {
+      const safeLimit = this.normalizeLimit(limit, 10, 100);
       const users = await User.find({
-        $or: [
-          { role: 'guest' },
-          { hotelId: new mongoose.Types.ObjectId(hotelId) }
-        ]
+        ...this.getHotelUserMatch(hotelId)
       })
       .select('name email role createdAt lastLogin isActive')
       .sort({ createdAt: -1 })
-      .limit(limit).lean();
+      .limit(safeLimit).lean();
 
       return users;
     } catch (error) {
@@ -430,13 +429,11 @@ class UserAnalyticsService {
    */
   async getTopUsers(hotelId, limit = 10) {
     try {
+      const safeLimit = this.normalizeLimit(limit, 10, 100);
       const pipeline = [
         {
           $match: {
-            $or: [
-              { role: 'guest' },
-              { hotelId: new mongoose.Types.ObjectId(hotelId) }
-            ]
+            ...this.getHotelUserMatch(hotelId)
           }
         },
         {
@@ -457,7 +454,7 @@ class UserAnalyticsService {
           $sort: { activityCount: -1 }
         },
         {
-          $limit: limit
+          $limit: safeLimit
         },
         {
           $project: {
@@ -482,13 +479,11 @@ class UserAnalyticsService {
    */
   async getTopPerformingUsers(hotelId, limit = 10) {
     try {
+      const safeLimit = this.normalizeLimit(limit, 10, 100);
       const pipeline = [
         {
           $match: {
-            $or: [
-              { role: 'guest' },
-              { hotelId: new mongoose.Types.ObjectId(hotelId) }
-            ]
+            ...this.getHotelUserMatch(hotelId)
           }
         },
         {
@@ -529,7 +524,7 @@ class UserAnalyticsService {
           $sort: { performanceScore: -1 }
         },
         {
-          $limit: limit
+          $limit: safeLimit
         },
         {
           $project: {

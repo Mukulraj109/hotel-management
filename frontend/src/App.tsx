@@ -304,7 +304,14 @@ function App() {
                 <Route path="service-requests" element={<Suspense fallback={<RouteLoadingFallback />}><AdminServiceRequests /></Suspense>} />
                 <Route path="supply-requests" element={<Suspense fallback={<RouteLoadingFallback />}><AdminSupplyRequests /></Suspense>} />
                 <Route path="inventory" element={<Suspense fallback={<RouteLoadingFallback />}><AdminInventory /></Suspense>} />
-                <Route path="checkout-inventory" element={<Suspense fallback={<RouteLoadingFallback />}><AdminCheckoutInventoryManagement /></Suspense>} />
+                <Route
+                  path="checkout-inventory"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <Suspense fallback={<RouteLoadingFallback />}><AdminCheckoutInventoryManagement /></Suspense>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="inventory/templates" element={<Suspense fallback={<RouteLoadingFallback />}><InventoryTemplateManagement /></Suspense>} />
                 <Route path="inventory-management" element={<Suspense fallback={<RouteLoadingFallback />}><AdminInventoryManagement /></Suspense>} />
                 <Route path="laundry" element={<Suspense fallback={<RouteLoadingFallback />}><AdminLaundryManagement /></Suspense>} />
@@ -313,8 +320,22 @@ function App() {
                 <Route path="room-allotments/create" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomAllotmentCreate /></Suspense>} />
                 <Route path="room-allotments/:id/edit" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomAllotmentCreate /></Suspense>} />
                 <Route path="room-allotments" element={<Suspense fallback={<RouteLoadingFallback />}><AdminRoomTypeAllotments /></Suspense>} />
-                <Route path="reports" element={<Suspense fallback={<RouteLoadingFallback />}><AdminReports /></Suspense>} />
-                <Route path="bypass-checkout" element={<Suspense fallback={<RouteLoadingFallback />}><AdminBypassCheckoutPage /></Suspense>} />
+                <Route
+                  path="reports"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <Suspense fallback={<RouteLoadingFallback />}><AdminReports /></Suspense>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="bypass-checkout"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <Suspense fallback={<RouteLoadingFallback />}><AdminBypassCheckoutPage /></Suspense>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="bypass-approvals" element={<Suspense fallback={<RouteLoadingFallback />}><AdminBypassApprovalsPage /></Suspense>} />
                 <Route path="security-dashboard" element={<Suspense fallback={<RouteLoadingFallback />}><AdminSecurityDashboardPage /></Suspense>} />
                 <Route path="financial-analytics" element={<Suspense fallback={<RouteLoadingFallback />}><AdminFinancialAnalyticsPage /></Suspense>} />

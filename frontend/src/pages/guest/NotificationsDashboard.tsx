@@ -52,10 +52,11 @@ function NotificationsDashboard() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
-  const [confirmDeleteNotifId, setConfirmDeleteNotifId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const { connectionState, connect, on, off } = useRealTime();
+  const getNotificationId = (value: Record<string, unknown> | Notification) =>
+    String((value as Notification)?._id || (value as { id?: string })?.id || (value as { notificationId?: string })?.notificationId || '');
 
   // Mutations - Define these before useEffect that references them
   const markAsReadMutation = useMutation({
@@ -65,7 +66,7 @@ function NotificationsDashboard() {
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('Notification marked as read');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to mark notification as read');
     }
   });
@@ -78,7 +79,7 @@ function NotificationsDashboard() {
       setSelectedNotifications([]);
       toast.success('Notifications marked as read');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to mark notifications as read');
     }
   });
@@ -90,7 +91,7 @@ function NotificationsDashboard() {
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('All notifications marked as read');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to mark all notifications as read');
     }
   });
@@ -102,7 +103,7 @@ function NotificationsDashboard() {
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('Notification deleted');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to delete notification');
     }
   });
@@ -113,7 +114,7 @@ function NotificationsDashboard() {
       queryClient.invalidateQueries({ queryKey: ['notificationPreferences'] });
       toast.success('Preferences updated successfully');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to update preferences');
     }
   });
@@ -125,14 +126,14 @@ function NotificationsDashboard() {
       queryClient.invalidateQueries({ queryKey: ['notificationPreferences'] });
       toast.success('Notification setting updated');
     },
-    onError: (error) => {
+    onError: () => {
       toast.error('Failed to update notification setting');
     }
   });
 
   // Real-time WebSocket connection setup - FIXED: Don't disconnect singleton service
   useEffect(() => {
-    connect().catch(error => {
+    connect().catch(() => {
     });
     return () => {
       // Don't disconnect on unmount as other components may be using the same connection
@@ -144,14 +145,16 @@ function NotificationsDashboard() {
     if (connectionState !== 'connected') return;
 
     const handleNewNotification = (data: Record<string, unknown>) => {
-      const newNotification = data.notification;
+      const newNotification = (data?.notification || data) as Notification;
+      const notificationId = getNotificationId(newNotification);
+      if (!notificationId) return;
 
       // Add new notification to the cache
       queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
         if (!oldData) return oldData;
         return {
           ...oldData,
-          notifications: [newNotification, ...oldData.notifications],
+          notifications: [{ ...newNotification, _id: notificationId, id: notificationId }, ...oldData.notifications],
           unreadCount: oldData.unreadCount + 1
         };
       });
@@ -168,14 +171,15 @@ function NotificationsDashboard() {
           label: 'View',
           onClick: () => {
             // Mark as read when viewed
-            markAsReadMutation.mutate(newNotification._id);
+            markAsReadMutation.mutate(notificationId);
           },
         },
       });
     };
 
     const handleNotificationRead = (data: Record<string, unknown>) => {
-      const notificationId = data.notificationId;
+      const notificationId = getNotificationId(data);
+      if (!notificationId) return;
       
       // Update the notification in cache
       queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
@@ -194,7 +198,8 @@ function NotificationsDashboard() {
     };
 
     const handleNotificationDelivered = (data: Record<string, unknown>) => {
-      const notificationId = data.notificationId;
+      const notificationId = getNotificationId(data);
+      if (!notificationId) return;
       
       // Update delivery status in cache
       queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
@@ -209,7 +214,8 @@ function NotificationsDashboard() {
     };
 
     const handleNotificationFailed = (data: Record<string, unknown>) => {
-      const notificationId = data.notificationId;
+      const notificationId = getNotificationId(data);
+      if (!notificationId) return;
       
       // Update failure status in cache
       queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
@@ -240,19 +246,49 @@ function NotificationsDashboard() {
       });
     };
 
+    const handleNotificationDeleted = (data: Record<string, unknown>) => {
+      const notificationId = getNotificationId(data);
+      const deletedIds = Array.isArray(data.notificationIds)
+        ? (data.notificationIds as string[])
+        : (notificationId ? [notificationId] : []);
+      if (deletedIds.length === 0) return;
+
+      queryClient.setQueryData(['notifications'], (oldData: Record<string, unknown>) => {
+        if (!oldData || !Array.isArray(oldData.notifications)) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.filter((n: Notification) => !deletedIds.includes(String(n._id || (n as { id?: string }).id || '')))
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+    };
+
     // Set up event listeners
     on('notification:new', handleNewNotification);
     on('notification:read', handleNotificationRead);
     on('notification:delivered', handleNotificationDelivered);
     on('notification:failed', handleNotificationFailed);
+    on('notification:deleted', handleNotificationDeleted);
     on('notifications:bulk-update', handleBulkNotificationUpdate);
+    // Backward compatibility for underscored event names
+    on('notification_new', handleNewNotification);
+    on('notification_read', handleNotificationRead);
+    on('notification_delivered', handleNotificationDelivered);
+    on('notification_failed', handleNotificationFailed);
+    on('notification_deleted', handleNotificationDeleted);
 
     return () => {
       off('notification:new', handleNewNotification);
       off('notification:read', handleNotificationRead);
       off('notification:delivered', handleNotificationDelivered);
       off('notification:failed', handleNotificationFailed);
+      off('notification:deleted', handleNotificationDeleted);
       off('notifications:bulk-update', handleBulkNotificationUpdate);
+      off('notification_new', handleNewNotification);
+      off('notification_read', handleNotificationRead);
+      off('notification_delivered', handleNotificationDelivered);
+      off('notification_failed', handleNotificationFailed);
+      off('notification_deleted', handleNotificationDeleted);
     };
   }, [connectionState, on, off, queryClient, markAsReadMutation]);
 
@@ -323,15 +359,6 @@ function NotificationsDashboard() {
   };
 
   // Handle select all
-  const handleSelectAll = () => {
-    if (notificationsData?.notifications) {
-      const allIds = notificationsData.notifications.map(n => n._id);
-      setSelectedNotifications(prev => 
-        prev.length === allIds.length ? [] : allIds
-      );
-    }
-  };
-
   // Handle mark as read
   const handleMarkAsRead = (notificationId: string) => {
     markAsReadMutation.mutate(notificationId);
@@ -351,14 +378,7 @@ function NotificationsDashboard() {
 
   // Handle delete notification
   const handleDeleteNotification = (notificationId: string) => {
-    setConfirmDeleteNotifId(notificationId);
-  };
-
-  const confirmDeleteNotification = () => {
-    if (confirmDeleteNotifId) {
-      deleteNotificationMutation.mutate(confirmDeleteNotifId);
-      setConfirmDeleteNotifId(null);
-    }
+    deleteNotificationMutation.mutate(notificationId);
   };
 
   // Get icon component
@@ -609,17 +629,20 @@ function NotificationsDashboard() {
                 </p>
               </Card>
             ) : (
-              notificationsData?.notifications.map((notification) => (
-                <NotificationCard
-                  key={notification._id}
-                  notification={notification}
-                  isSelected={selectedNotifications.includes(notification._id)}
-                  onSelect={() => handleNotificationSelect(notification._id)}
-                  onMarkAsRead={() => handleMarkAsRead(notification._id)}
-                  onDelete={() => handleDeleteNotification(notification._id)}
-                  getIconComponent={getIconComponent}
-                />
-              ))
+              notificationsData?.notifications.map((notification) => {
+                const notificationId = getNotificationId(notification);
+                return (
+                  <NotificationCard
+                    key={notificationId}
+                    notification={{ ...notification, _id: notificationId, id: notificationId }}
+                    isSelected={selectedNotifications.includes(notificationId)}
+                    onSelect={() => handleNotificationSelect(notificationId)}
+                    onMarkAsRead={() => handleMarkAsRead(notificationId)}
+                    onDelete={() => handleDeleteNotification(notificationId)}
+                    getIconComponent={getIconComponent}
+                  />
+                );
+              })
             )}
           </div>
 

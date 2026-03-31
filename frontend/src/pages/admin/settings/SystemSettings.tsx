@@ -86,7 +86,7 @@ interface SystemSettingsProps {
 }
 
 function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
-  const { selectedProperty, selectedPropertyId } = useProperty();
+  const { selectedPropertyId } = useProperty();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
@@ -141,7 +141,7 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
 
   // Fetch system settings from hotel-settings (security + maintenance)
   const { data: systemSettings, isLoading: settingsLoading } = useQuery({
-    queryKey: ['system-settings'],
+    queryKey: ['system-settings', selectedPropertyId],
     queryFn: async () => {
       // Fetch both security and maintenance settings
       const [securityResponse, maintenanceResponse] = await Promise.all([
@@ -185,7 +185,7 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
 
   // Fetch API keys
   const { data: apiKeysData, refetch: refetchApiKeys } = useQuery({
-    queryKey: ['api-keys'],
+    queryKey: ['api-keys', selectedPropertyId],
     queryFn: async () => {
       const { data } = await api.get('/api-management/api-keys');
       return data.data;
@@ -205,25 +205,32 @@ function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
 
   // Fetch user statistics
   const { data: userStats } = useQuery({
-    queryKey: ['user-stats'],
+    queryKey: ['user-stats', selectedPropertyId],
     queryFn: async () => {
-      const { data } = await api.get('/users');
-      const users = data.data.users;
+      const [allUsersRes, activeRes, adminsRes, staffRes, managersRes, recentRes] = await Promise.all([
+        api.get('/users', { params: { page: 1, limit: 1 } }),
+        api.get('/users', { params: { isActive: true, page: 1, limit: 1 } }),
+        api.get('/users', { params: { role: 'admin', page: 1, limit: 1 } }),
+        api.get('/users', { params: { role: 'staff', page: 1, limit: 1 } }),
+        api.get('/users', { params: { role: 'manager', page: 1, limit: 1 } }),
+        api.get('/users', { params: { page: 1, limit: 5, sortBy: 'createdAt', sortOrder: 'desc' } }),
+      ]);
 
-      // Calculate statistics
-      const total = users.length;
-      const active = users.filter((u: Record<string, unknown>) => u.isActive).length;
-      const admins = users.filter((u: Record<string, unknown>) => u.role === 'admin').length;
-      const staff = users.filter((u: Record<string, unknown>) => u.role === 'staff' || u.role === 'manager').length;
+      const total = allUsersRes.data?.pagination?.total || 0;
+      const active = activeRes.data?.pagination?.total || 0;
+      const admins = adminsRes.data?.pagination?.total || 0;
+      const staff = (staffRes.data?.pagination?.total || 0) + (managersRes.data?.pagination?.total || 0);
+      const recentUsers = recentRes.data?.data?.users || [];
 
       return {
         total,
         active,
         admins,
         staff,
-        recentUsers: users.slice(0, 5)
+        recentUsers
       };
-    }
+    },
+    enabled: !!selectedPropertyId
   });
 
   // Watch for form changes

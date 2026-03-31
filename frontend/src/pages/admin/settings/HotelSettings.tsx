@@ -63,7 +63,7 @@ interface HotelSettingsProps {
 }
 
 function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
-  const { selectedProperty, selectedPropertyId } = useProperty();
+  const { selectedPropertyId } = useProperty();
 
   // Multi-property state
   const [showSuccess, setShowSuccess] = useState(false);
@@ -144,11 +144,12 @@ function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
 
   // Fetch hotel settings
   const { data: hotelSettings, isLoading } = useQuery({
-    queryKey: ['hotel-settings'],
+    queryKey: ['hotel-settings', selectedPropertyId],
     queryFn: async () => {
       const { data } = await api.get('/hotel-settings');
       return data.data.settings;
     },
+    enabled: !!selectedPropertyId
   });
 
   // Populate form when data loads (onSuccess removed in TanStack Query v5)

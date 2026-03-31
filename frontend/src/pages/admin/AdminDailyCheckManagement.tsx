@@ -364,7 +364,7 @@ function AdminDailyCheckManagement() {
   const [activeTab, setActiveTab] = useState<'overview' | 'assignments' | 'templates'>('overview');
 
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connectionState, connect, on, off, isConnected } = useRealTime();
 
   const fetchData = useCallback(async (showLoading = true) => {
     if (!selectedPropertyId) return;
@@ -427,15 +427,22 @@ function AdminDailyCheckManagement() {
       toast.success(`Room ${data?.roomNumber ?? ''} daily check completed!`);
     };
 
-    // Subscribe to daily check events
-    on('daily-check:assigned', handleDailyCheckCreate);
-    on('daily-check:completed', handleDailyCheckComplete);
-    on('daily-check:status_changed', handleDailyCheckUpdate);
+    // Subscribe to both legacy and backend event namespaces for compatibility.
+    const assignmentEvents = ['daily-check:assigned', 'daily-routine-check:assigned'];
+    const completionEvents = ['daily-check:completed', 'daily-routine-check:completed'];
+    const statusEvents = [
+      'daily-check:status_changed',
+      'daily-routine-check:status_changed',
+      'daily-routine-check:status_updated'
+    ];
+    assignmentEvents.forEach((eventName) => on(eventName, handleDailyCheckCreate));
+    completionEvents.forEach((eventName) => on(eventName, handleDailyCheckComplete));
+    statusEvents.forEach((eventName) => on(eventName, handleDailyCheckUpdate));
 
     return () => {
-      off('daily-check:assigned', handleDailyCheckCreate);
-      off('daily-check:completed', handleDailyCheckComplete);
-      off('daily-check:status_changed', handleDailyCheckUpdate);
+      assignmentEvents.forEach((eventName) => off(eventName, handleDailyCheckCreate));
+      completionEvents.forEach((eventName) => off(eventName, handleDailyCheckComplete));
+      statusEvents.forEach((eventName) => off(eventName, handleDailyCheckUpdate));
     };
   }, [isConnected, on, off, fetchData]);
 

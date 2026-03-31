@@ -484,10 +484,10 @@ const MultiBooking: React.FC = () => {
                       Back to Dashboard
                     </button>
                     <button
-                      onClick={() => navigate(`/travel-agent/booking/${confirmationNumber}`)}
+                      onClick={() => navigate('/travel-agent?tab=bookings')}
                       className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                     >
-                      View Booking Details
+                      View My Bookings
                     </button>
                   </div>
                 </motion.div>

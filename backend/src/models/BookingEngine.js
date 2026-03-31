@@ -90,6 +90,11 @@ const bookingWidgetSchema = new mongoose.Schema({
 });
 
 const promoCodeSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   codeId: {
     type: String,
     required: true,
@@ -158,6 +163,11 @@ const promoCodeSchema = new mongoose.Schema({
 });
 
 const guestCRMSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   guestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -256,6 +266,11 @@ const guestCRMSchema = new mongoose.Schema({
 });
 
 const emailCampaignSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   campaignId: {
     type: String,
     required: true,
@@ -341,6 +356,11 @@ const emailCampaignSchema = new mongoose.Schema({
 });
 
 const loyaltyProgramSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   programId: {
     type: String,
     required: true,
@@ -414,6 +434,11 @@ const loyaltyProgramSchema = new mongoose.Schema({
 });
 
 const landingPageSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   pageId: {
     type: String,
     required: true,
@@ -493,6 +518,11 @@ const landingPageSchema = new mongoose.Schema({
 });
 
 const reviewManagementSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    index: true
+  },
   reviewId: {
     type: String,
     required: true,

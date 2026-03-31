@@ -34,7 +34,7 @@ class WorkflowController {
         try {
           const txBookings = [];
           for (const roomId of roomIds) {
-            const room = await Room.findById(roomId).session(session);
+            const room = await Room.findOne({ _id: roomId, hotelId }).session(session);
             if (!room) {
               continue;
             }
@@ -57,8 +57,8 @@ class WorkflowController {
             txBookings.push(booking);
 
             // Update room status atomically within the transaction
-            await Room.findByIdAndUpdate(
-              roomId,
+            await Room.findOneAndUpdate(
+              { _id: roomId, hotelId },
               {
                 $set: {
                   status: 'occupied',
@@ -126,14 +126,14 @@ class WorkflowController {
         try {
           const txBookings = [];
           for (const roomId of roomIds) {
-            const room = await Room.findById(roomId).session(session);
+            const room = await Room.findOne({ _id: roomId, hotelId }).session(session);
             if (!room || !room.currentBooking) {
               continue;
             }
 
             // Atomically update booking status within transaction
-            const booking = await Booking.findByIdAndUpdate(
-              room.currentBooking.bookingId,
+            const booking = await Booking.findOneAndUpdate(
+              { _id: room.currentBooking.bookingId, hotelId },
               {
                 $set: {
                   status: 'checked_out',
@@ -149,8 +149,8 @@ class WorkflowController {
             }
 
             // Update room status atomically within the transaction
-            await Room.findByIdAndUpdate(
-              roomId,
+            await Room.findOneAndUpdate(
+              { _id: roomId, hotelId },
               { $set: { status: 'dirty' }, $unset: { currentBooking: 1 } },
               { new: true, session }
             );
@@ -294,8 +294,8 @@ class WorkflowController {
 
             // Update room status if high priority (within transaction)
             if (priority === 'urgent' || priority === 'high') {
-              await Room.findByIdAndUpdate(
-                roomId,
+              await Room.findOneAndUpdate(
+                { _id: roomId, hotelId },
                 { $set: { status: 'maintenance' } },
                 { new: true, session }
               );
@@ -354,8 +354,8 @@ class WorkflowController {
         try {
           const txRooms = [];
           for (const roomId of roomIds) {
-            const room = await Room.findByIdAndUpdate(
-              roomId,
+            const room = await Room.findOneAndUpdate(
+              { _id: roomId, hotelId },
               { $set: { status: newStatus, notes } },
               { new: true, session }
             );

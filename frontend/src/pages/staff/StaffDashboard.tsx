@@ -24,7 +24,7 @@ import {
   StaffInventoryData 
 } from '../../services/staffDashboardService';
 import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
-import { dailyRoutineCheckService, DailyCheckData } from '../../services/dailyRoutineCheckService';
+import { dailyRoutineCheckService, AssignedRoomData } from '../../services/dailyRoutineCheckService';
 import TodayArrivalsWidget from '../../components/staff/TodayArrivalsWidget';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 
@@ -33,7 +33,7 @@ interface StaffDashboardData {
   roomStatus: RoomStatusData;
   inventory: StaffInventoryData;
   checkoutInventories: CheckoutInventory[];
-  assignedRooms: DailyCheckData[];
+  assignedRooms: AssignedRoomData[];
 }
 
 type TabId = 'overview' | 'rooms' | 'inventory' | 'checkout' | 'assignments';
@@ -57,7 +57,7 @@ function StaffDashboard() {
       }
 
       // Fetch real data from the backend API using the service
-      const [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes] = await Promise.all([
+      const [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes] = await Promise.allSettled([
         staffDashboardService.getTodayOverview(),
         staffDashboardService.getRoomStatus(),
         staffDashboardService.getInventorySummary(),
@@ -66,19 +66,31 @@ function StaffDashboard() {
       ]);
 
       const realData: StaffDashboardData = {
-        today: todayRes.data.today,
-        roomStatus: roomsRes.data,
-        inventory: inventoryRes.data,
-        checkoutInventories: checkoutRes.data.checkoutInventories || [],
-        assignedRooms: assignmentsRes.data.rooms || []
+        today: todayRes.status === 'fulfilled'
+          ? todayRes.value.data.today
+          : (data?.today ?? { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, occupancyRate: 0 }),
+        roomStatus: roomsRes.status === 'fulfilled'
+          ? roomsRes.value.data
+          : (data?.roomStatus ?? { summary: { occupied: 0, vacant_clean: 0, vacant_dirty: 0, maintenance: 0, out_of_order: 0 }, needsAttention: [], total: 0 }),
+        inventory: inventoryRes.status === 'fulfilled'
+          ? inventoryRes.value.data
+          : (data?.inventory ?? { lowStockAlert: { count: 0, items: [] }, inspectionsDue: { count: 0, rooms: [] } }),
+        checkoutInventories: checkoutRes.status === 'fulfilled'
+          ? (checkoutRes.value.data.checkoutInventories || [])
+          : (data?.checkoutInventories ?? []),
+        assignedRooms: assignmentsRes.status === 'fulfilled'
+          ? (assignmentsRes.value.data.rooms || [])
+          : (data?.assignedRooms ?? [])
       };
 
       setData(realData);
-      setError(null);
+      const hasFailures = [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes]
+        .some(result => result.status === 'rejected');
+      setError(hasFailures ? 'Some dashboard sections could not be refreshed. Showing the latest available data.' : null);
     } catch (_err) {
       // Keep previous data if available -- don't reset to zeros
       setData(prev => {
-        if (prev && prev.today.checkIns > 0) return prev;
+        if (prev) return prev;
         // Only use empty fallback on first load
         return {
           today: { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, occupancyRate: 0 },
@@ -159,11 +171,11 @@ function StaffDashboard() {
             { id: 'assignments', label: 'My Assignments', icon: ClipboardCheck },
             { id: 'rooms', label: 'Room Status', icon: Users },
             { id: 'inventory', label: 'Inventory', icon: Package },
-            { id: 'checkout', label: 'Checkout Queue', icon: Receipt }
+            { id: 'checkout', label: 'Billing Queue', icon: Receipt }
           ].map(({ id, label, icon: Icon }) => (
-            <button aria-label="Close"
+            <button
               key={id}
-              onClick={() => setActiveTab(id as unknown)}
+              onClick={() => setActiveTab(id as TabId)}
               className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap ${
                 activeTab === id
                   ? 'border-blue-500 text-blue-600'
@@ -296,7 +308,7 @@ function StaffDashboard() {
                 className="flex items-center justify-center space-x-2"
               >
                 <Receipt className="w-4 h-4" />
-                <span>Checkout Queue</span>
+                <span>Billing Queue</span>
               </Button>
               <Button
                 onClick={() => window.location.href = '/staff/housekeeping'}
@@ -369,11 +381,11 @@ function StaffDashboard() {
                   <div className="space-y-3 mb-4">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Fixed Items:</span>
-                      <span className="font-medium">{room.fixedInventory.length}</span>
+                      <span className="font-medium">{room.fixedInventory?.length ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Daily Items:</span>
-                      <span className="font-medium">{room.dailyInventory.length}</span>
+                      <span className="font-medium">{room.dailyInventory?.length ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Est. Duration:</span>
@@ -543,7 +555,7 @@ function StaffDashboard() {
       {activeTab === 'checkout' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Checkout Queue</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Billing Queue</h2>
             <Badge variant="default" className="bg-blue-100 text-blue-800">
               {data.checkoutInventories.filter(c => c.status === 'completed' && c.paymentStatus === 'pending').length} Ready for Payment
             </Badge>
@@ -658,8 +670,8 @@ function StaffDashboard() {
             ) : (
               <div className="text-center py-12">
                 <Receipt className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No checkouts in queue</h3>
-                <p className="text-gray-500">All checkout inventories have been processed</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No completed checkouts awaiting payment</h3>
+                <p className="text-gray-500">Completed checkout reviews that still need payment will appear here</p>
               </div>
             )}
           </div>

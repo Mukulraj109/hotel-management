@@ -16,6 +16,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';
 import toast from 'react-hot-toast';
+import { toEntityIdString } from '../../utils/entityId';
 
 interface BookingStats {
   totalBookings: number;
@@ -156,7 +157,7 @@ export default function GuestDashboard() {
               </div>
               <div className="flex gap-2">
                 <a
-                  href={`/app/bookings/${activeBooking._id}`}
+                  href={`/app/bookings/${toEntityIdString(activeBooking._id) ?? ''}`}
                   className="px-4 py-2 bg-white text-green-700 border border-green-300 rounded-lg text-sm font-medium hover:bg-green-50"
                 >
                   View Details
@@ -253,7 +254,7 @@ export default function GuestDashboard() {
           ) : (
             <div className="space-y-4">
               {stats.recentBookings.map((booking) => (
-                <a href={`/app/bookings/${booking._id}`} key={booking._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0 hover:bg-gray-100 transition-colors cursor-pointer">
+                <a href={`/app/bookings/${toEntityIdString(booking._id) ?? ''}`} key={toEntityIdString(booking._id) ?? booking.bookingNumber} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0 hover:bg-gray-100 transition-colors cursor-pointer">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{booking.hotelId?.name || 'Hotel'}</p>
                     <p className="text-sm text-gray-600 mt-1">
@@ -370,7 +371,7 @@ export default function GuestDashboard() {
           <div className="mt-8">
             <RoomServiceWidget
               guestId={user?._id}
-              bookingId={activeBooking._id}
+              bookingId={toEntityIdString(activeBooking._id) ?? ''}
               roomId={typeof roomId === 'string' ? roomId : undefined}
               onRequestService={(serviceType, items) => {
                 toast.success(`Service request submitted (${(items as any[]).length} items). Our team will be with you shortly.`);

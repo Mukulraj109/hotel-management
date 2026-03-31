@@ -52,10 +52,11 @@ const mutationBaselineSchema = Joi.object({}).unknown(true);
  *         description: Current user's hotel ID
  */
 router.get('/current-hotel', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
+  const scopedHotelId = req.query.hotelId || req.user.hotelId;
   res.json({
     status: 'success',
     data: {
-      hotelId: req.user.hotelId
+      hotelId: scopedHotelId
     }
   });
 }));
@@ -131,12 +132,13 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   // Role-based filtering - wrap $or query with additional conditions
   const finalQuery = { ...query };
 
+  const scopedHotelId = req.query.hotelId || req.user.hotelId;
   if (req.user.role === 'guest') {
     finalQuery.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && req.user.hotelId) {
-    finalQuery.hotelId = req.user.hotelId;
-  } else if (req.user.role === 'admin' && req.user.hotelId) {
-    finalQuery.hotelId = req.user.hotelId;
+  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && scopedHotelId) {
+    finalQuery.hotelId = scopedHotelId;
+  } else if (req.user.role === 'admin' && scopedHotelId) {
+    finalQuery.hotelId = scopedHotelId;
   }
   // Admin sees bookings for their hotel, or all if no hotelId
 
@@ -175,9 +177,9 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   if (req.user.role === 'guest') {
     todayQuery.userId = req.user._id;
     tomorrowQuery.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'admin' || req.user.role === 'frontdesk') && req.user.hotelId) {
-    todayQuery.hotelId = req.user.hotelId;
-    tomorrowQuery.hotelId = req.user.hotelId;
+  } else if ((req.user.role === 'staff' || req.user.role === 'admin' || req.user.role === 'frontdesk') && scopedHotelId) {
+    todayQuery.hotelId = scopedHotelId;
+    tomorrowQuery.hotelId = scopedHotelId;
   }
 
   const [todayCount, tomorrowCount] = await Promise.all([
@@ -268,11 +270,12 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   // Build query based on user role
   const query = {};
 
+  const scopedHotelId = req.query.hotelId || req.user.hotelId;
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
-  } else if (req.user.hotelId) {
+  } else if (scopedHotelId) {
     // All roles (admin, manager, staff, frontdesk) are scoped to their hotel
-    query.hotelId = req.user.hotelId;
+    query.hotelId = scopedHotelId;
   }
 
   if (status) {
@@ -529,7 +532,7 @@ router.post('/check-availability', validate(mutationBaselineSchema), authenticat
   }
 
   // Always use the authenticated user's hotelId to prevent cross-tenant availability checks
-  const resolvedHotelId = req.user.hotelId || hotelId;
+  const resolvedHotelId = hotelId || req.user.hotelId;
   if (!resolvedHotelId) {
     throw new ApplicationError('Hotel context is required for availability check', 400);
   }
@@ -1050,6 +1053,13 @@ router.patch('/:id',
     bookingService.assertCanModifyBooking(booking, req.user, 'modify');
     const bookingBeforeUpdate = bookingAuditService.buildSnapshot(booking);
     const updateData = bookingService.buildBookingUpdateData(req.body, req.user.role);
+
+    if (updateData.status && updateData.status !== booking.status) {
+      const transition = validateTransition(booking.status, updateData.status);
+      if (!transition.valid) {
+        throw new ApplicationError(transition.reason || `Invalid status transition from ${booking.status} to ${updateData.status}`, 400);
+      }
+    }
 
     const originalBooking = await Booking.findById(req.params.id).lean();
     const oldPaymentStatus = originalBooking?.paymentStatus;
@@ -2116,6 +2126,7 @@ router.patch('/:id/check-out',
     let updatedBooking;
     let bookingBeforeCheckout;
     let booking;
+    const scopedHotelId = req.tenantId || req.user?.hotelId;
     let bypassBalanceCheck = false;
     let bypassReason;
     let outstandingBalance = 0;
@@ -2123,6 +2134,7 @@ router.patch('/:id/check-out',
     try {
       await session.withTransaction(async () => {
         booking = await Booking.findById(req.params.id).session(session);
+        bookingService.assertResourceInScopedHotel(booking, scopedHotelId, 'Booking');
         bookingService.assertBookingCanBeCheckedOut(booking);
         bookingBeforeCheckout = bookingAuditService.buildSnapshot(booking);
 
@@ -2168,7 +2180,10 @@ router.patch('/:id/check-out',
         }
 
         updatedBooking = await Booking.findByIdAndUpdate(
-          req.params.id,
+          {
+            _id: req.params.id,
+            ...(scopedHotelId ? { hotelId: scopedHotelId } : {})
+          },
           updateData,
           { new: true, runValidators: true, session }
         ).populate([
@@ -2200,7 +2215,10 @@ router.patch('/:id/check-out',
             .map(r => r.roomId._id || r.roomId);
           if (roomIdsForDirty.length > 0) {
             await Room.updateMany(
-              { _id: { $in: roomIdsForDirty } },
+              {
+                _id: { $in: roomIdsForDirty },
+                ...(scopedHotelId ? { hotelId: scopedHotelId } : {})
+              },
               { $set: { status: 'dirty', lastCheckout: new Date() } },
               { session }
             );

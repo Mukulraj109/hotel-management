@@ -162,7 +162,7 @@ router.get('/status/:bookingId', authorizePolicy('checkoutAutomation', 'staffAcc
     throw new ApplicationError('Booking not found', 404);
   }
 
-  const status = await checkoutAutomationService.getAutomationStatus(bookingId);
+  const status = await checkoutAutomationService.getAutomationStatus(bookingId, { hotelId });
 
   res.status(200).json({
     status: 'success',
@@ -218,7 +218,8 @@ router.post('/process/:bookingId', authorizePolicy('checkoutAutomation', 'staffA
 
   const result = await checkoutAutomationService.processCheckout(bookingId, {
     processedBy: userId,
-    forceProcessing
+    forceProcessing,
+    hotelId
   });
 
   res.status(200).json({
@@ -259,7 +260,8 @@ router.post('/retry/:bookingId', authorizePolicy('checkoutAutomation', 'staffAcc
   }
 
   const result = await checkoutAutomationService.retryAutomation(bookingId, {
-    processedBy: userId
+    processedBy: userId,
+    hotelId
   });
 
   res.status(200).json({

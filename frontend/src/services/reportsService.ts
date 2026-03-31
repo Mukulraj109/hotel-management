@@ -542,23 +542,34 @@ class ReportsService {
   ): Promise<Blob> {
     try {
       const params = new URLSearchParams();
-    
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value.toString());
       });
-    
+
       params.append('format', format);
-      params.append('export', 'true');
 
-      const endpoint = reportType === 'revenue' ? '/revenue' : 
-                      reportType === 'occupancy' ? '/occupancy' : 
-                      reportType === 'bookings' ? '/bookings' : '/revenue';
+      if (reportType === 'revenue') {
+        const response = await api.get(`/admin-dashboard/revenue/export?${params.toString()}`, {
+          responseType: 'blob'
+        });
+        return response.data;
+      }
 
-      const response = await api.get(`${this.baseUrl}${endpoint}?${params.toString()}`, {
-        responseType: 'blob',
-      });
+      const reportTypeMap: Record<string, string> = {
+        occupancy: 'operational',
+        bookings: 'operational',
+        guest_analytics: 'guest_analytics',
+        staff_performance: 'staff_performance',
+        marketing: 'marketing',
+        comprehensive: 'comprehensive',
+        financial: 'financial'
+      };
 
-      return response.data;
+      params.set('reportType', reportTypeMap[reportType] || 'comprehensive');
+      const response = await api.get(`/admin-dashboard/reports?${params.toString()}`);
+      const content = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
+      return new Blob([content], { type: 'application/json' });
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

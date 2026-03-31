@@ -198,9 +198,13 @@ function AdminBookings() {
   };
 
   useEffect(() => {
+    setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
     fetchBookings();
     fetchStats();
-  }, [filters]);
+  }, [fetchBookings]);
 
   // Handle status update
   const handleStatusUpdate = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show') => {

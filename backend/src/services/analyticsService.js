@@ -324,7 +324,7 @@ class AnalyticsService {
 
       return await this.getCachedOrFresh(cacheKey, async () => {
         try {
-          const { travelAgentId, startDate, endDate, projectionMonths = 6 } = filters;
+          const { travelAgentId, hotelId, startDate, endDate, projectionMonths = 6 } = filters;
 
           const matchCriteria = {
             isActive: true
@@ -332,6 +332,9 @@ class AnalyticsService {
 
           if (travelAgentId) {
             matchCriteria.travelAgentId = travelAgentId;
+          }
+          if (hotelId) {
+            matchCriteria.hotelId = hotelId;
           }
 
           if (startDate && endDate) {
@@ -521,7 +524,7 @@ class AnalyticsService {
 
       return await this.getCachedOrFresh(cacheKey, async () => {
         try {
-          const { travelAgentId, startDate, endDate, comparisonPeriod = 'previous_period' } = filters;
+          const { travelAgentId, hotelId, startDate, endDate, comparisonPeriod = 'previous_period' } = filters;
 
           const currentPeriodStart = startDate ? new Date(startDate) : moment().subtract(1, 'month').startOf('month').toDate();
           const currentPeriodEnd = endDate ? new Date(endDate) : moment().subtract(1, 'month').endOf('month').toDate();
@@ -538,6 +541,9 @@ class AnalyticsService {
 
           if (travelAgentId) {
             matchCriteria.travelAgentId = travelAgentId;
+          }
+          if (hotelId) {
+            matchCriteria.hotelId = hotelId;
           }
 
           // Get current period metrics
@@ -731,7 +737,7 @@ class AnalyticsService {
 
       return await this.getCachedOrFresh(cacheKey, async () => {
         try {
-          const { startDate, endDate, travelAgentId, granularity = 'day' } = filters;
+          const { startDate, endDate, travelAgentId, hotelId, granularity = 'day' } = filters;
 
           const matchCriteria = {
             isActive: true,
@@ -740,6 +746,9 @@ class AnalyticsService {
 
           if (travelAgentId) {
             matchCriteria.travelAgentId = travelAgentId;
+          }
+          if (hotelId) {
+            matchCriteria.hotelId = hotelId;
           }
 
           if (startDate && endDate) {
