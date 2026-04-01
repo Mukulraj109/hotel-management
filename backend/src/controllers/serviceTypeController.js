@@ -2,7 +2,7 @@ import ServiceType from '../models/ServiceType.js';
 import Hotel from '../models/Hotel.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
+import { ApiResponse } from '../utils/apiResponse.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 /**

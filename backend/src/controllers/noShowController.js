@@ -1,5 +1,5 @@
 import asyncHandler from '../utils/asyncHandler.js';
-import { ApiResponse } from '../utils/ApiResponse.js';
+import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
 import Booking from '../models/Booking.js';
 import NotificationAutomationService from '../services/notificationAutomationService.js';
