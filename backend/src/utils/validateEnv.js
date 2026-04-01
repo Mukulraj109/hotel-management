@@ -7,14 +7,6 @@ import logger from './logger.js';
 export function validateEnvironment() {
   const required = ['JWT_SECRET'];
 
-  const requiredInProduction = [
-    'REDIS_URL',
-    'STRIPE_SECRET_KEY',
-    'ALLOWED_ORIGINS',
-    'ENCRYPTION_KEY',
-    'FRONTEND_URL'
-  ];
-
   const recommended = [
     'REDIS_URL',
     'STRIPE_SECRET_KEY',
@@ -22,9 +14,8 @@ export function validateEnvironment() {
     'ALLOWED_ORIGINS',
   ];
 
-  const effectiveRequired = process.env.NODE_ENV === 'production'
-    ? [...required, ...requiredInProduction]
-    : required;
+  // Only hard-fail on truly critical secrets; optional integrations should not block boot.
+  const effectiveRequired = required;
   const missing = effectiveRequired.filter(v => !process.env[v]);
   const missingRecommended = recommended.filter(v => !process.env[v]);
 

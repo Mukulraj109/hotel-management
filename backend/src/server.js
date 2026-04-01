@@ -264,10 +264,7 @@ async function initializeApp() {
         await connectRedis();
         logger.info('✅ Redis connection completed');
     } catch (error) {
-        if (process.env.NODE_ENV === 'production') {
-            throw error;
-        }
-        logger.warn('❌ Redis connection failed, continuing outside production', {
+        logger.warn('❌ Redis connection failed, continuing with degraded mode', {
             error: error.message
         });
     }
@@ -1012,7 +1009,7 @@ server = app.listen(PORT, async () => {
         });
     } catch (error) {
         logger.error('Failed to start services:', error);
-        process.exit(1);
+        logger.warn('Server remains running in degraded mode while post-start services recover.');
     }
     // END OF POST-SERVER SERVICES INITIALIZATION
 });

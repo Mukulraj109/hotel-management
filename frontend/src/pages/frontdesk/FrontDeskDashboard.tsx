@@ -78,7 +78,7 @@ export default function FrontDeskDashboard() {
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const response = await api.get('/bookings', {
-        params: { hotelId: selectedProperty?._id, checkIn: today, limit: 20 }
+        params: { hotelId: selectedProperty?._id, checkInDate: today, limit: 20 }
       });
       // Backend returns { data: bookings[] } where data is the array directly
       const raw = response.data?.data;
@@ -94,7 +94,7 @@ export default function FrontDeskDashboard() {
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const response = await api.get('/bookings', {
-        params: { hotelId: selectedProperty?._id, checkOut: today, limit: 20 }
+        params: { hotelId: selectedProperty?._id, checkOutDate: today, limit: 20 }
       });
       const raw = response.data?.data;
       return Array.isArray(raw) ? raw : (raw?.bookings || response.data?.bookings || []);

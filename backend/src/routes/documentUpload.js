@@ -15,9 +15,11 @@ import Document from '../models/Document.js';
 import DocumentRequirement from '../models/DocumentRequirement.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
+import Booking from '../models/Booking.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
 const resolveScopedHotelId = (req, requestedPropertyId) => {
   const isManagerOrAdmin = ['admin', 'manager'].includes(req.user.role);
@@ -55,11 +57,10 @@ createUploadDirectories();
 // Enhanced storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const { userType } = req.body;
     const { user } = req;
 
-    // Determine user type from request or authenticated user
-    const actualUserType = userType || (user.role === 'staff' ? 'staff' : 'guest');
+    // Determine user type from authenticated user only
+    const actualUserType = user.role === 'staff' ? 'staff' : 'guest';
 
     const baseDir = path.join(process.cwd(), 'uploads', 'documents');
     const year = new Date().getFullYear();
@@ -176,7 +177,6 @@ router.post('/upload',
       category,
       documentType,
       description,
-      userType,
       bookingId,
       departmentId,
       priority = 'medium',
@@ -190,8 +190,8 @@ router.post('/upload',
       throw new ApplicationError('No document uploaded', 400);
     }
 
-    // Validate user type
-    const actualUserType = userType || (role === 'staff' ? 'staff' : 'guest');
+    // Validate user type from authenticated role only
+    const actualUserType = role === 'staff' ? 'staff' : 'guest';
 
     // Validate category and document type are provided
     if (!category || !documentType) {
@@ -229,6 +229,14 @@ router.post('/upload',
 
     // Add context-specific fields
     if (actualUserType === 'guest' && bookingId) {
+      const ownsBooking = await Booking.exists({
+        _id: bookingId,
+        userId,
+        hotelId
+      });
+      if (!ownsBooking) {
+        throw new ApplicationError('Invalid booking context for document upload', 403);
+      }
       documentData.bookingId = bookingId;
     }
 
@@ -326,6 +334,14 @@ router.post('/bulk-upload',
       if (role === 'staff') {
         documentData.departmentId = fileMetadata.departmentId || req.user.departmentId;
       } else if (fileMetadata.bookingId) {
+        const ownsBooking = await Booking.exists({
+          _id: fileMetadata.bookingId,
+          userId,
+          hotelId
+        });
+        if (!ownsBooking) {
+          throw new ApplicationError('Invalid booking context in bulk upload metadata', 403);
+        }
         documentData.bookingId = fileMetadata.bookingId;
       }
 
@@ -368,36 +384,52 @@ router.get('/', catchAsync(async (req, res) => {
     status,
     category,
     userType,
+    bookingId,
+    search,
+    page,
     limit = 20,
     skip = 0,
     sortBy = '-createdAt'
   } = req.query;
 
   const parsedLimit = Math.min(parseInt(limit) || 20, 100);
-  const parsedSkip = parseInt(skip) || 0;
+  const parsedPage = Math.max(parseInt(page) || 1, 1);
+  const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
+  const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const documents = await Document.getDocumentsByUser(req.user._id, {
-    hotelId: req.user.hotelId,
-    status,
-    category,
-    userType,
-    limit: parsedLimit,
-    skip: parsedSkip,
-    sortBy
-  });
-
-  // Build the same filter to get totalCount
-  const countFilter = {
+  const query = {
     userId: req.user._id,
     hotelId: req.user.hotelId,
     isActive: true,
     isDeleted: false
   };
-  if (status) countFilter.status = status;
-  if (category) countFilter.category = category;
-  if (userType) countFilter.userType = userType;
+  if (status) query.status = status;
+  if (category) query.category = category;
+  if (userType) query.userType = userType;
+  if (bookingId) {
+    if (!objectIdPattern.test(String(bookingId))) {
+      throw new ApplicationError('Invalid bookingId filter', 400);
+    }
+    query.bookingId = bookingId;
+  }
+  if (search && String(search).trim()) {
+    const rx = new RegExp(escapeRegex(String(search).trim()), 'i');
+    query.$or = [
+      { originalName: rx },
+      { documentType: rx },
+      { description: rx }
+    ];
+  }
 
-  const totalCount = await Document.countDocuments(countFilter);
+  const [documents, totalCount] = await Promise.all([
+    Document.find(query)
+      .sort(sortBy)
+      .skip(parsedSkip)
+      .limit(parsedLimit)
+      .populate('bookingId', 'bookingNumber checkIn checkOut')
+      .lean(),
+    Document.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',

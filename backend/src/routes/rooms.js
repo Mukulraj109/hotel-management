@@ -362,7 +362,7 @@ router.get('/metrics', authenticate, ensureTenantContext, ensurePropertyAccess, 
  *         description: Room details
  */
 router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
-  const room = await Room.findById(req.params.id)
+  const room = await Room.findOne({ _id: req.params.id, hotelId: req.user.hotelId })
     .populate('hotelId', 'name address contact policies').lean();
 
   if (!room || !room.isActive) {
@@ -448,9 +448,16 @@ router.patch('/:id',
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
+    const allowed = [
+      'roomName', 'type', 'roomType', 'floor', 'status', 'amenities',
+      'description', 'maxOccupancy', 'baseRate', 'currentRate', 'images', 'isActive', 'features'
+    ];
+    const updatePayload = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key]) => allowed.includes(key))
+    );
     const room = await Room.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+      { _id: req.params.id, hotelId: req.user.hotelId },
+      updatePayload,
       { new: true, runValidators: true }
     );
 
@@ -494,7 +501,7 @@ router.delete('/:id',
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const room = await Room.findByIdAndUpdate(
-      req.params.id,
+      { _id: req.params.id, hotelId: req.user.hotelId },
       { isActive: false },
       { new: true }
     );
@@ -558,7 +565,7 @@ router.put('/:id/pricing',
     if (currentRate !== undefined) updateFields.currentRate = currentRate;
 
     const room = await Room.findByIdAndUpdate(
-      roomId,
+      { _id: roomId, hotelId: req.user.hotelId },
       { $set: updateFields },
       { new: true, runValidators: true }
     );
@@ -693,7 +700,7 @@ router.post('/bulk-price-update',
 
         bulkRateOps.push({
           updateOne: {
-            filter: { _id: roomId },
+            filter: { _id: roomId, hotelId: req.user.hotelId },
             update: { $set: updateFields }
           }
         });

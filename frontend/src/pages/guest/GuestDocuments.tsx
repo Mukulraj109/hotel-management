@@ -106,7 +106,7 @@ export default function GuestDocuments() {
   // Re-fetch when page or server-side filters change
   useEffect(() => {
     fetchDocuments();
-  }, [page, selectedCategory, selectedStatus]);
+  }, [page, selectedCategory, selectedStatus, selectedBooking, searchTerm]);
 
   const fetchDocuments = async () => {
     try {
@@ -116,8 +116,11 @@ export default function GuestDocuments() {
           userType: 'guest',
           category: selectedCategory !== 'all' ? selectedCategory : undefined,
           status: selectedStatus !== 'all' ? selectedStatus : undefined,
+          bookingId: selectedBooking !== 'all' && selectedBooking !== 'no_booking' ? selectedBooking : undefined,
+          search: searchTerm.trim() || undefined,
+          page,
           limit: PAGE_SIZE,
-          skip: (page - 1) * PAGE_SIZE
+          skip: page ? undefined : (page - 1) * PAGE_SIZE
         }
       });
       setDocuments(data.data.documents || []);
@@ -151,19 +154,10 @@ export default function GuestDocuments() {
   };
 
   const getFilteredDocuments = () => {
-    return documents.filter(doc => {
-      const matchesCategory = selectedCategory === 'all' || doc.category === selectedCategory;
-      const matchesStatus = selectedStatus === 'all' || doc.status === selectedStatus;
-      const matchesBooking = selectedBooking === 'all' ||
-        (selectedBooking === 'no_booking' && !doc.bookingId) ||
-        (doc.bookingId && doc.bookingId._id === selectedBooking);
-      const matchesSearch = searchTerm === '' ||
-        (doc.originalName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (doc.documentType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (doc.description || '').toLowerCase().includes(searchTerm.toLowerCase());
-
-      return matchesCategory && matchesStatus && matchesBooking && matchesSearch;
-    });
+    if (selectedBooking === 'no_booking') {
+      return documents.filter((doc) => !doc.bookingId);
+    }
+    return documents;
   };
 
   const getDocumentStats = () => {

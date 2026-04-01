@@ -273,6 +273,8 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     search,
     checkIn,
     checkOut,
+    checkInDate,
+    checkOutDate,
     startDate,
     endDate,
     type,
@@ -344,6 +346,20 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
 
   if (checkOut) {
     query.checkOut = { $lte: new Date(checkOut) };
+  }
+
+  // Exact-day filters for dashboard use-cases (arrivals/departures on a specific date)
+  if (checkInDate) {
+    const d = new Date(checkInDate);
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    query.checkIn = { $gte: d, $lt: next };
+  }
+  if (checkOutDate) {
+    const d = new Date(checkOutDate);
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    query.checkOut = { $gte: d, $lt: next };
   }
 
   // Date range overlap filter: find bookings that overlap with [startDate, endDate]

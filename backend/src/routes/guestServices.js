@@ -21,6 +21,53 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 const ASSIGNABLE_ROLES = ['staff', 'frontdesk'];
 const GUEST_SERVICE_LIST_CREATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
 const GUEST_SERVICE_UPDATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
+const objectIdSchema = Joi.string().length(24).hex();
+const serviceTypeSchema = Joi.string().valid('room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry', 'other');
+const prioritySchema = Joi.string().valid('now', 'later', 'low', 'medium', 'high', 'urgent');
+const itemSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(120).required(),
+  quantity: Joi.number().integer().min(1).max(1000).required(),
+  price: Joi.number().min(0).max(1000000).optional()
+});
+const createGuestServiceSchema = Joi.object({
+  bookingId: objectIdSchema.required(),
+  serviceType: serviceTypeSchema.required(),
+  serviceVariation: Joi.string().trim().allow('').max(120).optional(),
+  serviceVariations: Joi.array().items(Joi.string().trim().min(1).max(120)).max(20).optional(),
+  title: Joi.string().trim().max(200).allow('').optional(),
+  description: Joi.string().trim().max(2000).allow('').optional(),
+  priority: prioritySchema.optional(),
+  scheduledTime: Joi.date().iso().optional(),
+  items: Joi.array().items(itemSchema).max(100).optional(),
+  specialInstructions: Joi.string().trim().max(2000).allow('').optional()
+}).required();
+const bulkAssignSchema = Joi.object({
+  serviceIds: Joi.array().items(objectIdSchema).min(1).max(200).required(),
+  assignedTo: objectIdSchema.required(),
+  hotelId: objectIdSchema.optional()
+}).required();
+const bulkStatusSchema = Joi.object({
+  serviceIds: Joi.array().items(objectIdSchema).min(1).max(200).required(),
+  status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'cancelled').required(),
+  hotelId: objectIdSchema.optional()
+}).required();
+const updateGuestServiceSchema = Joi.object({
+  status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'cancelled').optional(),
+  assignedTo: Joi.alternatives().try(objectIdSchema, Joi.allow(null), Joi.string().allow('')).optional(),
+  notes: Joi.string().trim().max(2000).allow('').optional(),
+  actualCost: Joi.number().min(0).max(1000000).optional(),
+  scheduledTime: Joi.date().iso().optional(),
+  priority: prioritySchema.optional(),
+  completedServiceVariations: Joi.array().items(Joi.string().trim().min(1).max(120)).max(50).optional(),
+  cancellationReason: Joi.string().trim().max(500).allow('').optional(),
+  rating: Joi.number().min(1).max(5).optional(),
+  feedback: Joi.string().trim().max(2000).allow('').optional(),
+  hotelId: objectIdSchema.optional()
+}).min(1).required();
+const feedbackSchema = Joi.object({
+  rating: Joi.number().min(1).max(5).required(),
+  feedback: Joi.string().trim().max(2000).allow('').optional()
+}).required();
 
 const authorizeRoles = (allowedRoles) => (req, _res, next) => {
   if (!allowedRoles.includes(req.user?.role)) {
@@ -115,7 +162,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Service request created successfully
  */
-router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), validate(createGuestServiceSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     serviceType,
@@ -560,7 +607,7 @@ router.get('/available-staff', authenticate, authorizePolicy('guestServices', 's
  *         description: Service request details
  */
 // Bulk assign services to staff (MUST be before /:id routes)
-router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(bulkAssignSchema), catchAsync(async (req, res) => {
   const { serviceIds, assignedTo } = req.body;
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
     throw new ApplicationError('serviceIds array is required', 400);
@@ -608,7 +655,7 @@ router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'sta
 }));
 
 // Bulk update status
-router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(bulkStatusSchema), catchAsync(async (req, res) => {
   const { serviceIds, status } = req.body;
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
     throw new ApplicationError('serviceIds array is required', 400);
@@ -777,7 +824,7 @@ router.get('/:id', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES)
  *       200:
  *         description: Service request updated successfully
  */
-router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), validate(updateGuestServiceSchema), catchAsync(async (req, res) => {
   // First fetch current state to validate permissions and transitions
   const currentRequest = await GuestService.findById(req.params.id).lean();
 
@@ -990,7 +1037,7 @@ router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), v
  *       200:
  *         description: Feedback added successfully
  */
-router.post('/:id/feedback', authenticate, authorizePolicy('guestServices', 'guestAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/feedback', authenticate, authorizePolicy('guestServices', 'guestAccess'), validate(feedbackSchema), catchAsync(async (req, res) => {
   const { rating, feedback } = req.body;
 
   const serviceRequest = await GuestService.findOneAndUpdate(

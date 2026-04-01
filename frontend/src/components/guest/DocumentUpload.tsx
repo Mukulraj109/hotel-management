@@ -174,7 +174,6 @@ export default function DocumentUpload({
       formData.append('category', selectedCategory);
       formData.append('documentType', selectedDocumentType);
       formData.append('description', description);
-      formData.append('userType', userType);
       formData.append('priority', 'medium');
 
       if (bookingId) {

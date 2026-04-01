@@ -24,7 +24,7 @@ class DashboardService {
    */
   async getHotels(): Promise<unknown> {
     try {
-      const response = await api.get('/hotels');
+      const response = await api.get('/admin/hotels');
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -460,7 +460,7 @@ class DashboardService {
     };
   }[]>> {
     try {
-      const response = await api.get('/hotels');
+      const response = await api.get('/admin/hotels');
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -478,7 +478,7 @@ class DashboardService {
     theme?: 'light' | 'dark';
   }): Promise<ApiResponse<unknown>> {
     try {
-      const response = await api.patch('/user/preferences/dashboard', preferences);
+      const response = await api.put('/user-preferences/display', preferences);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -496,8 +496,11 @@ class DashboardService {
     theme?: 'light' | 'dark';
   }>> {
     try {
-      const response = await api.get('/user/preferences/dashboard');
-      return response.data;
+      const response = await api.get('/user-preferences/display');
+      return {
+        status: response.data?.status || 'success',
+        data: response.data?.data?.display || {}
+      };
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

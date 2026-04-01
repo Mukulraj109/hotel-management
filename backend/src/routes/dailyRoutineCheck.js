@@ -18,6 +18,53 @@ import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const objectIdSchema = Joi.string().length(24).hex();
+const dailyCartItemSchema = Joi.object({
+  itemId: objectIdSchema.required(),
+  itemName: Joi.string().trim().min(1).max(120).required(),
+  category: Joi.string().trim().min(1).max(80).required(),
+  inventoryType: Joi.string().valid('fixed', 'daily').optional(),
+  action: Joi.string().valid('replace', 'add', 'laundry', 'reuse').required(),
+  quantity: Joi.number().integer().min(1).max(1000).optional(),
+  unitPrice: Joi.number().min(0).max(1000000).optional(),
+  notes: Joi.string().trim().allow('').max(500).optional()
+});
+const completeRoomCheckSchema = Joi.object({
+  cart: Joi.array().items(dailyCartItemSchema).max(500).optional(),
+  notes: Joi.string().trim().allow('').max(2000).optional()
+}).required();
+const markCheckedSchema = Joi.object({
+  notes: Joi.string().trim().allow('').max(1000).optional()
+}).optional();
+const assignRoomsSchema = Joi.object({
+  assignments: Joi.array().items(
+    Joi.object({
+      roomId: objectIdSchema.required(),
+      staffId: objectIdSchema.required()
+    })
+  ).min(1).max(500).required()
+}).required();
+const templateItemSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(120).required(),
+  category: Joi.string().trim().min(1).max(80).required(),
+  description: Joi.string().trim().allow('').max(500).optional(),
+  unitPrice: Joi.number().min(0).max(1000000).optional(),
+  standardQuantity: Joi.number().integer().min(1).max(1000).optional(),
+  checkInstructions: Joi.string().trim().allow('').max(500).optional(),
+  expectedCondition: Joi.string().trim().min(1).max(80).optional()
+});
+const createTemplateSchema = Joi.object({
+  roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').required(),
+  fixedInventory: Joi.array().items(templateItemSchema).min(1).max(500).required(),
+  dailyInventory: Joi.array().items(templateItemSchema).min(1).max(500).required(),
+  estimatedCheckDuration: Joi.number().integer().min(1).max(240).optional()
+}).required();
+const updateTemplateSchema = Joi.object({
+  fixedInventory: Joi.array().items(templateItemSchema).min(1).max(500).optional(),
+  dailyInventory: Joi.array().items(templateItemSchema).min(1).max(500).optional(),
+  estimatedCheckDuration: Joi.number().integer().min(1).max(240).optional()
+}).min(1).required();
+const emptyBodySchema = Joi.object({}).max(0).optional();
 
 const getDayRange = (baseDate = new Date()) => {
   const startOfDay = new Date(baseDate);
@@ -386,7 +433,7 @@ router.get('/rooms/:roomId/inventory', authorizePolicy('dailyRoutineCheck', 'sta
  *       200:
  *         description: Daily check completed successfully
  */
-router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'), validate(completeRoomCheckSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { cart, notes } = req.body;
@@ -703,7 +750,7 @@ router.get('/my-assignments', authorizePolicy('dailyRoutineCheck', 'staffOnlyAcc
  *       200:
  *         description: Room marked as checked
  */
-router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'), validate(markCheckedSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { notes } = req.body;
@@ -837,7 +884,7 @@ router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 
  *       200:
  *         description: Assignments created successfully
  */
-router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/assign', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(assignRoomsSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { assignments } = req.body;
 
@@ -1076,7 +1123,7 @@ router.get('/templates', authorizePolicy('dailyRoutineCheck', 'fullAccess'), cat
  *       400:
  *         description: Template already exists for this room type
  */
-router.post('/templates', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/templates', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(createTemplateSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: createdBy } = req.user;
   const { roomType, fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
 
@@ -1177,7 +1224,7 @@ router.post('/templates', authorizePolicy('dailyRoutineCheck', 'managerFrontdesk
  *       200:
  *         description: Template updated successfully
  */
-router.put('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.put('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(updateTemplateSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
   const { fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
@@ -1251,7 +1298,7 @@ router.put('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'manager
  *       404:
  *         description: Template not found
  */
-router.delete('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.delete('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(emptyBodySchema), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
 

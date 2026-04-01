@@ -21,6 +21,10 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const orderInventorySchema = Joi.object({
+  quantity: Joi.number().integer().min(1).max(10000).default(50)
+}).required();
+const inspectRoomSchema = Joi.object({}).max(0).optional();
 
 // All routes require staff authentication and property access
 router.use(authenticate);
@@ -420,7 +424,7 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
 /**
  * Staff Dashboard - Order Inventory Item (Mark as Ordered)
  */
-router.post('/inventory/:itemId/order', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/inventory/:itemId/order', validate(orderInventorySchema), catchAsync(async (req, res) => {
   const { itemId } = req.params;
   const { hotelId } = req.user;
   const { quantity = 50 } = req.body; // Default order quantity
@@ -465,7 +469,7 @@ router.post('/inventory/:itemId/order', validate(mutationBaselineSchema), catchA
 /**
  * Staff Dashboard - Mark Room as Inspected
  */
-router.patch('/rooms/:roomId/inspect', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/rooms/:roomId/inspect', validate(inspectRoomSchema), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { hotelId } = req.user;
 

@@ -27,6 +27,11 @@ import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const bypassCheckoutSchema = Joi.object({
+  bookingId: Joi.string().length(24).hex().required(),
+  notes: Joi.string().trim().min(3).max(500).required(),
+  paymentMethod: Joi.string().valid('cash', 'card', 'upi', 'bank_transfer', 'wallet').default('cash')
+}).required();
 
 // All routes require authentication and property access
 router.use(authenticate);
@@ -5114,9 +5119,11 @@ router.get('/system-health', authorize('admin'), catchAsync(async (req, res, nex
           case 'memory':
             // Memory usage based on concurrent operations
             const concurrentUsers = await User.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               lastLogin: { $gte: timestamp, $lt: intervalEnd }
             });
             const serviceRequests = await GuestService.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               createdAt: { $gte: timestamp, $lt: intervalEnd }
             });
             const totalOps = concurrentUsers + serviceRequests;
@@ -5126,9 +5133,11 @@ router.get('/system-health', authorize('admin'), catchAsync(async (req, res, nex
           case 'disk':
             // Disk usage based on data storage growth
             const newInvoices = await Invoice.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               createdAt: { $gte: timestamp, $lt: intervalEnd }
             });
             const maintenanceTasks = await MaintenanceTask.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               createdAt: { $gte: timestamp, $lt: intervalEnd }
             });
             const dataGrowth = newInvoices + maintenanceTasks;
@@ -5138,9 +5147,11 @@ router.get('/system-health', authorize('admin'), catchAsync(async (req, res, nex
           case 'apiResponseTime':
             // API response time based on system load
             const systemLoad = await Booking.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               updatedAt: { $gte: timestamp, $lt: intervalEnd }
             });
             const serviceLoad = await GuestService.countDocuments({
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               updatedAt: { $gte: timestamp, $lt: intervalEnd }
             });
             const totalLoad = systemLoad + serviceLoad;
@@ -6059,7 +6070,7 @@ router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, 
       status: 'success',
       message: `Report generated successfully. ${format.toUpperCase()} export functionality would be implemented here.`,
       exportFormat: format,
-      downloadUrl: `/api/v1/admin-dashboard/reports/export/${reportMetadata.reportId}?format=${format}`,
+      downloadUrl: null,
       ...response
     });
   }
@@ -6068,7 +6079,7 @@ router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, 
 /**
  * Admin Bypass Checkout - Emergency/Special Case Checkout
  */
-router.post('/bypass-checkout', authenticate, authorizePolicy('adminDashboard', 'adminFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/bypass-checkout', authenticate, authorizePolicy('adminDashboard', 'adminFrontdeskAccess'), validate(bypassCheckoutSchema), catchAsync(async (req, res) => {
   const { bookingId, notes, paymentMethod = 'cash' } = req.body;
   const adminId = req.user._id;
 

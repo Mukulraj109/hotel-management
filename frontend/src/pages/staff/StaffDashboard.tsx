@@ -570,7 +570,7 @@ function StaffDashboard() {
                     <div className="flex-1">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          Booking #{checkout.bookingId.bookingNumber}
+                          Booking #{checkout.bookingId?.bookingNumber || checkout.bookingId?._id || 'Unknown'}
                         </h3>
                         <Badge
                           variant="default"
@@ -603,7 +603,7 @@ function StaffDashboard() {
                         <div>
                           <p className="text-sm text-gray-600">Room</p>
                           <p className="font-medium">
-                            {checkout.roomId.roomNumber} ({checkout.roomId.type})
+                            {checkout.roomId?.roomNumber || '—'} ({checkout.roomId?.type || 'Unknown'})
                           </p>
                         </div>
                         <div>
@@ -640,7 +640,7 @@ function StaffDashboard() {
                       </div>
 
                       <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span>Checked by: {checkout.checkedBy.name}</span>
+                        <span>Checked by: {checkout.checkedBy?.name || 'System'}</span>
                         <span>Checked: {new Date(checkout.checkedAt).toLocaleDateString()}</span>
                         {checkout.paidAt && (
                           <span>Paid: {new Date(checkout.paidAt).toLocaleDateString()}</span>

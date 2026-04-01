@@ -14,6 +14,31 @@ import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const objectIdSchema = Joi.string().length(24).hex();
+const checkoutItemSchema = Joi.object({
+  itemName: Joi.string().trim().min(1).max(120).required(),
+  category: Joi.string().trim().min(1).max(80).required(),
+  quantity: Joi.number().min(1).max(1000).required(),
+  unitPrice: Joi.number().min(0).max(1000000).required(),
+  status: Joi.string().valid('intact', 'missing', 'damaged', 'consumed').required(),
+  notes: Joi.string().allow('').max(500).optional()
+});
+const createCheckoutInventorySchema = Joi.object({
+  bookingId: objectIdSchema.required(),
+  roomId: objectIdSchema.required(),
+  items: Joi.array().items(checkoutItemSchema).max(200).required(),
+  notes: Joi.string().allow('').max(1000).optional()
+}).required();
+const updateCheckoutInventorySchema = Joi.object({
+  items: Joi.array().items(checkoutItemSchema).max(200).optional(),
+  status: Joi.string().valid('pending', 'completed', 'paid').optional(),
+  notes: Joi.string().allow('').max(1000).optional()
+}).min(1).required();
+const paymentCheckoutInventorySchema = Joi.object({
+  paymentMethod: Joi.string().valid('cash', 'card', 'upi', 'bank_transfer').required(),
+  notes: Joi.string().allow('').max(1000).optional()
+}).required();
+const emptyBodySchema = Joi.object({}).max(0).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -103,7 +128,7 @@ router.get('/booking/:bookingId', authorizePolicy('checkoutInventory', 'staffAcc
  *       201:
  *         description: Checkout inventory check created successfully
  */
-router.post('/', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('checkoutInventory', 'staffAccess'), validate(createCheckoutInventorySchema), catchAsync(async (req, res) => {
   const { bookingId, roomId, items, notes } = req.body;
   const { _id: checkedBy, hotelId } = req.user;
 
@@ -324,7 +349,7 @@ router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsy
  *       200:
  *         description: Checkout inventory check updated successfully
  */
-router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), validate(updateCheckoutInventorySchema), catchAsync(async (req, res) => {
   const { items, status, notes } = req.body;
 
   const checkoutInventory = await CheckoutInventory.findOne({
@@ -380,7 +405,7 @@ router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), valida
  *       200:
  *         description: Inventory check marked as completed
  */
-router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess'), validate(emptyBodySchema), catchAsync(async (req, res) => {
   // Atomic update: only update if status is 'pending'
   const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
     { _id: req.params.id, hotelId: req.user.hotelId, status: 'pending' },
@@ -452,7 +477,7 @@ router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess')
  *       200:
  *         description: Payment processed successfully
  */
-router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'), validate(paymentCheckoutInventorySchema), catchAsync(async (req, res) => {
   const { paymentMethod, notes } = req.body;
 
   // Atomic update: require status=completed AND not already paid

@@ -164,13 +164,17 @@ export default function DocumentViewer({
       setLoading(true);
       setError(null);
 
-      // First, fetch document metadata
-      const { data: docData } = await api.get(`/documents/${documentId}/metadata`);
-      setDocument(docData.document);
+      // First, fetch document details
+      const { data: docData } = await api.get(`/documents/${documentId}`);
+      const documentPayload = docData?.data?.document || docData?.document;
+      if (!documentPayload) {
+        throw new Error('Document details are unavailable');
+      }
+      setDocument(documentPayload);
       setHasViewAccess(true);
 
       // Check if user has view access based on roles and ownership
-      const canView = checkViewAccess(docData.document);
+      const canView = checkViewAccess(documentPayload);
       if (!canView) {
         setError('You do not have permission to view this document');
         setHasViewAccess(false);
