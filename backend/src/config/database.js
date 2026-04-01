@@ -101,9 +101,20 @@ const connectDB = async () => {
       throw new Error('Missing MongoDB URI. Set MONGO_URI (or MONGODB_URI / DATABASE_URL).');
     }
 
+    // On Render (and similar serverless/free tiers), a high minPoolSize slows first connect.
+    // Override with MONGO_MIN_POOL_SIZE / MONGO_MAX_POOL_SIZE if needed.
+    const minPool = Number(process.env.MONGO_MIN_POOL_SIZE);
+    const maxPool = Number(process.env.MONGO_MAX_POOL_SIZE);
+    const minPoolSize = Number.isFinite(minPool) && minPool >= 0
+      ? minPool
+      : process.env.RENDER === 'true'
+        ? 0
+        : 5;
+    const maxPoolSize = Number.isFinite(maxPool) && maxPool > 0 ? maxPool : 20;
+
     const conn = await mongoose.connect(mongoUri, {
-      maxPoolSize: 20,
-      minPoolSize: 5,
+      maxPoolSize,
+      minPoolSize,
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 10000,

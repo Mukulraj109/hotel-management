@@ -52,13 +52,13 @@ const formatPreference = (value?: string) => {
 
 const formatMemberSince = (date?: string) => {
   if (!date) return 'N/A';
-
-  return new Date(date).toLocaleDateString('en-GB');
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleDateString('en-GB');
 };
 
 export default function GuestProfile() {
-  const { user, updateUser } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { user, updateUser, isLoading: authLoading } = useAuth();
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -96,7 +96,6 @@ export default function GuestProfile() {
           other: user.preferences?.other || ''
         }
       });
-      setLoading(false);
     }
   }, [user]);
 
@@ -235,10 +234,24 @@ export default function GuestProfile() {
     }
   };
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+        <Card className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Unable to load profile</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Your session may have expired. Please sign in again and retry.
+          </p>
+          <Button onClick={() => window.location.assign('/login')}>Go to login</Button>
+        </Card>
       </div>
     );
   }
@@ -345,7 +358,7 @@ export default function GuestProfile() {
                 </label>
                 <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-900">
                   <Mail className="h-4 w-4 text-gray-400" />
-                  <span className="text-gray-900">{user?.email}</span>
+                  <span className="text-gray-900">{user?.email || 'Not provided'}</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
               </div>

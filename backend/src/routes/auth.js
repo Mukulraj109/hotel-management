@@ -9,7 +9,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
-import { ensurePropertyAccess, assertUserCanAccessHotel, refToHotelIdString } from '../middleware/propertyAccess.js';
+import { assertUserCanAccessHotel, refToHotelIdString } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import emailService from '../services/emailService.js';
 import logger from '../utils/logger.js';
@@ -74,6 +74,15 @@ const strictAuthLimiter = rateLimit({
   message: { success: false, error: 'Too many failed attempts, please try again after 1 hour' },
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const passwordChangeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many password change attempts. Please try again later.' },
+  keyGenerator: (req) => String(req.user?._id || req.ip)
 });
 
 const router = express.Router();
@@ -369,13 +378,13 @@ router.post(
  *       200:
  *         description: Profile updated successfully
  */
-router.patch('/profile', authenticate, ensurePropertyAccess, authorizePolicy('auth', 'baseAccess'), validate(schemas.updateProfile), catchAsync(async (req, res) => {
+router.patch('/profile', authenticate, authorizePolicy('auth', 'baseAccess'), validate(schemas.updateProfile), catchAsync(async (req, res) => {
   const { name, phone, preferences } = req.body;
   
   const updateData = {};
-  if (name) updateData.name = name;
-  if (phone) updateData.phone = phone;
-  if (preferences) updateData.preferences = preferences;
+  if (name !== undefined) updateData.name = name;
+  if (phone !== undefined) updateData.phone = phone;
+  if (preferences !== undefined) updateData.preferences = preferences;
 
   const user = await User.findByIdAndUpdate(
     req.user._id,
@@ -416,10 +425,13 @@ router.patch('/profile', authenticate, ensurePropertyAccess, authorizePolicy('au
  *       200:
  *         description: Password changed successfully
  */
-router.patch('/change-password', authenticate, ensurePropertyAccess, authorizePolicy('auth', 'baseAccess'), validate(schemas.changePassword), catchAsync(async (req, res) => {
+router.patch('/change-password', authenticate, passwordChangeLimiter, authorizePolicy('auth', 'baseAccess'), validate(schemas.changePassword), catchAsync(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   const user = await User.findById(req.user._id).select('+password');
+  if (!user) {
+    throw new ApplicationError('User not found', 404);
+  }
 
   if (!(await user.comparePassword(currentPassword))) {
     throw new ApplicationError('Current password is incorrect', 401);

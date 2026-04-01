@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 const scheduledJobs = new Map();
 let schedulerShuttingDown = false;
 let reinitializeTimeout = null;
+let hasScheduledReinitialize = false;
 
 const createCampaign = catchAsync(async (req, res, next) => {
   const {
@@ -481,7 +482,7 @@ const getScheduledCampaigns = catchAsync(async (req, res, next) => {
   }).sort({ scheduledAt: 1 }).lean().limit(1000);
 
   const campaignsWithJobs = scheduledCampaigns.map(campaign => ({
-    ...campaign.toObject(),
+    ...campaign,
     isJobActive: scheduledJobs.has(campaign._id.toString())
   }));
 
@@ -498,7 +499,6 @@ const reinitializeScheduledCampaigns = async () => {
   try {
     if (schedulerShuttingDown) return;
     if (mongoose.connection.readyState !== 1) {
-      console.warn('Skipping scheduled campaign reinitialization: database not connected');
       return;
     }
 
@@ -522,6 +522,25 @@ const reinitializeScheduledCampaigns = async () => {
   }
 };
 
+const scheduleCampaignReinitializeAfterDbReady = () => {
+  if (process.env.NODE_ENV !== 'production' || hasScheduledReinitialize || schedulerShuttingDown) {
+    return;
+  }
+  hasScheduledReinitialize = true;
+
+  const runOnce = () => {
+    if (schedulerShuttingDown) return;
+    reinitializeTimeout = setTimeout(reinitializeScheduledCampaigns, 2000);
+  };
+
+  if (mongoose.connection.readyState === 1) {
+    runOnce();
+    return;
+  }
+
+  mongoose.connection.once('connected', runOnce);
+};
+
 process.on('SIGTERM', () => {
   schedulerShuttingDown = true;
   if (reinitializeTimeout) {
@@ -536,9 +555,7 @@ process.on('SIGTERM', () => {
   scheduledJobs.clear();
 });
 
-if (process.env.NODE_ENV === 'production') {
-  reinitializeTimeout = setTimeout(reinitializeScheduledCampaigns, 5000);
-}
+scheduleCampaignReinitializeAfterDbReady();
 
 export {
   createCampaign,

@@ -841,6 +841,18 @@ if (!isTestRuntime) {
 
 const PORT = process.env.PORT || 4000;
 
+async function waitForMongoConnection(timeoutMs = 30000) {
+    if (mongoose.connection.readyState === 1) return true;
+    await new Promise((resolve) => {
+        const timer = setTimeout(resolve, timeoutMs);
+        mongoose.connection.once('connected', () => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
+    return mongoose.connection.readyState === 1;
+}
+
 let server = null;
 if (!isTestRuntime) {
 server = app.listen(PORT, async () => {
@@ -858,60 +870,69 @@ server = app.listen(PORT, async () => {
         websocketService.initialize(server);
         logger.info('✅ WebSocket server initialized');
 
-        // Start inventory scheduler - TEMPORARILY COMMENTED
-        logger.info('🔄 Starting inventory scheduler...');
-        inventoryScheduler.start();
-        logger.info('✅ Inventory scheduler started');
+        const mongoReady = await waitForMongoConnection(
+            parseInt(process.env.MONGO_STARTUP_WAIT_MS || '', 10) || 30000
+        );
+        if (!mongoReady) {
+            logger.warn('⚠️ MongoDB not connected yet. Deferring DB-dependent schedulers until connection is available.');
+        }
 
-        // Initialize notification scheduler for hotel management automation
-        logger.info('🔄 Initializing notification scheduler...');
-        NotificationScheduler.initializeScheduledJobs();
-        logger.info('✅ Notification scheduler initialized');
+        if (mongoReady) {
+            // Start inventory scheduler - TEMPORARILY COMMENTED
+            logger.info('🔄 Starting inventory scheduler...');
+            inventoryScheduler.start();
+            logger.info('✅ Inventory scheduler started');
 
-        // Initialize settlement notification service
-        logger.info('🔄 Initializing settlement notification service...');
-        // Settlement notification service auto-starts with cron jobs
-        logger.info('✅ Settlement notification service initialized');
+            // Initialize notification scheduler for hotel management automation
+            logger.info('🔄 Initializing notification scheduler...');
+            NotificationScheduler.initializeScheduledJobs();
+            logger.info('✅ Notification scheduler initialized');
 
-        // Start reorder job
-        logger.info('🔄 Starting reorder job...');
-        reorderJob.start();
-        reorderJob.startWeeklySummary();
-        logger.info('✅ Reorder job started');
+            // Initialize settlement notification service
+            logger.info('🔄 Initializing settlement notification service...');
+            // Settlement notification service auto-starts with cron jobs
+            logger.info('✅ Settlement notification service initialized');
 
-        // Start scheduled updates cron job (Feature 1 - Phase 5.6)
-        logger.info('🔄 Starting scheduled updates job...');
-        startScheduledUpdatesJob();
-        logger.info('✅ Scheduled updates job started (runs every 5 minutes)');
+            // Start reorder job
+            logger.info('🔄 Starting reorder job...');
+            reorderJob.start();
+            reorderJob.startWeeklySummary();
+            logger.info('✅ Reorder job started');
 
-        // Start night audit cron job (runs at 2:00 AM daily)
-        logger.info('🔄 Starting night audit job...');
-        scheduleNightAudit();
-        logger.info('✅ Night audit job started (runs at 2:00 AM daily)');
+            // Start scheduled updates cron job (Feature 1 - Phase 5.6)
+            logger.info('🔄 Starting scheduled updates job...');
+            startScheduledUpdatesJob();
+            logger.info('✅ Scheduled updates job started (runs every 5 minutes)');
 
-        logger.info('🔄 Starting loyalty maintenance job...');
-        loyaltyMaintenanceJob.start();
-        logger.info('✅ Loyalty maintenance job started');
-        logger.info('🔄 Starting loyalty event queue...');
-        await loyaltyEventQueueService.initialize();
-        loyaltyEventQueueService.start();
-        logger.info('✅ Loyalty event queue started');
+            // Start night audit cron job (runs at 2:00 AM daily)
+            logger.info('🔄 Starting night audit job...');
+            scheduleNightAudit();
+            logger.info('✅ Night audit job started (runs at 2:00 AM daily)');
 
-        // Start backup scheduler
-        logger.info('Starting backup scheduler...');
-        try {
-          const backupService = (await import('./services/backupService.js')).default;
-          if (backupService && typeof backupService.startScheduler === 'function') {
-            backupService.startScheduler();
-            logger.info('Backup scheduler started');
-          } else if (backupService && typeof backupService.scheduleBackups === 'function') {
-            backupService.scheduleBackups();
-            logger.info('Backup scheduler started');
-          } else {
-            logger.info('Backup service available but no scheduler method found');
-          }
-        } catch (error) {
-          logger.warn('Backup scheduler initialization failed (non-critical):', error.message);
+            logger.info('🔄 Starting loyalty maintenance job...');
+            loyaltyMaintenanceJob.start();
+            logger.info('✅ Loyalty maintenance job started');
+            logger.info('🔄 Starting loyalty event queue...');
+            await loyaltyEventQueueService.initialize();
+            loyaltyEventQueueService.start();
+            logger.info('✅ Loyalty event queue started');
+
+            // Start backup scheduler
+            logger.info('Starting backup scheduler...');
+            try {
+              const backupService = (await import('./services/backupService.js')).default;
+              if (backupService && typeof backupService.startScheduler === 'function') {
+                backupService.startScheduler();
+                logger.info('Backup scheduler started');
+              } else if (backupService && typeof backupService.scheduleBackups === 'function') {
+                backupService.scheduleBackups();
+                logger.info('Backup scheduler started');
+              } else {
+                logger.info('Backup service available but no scheduler method found');
+              }
+            } catch (error) {
+              logger.warn('Backup scheduler initialization failed (non-critical):', error.message);
+            }
         }
 
         // Start pricing scheduler (already auto-starts, but ensure it's initialized)

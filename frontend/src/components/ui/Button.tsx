@@ -45,7 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   ...props
 }, ref) => {
   return (
-    <button aria-label="Close"
+    <button
       ref={ref}
       className={cn(
         buttonVariants({ variant, size }),

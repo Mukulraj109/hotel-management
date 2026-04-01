@@ -231,7 +231,18 @@ api.interceptors.request.use(
           }
         }
       } else if (['POST', 'PUT', 'PATCH'].includes(config.method?.toUpperCase() || '')) {
-        if (config.data && typeof config.data === 'object' && !config.data.hotelId) {
+        const skipMutationHotelIdEndpoints = [
+          '/auth/login',
+          '/auth/register',
+          '/auth/logout',
+          '/auth/refresh',
+          '/auth/profile',
+          '/auth/change-password'
+        ];
+        const shouldSkipMutationHotelId = skipMutationHotelIdEndpoints.some((endpoint) =>
+          config.url?.includes(endpoint)
+        );
+        if (!shouldSkipMutationHotelId && config.data && typeof config.data === 'object' && !config.data.hotelId) {
           config.data.hotelId = selectedPropertyId;
         }
       }
