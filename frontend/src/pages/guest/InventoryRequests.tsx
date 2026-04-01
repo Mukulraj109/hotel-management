@@ -28,6 +28,7 @@ interface Booking {
 }
 
 const PAGE_SIZE = 20;
+const DEFAULT_REQUEST_TITLE = 'Inventory Request';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -77,25 +78,20 @@ export default function InventoryRequests() {
     specialInstructions: ''
   });
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (requestedPage = page) => {
     try {
       setLoading(true);
       setError(null);
       const response = await guestServiceService.getServiceRequests({
         serviceType: 'other',
         status: filter === 'all' ? undefined : filter,
-        page,
+        page: requestedPage,
         limit: PAGE_SIZE
       });
       setRequests(response.data.serviceRequests || []);
-      if (response.pagination) {
-        setTotalPages(response.pagination.pages || 1);
-        setTotalCount(response.pagination.total || 0);
-      } else if (response.data && 'pagination' in response.data) {
-        const pag = (response.data as any).pagination;
-        setTotalPages(pag?.pages || 1);
-        setTotalCount(pag?.total || 0);
-      }
+      const pagination = response.pagination ?? response.data?.pagination;
+      setTotalPages(pagination?.pages || 1);
+      setTotalCount(pagination?.total || 0);
     } catch {
       setError('Failed to load inventory requests. Please try again.');
       toast.error('Failed to load inventory requests');
@@ -127,7 +123,7 @@ export default function InventoryRequests() {
 
   // Reset page when filter changes
   useEffect(() => {
-    setPage(1);
+    setPage((prevPage) => (prevPage === 1 ? prevPage : 1));
   }, [filter]);
 
   const handleCreateRequest = async () => {
@@ -164,7 +160,7 @@ export default function InventoryRequests() {
       setShowCreateForm(false);
       resetForm();
       setPage(1);
-      fetchRequests();
+      fetchRequests(1);
     } catch {
       toast.error('Failed to create inventory request');
     } finally {
@@ -452,7 +448,7 @@ export default function InventoryRequests() {
       {selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-4">{selectedRequest.title}</h2>
+            <h2 className="text-2xl font-bold mb-4">{selectedRequest.title || DEFAULT_REQUEST_TITLE}</h2>
             <div className="space-y-3">
               <div className="flex gap-2">
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedRequest.status)}`}>
@@ -538,7 +534,7 @@ export default function InventoryRequests() {
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold">{request.title}</h3>
+                        <h3 className="text-lg font-semibold">{request.title || DEFAULT_REQUEST_TITLE}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
                           {request.status.replace('_', ' ')}
                         </span>

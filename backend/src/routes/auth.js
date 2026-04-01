@@ -14,10 +14,35 @@ import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import emailService from '../services/emailService.js';
 import logger from '../utils/logger.js';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+function normalizeSameSite(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'strict') return 'strict';
+  if (normalized === 'none') return 'none';
+  return 'lax';
+}
+
+const sameSite = normalizeSameSite(
+  process.env.AUTH_COOKIE_SAME_SITE || (isProduction ? 'none' : 'lax')
+);
+
+const secureCookies = (() => {
+  if (typeof process.env.AUTH_COOKIE_SECURE === 'string') {
+    return process.env.AUTH_COOKIE_SECURE.trim().toLowerCase() === 'true';
+  }
+  // Browsers require Secure when SameSite=None.
+  if (sameSite === 'none') return true;
+  return isProduction;
+})();
+
+const cookieDomain = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: secureCookies,
+  sameSite,
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
 };
 
 function setAuthCookies(res, accessToken, refreshToken, csrfToken) {
@@ -32,16 +57,21 @@ function setAuthCookies(res, accessToken, refreshToken, csrfToken) {
   });
   res.cookie('csrfToken', csrfToken, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: secureCookies,
+    sameSite,
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
     maxAge: 15 * 60 * 1000
   });
 }
 
 function clearAuthCookies(res) {
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken', { path: '/api/v1/auth' });
-  res.clearCookie('csrfToken');
+  res.clearCookie('accessToken', COOKIE_OPTIONS);
+  res.clearCookie('refreshToken', { ...COOKIE_OPTIONS, path: '/api/v1/auth' });
+  res.clearCookie('csrfToken', {
+    secure: secureCookies,
+    sameSite,
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+  });
 }
 
 async function createRefreshToken(userId) {

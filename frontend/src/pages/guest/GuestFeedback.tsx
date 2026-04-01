@@ -39,6 +39,12 @@ interface CheckedOutBooking extends Omit<Booking, 'hotelId'> {
   };
 }
 
+interface SafeHotelInfo {
+  _id: string;
+  name: string;
+  city: string;
+}
+
 interface FeedbackForm {
   bookingId: string;
   rating: number;
@@ -61,6 +67,27 @@ interface PaginationInfo {
   total: number;
   pages: number;
 }
+
+const toSafeHotelInfo = (hotelId: unknown): SafeHotelInfo => {
+  if (hotelId && typeof hotelId === 'object') {
+    const hotel = hotelId as {
+      _id?: string;
+      name?: string;
+      address?: { city?: string };
+    };
+    return {
+      _id: typeof hotel._id === 'string' ? hotel._id : '',
+      name: typeof hotel.name === 'string' && hotel.name.trim() ? hotel.name : 'Hotel',
+      city: typeof hotel.address?.city === 'string' && hotel.address.city.trim() ? hotel.address.city : 'Location'
+    };
+  }
+
+  if (typeof hotelId === 'string') {
+    return { _id: hotelId, name: 'Hotel', city: 'Location' };
+  }
+
+  return { _id: '', name: 'Hotel', city: 'Location' };
+};
 
 export default function GuestFeedback() {
   const { user } = useAuth();
@@ -167,7 +194,7 @@ export default function GuestFeedback() {
     if (user && activeTab === 'history') {
       fetchMyReviews(reviewsPagination.page);
     }
-  }, [user, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, activeTab, reviewsPagination.page, fetchMyReviews]);
 
   const handleStartFeedback = (booking: CheckedOutBooking) => {
     setSelectedBooking(booking);
@@ -203,12 +230,13 @@ export default function GuestFeedback() {
 
     try {
       setSubmitting(true);
-      if (!selectedBooking?.hotelId?._id) {
+      const selectedHotel = toSafeHotelInfo(selectedBooking?.hotelId);
+      if (!selectedHotel._id) {
         throw new Error('Invalid booking details. Please re-open the feedback form.');
       }
 
       await reviewService.createReview({
-        hotelId: selectedBooking.hotelId._id,
+        hotelId: selectedHotel._id,
         bookingId: feedbackForm.bookingId,
         rating: feedbackForm.rating,
         title: feedbackForm.title.trim(),
@@ -370,13 +398,15 @@ export default function GuestFeedback() {
           ) : (
             <>
               <div className="grid gap-6">
-                {checkedOutBookings.map((booking) => (
+                {checkedOutBookings.map((booking) => {
+                  const safeHotel = toSafeHotelInfo(booking.hotelId);
+                  return (
                   <Card key={booking._id} className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-semibold text-gray-900">
-                            {booking.hotelId.name}
+                            {safeHotel.name}
                           </h3>
                           <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
                             Completed
@@ -390,7 +420,7 @@ export default function GuestFeedback() {
                           </div>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <MapPin className="h-4 w-4" />
-                            <span>{booking.hotelId.address?.city || 'Location'}</span>
+                            <span>{safeHotel.city}</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Users className="h-4 w-4" />
@@ -413,7 +443,7 @@ export default function GuestFeedback() {
                       </Button>
                     </div>
                   </Card>
-                ))}
+                )})}
               </div>
 
               {/* Bookings pagination */}
@@ -628,7 +658,7 @@ export default function GuestFeedback() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Leave Feedback for {selectedBooking.hotelId.name}
+                  Leave Feedback for {toSafeHotelInfo(selectedBooking.hotelId).name}
                 </h2>
                 <Button
                   variant="ghost"

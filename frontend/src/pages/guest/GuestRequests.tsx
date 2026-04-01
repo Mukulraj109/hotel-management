@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { bookingService } from '../../services/bookingService';
@@ -102,6 +103,7 @@ function GuestRequests() {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [feedbackRequestId, setFeedbackRequestId] = useState<string | null>(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackText, setFeedbackText] = useState('');
@@ -145,6 +147,7 @@ function GuestRequests() {
 
   const fetchBookings = useCallback(async () => {
     try {
+      setBookingsError(null);
       const response = await bookingService.getUserBookings({ limit: 100 });
       const bookingsData = Array.isArray(response.data?.bookings)
         ? response.data.bookings
@@ -153,23 +156,17 @@ function GuestRequests() {
           : [];
       setBookings(bookingsData.filter((b: Booking) => ['confirmed', 'checked_in'].includes(b.status)));
     } catch {
-      // Bookings fetch error handled silently - user can still view existing requests
+      setBookingsError('We could not load your bookings right now. Please retry.');
     }
   }, []);
 
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
   useEffect(() => {
     if (user) {
-      fetchRequests(1);
       fetchBookings();
       connect().catch(() => { /* WebSocket unavailable */ });
     }
-  }, [user, filter, connect, fetchBookings]);
-
-  // Reset page when filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [filter]);
+  }, [user, connect, fetchBookings]);
 
   // Fetch when page changes (but not on initial render, which is handled above)
   useEffect(() => {
@@ -184,6 +181,9 @@ function GuestRequests() {
 
     const handleGuestServiceUpdated = (data: Record<string, unknown>) => {
       const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
+      if (!wrappedData.serviceRequest || typeof wrappedData.serviceRequest !== 'object') {
+        return;
+      }
       const updatedRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
       // Only update if this request belongs to the current user
@@ -216,12 +216,19 @@ function GuestRequests() {
 
     const handleGuestServiceCreated = (data: Record<string, unknown>) => {
       const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
+      if (!wrappedData.serviceRequest || typeof wrappedData.serviceRequest !== 'object') {
+        return;
+      }
       const newRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
       // Only add if this request belongs to the current user
-      const newUserId = typeof newRequest.userId === 'object' ? newRequest.userId?._id : newRequest.userId;
-      if (newUserId === user._id || newUserId === (user as Record<string, unknown>).id) {
-        setRequests(prev => [newRequest, ...prev]);
+      if (isSameUserId(user?._id, newRequest.userId)) {
+        const matchesFilter = filter === 'all' || newRequest.status === filter;
+        if (page === 1 && matchesFilter) {
+          setRequests(prev => [newRequest, ...prev]);
+        } else {
+          fetchRequests(page);
+        }
         toast.success('Your service request has been created successfully', { duration: 4000 });
       }
     };
@@ -269,7 +276,7 @@ function GuestRequests() {
       off('guest-services:status_changed', handleGuestServiceUpdated);
       off('guest-services:*', handleGuestServiceUpdated);
     };
-  }, [connectionState, on, off, user]);
+  }, [connectionState, on, off, user, filter, page, fetchRequests]);
 
   const handleCreateRequest = async () => {
     if (creating) return; // Prevent double-submit
@@ -298,7 +305,17 @@ function GuestRequests() {
 
       // Only include scheduledTime if priority is "later" or if it's set
       if (formData.priority === 'later' || formData.scheduledTime) {
-        requestData.scheduledTime = formData.scheduledTime || new Date().toISOString();
+        if (formData.scheduledTime) {
+          const parsed = new Date(formData.scheduledTime);
+          if (Number.isNaN(parsed.getTime())) {
+            toast.error('Please provide a valid scheduled time');
+            setCreating(false);
+            return;
+          }
+          requestData.scheduledTime = parsed.toISOString();
+        } else {
+          requestData.scheduledTime = new Date().toISOString();
+        }
       } else if (formData.priority === 'now') {
         // For "now" requests, set the scheduled time to current time
         requestData.scheduledTime = new Date().toISOString();
@@ -456,7 +473,12 @@ function GuestRequests() {
           </div>
         </div>
 
-        {bookings.length === 0 && (
+        {bookingsError ? (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between gap-3">
+            <span>{bookingsError}</span>
+            <Button variant="ghost" size="sm" onClick={fetchBookings}>Retry</Button>
+          </div>
+        ) : bookings.length === 0 && (
           <p className="text-sm text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             You need an active booking to create service requests
           </p>
@@ -478,7 +500,10 @@ function GuestRequests() {
               ].map(tab => (
                 <button
                   key={tab.id}
-                  onClick={() => setFilter(tab.id)}
+                  onClick={() => {
+                    setFilter(tab.id);
+                    setPage(1);
+                  }}
                   className={`py-2 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap transition-colors ${
                     filter === tab.id
                       ? 'border-blue-500 text-blue-600'
@@ -803,7 +828,15 @@ function GuestRequests() {
                   </div>
 
                   <p className="text-sm text-gray-600 mb-2">
-                    {request.bookingId?.bookingNumber ? `Booking #${request.bookingId.bookingNumber} - ` : ''}{request.serviceType.replace('_', ' ').charAt(0).toUpperCase() + request.serviceType.replace('_', ' ').slice(1)}
+                    {request.bookingId?._id && request.bookingId?.bookingNumber ? (
+                      <>
+                        <Link className="text-blue-600 hover:underline" to={`/app/bookings/${request.bookingId._id}`}>
+                          Booking #{request.bookingId.bookingNumber}
+                        </Link>
+                        {' - '}
+                      </>
+                    ) : null}
+                    {request.serviceType.replace('_', ' ').charAt(0).toUpperCase() + request.serviceType.replace('_', ' ').slice(1)}
                   </p>
 
                   {request.description && (
@@ -912,7 +945,7 @@ function GuestRequests() {
               </div>
 
               {/* Cost Information */}
-              {(request.estimatedCost || request.actualCost) && (
+              {(request.estimatedCost != null || request.actualCost != null) && (
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <div className="flex flex-col sm:flex-row sm:justify-between text-sm space-y-1 sm:space-y-0">
                     {request.estimatedCost && (

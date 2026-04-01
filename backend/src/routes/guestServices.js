@@ -17,7 +17,6 @@ import logger from '../utils/logger.js';
 import { validateStatusTransition, GUEST_SERVICE_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
-const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 const ASSIGNABLE_ROLES = ['staff', 'frontdesk'];
 const GUEST_SERVICE_LIST_CREATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
 const GUEST_SERVICE_UPDATE_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin'];
@@ -364,6 +363,11 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
   // Role-based filtering with mandatory tenant isolation
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
+    const guestHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+    if (!guestHotelId) {
+      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+    }
+    query.hotelId = guestHotelId;
   } else {
     const hotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user?.hotelId);
     if (!hotelId) {
@@ -412,8 +416,8 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
     query.assignedTo = req.user._id;
   }
 
-  const parsedPage = parseInt(page, 10) || 1;
-  const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
+  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (parsedPage - 1) * parsedLimit;
 
   const [serviceRequests, total] = await Promise.all([
@@ -669,6 +673,31 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
   const bulkHotelId = refToHotelIdString(req.query.hotelId || req.body.hotelId || req.user.hotelId);
   if (!bulkHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
+  }
+  const services = await GuestService.find(
+    { _id: { $in: serviceIds }, hotelId: bulkHotelId },
+    { _id: 1, status: 1 }
+  ).lean();
+  if (services.length === 0) {
+    throw new ApplicationError('No matching service requests found for this hotel', 404);
+  }
+  const invalidTransitions = services
+    .map((service) => {
+      if (service.status === status) {
+        return null;
+      }
+      const transition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, service.status, status);
+      if (transition.valid) {
+        return null;
+      }
+      return { serviceId: service._id.toString(), from: service.status, to: status, error: transition.error };
+    })
+    .filter(Boolean);
+  if (invalidTransitions.length > 0) {
+    throw new ApplicationError(
+      `Invalid status transition for ${invalidTransitions.length} request(s). Example: ${invalidTransitions[0].from} -> ${invalidTransitions[0].to}`,
+      400
+    );
   }
   const result = await GuestService.updateMany(
     { _id: { $in: serviceIds }, hotelId: bulkHotelId },
@@ -1039,13 +1068,18 @@ router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), v
  */
 router.post('/:id/feedback', authenticate, authorizePolicy('guestServices', 'guestAccess'), validate(feedbackSchema), catchAsync(async (req, res) => {
   const { rating, feedback } = req.body;
+  const scopedHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+  const feedbackQuery = {
+    _id: req.params.id,
+    userId: req.user._id,
+    status: 'completed'
+  };
+  if (scopedHotelId) {
+    feedbackQuery.hotelId = scopedHotelId;
+  }
 
   const serviceRequest = await GuestService.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      userId: req.user._id,
-      status: 'completed'
-    },
+    feedbackQuery,
     { $set: { rating, feedback } },
     { new: true, runValidators: true }
   );

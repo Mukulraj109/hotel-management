@@ -15,6 +15,35 @@ import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+const objectIdSchema = Joi.string().length(24).hex();
+const reviewCreateSchema = Joi.object({
+  hotelId: objectIdSchema.required(),
+  bookingId: objectIdSchema.optional(),
+  rating: Joi.number().integer().min(1).max(5).required(),
+  title: Joi.string().trim().min(1).max(200).required(),
+  content: Joi.string().trim().min(1).max(5000).required(),
+  categories: Joi.object({
+    cleanliness: Joi.number().integer().min(1).max(5).optional(),
+    service: Joi.number().integer().min(1).max(5).optional(),
+    location: Joi.number().integer().min(1).max(5).optional(),
+    value: Joi.number().integer().min(1).max(5).optional(),
+    amenities: Joi.number().integer().min(1).max(5).optional()
+  }).optional(),
+  visitType: Joi.string().valid('business', 'leisure', 'family', 'couple', 'solo').optional(),
+  stayDate: Joi.date().iso().optional(),
+  images: Joi.array().items(Joi.string().trim().uri()).max(20).optional(),
+  isAnonymous: Joi.boolean().optional()
+}).required();
+const reviewResponseSchema = Joi.object({
+  content: Joi.string().trim().min(1).max(3000).required()
+}).required();
+const reviewModerationSchema = Joi.object({
+  status: Joi.string().valid('approved', 'rejected', 'pending').required(),
+  notes: Joi.string().trim().allow('').max(2000).optional()
+}).required();
+const reviewReportSchema = Joi.object({
+  reason: Joi.string().trim().allow('').max(1000).optional()
+}).optional();
 
 // Apply property access middleware to authenticated routes
 // Note: Some routes use optionalAuth and don't require property access
@@ -77,7 +106,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
  *       201:
  *         description: Review created successfully
  */
-router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensurePropertyAccess, validate(reviewCreateSchema), catchAsync(async (req, res) => {
   const {
     hotelId,
     bookingId,
@@ -140,6 +169,9 @@ router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensureP
     }
     if (booking.hotelId.toString() !== hotelId) {
       throw new ApplicationError('Booking does not match hotel', 400);
+    }
+    if (booking.status !== 'checked_out') {
+      throw new ApplicationError('Feedback can only be submitted after checkout', 400);
     }
 
     // Check if review already exists for this booking
@@ -225,6 +257,10 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
   const { rating, sortBy = 'newest' } = req.query;
+
+  if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+    throw new ApplicationError('Invalid hotel ID', 400);
+  }
 
   logger.debug('Reviews API request', { hotelId, page, limit, rating, sortBy });
 
@@ -418,9 +454,13 @@ router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(as
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
   const skip = (page - 1) * limit;
+  const reviewQuery = { userId: req.user._id };
+  if (req.user.hotelId) {
+    reviewQuery.hotelId = req.user.hotelId;
+  }
 
   const [reviews, total] = await Promise.all([
-    Review.find({ userId: req.user._id })
+    Review.find(reviewQuery)
       .populate('hotelId', 'name address')
       .populate('bookingId', 'bookingNumber checkIn checkOut')
       .populate('response.respondedBy', 'name role')
@@ -428,7 +468,7 @@ router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(as
       .skip(skip)
       .limit(limit)
       .lean(),
-    Review.countDocuments({ userId: req.user._id })
+    Review.countDocuments(reviewQuery)
   ]);
 
   res.json({
@@ -507,7 +547,7 @@ router.get('/:id', optionalAuth, catchAsync(async (req, res) => {
  *       200:
  *         description: Response added successfully
  */
-router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(reviewResponseSchema), catchAsync(async (req, res) => {
   const { content } = req.body;
 
   if (!content || !content.trim()) {
@@ -597,7 +637,7 @@ router.post('/:id/helpful', authenticate, validate(mutationBaselineSchema), catc
  *       200:
  *         description: Review reported successfully
  */
-router.post('/:id/report', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/:id/report', authenticate, validate(reviewReportSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
   const review = await Review.findByIdAndUpdate(
@@ -655,7 +695,7 @@ router.post('/:id/report', authenticate, validate(mutationBaselineSchema), catch
  *       200:
  *         description: Review moderated successfully
  */
-router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(reviewModerationSchema), catchAsync(async (req, res) => {
   const { status, notes } = req.body;
 
   if (!status || !['approved', 'rejected', 'pending'].includes(status)) {
