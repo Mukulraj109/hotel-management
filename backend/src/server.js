@@ -375,16 +375,42 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 app.use(cookieParser());
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
-  .split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean);
+
+/** Strip trailing slash so browser Origin matches env URLs consistently. */
+function normalizeCorsOrigin(url) {
+  if (!url || typeof url !== 'string') return '';
+  return url.trim().replace(/\/$/, '');
+}
+
+/**
+ * Merge comma-separated ALLOWED_ORIGINS with FRONTEND_URL / GUEST_APP_URL so split
+ * deploys (e.g. separate Render static + API URLs) work without duplicating every origin.
+ */
+function buildAllowedOrigins() {
+  const fromList = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+    .split(',')
+    .map(normalizeCorsOrigin)
+    .filter(Boolean);
+  const fromSingle = [process.env.FRONTEND_URL, process.env.GUEST_APP_URL]
+    .map(normalizeCorsOrigin)
+    .filter(Boolean);
+  return [...new Set([...fromList, ...fromSingle])];
+}
+
+const allowedOrigins = buildAllowedOrigins();
 
 app.use(cors({
     origin: function (origin, callback) {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) {
         return callback(null, true);
+      }
+      const normalized = normalizeCorsOrigin(origin);
+      if (allowedOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      if (process.env.NODE_ENV === 'production') {
+        logger.warn(`CORS rejected origin: ${origin}`);
       }
       callback(new Error('Not allowed by CORS'));
     },
