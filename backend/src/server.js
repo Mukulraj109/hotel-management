@@ -56,7 +56,10 @@ import { setupGracefulShutdown } from './utils/gracefulShutdown.js';
 
 const queueProcessorMode = process.env.QUEUE_PROCESSOR_MODE || 'api';
 const shouldRunQueueProcessorInApi = queueProcessorMode === 'api';
-const isTestRuntime = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
+const isExplicitTestEnv = process.env.NODE_ENV === 'test';
+const hasJestWorker = typeof process.env.JEST_WORKER_ID !== 'undefined';
+// Some hosts can leak JEST_WORKER_ID into runtime env; only honor it outside production.
+const isTestRuntime = isExplicitTestEnv || (hasJestWorker && process.env.NODE_ENV !== 'production');
 
 // Route imports - TEMPORARILY COMMENTED FOR DEVELOPMENT
 import authRoutes from './routes/auth.js';
@@ -855,6 +858,12 @@ async function waitForMongoConnection(timeoutMs = 30000) {
 
 let server = null;
 if (!isTestRuntime) {
+logger.info('Startup runtime mode', {
+    nodeEnv: process.env.NODE_ENV,
+    isTestRuntime,
+    hasJestWorker,
+    port: PORT
+});
 server = app.listen(PORT, async () => {
     logger.info(`🚀 Server running on port ${PORT}`);
     logger.info(`📚 API Documentation available at http://localhost:${PORT}/docs`);
