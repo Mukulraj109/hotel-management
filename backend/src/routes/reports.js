@@ -70,6 +70,9 @@ router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ens
   if (!resolvedHotelId) {
     return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+  if (!mongoose.Types.ObjectId.isValid(resolvedHotelId)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid hotelId format' });
+  }
   pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(resolvedHotelId) } });
 
   // Group by date format
@@ -250,7 +253,7 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensureProper
   // Get bookings in the period
   const bookings = await Booking.find(matchQuery)
     .populate('rooms.roomId', 'type')
-    .populate('hotelId', 'name').lean().limit(1000);
+    .populate('hotelId', 'name').lean().limit(500);
 
   // Get total rooms by hotel
   const roomsQuery = { hotelId: resolvedOccupancyHotelId, isActive: true };

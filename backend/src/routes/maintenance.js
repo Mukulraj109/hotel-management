@@ -5,6 +5,7 @@ import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
@@ -82,8 +83,9 @@ const MAINTENANCE_STATUS_TRANSITIONS = {
   cancelled: []
 };
 
-// All routes require authentication and property access
+// All routes require authentication, tenant context, and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -155,20 +157,24 @@ router.use(ensurePropertyAccess);
  *         description: Maintenance task created successfully
  */
 router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createMaintenanceSchema), catchAsync(async (req, res) => {
+  // Validate hotel access for admin users before proceeding
+  if (req.user.role === 'admin' && !req.body.hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
   const scopedHotelId = req.user.role === 'admin'
     ? req.body.hotelId
-    : req.user.hotelId;
+    : (req.user.hotelId || req.tenantId);
+
+  if (!scopedHotelId) {
+    throw new ApplicationError('Hotel context is required', 403);
+  }
 
   const taskData = {
     ...req.body,
     hotelId: scopedHotelId,
     reportedBy: req.user._id
   };
-
-  // Validate hotel access for admin users
-  if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new ApplicationError('Hotel ID is required', 400);
-  }
 
   // If roomId provided, verify it belongs to the hotel
   if (taskData.roomId) {
@@ -201,22 +207,24 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createM
   }
 
   const task = await MaintenanceTask.create(taskData);
-  
+
   await task.populate([
     { path: 'hotelId', select: 'name' },
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'reportedBy', select: 'name' }
   ]);
 
+  // Broadcast before responding so the event carries the populated task
+  try {
+    await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:created', { task });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast maintenance creation event', { error: wsError.message });
+  }
+
   res.status(201).json({
     status: 'success',
     data: { task }
   });
-  try {
-    await websocketService.broadcastToHotel(task.hotelId, 'maintenance:created', { task });
-  } catch (wsError) {
-    logger.warn('Failed to broadcast maintenance creation event', { error: wsError.message });
-  }
 }));
 
 /**
@@ -279,26 +287,52 @@ router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async 
   const query = {};
 
   // Role-based filtering — always scope by hotelId for tenant isolation
-  if (req.user.role === 'staff') {
+  const operationalStaffRoles = ['staff', 'housekeeping', 'maintenance'];
+  if (operationalStaffRoles.includes(req.user.role)) {
     query.hotelId = req.user.hotelId;
-    // Staff users should only see tasks assigned to them
-    query.assignedTo = req.user._id;
+    // Apply filters first so we know the requested status before deciding visibility rules
+    if (status) query.status = status;
+    if (type) query.type = type;
+    if (priority) query.priority = priority;
+    if (roomId) query.roomId = roomId;
+
+    // For overdue filter, accept any non-terminal status within the hotel
+    if (overdue === 'true') {
+      query.dueDate = { $lt: new Date() };
+      query.status = { $in: ['pending', 'assigned', 'in_progress'] };
+    }
+
+    // Pending tasks are visible to all staff in the hotel (anyone can pick them up).
+    // Non-pending tasks are restricted to the assigned staff member.
+    const requestedStatus = query.status;
+    const isPendingOnlyQuery =
+      requestedStatus === 'pending' ||
+      (Array.isArray(requestedStatus?.$in) &&
+        requestedStatus.$in.every((s) => s === 'pending'));
+
+    if (!isPendingOnlyQuery) {
+      // Show tasks assigned to this staff member OR pending tasks (so they always see what they can pick up)
+      query.$or = [
+        { assignedTo: req.user._id },
+        { status: 'pending' }
+      ];
+    }
+    // If querying only pending tasks, no assignedTo filter — any staff can see them
   } else {
     // For admin/manager/frontdesk: use query param or fall back to user's hotelId
     query.hotelId = req.query.hotelId || req.user.hotelId;
-  }
 
-  // Apply filters
-  if (status) query.status = status;
-  if (type) query.type = type;
-  if (priority) query.priority = priority;
-  if (assignedTo && req.user.role !== 'staff') query.assignedTo = assignedTo;
-  if (roomId) query.roomId = roomId;
+    // Apply filters
+    if (status) query.status = status;
+    if (type) query.type = type;
+    if (priority) query.priority = priority;
+    if (assignedTo) query.assignedTo = assignedTo;
+    if (roomId) query.roomId = roomId;
 
-  // Filter overdue tasks
-  if (overdue === 'true') {
-    query.dueDate = { $lt: new Date() };
-    query.status = { $in: ['pending', 'assigned', 'in_progress'] };
+    if (overdue === 'true') {
+      query.dueDate = { $lt: new Date() };
+      query.status = { $in: ['pending', 'assigned', 'in_progress'] };
+    }
   }
 
   const skip = (page - 1) * limit;
@@ -360,7 +394,8 @@ router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async 
 router.get('/stats', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
   
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -469,19 +504,20 @@ router.get('/stats', authorizePolicy('maintenance', 'staffAccess'), catchAsync(a
  *         description: Available staff members
  */
 router.get('/available-staff', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  // Get staff members from the same hotel
+  // Get staff members (all roles that perform maintenance work) from the same hotel
   const User = mongoose.model('User');
   const staffMembers = await User.find({
     hotelId: hotelId,
-    role: 'staff',
+    role: { $in: ['staff', 'housekeeping', 'maintenance', 'manager'] },
     isActive: true
-  }).select('_id name email department').lean().limit(1000);
+  }).select('_id name email department role').lean().limit(200);
 
   res.json({
     status: 'success',
@@ -507,7 +543,8 @@ router.get('/available-staff', authorizePolicy('maintenance', 'staffAccess'), ca
  *         description: Available rooms
  */
 router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -519,7 +556,7 @@ router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), ca
   const rooms = await Room.find({
     hotelId: hotelId,
     status: { $ne: 'out_of_order' } // Exclude out of order rooms
-  }).select('_id roomNumber type floor').lean().limit(1000);
+  }).select('_id roomNumber type floor').lean().limit(500);
   logger.debug('Rooms found for maintenance', { count: rooms.length });
   res.json({
     status: 'success',
@@ -545,14 +582,15 @@ router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), ca
  *         description: Overdue maintenance tasks
  */
 router.get('/overdue', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  // For staff users, only show overdue tasks assigned to them
-  const staffFilter = req.user.role === 'staff' ? { assignedTo: req.user._id } : {};
+  // For operational staff, only show overdue tasks assigned to them
+  const staffFilter = operationalRoles.includes(req.user.role) ? { assignedTo: req.user._id } : {};
   const overdueTasks = await MaintenanceTask.getOverdueTasks(hotelId, staffFilter);
 
   res.json({
@@ -588,14 +626,15 @@ router.get('/overdue', authorizePolicy('maintenance', 'staffAccess'), catchAsync
  */
 router.get('/recurring/upcoming', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { days = 30 } = req.query;
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  // For staff users, only show upcoming tasks assigned to them
-  const staffFilter = req.user.role === 'staff' ? { assignedTo: req.user._id } : {};
+  // For operational staff, only show upcoming tasks assigned to them
+  const staffFilter = operationalRoles.includes(req.user.role) ? { assignedTo: req.user._id } : {};
   const upcomingTasks = await MaintenanceTask.getUpcomingRecurringTasks(hotelId, parseInt(days), staffFilter);
 
   res.json({
@@ -627,11 +666,21 @@ router.get('/recurring/upcoming', authorizePolicy('maintenance', 'staffAccess'),
  */
 router.get('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const taskQuery = { _id: req.params.id };
-  if (req.user.role !== 'admin') {
+
+  // Always scope by hotelId for tenant isolation — admins are still scoped if hotelId is set
+  if (req.user.hotelId) {
     taskQuery.hotelId = req.user.hotelId;
   }
-  if (req.user.role === 'staff') {
-    taskQuery.assignedTo = req.user._id;
+
+  // Operational staff can only view tasks assigned to them
+  const operationalStaffRoles = ['staff', 'housekeeping', 'maintenance'];
+  if (operationalStaffRoles.includes(req.user.role)) {
+    // Allow viewing if task is assigned to them OR if task is unassigned (so they can pick it up)
+    taskQuery.$or = [
+      { assignedTo: req.user._id },
+      { assignedTo: { $exists: false } },
+      { assignedTo: null }
+    ];
   }
 
   const task = await MaintenanceTask.findOne(taskQuery)
@@ -696,8 +745,13 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
   const { id } = req.params;
   logger.debug('Updating maintenance task', { id });
 
-  // Read-only check for existence and permissions
-  const existingTask = await MaintenanceTask.findById(id).lean();
+  // SECURITY: Scope the initial lookup by hotelId to prevent cross-tenant information
+  // disclosure (a bare findById leaks task existence to users in other hotels via
+  // the difference between a 404 "not found" and a 403 "access denied" response).
+  const hotelScopeFilter = req.user.hotelId
+    ? { _id: id, hotelId: req.user.hotelId }
+    : { _id: id };
+  const existingTask = await MaintenanceTask.findOne(hotelScopeFilter).lean();
 
   if (!existingTask) {
     logger.debug('Maintenance task not found', { id });
@@ -707,11 +761,9 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
   logger.debug('Maintenance task found', { taskId: existingTask._id, currentStatus: existingTask.status });
 
   // Check access permissions
-  if (req.user.role === 'staff' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
-    logger.debug('Permission denied - hotel mismatch for maintenance task', { taskId: id });
-    throw new ApplicationError('You can only update tasks for your hotel', 403);
-  }
-  if (req.user.role === 'staff' && existingTask.assignedTo && existingTask.assignedTo.toString() !== req.user._id.toString()) {
+  const operationalStaffRoles = ['staff', 'housekeeping', 'maintenance'];
+  const isOperationalStaff = operationalStaffRoles.includes(req.user.role);
+  if (isOperationalStaff && existingTask.assignedTo && existingTask.assignedTo.toString() !== req.user._id.toString()) {
     logger.debug('Permission denied - maintenance task assigned to another user', { taskId: id });
     throw new ApplicationError('You can only update tasks assigned to you', 403);
   }
@@ -734,12 +786,33 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
   // Special handling for status updates
   if (updates.status) {
     if (updates.status !== existingTask.status) {
-      const allowedTransitions = MAINTENANCE_STATUS_TRANSITIONS[existingTask.status] || [];
-      if (!allowedTransitions.includes(updates.status)) {
-        throw new ApplicationError(
-          `Invalid transition: "${existingTask.status}" -> "${updates.status}". Allowed: ${allowedTransitions.join(', ') || 'none'}`,
-          400
-        );
+      // Allow operational staff to self-assign-and-start a pending task in one step:
+      // pending -> in_progress is shortcut for (pending -> assigned -> in_progress)
+      const isPendingToInProgress =
+        existingTask.status === 'pending' && updates.status === 'in_progress';
+
+      if (isPendingToInProgress) {
+        // Validate the intermediate transitions both exist
+        const pendingAllowed = MAINTENANCE_STATUS_TRANSITIONS['pending'] || [];
+        const assignedAllowed = MAINTENANCE_STATUS_TRANSITIONS['assigned'] || [];
+        if (!pendingAllowed.includes('assigned') || !assignedAllowed.includes('in_progress')) {
+          throw new ApplicationError(
+            'Invalid transition: "pending" -> "in_progress". Intermediate step not allowed.',
+            400
+          );
+        }
+        // Self-assign if no assignee provided
+        if (!updates.assignedTo && !existingTask.assignedTo) {
+          updates.assignedTo = req.user._id;
+        }
+      } else {
+        const allowedTransitions = MAINTENANCE_STATUS_TRANSITIONS[existingTask.status] || [];
+        if (!allowedTransitions.includes(updates.status)) {
+          throw new ApplicationError(
+            `Invalid transition: "${existingTask.status}" -> "${updates.status}". Allowed: ${allowedTransitions.join(', ') || 'none'}`,
+            400
+          );
+        }
       }
     }
     if (updates.status === 'assigned' && !(updates.assignedTo || existingTask.assignedTo)) {
@@ -751,6 +824,14 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
       updates.assignedTo = updates.assignedTo || existingTask.assignedTo || req.user._id;
     } else if (updates.status === 'completed' && !existingTask.completedDate) {
       updates.completedDate = new Date();
+      // Auto-calculate actualDuration from startedDate when completing via API
+      // (findByIdAndUpdate bypasses pre-save hooks, so we do it explicitly here)
+      const startedAt = existingTask.startedDate || updates.startedDate;
+      if (startedAt && !updates.actualDuration) {
+        updates.actualDuration = Math.round(
+          (updates.completedDate.getTime() - new Date(startedAt).getTime()) / (1000 * 60)
+        );
+      }
     }
     logger.debug('Maintenance task status changed', { from: existingTask.status, to: updates.status });
   }
@@ -793,10 +874,7 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
 
   logger.debug('Maintenance task update completed', { taskId: task._id, newStatus: task.status });
 
-  res.json({
-    status: 'success',
-    data: { task }
-  });
+  // Broadcast before responding so the event carries the populated task
   try {
     await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:updated', { task });
     if (updates.status) {
@@ -808,6 +886,11 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
   } catch (wsError) {
     logger.warn('Failed to broadcast maintenance update event', { error: wsError.message });
   }
+
+  res.json({
+    status: 'success',
+    data: { task }
+  });
 }));
 
 /**
@@ -853,8 +936,8 @@ router.post('/:id([0-9a-fA-F]{24})/assign', authorizePolicy('maintenance', 'staf
     throw new ApplicationError('Maintenance task not found', 404);
   }
 
-  // Check access permissions
-  if (req.user.role === 'staff' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
+  // Check access permissions — only non-admin roles are bound to their own hotel
+  if (req.user.role !== 'admin' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
     throw new ApplicationError('You can only assign tasks for your hotel', 403);
   }
 
@@ -876,11 +959,6 @@ router.post('/:id([0-9a-fA-F]{24})/assign', authorizePolicy('maintenance', 'staf
     { path: 'assignedTo', select: 'name email' }
   ]);
 
-  res.json({
-    status: 'success',
-    message: 'Task assigned successfully',
-    data: { task }
-  });
   try {
     await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:updated', { task });
     await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:status_changed', {
@@ -890,6 +968,12 @@ router.post('/:id([0-9a-fA-F]{24})/assign', authorizePolicy('maintenance', 'staf
   } catch (wsError) {
     logger.warn('Failed to broadcast maintenance assignment event', { error: wsError.message });
   }
+
+  res.json({
+    status: 'success',
+    message: 'Task assigned successfully',
+    data: { task }
+  });
 }));
 
 export default router;

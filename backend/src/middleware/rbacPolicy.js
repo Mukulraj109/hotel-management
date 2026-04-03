@@ -1,6 +1,8 @@
 import { ApplicationError } from './errorHandler.js';
 
 const AUTHENTICATED_ROLES = ['guest', 'staff', 'admin', 'manager', 'frontdesk', 'housekeeping', 'travel_agent'];
+const OPERATIONAL_ROLES = ['staff', 'admin', 'manager', 'frontdesk', 'housekeeping'];
+const GUEST_SAFE_ROLES = ['guest', 'staff', 'admin', 'manager', 'frontdesk', 'housekeeping', 'travel_agent'];
 
 export const RBAC_POLICIES = {
   admin: {
@@ -59,7 +61,7 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   channelManagement: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   gdpr: {
     baseAccess: AUTHENTICATED_ROLES
@@ -114,7 +116,7 @@ export const RBAC_POLICIES = {
   },
   userPreferences: {
     baseAccess: AUTHENTICATED_ROLES,
-    staffAccess: ['staff'],
+    staffAccess: ['staff', 'housekeeping', 'frontdesk', 'manager', 'admin'],
     guestAccess: ['guest', 'travel_agent'],
     adminAccess: ['admin']
   },
@@ -126,7 +128,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   securityMonitoring: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   stockMovements: {
     baseAccess: AUTHENTICATED_ROLES,
@@ -150,7 +152,7 @@ export const RBAC_POLICIES = {
     managerAccess: ['admin', 'manager']
   },
   staffMeetUp: {
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'manager', 'frontdesk']
   },
   centralizedRates: {
     baseAccess: AUTHENTICATED_ROLES,
@@ -169,10 +171,12 @@ export const RBAC_POLICIES = {
     manageAccess: ['admin', 'manager']
   },
   roomCharges: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   staffDashboard: {
-    staffAccess: ['staff', 'admin']
+    // All operational roles need dashboard access; managers and frontdesk are
+    // legitimate users of the staff dashboard view.
+    staffAccess: ['staff', 'admin', 'manager', 'frontdesk', 'housekeeping']
   },
   staffServices: {
     staffAccess: ['staff']
@@ -193,7 +197,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   analytics: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   billMessages: {
     baseAccess: AUTHENTICATED_ROLES
@@ -214,16 +218,16 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   departmentBudget: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   guests: {
     baseAccess: AUTHENTICATED_ROLES
   },
   integrations: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   inventoryNotifications: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   loyalty: {
     baseAccess: AUTHENTICATED_ROLES,
@@ -250,7 +254,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   revenueAccounts: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   reviews: {
     baseAccess: AUTHENTICATED_ROLES,
@@ -258,7 +262,7 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   roomTax: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   translations: {
     baseAccess: AUTHENTICATED_ROLES
@@ -388,8 +392,10 @@ export const RBAC_POLICIES = {
     managerAccess: ['admin', 'manager']
   },
   staffTasks: {
-    staffAccess: ['staff', 'admin'],
-    adminAccess: ['admin']
+    // Staff, managers, frontdesk, and housekeeping can view/update tasks;
+    // only admins can create, delete, or access hotel-wide task lists.
+    staffAccess: ['staff', 'admin', 'manager', 'frontdesk', 'housekeeping'],
+    adminAccess: ['admin', 'manager']
   },
   approvals: {
     frontdeskAccess: ['frontdesk', 'manager', 'admin'],
@@ -504,7 +510,7 @@ export const RBAC_POLICIES = {
     inspectAccess: ['admin', 'manager', 'frontdesk']
   },
   maintenance: {
-    staffAccess: ['staff', 'admin', 'frontdesk']
+    staffAccess: ['staff', 'admin', 'frontdesk', 'manager', 'housekeeping', 'maintenance']
   },
   ota: {
     adminAccess: ['admin'],
@@ -586,9 +592,11 @@ export const RBAC_POLICIES = {
   payments: {
     createIntent: AUTHENTICATED_ROLES,
     confirmIntent: AUTHENTICATED_ROLES,
-    createExtraPersonIntent: ['staff', 'admin'],
+    createExtraPersonIntent: ['staff', 'admin', 'manager', 'frontdesk'],
     createSettlementIntent: AUTHENTICATED_ROLES,
-    refund: AUTHENTICATED_ROLES,
+    // Refunds must be initiated by hotel staff/management — guests cannot
+    // self-service a refund (they can request one via a service ticket).
+    refund: ['admin', 'manager', 'staff', 'frontdesk'],
     roomCharge: AUTHENTICATED_ROLES,
     cashOnDelivery: AUTHENTICATED_ROLES
   },

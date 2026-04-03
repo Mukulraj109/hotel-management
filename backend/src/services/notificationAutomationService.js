@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
+import NotificationPreference from '../models/NotificationPreference.js';
 import logger from '../utils/logger.js';
 import { coerceDbNotificationType } from '../utils/notificationTypeCoercion.js';
 
@@ -26,20 +27,68 @@ class NotificationAutomationService {
       // Resolve recipients if auto-detection is requested
       const resolvedRecipients = await this.resolveRecipients(type, data, recipients, hotelId);
 
-      // Create notifications for each recipient
-      const notifications = await Promise.all(
-        resolvedRecipients.map(recipientId => this.createNotificationForUser(
+      // Create notifications for each recipient, checking user preferences first
+      const notifications = [];
+      for (const recipientId of resolvedRecipients) {
+        // Check user notification preferences before sending
+        const userPrefs = await NotificationPreference.findOne({ userId: recipientId }).lean();
+        if (userPrefs) {
+          // Check if this notification type is disabled across in_app channel
+          const typeKey = type; // e.g., 'booking_confirmation'
+          if (userPrefs.inApp && userPrefs.inApp.types && userPrefs.inApp.types[typeKey] === false) {
+            continue; // Skip this recipient - they've opted out of this type
+          }
+
+          // Check if global notifications are disabled
+          if (userPrefs.global && userPrefs.global.enabled === false) {
+            continue; // Skip this recipient - all notifications disabled
+          }
+
+          // Check quiet hours (use push channel quiet hours as the general quiet hours)
+          const channelQH = (userPrefs.push && userPrefs.push.quietHours) ||
+                            (userPrefs.email && userPrefs.email.quietHours);
+          if (channelQH && channelQH.enabled) {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const start = parseInt(channelQH.start) || 22;
+            const end = parseInt(channelQH.end) || 7;
+            const isQuietTime = start > end
+              ? (currentHour >= start || currentHour < end)
+              : (currentHour >= start && currentHour < end);
+            if (isQuietTime && priority !== 'urgent') {
+              // Defer non-urgent notifications during quiet hours instead of dropping them
+              const deferHours = (end - currentHour + 24) % 24;
+              const scheduledFor = new Date(now.getTime() + deferHours * 60 * 60 * 1000);
+              const notification = await this.createNotificationForUser(
+                dbType,
+                notificationContent,
+                recipientId,
+                hotelId,
+                priority,
+                { ...data, scheduledFor }
+              );
+              notification.scheduledFor = scheduledFor;
+              await notification.save();
+              notifications.push(notification);
+              continue;
+            }
+          }
+        }
+
+        const notification = await this.createNotificationForUser(
           dbType,
           notificationContent,
           recipientId,
           hotelId,
           priority,
           data
-        ))
-      );
+        );
+        notifications.push(notification);
+      }
 
-      // Send real-time notifications
-      await this.sendRealTimeNotifications(notifications);
+      // Send real-time notifications (only those not deferred)
+      const immediateNotifications = notifications.filter(n => !n.scheduledFor);
+      await this.sendRealTimeNotifications(immediateNotifications);
 
       logger.debug(`✅ Created ${notifications.length} notifications for type: ${type}`);
       return notifications;
@@ -672,12 +721,13 @@ class NotificationAutomationService {
 
       // Rule 2: Combine similar notifications within 5 minutes
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      // Find similar recent notifications (need full Mongoose document for .save())
       const similarNotifications = await Notification.find({
         userId: notification.userId,
         type: notification.type,
         createdAt: { $gte: fiveMinutesAgo },
         status: { $in: ['pending', 'sent'] }
-      }).lean().limit(1000);
+      }).limit(1000);
 
       if (similarNotifications.length > 0) {
         // Update existing notification instead of creating new one

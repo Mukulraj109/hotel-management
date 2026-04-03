@@ -2,11 +2,13 @@ import express from 'express';
 import guestLookupController from '../controllers/guestLookupController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

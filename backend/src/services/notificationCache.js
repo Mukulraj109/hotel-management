@@ -9,7 +9,7 @@ const CACHE_KEYS = {
   TEMPLATE: (hotelId, templateId) => `template:${hotelId}:${templateId}`,
   TEMPLATE_BY_TYPE: (hotelId, type) => `template:${hotelId}:type:${type}`,
   TEMPLATES_BY_CATEGORY: (hotelId, category) => `templates:${hotelId}:category:${category}`,
-  USER_PREFERENCES: (userId) => `preferences:${userId}`,
+  USER_PREFERENCES: (userId, hotelId) => `preferences:${userId}:${hotelId || 'global'}`,
   USER_PROFILE: (userId) => `user:${userId}`,
   NOTIFICATION_COUNT: (userId) => `count:${userId}`,
   HOTEL_SETTINGS: (hotelId) => `hotel:${hotelId}:settings`,
@@ -99,10 +99,14 @@ class NotificationCache {
     if (!this.connected) return false;
 
     try {
-      const keys = await this.redis.keys(pattern);
-      if (keys.length > 0) {
-        await this.redis.del(...keys);
-      }
+      let cursor = '0';
+      do {
+        const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+        cursor = nextCursor;
+        if (keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+      } while (cursor !== '0');
       return true;
     } catch (error) {
       logger.error('Cache pattern invalidation error:', error);
@@ -188,13 +192,16 @@ class NotificationCache {
   }
 
   // User preference caching
-  async getUserPreferences(userId) {
+  async getUserPreferences(userId, hotelId) {
     try {
-      const cacheKey = CACHE_KEYS.USER_PREFERENCES(userId);
+      const cacheKey = CACHE_KEYS.USER_PREFERENCES(userId, hotelId);
       let preferences = await this.get(cacheKey);
 
       if (!preferences) {
-        preferences = await NotificationPreference.findOne({ userId }).lean();
+        preferences = await NotificationPreference.findOne({
+          userId,
+          ...(hotelId ? { hotelId } : {})
+        }).lean();
 
         if (preferences) {
           await this.set(cacheKey, preferences, CACHE_TTL.MEDIUM);

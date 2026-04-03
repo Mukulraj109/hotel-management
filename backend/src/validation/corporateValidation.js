@@ -296,7 +296,7 @@ export const corporateUserValidation = {
     name: Joi.string().required().trim().max(100),
     email: Joi.string().required().email().lowercase(),
     phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
-    password: Joi.string().required().min(6),
+    password: Joi.string().required().min(8),
     guestType: Joi.string().valid('corporate').default('corporate'),
     corporateDetails: Joi.object({
       corporateCompanyId: Joi.string().required().hex().length(24),

@@ -581,9 +581,19 @@ router.get('/intent/:paymentIntentId', authenticate, ensureTenantContext, catchA
     throw new ApplicationError('Payment intent ID is required', 400);
   }
 
+  // SECURITY: Enforce tenant isolation. Always use the hotelId resolved by
+  // ensureTenantContext (req.tenantId) — fall back to req.user.hotelId for
+  // users that are assigned to a single hotel.  If neither is available the
+  // request is rejected so cross-hotel payment lookups are impossible.
+  const tenantHotelId = req.tenantId || req.user?.hotelId;
+
+  if (!tenantHotelId) {
+    throw new ApplicationError('Hotel context is required', 400);
+  }
+
   const payment = await Payment.findOne({
     stripePaymentIntentId: paymentIntentId,
-    ...(req.user?.hotelId ? { hotelId: req.user.hotelId } : {})
+    hotelId: tenantHotelId
   }).lean();
 
   if (!payment) {

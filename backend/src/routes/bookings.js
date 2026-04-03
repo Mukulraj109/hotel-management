@@ -1028,11 +1028,14 @@ router.post('/',
             });
           }
 
-          // Notify staff roles specifically (including frontdesk)
-          await websocketService.broadcastToRole('staff', 'booking:created', booking[0]);
-          await websocketService.broadcastToRole('admin', 'booking:created', booking[0]);
-          await websocketService.broadcastToRole('manager', 'booking:created', booking[0]);
-          await websocketService.broadcastToRole('frontdesk', 'booking:created', booking[0]);
+          // Notify staff roles specifically (including frontdesk), scoped to hotel
+          const bookingHotelId = (booking[0].hotelId?._id || booking[0].hotelId)?.toString();
+          if (bookingHotelId) {
+            await websocketService.broadcastToHotelRole(bookingHotelId, 'staff', 'booking:created', booking[0]);
+            await websocketService.broadcastToHotelRole(bookingHotelId, 'admin', 'booking:created', booking[0]);
+            await websocketService.broadcastToHotelRole(bookingHotelId, 'manager', 'booking:created', booking[0]);
+            await websocketService.broadcastToHotelRole(bookingHotelId, 'frontdesk', 'booking:created', booking[0]);
+          }
         } catch (wsError) {
           // Log WebSocket errors but don't fail the booking creation
           logger.warn('Failed to send real-time booking notification', { error: wsError.message });
@@ -1254,18 +1257,21 @@ router.patch('/:id',
         });
       }
 
-      // Notify staff roles specifically if payment status changed
+      // Notify staff roles specifically if payment status changed, scoped to hotel
       if (oldPaymentStatus !== updateData.paymentStatus) {
-        await websocketService.broadcastToRole('staff', 'booking:payment_updated', {
-          booking: updatedBooking,
-          oldPaymentStatus,
-          newPaymentStatus: updateData.paymentStatus
-        });
-        await websocketService.broadcastToRole('admin', 'booking:payment_updated', {
-          booking: updatedBooking,
-          oldPaymentStatus,
-          newPaymentStatus: updateData.paymentStatus
-        });
+        const paymentHotelId = (updatedBooking.hotelId?._id || updatedBooking.hotelId)?.toString();
+        if (paymentHotelId) {
+          await websocketService.broadcastToHotelRole(paymentHotelId, 'staff', 'booking:payment_updated', {
+            booking: updatedBooking,
+            oldPaymentStatus,
+            newPaymentStatus: updateData.paymentStatus
+          });
+          await websocketService.broadcastToHotelRole(paymentHotelId, 'admin', 'booking:payment_updated', {
+            booking: updatedBooking,
+            oldPaymentStatus,
+            newPaymentStatus: updateData.paymentStatus
+          });
+        }
       }
     } catch (wsError) {
       // Log WebSocket errors but don't fail the booking update
@@ -1554,11 +1560,22 @@ router.patch('/:id/cancel',
 
     // Broadcast booking cancellation via WebSocket
     try {
-      websocketService.broadcastToHotel(booking.hotelId?.toString() || booking.hotelId, 'booking_cancelled', {
+      websocketService.broadcastToHotel(booking.hotelId?.toString() || booking.hotelId, 'booking:cancelled', {
         bookingId: booking._id,
         rooms: booking.rooms
       });
     } catch (e) { /* WebSocket is non-critical */ }
+
+    // Notify the guest user directly
+    if (booking.userId) {
+      try {
+        const guestUserId = booking.userId._id?.toString() || booking.userId.toString();
+        websocketService.sendToUser(guestUserId, 'booking:cancelled', {
+          bookingId: booking._id,
+          status: 'cancelled'
+        });
+      } catch (e) { /* WebSocket is non-critical */ }
+    }
 
     await bookingAuditService.logBookingMutation({
       booking,
@@ -1764,13 +1781,13 @@ router.post('/:id/modification-request',
           hotelId: (booking.hotelId?._id || booking.hotelId)
         };
 
-        // Notify hotel staff and admins
+        // Notify hotel staff and admins, scoped to hotel
         const hotelIdStr = booking.hotelId?._id?.toString() || booking.hotelId?.toString();
         if (hotelIdStr) {
           await websocketService.broadcastToHotel(hotelIdStr, 'booking:modification_requested', notificationData);
+          await websocketService.broadcastToHotelRole(hotelIdStr, 'admin', 'booking:modification_requested', notificationData);
+          await websocketService.broadcastToHotelRole(hotelIdStr, 'staff', 'booking:modification_requested', notificationData);
         }
-        await websocketService.broadcastToRole('admin', 'booking:modification_requested', notificationData);
-        await websocketService.broadcastToRole('staff', 'booking:modification_requested', notificationData);
       }
     } catch (wsError) {
       logger.warn('WebSocket notification failed', { error: wsError.message });
@@ -2170,6 +2187,115 @@ router.patch('/:id/check-in',
 
     logger.debug('Post-save payment status', { bookingNumber: updatedBooking.bookingNumber, paymentStatus: updatedBooking.paymentStatus });
 
+    // Auto-generate a primary digital key for the guest upon check-in if one does not
+    // already exist.  This is best-effort — a failure here must never block the check-in
+    // response.  The key owner is set to booking.userId (the guest), not the staff member
+    // performing check-in.
+    let autoGeneratedKey = null;
+    try {
+      const { default: DigitalKey } = await import('../models/DigitalKey.js');
+      const crypto = await import('crypto');
+      const QRCode = await import('qrcode');
+
+      const guestUserId = updatedBooking.userId?._id || updatedBooking.userId;
+      const hotelId = updatedBooking.hotelId?._id || updatedBooking.hotelId;
+      const firstRoom = updatedBooking.rooms?.[0];
+      const roomId = firstRoom?.roomId?._id || firstRoom?.roomId;
+
+      if (guestUserId && hotelId && roomId) {
+        // Only generate if no active primary key already exists for this booking
+        const existingKey = await DigitalKey.findOne({
+          bookingId: updatedBooking._id,
+          userId: guestUserId,
+          type: 'primary',
+          status: { $in: ['active'] }
+        }).lean();
+
+        if (!existingKey) {
+          const QR_SECRET = process.env.DIGITAL_KEY_QR_SECRET || crypto.randomBytes(32).toString('hex');
+          const keyCode = DigitalKey.generateKeyCode();
+          const qrPayload = {
+            k: keyCode,
+            b: updatedBooking._id.toString().slice(-8),
+            r: roomId.toString().slice(-8),
+            h: hotelId.toString().slice(-8),
+            t: 'p', // primary
+            ts: Math.floor(Date.now() / 1000)
+          };
+          const qrPayloadStr = JSON.stringify(qrPayload);
+          const signature = crypto.createHmac('sha256', QR_SECRET).update(qrPayloadStr).digest('hex').slice(0, 16);
+          const qrData = JSON.stringify({ ...qrPayload, sig: signature });
+          const qrCode = await QRCode.toDataURL(qrData);
+
+          const digitalKey = new DigitalKey({
+            userId: guestUserId,
+            bookingId: updatedBooking._id,
+            roomId,
+            hotelId,
+            keyCode,
+            qrCode,
+            type: 'primary',
+            validFrom: new Date(),
+            validUntil: updatedBooking.checkOut,
+            maxUses: -1, // unlimited
+            securitySettings: {
+              requirePin: false,
+              allowSharing: true,
+              maxSharedUsers: 5,
+              requireApproval: false
+            },
+            metadata: {
+              generatedBy: req.user._id,
+              notes: `auto_generated:check_in:staff_role=${req.user.role}`,
+              deviceInfo: {
+                userAgent: req.get('User-Agent'),
+                ipAddress: req.ip
+              }
+            }
+          });
+
+          await digitalKey.save();
+          autoGeneratedKey = { keyCode: digitalKey.keyCode, keyId: digitalKey._id };
+
+          // Notify the guest via WebSocket
+          const guestIdStr = guestUserId.toString();
+          websocketService.sendToUser(guestIdStr, 'digital-key:created', {
+            bookingId: updatedBooking._id,
+            keyCode: digitalKey.keyCode,
+            roomNumber: firstRoom?.roomId?.roomNumber || firstRoom?.roomId?.number
+          });
+
+          // Deliver in-app notification to guest
+          try {
+            const { createAndDeliverInApp } = await import('../services/inAppNotificationDeliveryService.js');
+            await createAndDeliverInApp({
+              userId: guestUserId,
+              hotelId,
+              type: 'system_alert',
+              title: 'Your digital room key is ready',
+              message: `Welcome! Your digital key is now active. Valid until ${new Date(updatedBooking.checkOut).toLocaleDateString()}.`,
+              priority: 'high',
+              metadata: { category: 'system', tags: ['digital_key', 'check_in', 'auto_generated'] }
+            });
+          } catch (notifErr) {
+            logger.warn('Check-in digital key in-app notification skipped', { error: notifErr.message });
+          }
+
+          logger.info('Auto-generated digital key on check-in', {
+            bookingNumber: updatedBooking.bookingNumber,
+            keyId: digitalKey._id,
+            guestUserId
+          });
+        }
+      }
+    } catch (keyGenErr) {
+      // Key generation failure must never prevent a successful check-in
+      logger.warn('Auto digital key generation on check-in failed (non-fatal)', {
+        bookingId: updatedBooking._id,
+        error: keyGenErr.message
+      });
+    }
+
     // Calculate balance information for frontend
     const totalPaid = updatedBooking.paymentDetails?.totalPaid || 0;
     const balanceInfo = {
@@ -2181,12 +2307,27 @@ router.patch('/:id/check-in',
 
     // Broadcast room status change via WebSocket after check-in
     try {
-      websocketService.broadcastToHotel(booking.hotelId?.toString() || booking.hotelId, 'room_status_changed', {
+      const hotelId = booking.hotelId?.toString() || booking.hotelId;
+      websocketService.broadcastToHotel(hotelId, 'room:status_changed', {
         roomId: booking.rooms?.[0]?.roomId,
         status: 'occupied',
         bookingId: booking._id,
         guestName: booking.guestDetails?.name || 'Guest'
       });
+      // Also emit booking:updated so booking dashboards refresh
+      websocketService.broadcastToHotel(hotelId, 'booking:updated', {
+        bookingId: booking._id,
+        status: booking.status,
+        action: 'checked_in'
+      });
+      // Notify the guest
+      const guestId = booking.userId?._id?.toString() || booking.userId?.toString();
+      if (guestId) {
+        websocketService.sendToUser(guestId, 'booking:updated', {
+          bookingId: booking._id,
+          status: 'checked_in'
+        });
+      }
     } catch (e) { /* WebSocket is non-critical */ }
 
     await bookingAuditService.logBookingMutation({
@@ -2208,6 +2349,9 @@ router.patch('/:id/check-in',
       data: {
         booking: updatedBooking,
         balanceInfo,
+        // Include auto-generated digital key metadata so the front desk UI can
+        // display the key code / QR immediately without a separate API call.
+        digitalKey: autoGeneratedKey,
         message: 'Guest checked in successfully'
       }
     });
@@ -2484,14 +2628,71 @@ router.patch('/:id/check-out',
       logger.warn('Checkout loyalty award skipped', { error: loyaltyErr.message });
     }
 
+    // Auto-revoke all digital keys for this booking.
+    // Use $push on accessLogs so the audit trail is kept, and persist revokedAt/revokedReason
+    // which are now proper schema fields (previously these were silently dropped by Mongoose strict mode).
+    try {
+      const { default: DigitalKey } = await import('../models/DigitalKey.js');
+      const revokedAt = new Date();
+      const revokedReason = 'Automatic revocation on checkout';
+      const revokedKeys = await DigitalKey.updateMany(
+        { bookingId: booking._id, status: 'active' },
+        {
+          $set: {
+            status: 'revoked',
+            revokedAt,
+            revokedReason
+          },
+          $push: {
+            accessLogs: {
+              action: 'revoked',
+              userId: req.user?._id || null,
+              timestamp: revokedAt,
+              deviceInfo: {},
+              metadata: { reason: revokedReason, triggeredBy: 'checkout' }
+            }
+          }
+        }
+      );
+      if (revokedKeys.modifiedCount > 0) {
+        logger.info(`Revoked ${revokedKeys.modifiedCount} digital keys for booking ${booking._id} on checkout`);
+        // Notify guest that keys are revoked
+        const guestUserId = booking.userId?._id?.toString() || booking.userId?.toString();
+        if (guestUserId) {
+          websocketService.sendToUser(guestUserId, 'digital-key:updated', {
+            bookingId: booking._id,
+            action: 'bulk_revoked',
+            reason: 'checkout'
+          });
+        }
+      }
+    } catch (keyErr) {
+      logger.warn('Failed to revoke digital keys on checkout:', keyErr.message);
+    }
+
     // Broadcast room status change via WebSocket after checkout
     try {
-      websocketService.broadcastToHotel(booking.hotelId?.toString() || booking.hotelId, 'room_status_changed', {
+      const hotelId = booking.hotelId?.toString() || booking.hotelId;
+      websocketService.broadcastToHotel(hotelId, 'room:status_changed', {
         roomId: booking.rooms?.[0]?.roomId,
         status: 'dirty',
         bookingId: booking._id,
         event: 'checkout'
       });
+      // Also emit booking:updated so booking dashboards refresh
+      websocketService.broadcastToHotel(hotelId, 'booking:updated', {
+        bookingId: booking._id,
+        status: booking.status,
+        action: 'checked_out'
+      });
+      // Notify the guest
+      const guestId = booking.userId?._id?.toString() || booking.userId?.toString();
+      if (guestId) {
+        websocketService.sendToUser(guestId, 'booking:updated', {
+          bookingId: booking._id,
+          status: 'checked_out'
+        });
+      }
     } catch (e) { /* WebSocket is non-critical */ }
 
     await bookingAuditService.logBookingMutation({
@@ -2508,6 +2709,16 @@ router.patch('/:id/check-out',
         outstandingBalance
       }
     });
+
+    // Trigger billing dashboard refresh
+    try {
+      dashboardUpdateService.triggerDashboardRefresh(
+        (booking.hotelId?._id || booking.hotelId)?.toString(),
+        'payments'
+      );
+    } catch (err) {
+      logger.warn('Failed to trigger billing dashboard refresh on checkout:', err.message);
+    }
 
     res.json({
       status: 'success',

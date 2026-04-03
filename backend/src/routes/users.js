@@ -6,6 +6,7 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -30,15 +31,33 @@ router.route('/:userId')
   .put(authorize('admin', 'manager'), userCreationController.updateUser)
   .delete(authorize('admin', 'manager'), userCreationController.deleteUser);
 
-// User profile routes (guests can access their own, staff/admin can access any in their hotel)
-router.route('/:userId/profile')
-  .get(ensurePropertyAccess, userManagementController.getUserBillingDetails)
-  .put(ensurePropertyAccess, userManagementController.updateUserProfile);
+// User profile routes.
+// SECURITY: Guests can only access their OWN profile. Staff/admin/manager/frontdesk can
+// access profiles within their hotel. The controller MUST enforce ownership for guest role.
+// Use a middleware to enforce this before hitting the controller.
+const enforceProfileOwnership = (req, res, next) => {
+  const { userId } = req.params;
+  const requestingUser = req.user;
 
-// User billing details routes
+  // Guests and travel agents may only access their own profile
+  if (['guest', 'travel_agent'].includes(requestingUser.role)) {
+    const requestingUserId = requestingUser._id?.toString() || requestingUser.id?.toString();
+    if (userId !== requestingUserId) {
+      return next(new ApplicationError('You can only access your own profile', 403));
+    }
+  }
+  next();
+};
+
+router.route('/:userId/profile')
+  .get(enforceProfileOwnership, ensurePropertyAccess, userManagementController.getUserBillingDetails)
+  .put(enforceProfileOwnership, ensurePropertyAccess, userManagementController.updateUserProfile);
+
+// User billing details routes.
+// SECURITY: Same ownership enforcement — guests can only view/update their own billing info.
 router.route('/:userId/billing')
-  .get(ensurePropertyAccess, userManagementController.getUserBillingDetails)
-  .put(ensurePropertyAccess, userManagementController.updateUserBillingDetails);
+  .get(enforceProfileOwnership, ensurePropertyAccess, userManagementController.getUserBillingDetails)
+  .put(enforceProfileOwnership, ensurePropertyAccess, userManagementController.updateUserBillingDetails);
 
 // GST validation utility
 router.post('/validate-gst', validate(mutationBaselineSchema), userManagementController.validateGSTNumber);

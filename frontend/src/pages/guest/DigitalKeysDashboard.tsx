@@ -63,8 +63,8 @@ function DigitalKeysDashboard() {
 
   // Real-time WebSocket connection setup
   useEffect(() => {
-    connect().catch(() => {
-      // Keep page usable even if real-time transport is unavailable.
+    connect().catch((error) => {
+      console.error('Real-time connection failed (page remains usable):', error);
     });
     return () => {
       // Do not disconnect shared singleton socket on page unmount.
@@ -1047,7 +1047,7 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div role="dialog" aria-modal="true" aria-label="Generate Digital Key" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Generate Digital Key</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1195,7 +1195,7 @@ function ShareKeyModal({ digitalKey, onClose, onSubmit, isLoading }: ShareKeyMod
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div role="dialog" aria-modal="true" aria-label="Share Digital Key" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="w-full max-w-md p-6">
         <h2 className="text-xl font-semibold mb-4">Share Digital Key</h2>
         <p className="text-sm text-gray-600 mb-4">
@@ -1269,7 +1269,7 @@ function KeyLogsModal({ digitalKey, onClose }: KeyLogsModalProps) {
   });
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div role="dialog" aria-modal="true" aria-label="Access Logs" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="w-full max-w-4xl p-6 max-h-[80vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Access Logs</h2>

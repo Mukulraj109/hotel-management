@@ -1,5 +1,19 @@
 import { api } from './api';
 
+export interface ExtraPersonCharge {
+  _id?: string;
+  totalCharge: number;
+  paidAmount?: number;
+  isPaid?: boolean;
+  status?: string;
+}
+
+export interface SettlementTracking {
+  status?: string;
+  outstandingBalance: number;
+  finalAmount?: number;
+}
+
 export interface StaffUpcomingBooking {
   _id: string;
   bookingNumber: string;
@@ -34,6 +48,16 @@ export interface StaffUpcomingBooking {
     name: string;
     address?: string;
   };
+  /** Extra persons added to the booking (e.g. walk-in additions after initial booking) */
+  extraPersons?: Array<{
+    _id?: string;
+    name?: string;
+    isActive: boolean;
+  }>;
+  /** Per-night charges for extra persons */
+  extraPersonCharges?: ExtraPersonCharge[];
+  /** Settlement tracking for outstanding balances after checkout */
+  settlementTracking?: SettlementTracking;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,9 +73,11 @@ interface ApiResponse<T> {
   data: T;
   results?: number;
   pagination?: {
-    current: number;
+    /** Backend returns `page` (not `current`) — matches /bookings/upcoming response shape */
+    page: number;
     pages: number;
     total: number;
+    limit: number;
   };
   stats?: StaffUpcomingStats;
 }

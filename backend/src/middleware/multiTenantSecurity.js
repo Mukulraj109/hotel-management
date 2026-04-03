@@ -14,7 +14,7 @@ import cacheService from '../services/cacheService.js';
  * Property isolation middleware - ensures users can only access data from their properties
  */
 export const enforcePropertyIsolation = (options = {}) => {
-  const { 
+  const {
     skipForSuperAdmin = true,
     allowCrossPropertyAccess = false,
     propertyIdParam = 'hotelId',
@@ -26,6 +26,16 @@ export const enforcePropertyIsolation = (options = {}) => {
       // Skip for super admin if configured
       if (skipForSuperAdmin && req.user?.role === 'super_admin') {
         return next();
+      }
+
+      // SECURITY: Re-validate that the authenticated user is still active.
+      // The authenticate() middleware already checks this for every request,
+      // but enforcePropertyIsolation may be used standalone — double-check here.
+      if (!req.user?.isActive) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account is no longer active'
+        });
       }
 
       // Get user's accessible properties
@@ -446,7 +456,10 @@ async function getUserAccessibleProperties(userId) {
         index === self.findIndex(p => p._id.toString() === property._id.toString())
       );
 
-      await cacheService.set(cacheKey, userProperties, 1800); // Cache for 30 minutes
+      // SECURITY: Use a short TTL (5 min) so that deactivated/reassigned users
+      // lose property access promptly. clearUserAccessCache() is called on
+      // role/hotel changes but short TTL is a defense-in-depth measure.
+      await cacheService.set(cacheKey, userProperties, 300); // Cache for 5 minutes
     }
 
     return userProperties;
@@ -462,17 +475,18 @@ async function getUserAccessibleProperties(userId) {
  */
 async function getUserAccessiblePropertyGroups(userId) {
   const cacheKey = `user_property_groups:${userId}`;
-  
+
   try {
     let userPropertyGroups = await cacheService.get(cacheKey);
-    
+
     if (!userPropertyGroups) {
       // Get property groups owned by user
       userPropertyGroups = await PropertyGroup.find({ ownerId: userId, status: 'active' })
         .select('_id name groupType')
         .lean().limit(1000);
 
-      await cacheService.set(cacheKey, userPropertyGroups, 1800); // Cache for 30 minutes
+      // SECURITY: Short TTL mirrors the property cache policy above.
+      await cacheService.set(cacheKey, userPropertyGroups, 300); // Cache for 5 minutes
     }
 
     return userPropertyGroups;

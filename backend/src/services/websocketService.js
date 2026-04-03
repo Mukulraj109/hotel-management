@@ -379,6 +379,39 @@ class WebSocketService {
   }
 
   /**
+   * Broadcast to users with a specific role within a specific hotel.
+   * This prevents cross-tenant data leakage by ensuring only sockets
+   * that belong to BOTH the hotel room and the role room receive the event.
+   */
+  broadcastToHotelRole(hotelId, role, eventType, data) {
+    if (!this.io || !hotelId || !role) return;
+    const hotelRoom = `hotel:${hotelId}`;
+    const roleRoom = `role:${role}`;
+    // Get sockets that are in BOTH the hotel room and the role room
+    const hotelSockets = this.io.sockets.adapter.rooms.get(hotelRoom);
+    const roleSockets = this.io.sockets.adapter.rooms.get(roleRoom);
+    if (!hotelSockets || !roleSockets) return;
+
+    const targetSockets = new Set([...hotelSockets].filter(id => roleSockets.has(id)));
+    const payload = {
+      type: 'event',
+      data: {
+        entity: eventType.split(':')[0],
+        action: eventType.split(':')[1] || 'updated',
+        data,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    for (const socketId of targetSockets) {
+      const socket = this.io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('event', payload);
+      }
+    }
+  }
+
+  /**
    * Alias for broadcastToHotel — several callers use this name.
    */
   async sendToHotel(hotelId, event, data) {

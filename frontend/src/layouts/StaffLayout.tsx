@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useQuery } from '@tanstack/react-query';
-import { staffAlertService } from '../services/staffAlertService';
-import { useNotifications, useNotificationStream } from '../hooks/useNotifications';
+import { useNotificationStream } from '../hooks/useNotifications';
 import NotificationDropdown from '../components/notifications/NotificationDropdown';
 import SettingsDropdown from '../components/settings/SettingsDropdown';
 import {
@@ -62,15 +60,6 @@ export default function StaffLayout() {
   // Connect to notification stream
   useNotificationStream();
 
-  // Fetch alert summary for notification bell
-  const { data: alertSummary } = useQuery({
-    queryKey: ['staff-alerts-summary'],
-    queryFn: () => staffAlertService.getAlertSummary(),
-    refetchInterval: 30000, // Every 30 seconds
-    retry: 1,
-    staleTime: 25000 // Consider stale after 25 seconds
-  });
-
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -104,8 +93,9 @@ export default function StaffLayout() {
               </div>
               <nav className="mt-5 px-2 space-y-1">
                 {navigation.map((item) => (
-                  <button aria-label="Close"
+                  <button
                     key={item.name}
+                    aria-label={`Navigate to ${item.name}`}
                     onClick={() => {
                       navigate(item.href);
                       setSidebarOpen(false);
@@ -138,8 +128,9 @@ export default function StaffLayout() {
               </div>
               <nav className="mt-5 flex-1 px-2 space-y-1">
                 {navigation.map((item) => (
-                  <button aria-label="Close"
+                  <button
                     key={item.name}
+                    aria-label={`Navigate to ${item.name}`}
                     onClick={() => navigate(item.href)}
                     className={`
                       w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md text-left
@@ -163,7 +154,7 @@ export default function StaffLayout() {
       <div className="flex flex-col w-0 flex-1 overflow-hidden">
         {/* Top navigation */}
         <div className="relative z-10 flex-shrink-0 flex h-16 bg-white shadow">
-          <button aria-label="More options"
+          <button aria-label="Open navigation menu"
             className="px-4 border-r border-gray-200 text-gray-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 md:hidden"
             onClick={() => setSidebarOpen(true)}
           >
@@ -205,7 +196,8 @@ export default function StaffLayout() {
                   <span className="text-xs text-gray-500 capitalize">{user?.role}</span>
                 </div>
                 <div className="relative">
-                  <button aria-label="Close"
+                  <button
+                    aria-label="Logout"
                     onClick={handleLogout}
                     className="flex items-center space-x-2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     title="Logout"
@@ -219,7 +211,7 @@ export default function StaffLayout() {
         </div>
 
         {/* Main content area */}
-        <main className="flex-1 relative overflow-y-auto focus:outline-none">
+        <main id="main-content" aria-label="Main content" className="flex-1 relative overflow-y-auto focus:outline-none">
           <div className="py-6">
             <Outlet />
           </div>

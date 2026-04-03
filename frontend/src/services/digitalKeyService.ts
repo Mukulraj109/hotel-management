@@ -36,7 +36,13 @@ export interface DigitalKey {
   sharedWith: SharedKey[];
   accessLogs: AccessLog[];
   securitySettings: SecuritySettings;
-  metadata: {
+  /**
+   * metadata is stripped server-side by sanitizeDigitalKey() before the response
+   * is sent; do not rely on it being present. It is kept as optional here for
+   * compatibility with any code path that bypasses sanitization (e.g. future
+   * admin-only detail endpoint).
+   */
+  metadata?: {
     generatedBy?: string;
     deviceInfo?: {
       userAgent?: string;
@@ -221,6 +227,22 @@ class DigitalKeyService {
   async generateKey(request: GenerateKeyRequest): Promise<{ message: string; data: DigitalKey }> {
     try {
       const response = await api.post('/digital-keys/generate', request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  /**
+   * Staff/admin generates a digital key on behalf of a guest booking.
+   * Calls POST /digital-keys/admin/generate which sets the key owner to the
+   * booking's guest (not the logged-in staff member).
+   */
+  async generateKeyAsPropertyStaff(
+    request: GenerateKeyRequest & { hotel?: string }
+  ): Promise<{ message: string; data: DigitalKey }> {
+    try {
+      const response = await api.post('/digital-keys/admin/generate', request);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

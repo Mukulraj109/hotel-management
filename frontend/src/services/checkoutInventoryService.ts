@@ -81,15 +81,11 @@ interface CheckoutInventoryFilters {
   limit?: number;
 }
 
+// Note: the backend wraps pagination inside `data` (not at the top level of the response).
+// Shape: { status, data: { checkoutInventories: [...], pagination: { page, limit, total, pages } } }
 interface ApiResponse<T> {
   status: string;
-  data: T;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
+  data: T & { pagination?: { page: number; limit: number; total: number; pages: number } };
 }
 
 class CheckoutInventoryService {

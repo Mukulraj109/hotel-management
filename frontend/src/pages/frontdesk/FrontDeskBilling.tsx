@@ -1,11 +1,19 @@
 import React from 'react';
-import FrontDeskFeatureNotice from './FrontDeskFeatureNotice';
+import BillingHistory from '../admin/BillingHistory';
 
-export default function FrontDeskBilling() {
-  return (
-    <FrontDeskFeatureNotice
-      title="Financial Administration Restricted"
-      description="Revenue analytics, financial configuration, and billing administration are restricted to admin/manager roles."
-    />
-  );
-}
+/**
+ * FrontDeskBilling — Front-desk billing & payments page.
+ *
+ * Frontdesk staff have the same read access to billing history as admin/manager.
+ * They are also authorised by the backend RBAC to initiate refunds
+ * (payments.refund policy includes 'frontdesk').
+ *
+ * The underlying BillingHistory component queries /billing-history which is
+ * tenant-scoped by the backend ensureTenantContext middleware — frontdesk staff
+ * only ever see their own hotel's data.
+ */
+const FrontDeskBilling: React.FC = () => {
+  return <BillingHistory />;
+};
+
+export default FrontDeskBilling;

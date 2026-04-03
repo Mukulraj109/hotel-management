@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Package,
@@ -11,6 +11,8 @@ import {
   RefreshCw,
   Eye,
   Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,9 +20,26 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService } from '../../services/adminGuestServicesService';
 import { useAuth } from '../../context/AuthContext';
+
+// Inventory requests are identified by serviceVariation = 'inventory_request'
+// or by serviceType = 'other' with a serviceVariation containing 'inventory'.
+// The backend does not have a dedicated inventory-request route; they are
+// guest-service records of type 'other' with serviceVariation 'inventory_request'.
+const INVENTORY_VARIATIONS = ['inventory_request', 'inventory'];
+
+const isInventoryRequest = (service: GuestService): boolean => {
+  const variation = (service.serviceVariation || '').toLowerCase();
+  const variations: string[] = (service.serviceVariations || []).map((v: string) => v.toLowerCase());
+  return (
+    service.serviceType === 'other' &&
+    (INVENTORY_VARIATIONS.some(v => variation.includes(v)) ||
+      variations.some(v => INVENTORY_VARIATIONS.some(iv => v.includes(iv))))
+  );
+};
 
 interface InventoryRequest extends GuestService {
   items?: Array<{
@@ -31,8 +50,11 @@ interface InventoryRequest extends GuestService {
   specialInstructions?: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function StaffInventoryRequests() {
   const { user } = useAuth();
+  const { on, off } = useRealTime();
   const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,55 +62,80 @@ export default function StaffInventoryRequests() {
   const [selectedRequest, setSelectedRequest] = useState<InventoryRequest | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-
-  useEffect(() => {
-    fetchRequests();
-  }, [statusFilter, currentUserId]);
-
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
+    if (!currentUserId) return;
     try {
       setLoading(true);
       const filters = {
         serviceType: 'other',
+        serviceVariation: 'inventory_request',
         assignedTo: currentUserId,
         status: statusFilter === 'all' ? undefined : statusFilter,
-        page: 1,
-        limit: 20
+        page,
+        limit: PAGE_SIZE,
       };
 
       const response = await adminGuestServicesService.getServices(filters);
-      
-      // Filter for inventory requests specifically
-      const inventoryRequests = (response.data.serviceRequests || []).filter(service => 
-        service.serviceType === 'other' && (
-          service.title?.toLowerCase().includes('inventory') ||
-          service.title?.toLowerCase().includes('missing') ||
-          service.title?.toLowerCase().includes('damaged') ||
-          service.title?.toLowerCase().includes('towel') ||
-          service.title?.toLowerCase().includes('pillow') ||
-          service.title?.toLowerCase().includes('amenity')
-        )
-      );
+      const serviceRequests: InventoryRequest[] = (response.data?.serviceRequests || []);
+
+      // Secondary guard: if the backend doesn't filter by serviceVariation perfectly,
+      // filter client-side only as a safety net (not as the primary strategy).
+      const inventoryRequests = serviceRequests.filter(isInventoryRequest);
 
       setRequests(inventoryRequests);
+
+      const paginationData = response.data?.pagination;
+      if (paginationData) {
+        setTotalCount(paginationData.total);
+        setTotalPages(paginationData.pages || Math.ceil(paginationData.total / PAGE_SIZE) || 1);
+      }
     } catch (error) {
       toast.error('Failed to load inventory requests');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUserId, statusFilter, page]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+
+  // Reset to page 1 when statusFilter changes
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  // Real-time WebSocket listeners for guest service / inventory events
+  useEffect(() => {
+    const handleServiceEvent = () => {
+      fetchRequests();
+    };
+    on('guest-services:created', handleServiceEvent);
+    on('guest-services:updated', handleServiceEvent);
+    on('guest-services:status_changed', handleServiceEvent);
+    on('guest-services:assigned', handleServiceEvent);
+    return () => {
+      off('guest-services:created', handleServiceEvent);
+      off('guest-services:updated', handleServiceEvent);
+      off('guest-services:status_changed', handleServiceEvent);
+      off('guest-services:assigned', handleServiceEvent);
+    };
+  }, [on, off, fetchRequests]);
 
   const updateRequestStatus = async (requestId: string, newStatus: 'in_progress' | 'completed') => {
     try {
       setUpdating(requestId);
-      await adminGuestServicesService.updateStatus(requestId, newStatus);
-      
+      // updateService includes hotelId resolution required by the PATCH endpoint
+      await adminGuestServicesService.updateService(requestId, { status: newStatus });
       toast.success(`Request ${newStatus === 'completed' ? 'completed' : 'started'} successfully`);
-      fetchRequests(); // Refresh the list
-    } catch (error) {
-      toast.error('Failed to update request status');
+      fetchRequests();
+    } catch (error: unknown) {
+      const maybeAxios = error as { response?: { data?: { message?: string } } };
+      toast.error(maybeAxios.response?.data?.message || 'Failed to update request status');
     } finally {
       setUpdating(null);
     }
@@ -182,11 +229,6 @@ export default function StaffInventoryRequests() {
     return summary.length > 30 ? `${summary.substring(0, 30)}...` : summary;
   };
 
-  const filterRequestsByStatus = (status: string) => {
-    if (status === 'all') return requests;
-    return requests.filter(request => request.status === status);
-  };
-
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -203,18 +245,15 @@ export default function StaffInventoryRequests() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  const assignedRequests = filterRequestsByStatus('assigned');
-  const inProgressRequests = filterRequestsByStatus('in_progress');
-  const completedRequests = filterRequestsByStatus('completed');
-  const allActiveRequests = requests.filter(r => ['assigned', 'in_progress'].includes(r.status));
+  // Stats: when a specific status filter is active the totalCount from the server
+  // is the accurate count for that status bucket. Otherwise count the current page
+  // as a lower-bound indicator (cross-page totals require separate API calls).
+  const assignedCount = statusFilter === 'assigned' ? totalCount : requests.filter(r => r.status === 'assigned').length;
+  const inProgressCount = statusFilter === 'in_progress' ? totalCount : requests.filter(r => r.status === 'in_progress').length;
+  const completedCount = statusFilter === 'completed' ? totalCount : requests.filter(r => r.status === 'completed').length;
+  const activeCount = (statusFilter === 'assigned' || statusFilter === 'in_progress')
+    ? totalCount
+    : requests.filter(r => ['assigned', 'in_progress'].includes(r.status)).length;
 
   return (
     <ErrorBoundary level="page">
@@ -241,7 +280,7 @@ export default function StaffInventoryRequests() {
                   <Package className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-blue-600">{assignedRequests.length}</p>
+                  <p className="text-2xl font-bold text-blue-600">{assignedCount}</p>
                   <p className="text-sm text-gray-600">Assigned</p>
                 </div>
               </div>
@@ -255,7 +294,7 @@ export default function StaffInventoryRequests() {
                   <RefreshCw className="h-6 w-6 text-yellow-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-yellow-600">{inProgressRequests.length}</p>
+                  <p className="text-2xl font-bold text-yellow-600">{inProgressCount}</p>
                   <p className="text-sm text-gray-600">In Progress</p>
                 </div>
               </div>
@@ -269,7 +308,7 @@ export default function StaffInventoryRequests() {
                   <CheckCircle className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-600">{completedRequests.length}</p>
+                  <p className="text-2xl font-bold text-green-600">{completedCount}</p>
                   <p className="text-sm text-gray-600">Completed</p>
                 </div>
               </div>
@@ -283,7 +322,7 @@ export default function StaffInventoryRequests() {
                   <AlertCircle className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-purple-600">{allActiveRequests.length}</p>
+                  <p className="text-2xl font-bold text-purple-600">{activeCount}</p>
                   <p className="text-sm text-gray-600">Active</p>
                 </div>
               </div>
@@ -331,14 +370,18 @@ export default function StaffInventoryRequests() {
 
         {/* Requests List */}
         <div className="space-y-4">
-          {requests.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <LoadingSpinner />
+            </div>
+          ) : requests.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No inventory requests</h3>
                 <p className="text-gray-500">
-                  {statusFilter === 'all' 
-                    ? "You don't have any inventory requests assigned to you yet." 
+                  {statusFilter === 'all'
+                    ? "You don't have any inventory requests assigned to you yet."
                     : `No ${statusFilter.replace('_', ' ')} requests found.`
                   }
                 </p>
@@ -412,6 +455,38 @@ export default function StaffInventoryRequests() {
             ))
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-sm text-gray-600">
+              Showing {requests.length} of {totalCount} requests
+            </p>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-sm text-gray-700 px-2">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || loading}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* View Request Modal */}
         {selectedRequest && (

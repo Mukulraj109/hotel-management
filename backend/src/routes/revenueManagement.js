@@ -2,6 +2,7 @@ import express from 'express';
 import revenueController from '../controllers/revenueManagementController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 import { validateFinancial, pricingRuleSchema } from '../middleware/financialValidation.js';
@@ -14,6 +15,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 // Apply rate limiting, authentication and property access to all revenue management routes
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Pricing Rules Routes

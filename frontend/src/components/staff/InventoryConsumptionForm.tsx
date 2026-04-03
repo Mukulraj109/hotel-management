@@ -15,8 +15,9 @@ interface InventoryItem {
   _id: string;
   name: string;
   category: string;
-  currentStock: number;
-  unitPrice: number;
+  // Unified Inventory model fields (from /api/v1/inventory)
+  currentStock: number;   // mapped from quantity
+  unitPrice: number;      // mapped from costPerUnit
   isComplimentary: boolean;
   isChargeable: boolean;
   maxComplimentary: number;
@@ -89,9 +90,25 @@ const InventoryConsumptionForm: React.FC<InventoryConsumptionFormProps> = ({
   const fetchAvailableItems = async () => {
     try {
       setLoading(true);
-      const { data: result } = await api.get('/inventory');
-      if (result.success) {
-        setAvailableItems(result.data.inventoryItems || []);
+      // Backend returns { status: 'success', data: { items: [...] }, pagination: {...} }
+      // Fields: quantity (currentStock), costPerUnit (unitPrice), minimumThreshold, etc.
+      // Use max limit (100) allowed by the backend to reduce round-trips.
+      const { data: result } = await api.get('/inventory?limit=100&page=1');
+      if (result.status === 'success') {
+        const rawItems: Record<string, unknown>[] = result.data?.items || [];
+        // Map unified Inventory model fields to the shape this component expects
+        const mappedItems: InventoryItem[] = rawItems.map((item) => ({
+          _id: item._id as string,
+          name: item.name as string,
+          category: item.category as string,
+          currentStock: typeof item.quantity === 'number' ? (item.quantity as number) : 0,
+          unitPrice: typeof item.costPerUnit === 'number' ? (item.costPerUnit as number) : 0,
+          isComplimentary: false,
+          isChargeable: typeof item.costPerUnit === 'number' && (item.costPerUnit as number) > 0,
+          maxComplimentary: 0,
+          description: item.description as string | undefined
+        }));
+        setAvailableItems(mappedItems);
       }
     } catch (error) {
       toast.error('Failed to load inventory items');
@@ -275,7 +292,7 @@ const InventoryConsumptionForm: React.FC<InventoryConsumptionFormProps> = ({
                           </div>
                           <div className="flex justify-between">
                             <span>Price:</span>
-                            <span>${item.unitPrice.toFixed(2)}</span>
+                            <span>₹{item.unitPrice.toFixed(2)}</span>
                           </div>
                         </div>
 
@@ -459,7 +476,7 @@ const InventoryConsumptionForm: React.FC<InventoryConsumptionFormProps> = ({
                                 <div>
                                   <label className="text-sm font-medium">Cost</label>
                                   <p className="text-lg font-bold mt-1">
-                                    ${(item.unitPrice * consumption.quantity).toFixed(2)}
+                                    ₹{(item.unitPrice * consumption.quantity).toFixed(2)}
                                   </p>
                                 </div>
                               </div>
@@ -514,7 +531,7 @@ const InventoryConsumptionForm: React.FC<InventoryConsumptionFormProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-lg font-medium">Total Cost:</span>
                         <span className="text-2xl font-bold text-green-600">
-                          ${calculateTotalCost().toFixed(2)}
+                          ₹{calculateTotalCost().toFixed(2)}
                         </span>
                       </div>
                     </CardContent>

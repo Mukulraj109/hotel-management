@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -11,6 +12,8 @@ import Room from '../models/Room.js';
 import InventoryItem from '../models/InventoryItem.js';
 import RoomInventory from '../models/RoomInventory.js';
 import DailyRoutineCheckTemplate from '../models/DailyRoutineCheckTemplate.js';
+import MaintenanceRequest from '../models/MaintenanceRequest.js';
+import StaffAlert from '../models/StaffAlert.js';
 import User from '../models/User.js';
 import logger from '../utils/logger.js';
 import websocketService from '../services/websocketService.js';
@@ -83,6 +86,7 @@ const isDuplicateKeyError = (error) =>
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -594,7 +598,6 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
 
   // Update Room status to 'vacant' (clean) after daily check completion
   try {
-    const Room = (await import('../models/Room.js')).default;
     await Room.findByIdAndUpdate(roomId, { status: 'vacant', lastCleaned: new Date() }, { new: true });
     logger.debug('Room status updated to vacant after daily check', { roomId });
     await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:status_updated', {
@@ -605,10 +608,70 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
     logger.warn('Failed to update room status after daily check', { roomId, error: roomErr.message });
   }
 
-  // Create follow-up tasks if needed
-  if (cart && cart.some(item => item.action === 'replace' || item.action === 'add')) {
-    // Create maintenance or inventory tasks as needed
-    logger.debug('Creating follow-up tasks for room', { roomId });
+  // Create follow-up maintenance tasks for items that need replacement
+  // This is the daily-routine-check → housekeeping/maintenance connection.
+  if (cart && cart.length > 0) {
+    const replaceItems = cart.filter(item => item.action === 'replace');
+    if (replaceItems.length > 0) {
+      try {
+        const itemDescriptions = replaceItems.map(i => `${i.itemName} (x${i.quantity || 1})`).join(', ');
+        await MaintenanceRequest.create({
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          roomId: new mongoose.Types.ObjectId(roomId),
+          issueType: 'other',
+          priority: 'medium',
+          description: `Daily check replacement required: ${itemDescriptions}`,
+          status: 'pending',
+          createdBy: new mongoose.Types.ObjectId(checkedBy)
+        });
+        logger.debug('Maintenance request created for replacement items', { roomId, count: replaceItems.length });
+
+        // Broadcast staff alert so housekeeping/maintenance sees it in real-time
+        await websocketService.broadcastToHotel(hotelId.toString(), 'staff-alert:new', {
+          alert: {
+            type: 'maintenance_required',
+            priority: 'medium',
+            title: `Room ${room.roomNumber} — replacement needed`,
+            message: `Items require replacement after daily check: ${itemDescriptions}`,
+            category: 'maintenance',
+            status: 'active',
+            metadata: { roomNumber: room.roomNumber }
+          }
+        });
+      } catch (maintenanceErr) {
+        logger.warn('Failed to create maintenance request for replacement items', {
+          roomId,
+          error: maintenanceErr.message
+        });
+      }
+    }
+
+    // Create StaffAlert for damaged items so admin dashboard updates immediately
+    const damagedItems = cart.filter(item => item.action === 'replace' && item.category);
+    if (damagedItems.length > 0) {
+      try {
+        const itemDescriptions = damagedItems.map(i => i.itemName).join(', ');
+        const newAlert = await StaffAlert.create({
+          hotelId: hotelId.toString(),
+          type: 'room_issue',
+          priority: 'high',
+          title: `Room ${room.roomNumber} — items need replacement`,
+          message: `Daily check flagged items for replacement: ${itemDescriptions}`,
+          category: 'maintenance',
+          status: 'active',
+          createdBy: new mongoose.Types.ObjectId(checkedBy),
+          source: { type: 'staff', id: resultCheck._id.toString() },
+          metadata: { roomNumber: room.roomNumber }
+        });
+        await websocketService.broadcastToHotel(hotelId.toString(), 'staff-alert:new', { alert: newAlert });
+        logger.debug('StaffAlert created for replacement items from daily check', { roomId, alertId: newAlert._id });
+      } catch (alertErr) {
+        logger.warn('Failed to create StaffAlert for daily-check replacement items', {
+          roomId,
+          error: alertErr.message
+        });
+      }
+    }
   }
 
   res.status(200).json({

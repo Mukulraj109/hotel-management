@@ -242,7 +242,11 @@ router.post('/offers/bulk',
         );
         break;
       case 'delete':
-        result = await Offer.deleteMany({ _id: { $in: offerIds }, hotelId });
+        // FIX: Soft-delete instead of hard-delete to preserve loyalty transaction references
+        result = await Offer.updateMany(
+          { _id: { $in: offerIds }, hotelId },
+          { isActive: false, deletedAt: new Date() }
+        );
         break;
       default:
         throw new ApplicationError('Invalid operation', 400);
@@ -618,15 +622,23 @@ router.delete('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'mana
   logger.debug('Deleting offer', { offerId: req.params.id });
 
   // FIX: Add hotelId filter for tenant isolation
-  const offer = await Offer.findOneAndDelete({ _id: req.params.id, hotelId });
+  // FIX: Soft-delete instead of hard-delete to preserve loyalty transaction references
+  const offer = await Offer.findOneAndUpdate(
+    { _id: req.params.id, hotelId },
+    {
+      isActive: false,
+      deletedAt: new Date()
+    },
+    { new: true }
+  );
 
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
 
-  logger.debug('Offer deleted successfully', { offerId: req.params.id });
+  logger.debug('Offer soft-deleted successfully', { offerId: req.params.id });
 
-  res.status(204).json({
+  res.status(200).json({
     status: 'success',
     data: null
   });

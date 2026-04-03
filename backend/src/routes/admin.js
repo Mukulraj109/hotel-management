@@ -82,8 +82,9 @@ router.get('/hotels', authenticate, ensureTenantContext, ensurePropertyAccess, a
   });
 }));
 
-// Users list endpoint - accessible by admin, staff, and frontdesk (needed for staff management)
-router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
+// Users list endpoint - accessible by admin, manager, staff, and frontdesk
+// SECURITY: role-based field visibility and scope enforcement applied below.
+router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, authorize(['admin', 'manager', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
   const {
     role,
     search,
@@ -96,32 +97,72 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
 
   const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
 
-  // If a specific hotelId was requested, validate it is within accessible properties
+  // SECURITY: Non-admin/manager roles are limited to guest lookups only.
+  // staff and frontdesk must NOT be able to enumerate other staff/admin accounts —
+  // they only need guest user access for booking-creation workflows.
+  const canViewStaffUsers = ['admin', 'manager'].includes(req.user.role);
+
+  // Non-admin/manager users are strictly scoped to properties they can access.
+  // If the requested hotelId is not in their accessible set, return empty — no data leak.
   let scopedPropertyIds = accessiblePropertyIds;
   if (queryHotelId && typeof queryHotelId === 'string') {
     const isAccessible = accessiblePropertyIds.some(id => id.toString() === queryHotelId);
     if (isAccessible) {
       scopedPropertyIds = [queryHotelId];
+    } else if (req.user.role !== 'admin') {
+      // Non-admin requested a hotel they don't own — return empty result set silently
+      return res.json({
+        status: 'success',
+        data: {
+          users: [],
+          pagination: { page: parsedPage, limit: parsedLimit, total: 0, pages: 0 }
+        }
+      });
     }
-    // If not accessible, silently fall back to all accessible properties (no data leak)
+    // Admins fall through with the full queryHotelId filter below
   }
 
   const query = {};
 
   if (isActive !== undefined) query.isActive = isActive === 'true';
 
-  // Handle role filtering properly for staff management vs general user management
+  // SECURITY: Role-based query scoping:
+  //   - admin/manager: can query staff roles OR guest role, all scoped to their hotel
+  //   - staff/frontdesk: can ONLY query guest role (needed for booking creation)
+  const STAFF_ROLES = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
+
   if (role === 'guest') {
     query.role = 'guest';
-    query.hotelId = { $in: scopedPropertyIds };
-  } else if (role === 'staff' || role === 'admin') {
+    // Guests are not hotel-scoped so only restrict by property if explicitly requested
+    if (scopedPropertyIds.length > 0) {
+      query.hotelId = { $in: scopedPropertyIds };
+    }
+  } else if (role && STAFF_ROLES.includes(role)) {
+    if (!canViewStaffUsers) {
+      // staff/frontdesk tried to enumerate staff accounts — deny silently with empty result
+      return res.json({
+        status: 'success',
+        data: {
+          users: [],
+          pagination: { page: parsedPage, limit: parsedLimit, total: 0, pages: 0 }
+        }
+      });
+    }
     query.role = role;
     query.hotelId = { $in: scopedPropertyIds };
   } else if (!role) {
-    query.$or = [
-      { role: 'staff', hotelId: { $in: scopedPropertyIds } },
-      { role: 'admin', hotelId: { $in: scopedPropertyIds } }
-    ];
+    if (canViewStaffUsers) {
+      // admin/manager default: all staff roles scoped to accessible properties
+      query.$or = [
+        ...STAFF_ROLES.map(r => ({ role: r, hotelId: { $in: scopedPropertyIds } }))
+      ];
+    } else {
+      // staff/frontdesk default with no role filter: only guests from their hotel
+      query.role = 'guest';
+      if (scopedPropertyIds.length > 0) {
+        query.hotelId = { $in: scopedPropertyIds };
+      }
+    }
   }
 
   if (search) {
@@ -145,10 +186,12 @@ router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, au
 
   const skip = (parsedPage - 1) * parsedLimit;
 
+  // SECURITY: Never expose sensitive auth fields to any caller on this endpoint.
+  // Additionally strip passwordChangedAt for all callers.
   const [users, total] = await Promise.all([
     User.find(query)
       .populate('hotelId', 'name')
-      .select('-password -passwordResetToken -passwordResetExpires')
+      .select('-password -passwordResetToken -passwordResetExpires -passwordChangedAt -consentHistory')
       .sort('-createdAt')
       .skip(skip)
       .limit(parsedLimit)
@@ -312,32 +355,74 @@ router.get('/dashboard', catchAsync(async (req, res) => {
 router.post('/users', authorizePolicy('admin', 'createUser'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name, email, phone, password, role, preferences } = req.body;
 
+  // Validate required fields
+  if (!name || !email || !password) {
+    throw new ApplicationError('Name, email, and password are required', 400);
+  }
+
+  // SECURITY: Enforce minimum password complexity for staff accounts.
+  // Guest self-registration goes through /auth/register (schema enforces min 8 chars).
+  // Admin-created staff accounts must meet the same standard.
+  if (typeof password !== 'string' || password.length < 8) {
+    throw new ApplicationError('Password must be at least 8 characters long', 400);
+  }
+  if (!/[A-Z]/.test(password)) {
+    throw new ApplicationError('Password must contain at least one uppercase letter', 400);
+  }
+  if (!/[0-9]/.test(password)) {
+    throw new ApplicationError('Password must contain at least one digit', 400);
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    throw new ApplicationError('Password must contain at least one special character', 400);
+  }
+
+  // Restrict to valid, known roles — prevent privilege escalation via raw role assignment
+  const VALID_ROLES = ['guest', 'staff', 'frontdesk', 'manager', 'admin', 'housekeeping'];
+  const assignedRole = role || 'guest';
+  if (!VALID_ROLES.includes(assignedRole)) {
+    throw new ApplicationError(`Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`, 400);
+  }
+
   // Check if user already exists
-  const existingUser = await User.findOne({ email }).lean();
+  const existingUser = await User.findOne({ email: email.toLowerCase() }).lean();
   if (existingUser) {
     throw new ApplicationError('User with this email already exists', 409);
   }
 
   const userData = {
     name,
-    email,
+    email: email.toLowerCase(),
     phone,
     password,
-    role: role || 'guest',
+    role: assignedRole,
     preferences
   };
 
-  // If creating staff or admin, automatically assign to the current admin's hotel
-  if (role === 'staff' || role === 'admin') {
+  // All non-guest roles must be associated with the admin's hotel
+  const HOTEL_SCOPED_ROLES = ['staff', 'frontdesk', 'manager', 'admin', 'housekeeping'];
+  if (HOTEL_SCOPED_ROLES.includes(assignedRole)) {
+    if (!req.user.hotelId) {
+      throw new ApplicationError('Admin account is not associated with a hotel — cannot create staff users', 400);
+    }
     userData.hotelId = req.user.hotelId;
+    userData.properties = [req.user.hotelId];
+    userData.primaryProperty = req.user.hotelId;
   }
 
   const user = await User.create(userData);
 
+  // Strip all sensitive auth fields from response
+  const userResponse = user.toJSON();
+  delete userResponse.password;
+  delete userResponse.passwordResetToken;
+  delete userResponse.passwordResetExpires;
+  delete userResponse.passwordChangedAt;
+  delete userResponse.consentHistory;
+
   res.status(201).json({
     status: 'success',
     data: {
-      user: user.toJSON()
+      user: userResponse
     }
   });
 }));

@@ -4,6 +4,8 @@ import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -20,6 +22,12 @@ import Booking from '../models/Booking.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
+
+const uploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 uploads per 15 minutes per IP
+  message: { status: 'error', message: 'Too many upload attempts. Please try again later.' }
+});
 
 const resolveScopedHotelId = (req, requestedPropertyId) => {
   const isManagerOrAdmin = ['admin', 'manager'].includes(req.user.role);
@@ -82,7 +90,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     // Generate secure filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(16).toString('hex');
     const fileExtension = path.extname(file.originalname).toLowerCase();
     // Remove the extension from the original name before sanitizing to avoid double extensions
     const baseName = path.basename(file.originalname, fileExtension);
@@ -106,6 +114,8 @@ const fileFilter = (req, file, cb) => {
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
+    // Note: MIME type from client header. For production, add magic byte verification
+    // using a library like 'file-type' to prevent content-type spoofing
     cb(null, true);
   } else {
     cb(new ApplicationError(
@@ -170,6 +180,7 @@ router.use(authorizePolicy('documentUpload', 'baseAccess'));
  *                 format: date
  */
 router.post('/upload',
+  uploadRateLimiter,
   validate(mutationBaselineSchema),
   upload.single('document'),
   catchAsync(async (req, res) => {
@@ -285,6 +296,7 @@ router.post('/upload',
  *       - bearerAuth: []
  */
 router.post('/bulk-upload',
+  uploadRateLimiter,
   validate(mutationBaselineSchema),
   upload.array('documents', 10),
   catchAsync(async (req, res) => {
@@ -458,12 +470,14 @@ router.get('/admin/queue',
       userType = 'guest',
       status = 'pending',
       propertyId,
+      page,
       limit = 20,
       skip = 0
     } = req.query;
 
     const parsedLimit = Math.min(parseInt(limit) || 20, 100);
-    const parsedSkip = parseInt(skip) || 0;
+    const parsedPage = Math.max(parseInt(page) || 1, 1);
+    const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
 
     const hotelId = resolveScopedHotelId(req, propertyId);
     const baseFilter = {
@@ -490,7 +504,8 @@ router.get('/admin/queue',
       .limit(parsedLimit)
       .lean();
 
-    const [total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs] = await Promise.all([
+    const [filteredCount, total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs] = await Promise.all([
+      Document.countDocuments(docFilter),
       Document.countDocuments(baseFilter),
       Document.countDocuments({ ...baseFilter, status: 'pending' }),
       Document.countDocuments({ ...baseFilter, status: 'verified' }),
@@ -504,6 +519,10 @@ router.get('/admin/queue',
     res.json({
       status: 'success',
       documents,
+      totalCount: filteredCount,
+      totalPages: Math.ceil(filteredCount / parsedLimit),
+      page: parsedPage,
+      limit: parsedLimit,
       totalStats: {
         total, pending, verified, rejected, expired, renewalRequired, guestDocs, staffDocs
       }
@@ -527,24 +546,38 @@ router.get('/pending-verifications',
       userType,
       departmentId,
       priority,
+      page,
       limit = 20,
       skip = 0
     } = req.query;
 
     const parsedLimit = Math.min(parseInt(limit) || 20, 100);
-    const parsedSkip = parseInt(skip) || 0;
+    const parsedPage = Math.max(parseInt(page) || 1, 1);
+    const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
 
-    const documents = await Document.getPendingVerifications(req.user.hotelId, {
-      userType,
-      departmentId,
-      priority,
-      limit: parsedLimit,
-      skip: parsedSkip
-    });
+    const countQuery = { hotelId: req.user.hotelId, status: 'pending', isActive: true, isDeleted: false };
+    if (userType) countQuery.userType = userType;
+    if (departmentId) countQuery.departmentId = departmentId;
+    if (priority) countQuery.priority = priority;
+
+    const [documents, totalCount] = await Promise.all([
+      Document.getPendingVerifications(req.user.hotelId, {
+        userType,
+        departmentId,
+        priority,
+        limit: parsedLimit,
+        skip: parsedSkip
+      }),
+      Document.countDocuments(countQuery)
+    ]);
 
     res.json({
       status: 'success',
       results: documents.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / parsedLimit),
+      page: parsedPage,
+      limit: parsedLimit,
       data: { documents }
     });
   })
@@ -893,13 +926,13 @@ router.patch('/:id', validate(mutationBaselineSchema), catchAsync(async (req, re
     {
       $set: setFields,
       $push: {
-        auditTrail: {
+        auditLog: {
           action: 'update',
           performedBy: req.user._id,
           details: { newValues: { description, tags, category, documentType, expiryDate } },
           ipAddress: req.ip,
           userAgent: req.get('user-agent'),
-          timestamp: new Date()
+          performedAt: new Date()
         }
       }
     },
@@ -947,13 +980,13 @@ router.delete('/:id', validate(mutationBaselineSchema), catchAsync(async (req, r
         isActive: false
       },
       $push: {
-        auditTrail: {
+        auditLog: {
           action: 'delete',
           performedBy: req.user._id,
           details: { deletedBy: req.user.name },
           ipAddress: req.ip,
           userAgent: req.get('user-agent'),
-          timestamp: new Date()
+          performedAt: new Date()
         }
       }
     },
@@ -1131,15 +1164,16 @@ router.get('/requirements/:userType', catchAsync(async (req, res) => {
     additionalContext
   );
 
-  // Filter applicable requirements
-  requirements = requirements.filter(req => req.isApplicableForUser(
-    { role: userType, departmentId, ...req.user },
+  // Filter applicable requirements (use distinct variable name to avoid shadowing Express req)
+  const currentUser = req.user;
+  requirements = requirements.filter(requirement => requirement.isApplicableForUser(
+    { role: userType, departmentId, ...currentUser },
     additionalContext
   ));
 
   // Filter by mandatory if requested
   if (mandatory === 'true') {
-    requirements = requirements.filter(req => req.isMandatory);
+    requirements = requirements.filter(requirement => requirement.isMandatory);
   }
 
   res.json({

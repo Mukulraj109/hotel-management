@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Package,
@@ -48,12 +48,46 @@ import {
   RequestCategory
 } from '../../services/staffSupplyRequestsService';
 import BudgetDashboard from '../../components/staff/BudgetDashboard';
+import { useRealTime } from '../../services/realTimeService';
 
 // Interfaces imported from service
 
+interface AnalyticsData {
+  departmentBreakdown: Record<string, number>;
+  statusBreakdown: Record<string, number>;
+  priorityBreakdown: Record<string, number>;
+  costAnalysis: {
+    total: number;
+    average: number;
+    byMonth: Record<string, number>;
+  };
+  requestTrends: {
+    thisMonth: number;
+    lastMonth: number;
+  };
+  recentActivity: number;
+}
+
+interface CostOptimizationSuggestion {
+  type: string;
+  item: string;
+  message: string;
+  savings: number;
+  action: string;
+}
+
+interface CostOptimizations {
+  suggestions: CostOptimizationSuggestion[];
+  totalPotentialSavings: number;
+  optimizationScore: number;
+}
+
 export default function StaffSupplyRequests() {
   const { user } = useAuth();
+  const { on, off } = useRealTime();
   const [requests, setRequests] = useState<SupplyRequest[]>([]);
+  // Keep a ref to current requests so polling callback always sees latest values
+  const requestsRef = useRef<SupplyRequest[]>([]);
   const [stats, setStats] = useState<StaffSupplyRequestStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -71,7 +105,6 @@ export default function StaffSupplyRequests() {
 
   // Budget tracking state
   const [currentBudget, setCurrentBudget] = useState<DepartmentBudget | null>(null);
-  const [budgetCheckResult, setBudgetCheckResult] = useState<unknown>(null);
   const [showBudgetDashboard, setShowBudgetDashboard] = useState(false);
 
   // Vendor management state
@@ -81,7 +114,7 @@ export default function StaffSupplyRequests() {
 
   // Analytics state
   const [showAnalyticsDashboard, setShowAnalyticsDashboard] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState<unknown>(null);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
 
   // Template and category state
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
@@ -90,7 +123,7 @@ export default function StaffSupplyRequests() {
   const [selectedTemplate, setSelectedTemplate] = useState<RequestTemplate | null>(null);
 
   // Cost optimization state
-  const [costOptimizations, setCostOptimizations] = useState<unknown>(null);
+  const [costOptimizations, setCostOptimizations] = useState<CostOptimizations | null>(null);
   const [showOptimizations, setShowOptimizations] = useState(false);
 
   // Modal states
@@ -127,6 +160,7 @@ export default function StaffSupplyRequests() {
     try {
       setLoading(true);
       const response = await staffSupplyRequestsService.getMyRequests(filters);
+      requestsRef.current = response.data.requests;
       setRequests(response.data.requests);
       setPagination(response.data.pagination);
     } catch (error) {
@@ -145,39 +179,48 @@ export default function StaffSupplyRequests() {
     }
   }, []);
 
-  // Notification system for status changes
-  const checkForStatusUpdates = async () => {
+  // Notification system for status changes — uses the same filters/page as current view.
+  // Uses requestsRef so the callback always reads the latest snapshot without
+  // including `requests` in the dependency array (which would cause an infinite re-subscribe loop).
+  const checkForStatusUpdates = useCallback(async () => {
     try {
-      const response = await staffSupplyRequestsService.getMyRequests({ limit: 50 });
+      const response = await staffSupplyRequestsService.getMyRequests(filters);
       const newRequests = response.data.requests;
 
       // Compare with existing requests to detect status changes
-      if (requests.length > 0) {
-        newRequests.forEach(newRequest => {
-          const existingRequest = requests.find(r => r._id === newRequest._id);
-          if (existingRequest && existingRequest.status !== newRequest.status) {
-            // Status changed - show notification
-            const statusMessages = {
-              approved: '✅ Your supply request has been approved!',
-              rejected: '❌ Your supply request was rejected',
-              ordered: '📦 Your request has been ordered',
-              received: '✅ Items have been received'
+      const currentRequests = requestsRef.current;
+      if (currentRequests.length > 0) {
+        newRequests.forEach(updatedRequest => {
+          const existingRequest = currentRequests.find(r => r._id === updatedRequest._id);
+          if (existingRequest && existingRequest.status !== updatedRequest.status) {
+            const statusMessages: Record<string, string> = {
+              approved: 'Your supply request has been approved!',
+              rejected: 'Your supply request was rejected',
+              ordered: 'Your request has been ordered',
+              partial_received: 'Some items have been received',
+              received: 'All items have been received',
+              cancelled: 'Your supply request has been cancelled'
             };
-
-            const message = statusMessages[newRequest.status as keyof typeof statusMessages];
+            const message = statusMessages[updatedRequest.status];
             if (message) {
-              toast.success(`${message}\nRequest: ${newRequest.requestNumber}`);
+              const isPositive = ['approved', 'ordered', 'partial_received', 'received'].includes(updatedRequest.status);
+              if (isPositive) {
+                toast.success(`${message} — Request: ${updatedRequest.requestNumber}`);
+              } else {
+                toast.error(`${message} — Request: ${updatedRequest.requestNumber}`);
+              }
             }
           }
         });
       }
 
+      requestsRef.current = newRequests;
       setRequests(newRequests);
       setPagination(response.data.pagination);
     } catch {
       // Error handled silently
     }
-  };
+  }, [filters]);
 
   const createRequest = async () => {
     try {
@@ -276,12 +319,18 @@ export default function StaffSupplyRequests() {
     }));
   };
 
+  // Refetch requests and stats whenever filters change
   useEffect(() => {
     fetchMyRequests();
     fetchMyStats();
+  }, [filters, fetchMyRequests, fetchMyStats]);
+
+  // Fetch static data (vendors, templates) only on mount
+  useEffect(() => {
     fetchVendors();
     fetchTemplates();
-  }, [filters]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchVendors = async () => {
     try {
@@ -350,7 +399,7 @@ export default function StaffSupplyRequests() {
   }, [newRequest.items, checkCostOptimizations]);
 
   // Calculate analytics data from requests
-  const calculateAnalytics = useCallback(() => {
+  const calculateAnalytics = useCallback((): AnalyticsData | null => {
     if (!requests.length) return null;
 
     const now = new Date();
@@ -415,16 +464,59 @@ export default function StaffSupplyRequests() {
     setAnalyticsData(analytics);
   }, [requests, calculateAnalytics]);
 
-  // Auto-refresh and status notifications
+  // Real-time WebSocket listeners for supply-request events
+  // These fire immediately when the manager approves/rejects, giving instant feedback
+  // instead of waiting for the 30-second polling interval.
+  useEffect(() => {
+    const handleSupplyRequestEvent = (data: Record<string, unknown>) => {
+      const supplyRequest = data.supplyRequest as { requestNumber?: string; status?: string; requestedBy?: string } | undefined;
+      const newStatus = (data.status as string | undefined) || supplyRequest?.status;
+
+      if (supplyRequest && newStatus) {
+        const statusMessages: Record<string, string> = {
+          approved: 'Your supply request has been approved!',
+          rejected: 'Your supply request was rejected',
+          ordered: 'Your request has been ordered',
+          partial_received: 'Some items have been received',
+          received: 'All items have been received',
+          cancelled: 'Your supply request has been cancelled'
+        };
+        const message = statusMessages[newStatus];
+        if (message && supplyRequest.requestNumber) {
+          const isPositive = ['approved', 'ordered', 'partial_received', 'received'].includes(newStatus);
+          if (isPositive) {
+            toast.success(`${message} — Request: ${supplyRequest.requestNumber}`);
+          } else {
+            toast.error(`${message} — Request: ${supplyRequest.requestNumber}`);
+          }
+        }
+      }
+      // Refresh to get the latest data
+      fetchMyRequests();
+      fetchMyStats();
+    };
+
+    on('supply-requests:status_changed', handleSupplyRequestEvent);
+    on('supply-requests:created', fetchMyRequests);
+    on('supply-requests:updated', fetchMyRequests);
+
+    return () => {
+      off('supply-requests:status_changed', handleSupplyRequestEvent);
+      off('supply-requests:created', fetchMyRequests);
+      off('supply-requests:updated', fetchMyRequests);
+    };
+  }, [on, off, fetchMyRequests, fetchMyStats]);
+
+  // Fallback polling for environments where WebSocket may not be connected
   useEffect(() => {
     const interval = setInterval(() => {
       if (!loading) {
         checkForStatusUpdates();
       }
-    }, 30000); // Check every 30 seconds
+    }, 30000); // Check every 30 seconds as a fallback
 
     return () => clearInterval(interval);
-  }, [requests, loading]);
+  }, [checkForStatusUpdates, loading]);
 
   // Helper functions using service utilities
   const getDepartmentColor = (department: string) => {
@@ -509,7 +601,7 @@ export default function StaffSupplyRequests() {
       header: 'Needed By',
       render: (value: string) => (
         <span className="text-sm text-gray-600">
-          {format(parseISO(value), 'MMM dd, yyyy')}
+          {value ? format(parseISO(value), 'MMM dd, yyyy') : 'N/A'}
         </span>
       )
     },
@@ -547,22 +639,26 @@ export default function StaffSupplyRequests() {
         </div>
       )
     }
-  ], [requests]); // Memoized computed values for performance
+  ], [requests, getDepartmentColor, getPriorityColor, isOverdue, canEdit]);
+  // memoizedStats uses server-side counts from `stats` (accurate across all pages)
+  // and falls back to page-local counts only when stats haven't loaded yet.
   const memoizedStats = useMemo(() => {
+    if (stats) {
+      return {
+        pending: stats.pending,
+        approved: stats.approved,
+        overdue: requests.filter(r => isOverdue(r)).length, // overdue is page-scoped (no server stat)
+        totalValue: stats.totalValue
+      };
+    }
     if (!requests.length) return null;
-
-    const pendingCount = requests.filter(r => r.status === 'pending').length;
-    const approvedCount = requests.filter(r => r.status === 'approved').length;
-    const overdueCount = requests.filter(r => isOverdue(r)).length;
-    const totalValue = requests.reduce((sum, r) => sum + r.totalEstimatedCost, 0);
-
     return {
-      pending: pendingCount,
-      approved: approvedCount,
-      overdue: overdueCount,
-      totalValue
+      pending: requests.filter(r => r.status === 'pending').length,
+      approved: requests.filter(r => r.status === 'approved').length,
+      overdue: requests.filter(r => isOverdue(r)).length,
+      totalValue: requests.reduce((sum, r) => sum + r.totalEstimatedCost, 0)
     };
-  }, [requests]);
+  }, [stats, requests, isOverdue]);
 
   const memoizedFilteredRequests = useMemo(() => {
     return requests; // Already filtered by API
@@ -573,105 +669,6 @@ export default function StaffSupplyRequests() {
     [newRequest.items]
   );
 
-  // Removing duplicate columns definition - using the memoized one above
-  const unusedColumns = [
-    {
-      key: 'requestNumber',
-      header: 'Request',
-      render: (value: unknown, request: SupplyRequest) => (
-        <div>
-          <div className="font-medium text-gray-900">{request.requestNumber}</div>
-          <div className="text-sm text-gray-500">{request.title}</div>
-          {isOverdue(request) && (
-            <div className="text-xs text-red-600 font-medium">OVERDUE</div>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'department',
-      header: 'Department',
-      render: (value: unknown, request: SupplyRequest) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDepartmentColor(request.department)}`}>
-          {request.department.replace('_', ' ')}
-        </span>
-      )
-    },
-    {
-      key: 'priority',
-      header: 'Priority',
-      render: (value: unknown, request: SupplyRequest) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
-          {request.priority}
-        </span>
-      )
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (value: unknown, request: SupplyRequest) => (
-        <StatusBadge status={request.status} />
-      )
-    },
-    {
-      key: 'totalEstimatedCost',
-      header: 'Cost',
-      render: (value: unknown, request: SupplyRequest) => (
-        <div className="text-sm">
-          {request.totalActualCost > 0 ? (
-            <div>
-              <div className="font-medium">{formatCurrency(request.totalActualCost)}</div>
-              {request.totalActualCost !== request.totalEstimatedCost && (
-                <div className="text-gray-500">Est: {formatCurrency(request.totalEstimatedCost)}</div>
-              )}
-            </div>
-          ) : (
-            <div className="text-gray-600">{formatCurrency(request.totalEstimatedCost)}</div>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'neededBy',
-      header: 'Needed By',
-      render: (value: unknown, request: SupplyRequest) => (
-        <div className={`text-sm ${isOverdue(request) ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
-          {format(parseISO(request.neededBy), 'MMM dd, yyyy')}
-        </div>
-      )
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (value: unknown, request: SupplyRequest) => (
-        <div className="flex items-center space-x-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              setSelectedRequest(request);
-              setShowViewModal(true);
-            }}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          {canEdit(request) && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                setSelectedRequest(request);
-                setShowEditModal(true);
-              }}
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      ),
-      align: 'center' as const
-    }
-  ];
 
   if (loading && !requests.length) {
     return (
@@ -1037,7 +1034,7 @@ export default function StaffSupplyRequests() {
                   </h3>
                   <div className="space-y-3">
                     {Object.entries(analyticsData.statusBreakdown).map(([status, count]) => {
-                      const percentage = ((count as number) / requests.length * 100).toFixed(1);
+                      const percentage = (count / requests.length * 100).toFixed(1);
                       const colorMap: Record<string, string> = {
                         pending: 'bg-yellow-500',
                         approved: 'bg-green-500',
@@ -1070,7 +1067,7 @@ export default function StaffSupplyRequests() {
                   </h3>
                   <div className="space-y-3">
                     {Object.entries(analyticsData.priorityBreakdown).map(([priority, count]) => {
-                      const percentage = ((count as number) / requests.length * 100).toFixed(1);
+                      const percentage = (count / requests.length * 100).toFixed(1);
                       const colorMap: Record<string, string> = {
                         low: 'bg-green-500',
                         medium: 'bg-yellow-500',
@@ -1179,6 +1176,7 @@ export default function StaffSupplyRequests() {
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
                 <option value="ordered">Ordered</option>
+                <option value="partial_received">Partially Received</option>
                 <option value="received">Received</option>
                 <option value="cancelled">Cancelled</option>
               </select>
@@ -1279,7 +1277,7 @@ export default function StaffSupplyRequests() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setFilters({ ...filters, status: 'pending' })}
+                    onClick={() => setFilters({ ...filters, status: 'pending', page: 1 })}
                     className="text-xs px-2 py-1"
                   >
                     Pending
@@ -1287,7 +1285,7 @@ export default function StaffSupplyRequests() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setFilters({ ...filters, priority: 'urgent' })}
+                    onClick={() => setFilters({ ...filters, priority: 'urgent', page: 1 })}
                     className="text-xs px-2 py-1 bg-orange-100 text-orange-800 hover:bg-orange-200"
                   >
                     Urgent
@@ -1295,7 +1293,7 @@ export default function StaffSupplyRequests() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setFilters({ ...filters, overdue: true })}
+                    onClick={() => setFilters({ ...filters, overdue: true, page: 1 })}
                     className="text-xs px-2 py-1 bg-red-100 text-red-800 hover:bg-red-200"
                   >
                     Overdue
@@ -1355,7 +1353,7 @@ export default function StaffSupplyRequests() {
 
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-gray-500">
-                          Needed by {format(parseISO(request.neededBy), 'MMM dd')}
+                          Needed by {request.neededBy ? format(parseISO(request.neededBy), 'MMM dd') : 'N/A'}
                         </div>
                         <div className="flex items-center space-x-2">
                           <Button
@@ -1398,6 +1396,36 @@ export default function StaffSupplyRequests() {
                 loading={loading}
               />
             </div>
+
+            {/* Pagination Controls */}
+            {pagination.pages > 1 && (
+              <div className="flex items-center justify-between p-4 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  Showing {requests.length} of {pagination.total} requests
+                </p>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilters(f => ({ ...f, page: Math.max(1, (f.page || 1) - 1) }))}
+                    disabled={filters.page === 1 || loading}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-gray-700 px-2">
+                    Page {filters.page} of {pagination.pages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilters(f => ({ ...f, page: Math.min(pagination.pages, (f.page || 1) + 1) }))}
+                    disabled={filters.page === pagination.pages || loading}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1432,8 +1460,11 @@ export default function StaffSupplyRequests() {
                   <option value="housekeeping">Housekeeping</option>
                   <option value="maintenance">Maintenance</option>
                   <option value="front_desk">Front Desk</option>
-                  <option value="food_beverage">Food & Beverage</option>
+                  <option value="food_beverage">Food &amp; Beverage</option>
                   <option value="spa">Spa</option>
+                  <option value="laundry">Laundry</option>
+                  <option value="kitchen">Kitchen</option>
+                  <option value="bar">Bar</option>
                   <option value="other">Other</option>
                 </select>
               </div>
@@ -1455,7 +1486,7 @@ export default function StaffSupplyRequests() {
                 <select
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                   value={newRequest.priority}
-                  onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as string })}
+                  onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as CreateSupplyRequestData['priority'] })}
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -1595,7 +1626,7 @@ export default function StaffSupplyRequests() {
               {newRequest.items.length > 0 && (
                 <div className="space-y-2">
                   {newRequest.items.map((item, index) => (
-                    <div key={`newRequest-items-${index}-${item}`} className="flex items-center justify-between p-3 bg-white border rounded">
+                    <div key={`newRequest-items-${index}-${item.name}`} className="flex items-center justify-between p-3 bg-white border rounded">
                       <div className="flex-1">
                         <div className="font-medium">{item.name}</div>
                         <div className="text-sm text-gray-500">
@@ -1644,8 +1675,8 @@ export default function StaffSupplyRequests() {
                 </div>
 
                 <div className="space-y-2 mb-3">
-                  {costOptimizations.suggestions.slice(0, showOptimizations ? undefined : 2).map((suggestion: Record<string, unknown>, index: number) => (
-                    <div key={`item-${index}`} className="flex items-start justify-between p-2 bg-white rounded border border-yellow-100">
+                  {costOptimizations.suggestions.slice(0, showOptimizations ? undefined : 2).map((suggestion, index) => (
+                    <div key={`cost-opt-${index}-${suggestion.type}`} className="flex items-start justify-between p-2 bg-white rounded border border-yellow-100">
                       <div className="flex-1">
                         <div className="text-sm font-medium text-gray-900">{suggestion.message}</div>
                         <div className="text-xs text-gray-600">{suggestion.action}</div>
@@ -1759,7 +1790,7 @@ export default function StaffSupplyRequests() {
                 <label className="block text-sm font-medium text-gray-700 mb-3">Items</label>
                 <div className="space-y-3">
                   {selectedRequest.items.map((item, index) => (
-                    <div key={`selectedRequest-items-${index}-${item}`} className="flex items-start justify-between p-3 bg-gray-50 rounded">
+                    <div key={`selectedRequest-items-${index}-${item.name}`} className="flex items-start justify-between p-3 bg-gray-50 rounded">
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{item.name}</div>
                         <div className="text-sm text-gray-500">{item.description}</div>
@@ -1872,7 +1903,7 @@ export default function StaffSupplyRequests() {
                         value={selectedRequest.priority}
                         onChange={(e) => setSelectedRequest({
                           ...selectedRequest,
-                          priority: e.target.value as string
+                          priority: e.target.value as SupplyRequest['priority']
                         })}
                       >
                         <option value="low">Low</option>
@@ -1936,7 +1967,7 @@ export default function StaffSupplyRequests() {
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="space-y-2">
                         {selectedRequest.items.map((item, index) => (
-                          <div key={`selectedRequest-items-${index}-${item}`} className="flex items-center justify-between p-2 bg-white rounded border">
+                          <div key={`selectedRequest-items-${index}-${item.name}`} className="flex items-center justify-between p-2 bg-white rounded border">
                             <div className="flex-1">
                               <div className="font-medium text-gray-900">{item.name}</div>
                               <div className="text-sm text-gray-500">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
   Users,
@@ -29,7 +30,7 @@ import TodayArrivalsWidget from '../../components/staff/TodayArrivalsWidget';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface StaffDashboardData {
-  today: StaffTodayData;
+  today: StaffTodayData & { pendingOrders?: number };
   roomStatus: RoomStatusData;
   inventory: StaffInventoryData;
   checkoutInventories: CheckoutInventory[];
@@ -40,12 +41,19 @@ type TabId = 'overview' | 'rooms' | 'inventory' | 'checkout' | 'assignments';
 
 function StaffDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState<StaffDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const isFirstLoad = useRef(true);
+  // Guard against state updates after unmount (e.g. navigation during a long fetch)
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -65,35 +73,39 @@ function StaffDashboard() {
         dailyRoutineCheckService.getMyAssignedRooms()
       ]);
 
-      const realData: StaffDashboardData = {
+      if (!mountedRef.current) return;
+
+      // Use functional setState to get the latest data without adding it to deps
+      setData(prev => ({
         today: todayRes.status === 'fulfilled'
           ? todayRes.value.data.today
-          : (data?.today ?? { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, occupancyRate: 0 }),
+          : (prev?.today ?? { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, pendingOrders: 0, occupancyRate: 0 }),
         roomStatus: roomsRes.status === 'fulfilled'
           ? roomsRes.value.data
-          : (data?.roomStatus ?? { summary: { occupied: 0, vacant_clean: 0, vacant_dirty: 0, maintenance: 0, out_of_order: 0 }, needsAttention: [], total: 0 }),
+          : (prev?.roomStatus ?? { summary: { occupied: 0, vacant_clean: 0, vacant_dirty: 0, maintenance: 0, out_of_order: 0 }, needsAttention: [], total: 0 }),
         inventory: inventoryRes.status === 'fulfilled'
           ? inventoryRes.value.data
-          : (data?.inventory ?? { lowStockAlert: { count: 0, items: [] }, inspectionsDue: { count: 0, rooms: [] } }),
+          : (prev?.inventory ?? { lowStockAlert: { count: 0, items: [] }, inspectionsDue: { count: 0, rooms: [] } }),
         checkoutInventories: checkoutRes.status === 'fulfilled'
           ? (checkoutRes.value.data.checkoutInventories || [])
-          : (data?.checkoutInventories ?? []),
+          : (prev?.checkoutInventories ?? []),
         assignedRooms: assignmentsRes.status === 'fulfilled'
           ? (assignmentsRes.value.data.rooms || [])
-          : (data?.assignedRooms ?? [])
-      };
+          : (prev?.assignedRooms ?? [])
+      }));
 
-      setData(realData);
+      if (!mountedRef.current) return;
       const hasFailures = [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes]
         .some(result => result.status === 'rejected');
       setError(hasFailures ? 'Some dashboard sections could not be refreshed. Showing the latest available data.' : null);
     } catch (_err) {
+      if (!mountedRef.current) return;
       // Keep previous data if available -- don't reset to zeros
       setData(prev => {
         if (prev) return prev;
         // Only use empty fallback on first load
         return {
-          today: { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, occupancyRate: 0 },
+          today: { checkIns: 0, checkOuts: 0, pendingHousekeeping: 0, pendingMaintenance: 0, pendingGuestServices: 0, pendingOrders: 0, occupancyRate: 0 },
           roomStatus: { summary: { occupied: 0, vacant_clean: 0, vacant_dirty: 0, maintenance: 0, out_of_order: 0 }, needsAttention: [], total: 0 },
           inventory: { lowStockAlert: { count: 0, items: [] }, inspectionsDue: { count: 0, rooms: [] } },
           checkoutInventories: [],
@@ -102,9 +114,11 @@ function StaffDashboard() {
       });
       setError('Unable to load dashboard data. Will retry automatically.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
-      isFirstLoad.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+        isFirstLoad.current = false;
+      }
     }
   }, []);
 
@@ -156,16 +170,16 @@ function StaffDashboard() {
             </h1>
             <p className="text-gray-600 text-sm sm:text-base">Staff Dashboard - Today's Operations</p>
           </div>
-          <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh All Data
+          <Button onClick={fetchDashboardData} disabled={loading || refreshing} variant="outline" size="sm">
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh All Data'}
           </Button>
         </div>
       </div>
 
       {/* Tab Navigation */}
       <div className="mb-6 border-b">
-        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
+        <nav role="tablist" aria-label="Dashboard sections" className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'assignments', label: 'My Assignments', icon: ClipboardCheck },
@@ -175,6 +189,10 @@ function StaffDashboard() {
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              id={`tab-${id}`}
+              role="tab"
+              aria-selected={activeTab === id}
+              aria-controls={`tabpanel-${id}`}
               onClick={() => setActiveTab(id as TabId)}
               className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap ${
                 activeTab === id
@@ -191,7 +209,7 @@ function StaffDashboard() {
 
       {/* Overview Tab */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview" className="space-y-6">
           {/* Today's Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <Card className="p-4 sm:p-6">
@@ -311,7 +329,7 @@ function StaffDashboard() {
                 <span>Billing Queue</span>
               </Button>
               <Button
-                onClick={() => window.location.href = '/staff/housekeeping'}
+                onClick={() => navigate('/staff/housekeeping')}
                 variant="secondary"
                 className="flex items-center justify-center space-x-2"
               >
@@ -319,7 +337,7 @@ function StaffDashboard() {
                 <span>Housekeeping</span>
               </Button>
               <Button
-                onClick={() => window.location.href = '/staff/maintenance'}
+                onClick={() => navigate('/staff/maintenance')}
                 variant="secondary"
                 className="flex items-center justify-center space-x-2"
               >
@@ -335,7 +353,7 @@ function StaffDashboard() {
                 <span>Inventory</span>
               </Button>
               <Button
-                onClick={() => window.location.href = '/staff/daily-routine-check'}
+                onClick={() => navigate('/staff/daily-routine-check')}
                 variant="secondary"
                 className="flex items-center justify-center space-x-2"
               >
@@ -349,7 +367,7 @@ function StaffDashboard() {
 
       {/* My Assignments Tab */}
       {activeTab === 'assignments' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-assignments" aria-labelledby="tab-assignments" className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">My Daily Check Assignments</h2>
             <Badge variant="default" className="bg-blue-100 text-blue-800">
@@ -404,7 +422,7 @@ function StaffDashboard() {
                   <div className="flex gap-2">
                     {room.checkStatus === 'completed' ? (
                       <Button
-                        onClick={() => window.location.href = '/staff/daily-routine-check'}
+                        onClick={() => navigate(`/staff/daily-routine-check?roomId=${room._id}`)}
                         variant="outline"
                         className="flex-1 bg-green-50 text-green-700 hover:bg-green-100"
                       >
@@ -413,7 +431,7 @@ function StaffDashboard() {
                       </Button>
                     ) : (
                       <Button
-                        onClick={() => window.location.href = '/staff/daily-routine-check'}
+                        onClick={() => navigate(`/staff/daily-routine-check?roomId=${room._id}`)}
                         className="flex-1"
                       >
                         <CheckSquare className="w-4 h-4 mr-2" />
@@ -444,7 +462,7 @@ function StaffDashboard() {
 
       {/* Room Status Tab */}
       {activeTab === 'rooms' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-rooms" aria-labelledby="tab-rooms" className="space-y-6">
           <h2 className="text-xl font-semibold text-gray-900">Room Status Overview</h2>
 
           {/* Status Summary Cards */}
@@ -454,7 +472,7 @@ function StaffDashboard() {
                 <div className="text-center">
                   <p className="text-2xl font-bold text-gray-900">{count as number}</p>
                   <p className="text-sm text-gray-600 capitalize">
-                    {status.replace('_', ' ')}
+                    {status.replace(/_/g, ' ')}
                   </p>
                 </div>
               </Card>
@@ -480,7 +498,7 @@ function StaffDashboard() {
                         'bg-yellow-100 text-yellow-800'
                       }
                     >
-                      {room.status.replace('_', ' ')}
+                      {room.status.replace(/_/g, ' ')}
                     </Badge>
                   </div>
                 </div>
@@ -492,7 +510,7 @@ function StaffDashboard() {
 
       {/* Inventory Tab */}
       {activeTab === 'inventory' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-inventory" aria-labelledby="tab-inventory" className="space-y-6">
           <h2 className="text-xl font-semibold text-gray-900">Inventory Summary</h2>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
@@ -532,7 +550,7 @@ function StaffDashboard() {
               </div>
               <div className="space-y-3">
                 {data.inventory.inspectionsDue.rooms.map((room, index) => (
-                  <div key={`data-inventory-inspectionsDue-rooms-${room.roomNumber || room.room_number}`} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                  <div key={`data-inventory-inspectionsDue-rooms-${room._id}`} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-900">Room {room.roomNumber}</p>
                       <p className="text-sm text-gray-600">Inventory inspection needed</p>
@@ -553,7 +571,7 @@ function StaffDashboard() {
 
       {/* Checkout Queue Tab */}
       {activeTab === 'checkout' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-checkout" aria-labelledby="tab-checkout" className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">Billing Queue</h2>
             <Badge variant="default" className="bg-blue-100 text-blue-800">
@@ -597,7 +615,7 @@ function StaffDashboard() {
                         <div>
                           <p className="text-sm text-gray-600">Customer</p>
                           <p className="font-medium">
-                            {checkout.bookingId.userId?.name || 'Guest'}
+                            {checkout.bookingId?.userId?.name || 'Guest'}
                           </p>
                         </div>
                         <div>
@@ -651,7 +669,7 @@ function StaffDashboard() {
                     <div className="flex flex-col sm:flex-row gap-2 lg:ml-4">
                       {checkout.status === 'completed' && checkout.paymentStatus === 'pending' && (
                         <Button
-                          onClick={() => window.location.href = '/staff/checkout-inventory'}
+                          onClick={() => navigate(`/staff/checkout-inventory?bookingId=${checkout.bookingId?._id || checkout.bookingId}`)}
                           className="bg-green-600 hover:bg-green-700"
                         >
                           Process Payment
@@ -659,7 +677,7 @@ function StaffDashboard() {
                       )}
                       <Button
                         variant="outline"
-                        onClick={() => window.location.href = '/staff/checkout-inventory'}
+                        onClick={() => navigate(`/staff/checkout-inventory?bookingId=${checkout.bookingId?._id || checkout.bookingId}`)}
                       >
                         View Details
                       </Button>

@@ -16,6 +16,21 @@ import {
   Mail,
   MessageCircle,
   Smartphone,
+  CheckCircle,
+  Clock,
+  XCircle,
+  CreditCard,
+  Star,
+  Gift,
+  Heart,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  Tag,
+  HelpCircle,
+  Minus,
+  AlertOctagon,
+  type LucideIcon,
 } from 'lucide-react';
 import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
 import { Card } from '@/components/ui/card';
@@ -28,6 +43,29 @@ import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+
+// Map string icon names from notificationService.getNotificationTypeInfo to Lucide components
+const iconNameToComponent: Record<string, LucideIcon> = {
+  'check-circle': CheckCircle,
+  'clock': Clock,
+  'x-circle': XCircle,
+  'credit-card': CreditCard,
+  'alert-circle': AlertCircle,
+  'star': Star,
+  'calendar': Calendar,
+  'bell': Bell,
+  'gift': Gift,
+  'alert-triangle': AlertTriangle,
+  'heart': Heart,
+  'log-in': LogIn,
+  'log-out': LogOut,
+  'message-square': MessageSquare,
+  'tag': Tag,
+  'help-circle': HelpCircle,
+  'minus': Minus,
+  'circle': Circle,
+  'alert-octagon': AlertOctagon,
+};
 
 function AdminNotifications() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -223,12 +261,11 @@ function AdminNotifications() {
   const getNotificationIcon = (notification: Notification) => {
     const typeInfo = notificationService.getNotificationTypeInfo(notification.type as NotificationType);
     const isUnread = notificationService.isUnread(notification);
+    const IconComponent = iconNameToComponent[typeInfo.icon] || Bell;
 
     return (
       <div className={`p-2 rounded-full flex-shrink-0 ${typeInfo.color}`}>
-        {React.createElement(typeInfo.icon, {
-          className: `h-4 w-4 ${isUnread ? 'fill-current' : ''}`
-        })}
+        <IconComponent className={`h-4 w-4 ${isUnread ? 'fill-current' : ''}`} />
       </div>
     );
   };

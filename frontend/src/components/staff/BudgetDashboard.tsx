@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -30,7 +30,7 @@ export default function BudgetDashboard({ onBudgetLoad }: BudgetDashboardProps) 
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchBudgetData = async () => {
+  const fetchBudgetData = useCallback(async () => {
     try {
       setLoading(true);
       const [budgetResponse, alertsResponse] = await Promise.all([
@@ -49,11 +49,11 @@ export default function BudgetDashboard({ onBudgetLoad }: BudgetDashboardProps) 
     } finally {
       setLoading(false);
     }
-  };
+  }, [onBudgetLoad]);
 
   useEffect(() => {
     fetchBudgetData();
-  }, []);
+  }, [fetchBudgetData]);
 
   if (loading) {
     return (

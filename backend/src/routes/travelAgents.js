@@ -28,6 +28,7 @@ import {
 } from '../controllers/multiBookingController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -138,6 +139,7 @@ router.get('/validate-code/:code', validateAgentCode);
 
 // Apply authentication to all other routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Travel agent specific routes

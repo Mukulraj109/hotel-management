@@ -13,9 +13,10 @@ export default function StaffRooms() {
   const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingRoom, setUpdatingRoom] = useState<string | null>(null);
 
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
     fetchRoomData();
@@ -46,26 +47,29 @@ export default function StaffRooms() {
     };
     
     const handleBookingCheckedIn = (data: Record<string, unknown>) => {
+      const payload = extractPayload(data);
       fetchRoomData();
-      toast.success(`Guest checked in to Room ${data.roomNumber || 'N/A'}`);
+      toast.success(`Guest checked in to Room ${payload.roomNumber || 'N/A'}`);
     };
-    
+
     const handleBookingCheckedOut = (data: Record<string, unknown>) => {
+      const payload = extractPayload(data);
       fetchRoomData();
-      toast.success(`Guest checked out from Room ${data.roomNumber || 'N/A'}`);
+      toast.success(`Guest checked out from Room ${payload.roomNumber || 'N/A'}`);
     };
-    
+
     const handleRoomAttentionRequired = (data: Record<string, unknown>) => {
+      const payload = extractPayload(data);
       fetchRoomData();
-      toast.error(`Room ${data.roomNumber} needs attention: ${data.reason}`);
+      toast.error(`Room ${payload.roomNumber || 'N/A'} needs attention: ${payload.reason || ''}`);
     };
     
     const handleRoomUpdate = (data: Record<string, unknown>) => {
       fetchRoomData();
     };
     
-    on('room_status_changed', handleRoomStatusChanged);
-    on('room_status_changed:updated', handleRoomStatusChanged);
+    on('room:status_changed', handleRoomStatusChanged);
+    on('room:status_changed:updated', handleRoomStatusChanged);
     on('booking:checked_in', handleBookingCheckedIn);
     on('booking:checked_out', handleBookingCheckedOut);
     on('room:attention_required', handleRoomAttentionRequired);
@@ -73,8 +77,8 @@ export default function StaffRooms() {
     on('occupancy:changed', handleRoomUpdate);
     
     return () => {
-      off('room_status_changed', handleRoomStatusChanged);
-      off('room_status_changed:updated', handleRoomStatusChanged);
+      off('room:status_changed', handleRoomStatusChanged);
+      off('room:status_changed:updated', handleRoomStatusChanged);
       off('booking:checked_in', handleBookingCheckedIn);
       off('booking:checked_out', handleBookingCheckedOut);
       off('room:attention_required', handleRoomAttentionRequired);
@@ -97,6 +101,19 @@ export default function StaffRooms() {
       setError('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkRoomClean = async (roomId: string, roomNumber: string) => {
+    try {
+      setUpdatingRoom(roomId);
+      await staffDashboardService.updateRoomStatus(roomId, 'vacant');
+      toast.success(`Room ${roomNumber} marked as clean`);
+      fetchRoomData();
+    } catch (err) {
+      toast.error(`Failed to update Room ${roomNumber} status`);
+    } finally {
+      setUpdatingRoom(null);
     }
   };
 
@@ -203,9 +220,27 @@ export default function StaffRooms() {
                   <div key={room._id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
                     <div>
                       <p className="font-medium">Room {room.roomNumber}</p>
-                      <p className="text-sm text-gray-600">{room.status}</p>
+                      <p className="text-sm text-gray-600 capitalize">{room.status?.replace(/_/g, ' ')}</p>
                     </div>
-                    <Badge variant="destructive">Attention</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive">Attention</Badge>
+                      {room.status === 'dirty' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleMarkRoomClean(room._id, room.roomNumber)}
+                          disabled={updatingRoom === room._id}
+                          className="text-green-700 border-green-300 hover:bg-green-50"
+                        >
+                          {updatingRoom === room._id ? (
+                            <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                          ) : (
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                          )}
+                          Mark Clean
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (

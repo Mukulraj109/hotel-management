@@ -18,9 +18,16 @@ class StaffProductivityService {
         department = 'housekeeping'
       } = filters;
 
+      // hotelId is required for tenant isolation
+      const hotelId = filters.hotelId;
+      if (!hotelId) {
+        logger.warn('getHousekeepingEfficiency called without hotelId — results may span multiple hotels');
+      }
+
       const matchCriteria = {
         createdAt: { $gte: startDate, $lte: endDate },
         category: 'housekeeping',
+        ...(hotelId && { hotelId: new mongoose.Types.ObjectId(String(hotelId)) }),
         ...(staffId && { assignedTo: new mongoose.Types.ObjectId(staffId) })
       };
 
@@ -119,28 +126,31 @@ class StaffProductivityService {
             totalRoomsServiced: { $sum: '$roomsServicedCount' }
           }
         },
+        // Stage 1: compute overallCompletionRate first
         {
           $addFields: {
             overallCompletionRate: {
               $multiply: [
-                { $divide: ['$totalCompleted', '$totalTasks'] },
+                { $divide: ['$totalCompleted', { $cond: [{ $eq: ['$totalTasks', 0] }, 1, '$totalTasks'] }] },
                 100
               ]
-            },
+            }
+          }
+        },
+        // Stage 2: compute efficiencyScore that depends on overallCompletionRate from stage 1
+        {
+          $addFields: {
             efficiencyScore: {
-              $multiply: [
-                { $add: [
-                  { $multiply: ['$overallCompletionRate', 0.4] }, // 40% weight on completion rate
-                  { $multiply: [
-                    { $cond: [
-                      { $gt: ['$avgCompletionTime', 0] },
-                      { $divide: [60, '$avgCompletionTime'] }, // Faster is better
-                      0
-                    ]}, 0.3
-                  ]}, // 30% weight on speed
-                  { $multiply: [{ $ifNull: ['$avgQualityScore', 0] }, 20] }, // 30% weight on quality (score * 20 to scale to 100)
-                ]},
-                1
+              $add: [
+                { $multiply: ['$overallCompletionRate', 0.4] }, // 40% weight on completion rate
+                { $multiply: [
+                  { $cond: [
+                    { $gt: ['$avgCompletionTime', 0] },
+                    { $divide: [60, '$avgCompletionTime'] }, // Faster is better
+                    0
+                  ]}, 0.3
+                ]}, // 30% weight on speed
+                { $multiply: [{ $ifNull: ['$avgQualityScore', 0] }, 20] } // 30% weight on quality (score * 20 to scale to 100)
               ]
             }
           }
@@ -148,13 +158,15 @@ class StaffProductivityService {
         { $sort: { efficiencyScore: -1 } }
       ]);
 
-      // Get room status change efficiency
+      // Get room status change efficiency (scoped to same hotel for tenant isolation)
+      const roomInventoryMatch = {
+        updatedAt: { $gte: startDate, $lte: endDate },
+        'statusHistory.0': { $exists: true },
+        ...(filters.hotelId && { hotelId: new mongoose.Types.ObjectId(String(filters.hotelId)) })
+      };
       const roomStatusChanges = await RoomInventory.aggregate([
         {
-          $match: {
-            updatedAt: { $gte: startDate, $lte: endDate },
-            'statusHistory.0': { $exists: true }
-          }
+          $match: roomInventoryMatch
         },
         { $unwind: '$statusHistory' },
         {
@@ -209,12 +221,18 @@ class StaffProductivityService {
       const {
         startDate = moment().subtract(30, 'days').toDate(),
         endDate = moment().toDate(),
-        staffId
+        staffId,
+        hotelId
       } = filters;
+
+      if (!hotelId) {
+        logger.warn('getFrontDeskPerformance called without hotelId — results may span multiple hotels');
+      }
 
       const matchCriteria = {
         createdAt: { $gte: startDate, $lte: endDate },
-        ...(staffId && { 
+        ...(hotelId && { hotelId: new mongoose.Types.ObjectId(String(hotelId)) }),
+        ...(staffId && {
           $or: [
             { createdBy: new mongoose.Types.ObjectId(staffId) },
             { 'checkIn.handledBy': new mongoose.Types.ObjectId(staffId) },

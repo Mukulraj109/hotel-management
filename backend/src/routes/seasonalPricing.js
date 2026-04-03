@@ -2,6 +2,7 @@ import express from 'express';
 import seasonalPricingController from '../controllers/seasonalPricingController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import adminAuth from '../middleware/adminAuth.js';
 import { validate } from '../middleware/validation.js';
@@ -95,6 +96,7 @@ const deleteSchema = Joi.object({}).options({ stripUnknown: true });
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('seasonalPricing', 'baseAccess'));
 

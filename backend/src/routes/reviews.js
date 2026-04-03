@@ -7,6 +7,7 @@ import Hotel from '../models/Hotel.js';
 import User from '../models/User.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -18,10 +19,10 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 const objectIdSchema = Joi.string().length(24).hex();
 const reviewCreateSchema = Joi.object({
   hotelId: objectIdSchema.required(),
-  bookingId: objectIdSchema.optional(),
+  bookingId: objectIdSchema.required(),
   rating: Joi.number().integer().min(1).max(5).required(),
   title: Joi.string().trim().min(1).max(200).required(),
-  content: Joi.string().trim().min(1).max(5000).required(),
+  content: Joi.string().trim().min(1).max(2000).required(),
   categories: Joi.object({
     cleanliness: Joi.number().integer().min(1).max(5).optional(),
     service: Joi.number().integer().min(1).max(5).optional(),
@@ -35,7 +36,7 @@ const reviewCreateSchema = Joi.object({
   isAnonymous: Joi.boolean().optional()
 }).required();
 const reviewResponseSchema = Joi.object({
-  content: Joi.string().trim().min(1).max(3000).required()
+  content: Joi.string().trim().min(1).max(1000).required()
 }).required();
 const reviewModerationSchema = Joi.object({
   status: Joi.string().valid('approved', 'rejected', 'pending').required(),
@@ -106,7 +107,7 @@ const reviewReportSchema = Joi.object({
  *       201:
  *         description: Review created successfully
  */
-router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensurePropertyAccess, validate(reviewCreateSchema), catchAsync(async (req, res) => {
+router.post('/', authenticate, ensureTenantContext, authorizePolicy('reviews', 'baseAccess'), ensurePropertyAccess, validate(reviewCreateSchema), catchAsync(async (req, res) => {
   const {
     hotelId,
     bookingId,
@@ -389,7 +390,7 @@ router.get('/hotel/:hotelId/summary', optionalAuth, catchAsync(async (req, res) 
  *       200:
  *         description: Pending reviews
  */
-router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/pending', authenticate, ensureTenantContext, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
@@ -449,7 +450,7 @@ router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, c
  *       200:
  *         description: User's reviews
  */
-router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/user/my-reviews', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
@@ -547,7 +548,7 @@ router.get('/:id', optionalAuth, catchAsync(async (req, res) => {
  *       200:
  *         description: Response added successfully
  */
-router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(reviewResponseSchema), catchAsync(async (req, res) => {
+router.post('/:id/response', authenticate, ensureTenantContext, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(reviewResponseSchema), catchAsync(async (req, res) => {
   const { content } = req.body;
 
   if (!content || !content.trim()) {
@@ -594,23 +595,33 @@ router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAcce
  *       200:
  *         description: Review marked as helpful
  */
-router.post('/:id/helpful', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const review = await Review.findByIdAndUpdate(
-    req.params.id,
-    { $inc: { helpfulVotes: 1 } },
-    { new: true }
-  );
+router.post('/:id/helpful', authenticate, ensureTenantContext, async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) {
+      return res.status(404).json({ status: 'error', message: 'Review not found' });
+    }
 
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
+    // Check if user already voted
+    if (review.helpfulVotedBy && review.helpfulVotedBy.some(id => id.toString() === req.user._id.toString())) {
+      return res.status(400).json({ status: 'error', message: 'You have already voted on this review' });
+    }
+
+    // Add vote atomically
+    const updatedReview = await Review.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: { helpfulVotes: 1 },
+        $addToSet: { helpfulVotedBy: req.user._id }
+      },
+      { new: true }
+    );
+
+    res.json({ status: 'success', data: { helpfulVotes: updatedReview.helpfulVotes } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Failed to record vote' });
   }
-
-  res.json({
-    status: 'success',
-    message: 'Review marked as helpful',
-    data: { helpfulVotes: review.helpfulVotes }
-  });
-}));
+});
 
 /**
  * @swagger
@@ -637,31 +648,38 @@ router.post('/:id/helpful', authenticate, validate(mutationBaselineSchema), catc
  *       200:
  *         description: Review reported successfully
  */
-router.post('/:id/report', authenticate, validate(reviewReportSchema), catchAsync(async (req, res) => {
-  const { reason } = req.body;
+router.post('/:id/report', authenticate, ensureTenantContext, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const review = await Review.findById(req.params.id);
+    if (!review) {
+      return res.status(404).json({ status: 'error', message: 'Review not found' });
+    }
 
-  const review = await Review.findByIdAndUpdate(
-    req.params.id,
-    { $inc: { reportedCount: 1 } },
-    { new: true }
-  );
+    // Check if user already reported
+    if (review.reportedBy && review.reportedBy.some(r => r.userId.toString() === req.user._id.toString())) {
+      return res.status(400).json({ status: 'error', message: 'You have already reported this review' });
+    }
 
-  if (!review) {
-    throw new ApplicationError('Review not found', 404);
+    // Add report
+    const update = {
+      $inc: { reportedCount: 1 },
+      $push: { reportedBy: { userId: req.user._id, reason: reason || 'No reason provided', reportedAt: new Date() } }
+    };
+
+    // Auto-hide at 5+ reports
+    const newCount = (review.reportedCount || 0) + 1;
+    if (newCount >= 5) {
+      update.$set = { moderationStatus: 'pending', isPublished: false };
+    }
+
+    await Review.findByIdAndUpdate(req.params.id, update);
+
+    res.json({ status: 'success', message: 'Report submitted successfully' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Failed to submit report' });
   }
-
-  // Auto-hide review if reported too many times
-  if (review.reportedCount >= 5) {
-    review.moderationStatus = 'pending';
-    review.isPublished = false;
-    await review.save();
-  }
-
-  res.json({
-    status: 'success',
-    message: 'Review reported successfully'
-  });
-}));
+});
 
 /**
  * @swagger
@@ -695,7 +713,7 @@ router.post('/:id/report', authenticate, validate(reviewReportSchema), catchAsyn
  *       200:
  *         description: Review moderated successfully
  */
-router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(reviewModerationSchema), catchAsync(async (req, res) => {
+router.patch('/:id/moderate', authenticate, ensureTenantContext, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(reviewModerationSchema), catchAsync(async (req, res) => {
   const { status, notes } = req.body;
 
   if (!status || !['approved', 'rejected', 'pending'].includes(status)) {

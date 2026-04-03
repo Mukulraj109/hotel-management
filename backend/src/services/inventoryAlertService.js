@@ -369,7 +369,7 @@ class InventoryAlertService {
       
       // Send to each hotel's admin users
       for (const [hotelId, hotelAlerts] of Object.entries(alertsByHotel)) {
-        await websocketService.broadcastToHotel(hotelId, 'inventory_alert', {
+        await websocketService.broadcastToHotel(hotelId, 'inventory:alert', {
           type: 'inventory_alerts',
           alerts: hotelAlerts,
           timestamp: new Date().toISOString()

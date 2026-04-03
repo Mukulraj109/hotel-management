@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useRealTime } from '../../services/realTimeService';
 import { 
   Calendar,
   Clock, 
@@ -37,6 +38,28 @@ const MyServiceBookings: React.FC = () => {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const publicHotelId = useMemo(() => resolvePublicHotelId(searchParams), [searchParams]);
+  const { on, off } = useRealTime();
+
+  // Real-time updates for service booking status changes
+  useEffect(() => {
+    const handleBookingUpdate = () => {
+      queryClient.invalidateQueries({ queryKey: ['service-bookings'] });
+    };
+
+    on('hotel-service-booking:updated', handleBookingUpdate);
+    on('hotel-service-booking:confirmed', handleBookingUpdate);
+    on('hotel-service-booking:cancelled', handleBookingUpdate);
+    on('hotel-service-booking:completed', handleBookingUpdate);
+
+    return () => {
+      off('hotel-service-booking:updated', handleBookingUpdate);
+      off('hotel-service-booking:confirmed', handleBookingUpdate);
+      off('hotel-service-booking:cancelled', handleBookingUpdate);
+      off('hotel-service-booking:completed', handleBookingUpdate);
+    };
+  }, [on, off, queryClient]);
 
   // Fetch user bookings
   const { data: bookingsData, isLoading, error } = useQuery({

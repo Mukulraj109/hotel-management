@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import {
@@ -16,8 +17,9 @@ import {
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-// Apply authentication and staff authorization to all routes
+// Apply authentication, tenant context, and staff authorization to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('staffServices', 'staffAccess'));
 

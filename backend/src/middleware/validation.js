@@ -20,7 +20,7 @@ export const schemas = {
   register: Joi.object({
     name: Joi.string().required().min(2).max(100),
     email: Joi.string().email().required(),
-    password: Joi.string().min(6).required(),
+    password: Joi.string().min(8).required(),
     phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
     role: Joi.string().valid('guest').default('guest')
   }),
@@ -160,7 +160,8 @@ export const schemas = {
     }),
     specialRequests: Joi.string().allow('').max(500).optional().messages({
       'string.max': 'Special requests cannot exceed 500 characters'
-    })
+    }),
+    idempotencyKey: Joi.string().optional()
   }),
 
   cancelServiceBooking: Joi.object({

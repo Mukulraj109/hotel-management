@@ -245,14 +245,7 @@ function GuestRequests() {
       }
     };
 
-    // Set up event listeners
-    on('guest-service:updated', handleGuestServiceUpdated);
-    on('guest-service:created', handleGuestServiceCreated);
-    on('guest-service:cancelled', handleGuestServiceCancelled);
-    // Backward compatibility with underscored/socket event names
-    on('guest_service:updated', handleGuestServiceUpdated);
-    on('guest_service:created', handleGuestServiceCreated);
-    on('guest_service:cancelled', handleGuestServiceCancelled);
+    // Set up event listeners — only plural "guest-services:*" forms which match backend emissions
     on('guest-services:updated', handleGuestServiceUpdated);
     on('guest-services:created', handleGuestServiceCreated);
     on('guest-services:cancelled', handleGuestServiceCancelled);
@@ -262,12 +255,6 @@ function GuestRequests() {
     on('guest-services:*', handleGuestServiceUpdated);
 
     return () => {
-      off('guest-service:updated', handleGuestServiceUpdated);
-      off('guest-service:created', handleGuestServiceCreated);
-      off('guest-service:cancelled', handleGuestServiceCancelled);
-      off('guest_service:updated', handleGuestServiceUpdated);
-      off('guest_service:created', handleGuestServiceCreated);
-      off('guest_service:cancelled', handleGuestServiceCancelled);
       off('guest-services:updated', handleGuestServiceUpdated);
       off('guest-services:created', handleGuestServiceCreated);
       off('guest-services:cancelled', handleGuestServiceCancelled);

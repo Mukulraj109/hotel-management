@@ -276,8 +276,8 @@ router.get('/', catchAsync(async (req, res) => {
     baseQuery.hotelId = new mongoose.Types.ObjectId(targetHotelId);
   }
 
-  // Apply additional filters
-  if (guestId && ['staff', 'admin', 'manager'].includes(req.user.role)) {
+  // Apply additional filters — operational roles (including frontdesk) can scope to a specific guest
+  if (guestId && ['staff', 'admin', 'manager', 'frontdesk'].includes(req.user.role)) {
     scopedGuestId = parseObjectIdParam(guestId, 'guestId');
   }
 
@@ -288,9 +288,12 @@ router.get('/', catchAsync(async (req, res) => {
 
   const skip = (page - 1) * limit;
   let historyItems = [];
-  
-  // Cap the per-sub-query fetch to a reasonable ceiling for in-memory merge
-  const subQueryLimit = Math.min(limit * 3, 100);
+
+  // Fetch enough rows from each sub-collection to cover the requested page even
+  // when records are interleaved after the cross-collection sort.  We need at
+  // least (skip + limit) rows total across all sources, so each source should
+  // provide (skip + limit) rows in the worst case.  Cap at 500 to stay safe.
+  const subQueryLimit = Math.min(skip + limit + limit, 500);
 
   logger.debug('Billing history request', {
     userRole: req.user.role,
@@ -499,9 +502,9 @@ router.get('/', catchAsync(async (req, res) => {
   }
 
   // Include guest checkout inventory charges recorded on User.billingHistory
-  // For staff/admin/manager, include these entries only when guestId scope is provided.
+  // For operational roles (staff/admin/manager/frontdesk), include these entries only when guestId scope is provided.
   const canViewScopedCheckoutCharges =
-    req.user.role === 'guest' || (['staff', 'admin', 'manager'].includes(req.user.role) && scopedGuestId);
+    req.user.role === 'guest' || (['staff', 'admin', 'manager', 'frontdesk'].includes(req.user.role) && scopedGuestId);
   if (canViewScopedCheckoutCharges && (type === 'all' || type === 'checkout_charges')) {
     const checkoutGuestId = req.user.role === 'guest' ? req.user._id : scopedGuestId;
     const guestLookup = { _id: checkoutGuestId };
@@ -567,6 +570,9 @@ router.get('/', catchAsync(async (req, res) => {
   const paginatedItems = historyItems.slice(skip, skip + limit);
 
   // Calculate summary statistics
+  // Note: historyItems may be capped by subQueryLimit per source collection.
+  // If any source hit the cap, the summary is approximate (based on most recent transactions only).
+  const summaryMayBeApproximate = historyItems.length >= subQueryLimit;
   const summary = {
     totalTransactions: total,
     totalAmount: historyItems.reduce((sum, item) => sum + (item.type === 'refund' ? -item.amount : item.amount), 0),
@@ -579,7 +585,8 @@ router.get('/', catchAsync(async (req, res) => {
     totalPaymentAmount: historyItems.filter(item => item.type === 'payment').reduce((sum, item) => sum + item.amount, 0),
     totalRefundAmount: historyItems.filter(item => item.type === 'refund').reduce((sum, item) => sum + item.amount, 0),
     totalBookingAmount: historyItems.filter(item => item.type === 'booking').reduce((sum, item) => sum + item.amount, 0),
-    totalCheckoutChargeAmount: historyItems.filter(item => item.type === 'checkout_charges').reduce((sum, item) => sum + item.amount, 0)
+    totalCheckoutChargeAmount: historyItems.filter(item => item.type === 'checkout_charges').reduce((sum, item) => sum + item.amount, 0),
+    ...(summaryMayBeApproximate ? { note: 'Summary based on most recent transactions' } : {})
   };
 
   logger.debug('Billing history final results', {
@@ -625,7 +632,7 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Billing statistics and analytics
  */
-router.get('/stats', authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/stats', authorize('staff', 'admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { period = 'month' } = req.query;
   if (!ALLOWED_PERIODS.has(period)) {
     throw new ApplicationError(`Invalid period. Allowed values: ${Array.from(ALLOWED_PERIODS).join(', ')}`, 400);
@@ -797,13 +804,15 @@ router.get('/stats', authorize('staff', 'admin', 'manager'), catchAsync(async (r
  *       200:
  *         description: Export data or download link
  */
-router.get('/export', authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/export', authorize('staff', 'admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { format = 'csv', startDate, endDate, type = 'all' } = req.query;
   if (!['csv', 'excel', 'pdf'].includes(format)) {
     throw new ApplicationError('Invalid format. Allowed values: csv, excel, pdf', 400);
   }
-  if (!['all', 'invoice', 'payment', 'refund'].includes(type)) {
-    throw new ApplicationError('Invalid type. Allowed values: all, invoice, payment, refund', 400);
+  // Accept booking and checkout_charges in addition to the original set so the
+  // frontend BillingHistory filter (which can select any type) can export them.
+  if (!['all', 'invoice', 'payment', 'refund', 'booking', 'checkout_charges'].includes(type)) {
+    throw new ApplicationError('Invalid type. Allowed values: all, invoice, payment, refund, booking, checkout_charges', 400);
   }
   const parsedStartDate = parseDateParam(startDate, 'startDate');
   const parsedEndDate = parseDateParam(endDate, 'endDate');
@@ -904,6 +913,38 @@ router.get('/export', authorize('staff', 'admin', 'manager'), catchAsync(async (
           currency: payment.currency,
           hotelName: payment.hotelId?.name
         });
+      });
+    });
+  }
+
+  // Export bookings
+  if (type === 'all' || type === 'booking') {
+    const bookingExportQuery = { ...baseQuery };
+    if (Object.keys(dateFilter).length > 0) {
+      bookingExportQuery.createdAt = dateFilter;
+    }
+
+    const bookings = await Booking.find(bookingExportQuery)
+      .populate('userId', 'name email')
+      .populate('hotelId', 'name')
+      .select('bookingNumber status paymentStatus totalAmount checkIn checkOut userId hotelId createdAt currency')
+      .sort('-createdAt')
+      .limit(exportLimit).lean();
+
+    bookings.forEach(booking => {
+      exportData.push({
+        type: 'Booking',
+        date: booking.createdAt,
+        bookingNumber: booking.bookingNumber,
+        guestName: booking.userId?.name,
+        guestEmail: booking.userId?.email,
+        amount: booking.totalAmount,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        currency: booking.currency || 'INR',
+        hotelName: booking.hotelId?.name
       });
     });
   }

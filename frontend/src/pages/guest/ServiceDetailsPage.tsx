@@ -41,40 +41,33 @@ const ServiceDetailsPage: React.FC = () => {
 
   React.useEffect(() => {
     if (serviceId) {
-      // Check if service is in favorites (localStorage for now)
-      const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-      try {
-        const favorites = savedFavorites ? JSON.parse(savedFavorites) : [];
-        setIsFavorite(Array.isArray(favorites) && favorites.includes(serviceId));
-      } catch {
-        localStorage.removeItem('hotelServicesFavorites');
-        setIsFavorite(false);
-      }
+      // Check if service is in favorites via API
+      hotelServicesService.getFavorites(publicHotelId)
+        .then((ids) => {
+          setIsFavorite(Array.isArray(ids) && ids.includes(serviceId));
+        })
+        .catch(() => {
+          setIsFavorite(false);
+        });
     }
-  }, [serviceId]);
+  }, [serviceId, publicHotelId]);
 
-  const toggleFavorite = () => {
+  const toggleFavorite = async () => {
     if (!serviceId) return;
-    
-    const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-    let favorites: string[] = [];
+
     try {
-      const parsed = savedFavorites ? JSON.parse(savedFavorites) : [];
-      favorites = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      localStorage.removeItem('hotelServicesFavorites');
-    }
-    
-    if (isFavorite) {
-      const newFavorites = favorites.filter((id: string) => id !== serviceId);
-      localStorage.setItem('hotelServicesFavorites', JSON.stringify(newFavorites));
-      setIsFavorite(false);
-      toast.success('Removed from favorites');
-    } else {
-      const newFavorites = [...favorites, serviceId];
-      localStorage.setItem('hotelServicesFavorites', JSON.stringify(newFavorites));
-      setIsFavorite(true);
-      toast.success('Added to favorites');
+      if (isFavorite) {
+        await hotelServicesService.removeFavorite(serviceId, publicHotelId);
+        setIsFavorite(false);
+        toast.success('Removed from favorites');
+      } else {
+        await hotelServicesService.addFavorite(serviceId, publicHotelId);
+        setIsFavorite(true);
+        toast.success('Added to favorites');
+      }
+    } catch (error) {
+      console.error('Failed to update favorite:', error);
+      toast.error('Failed to update favorite');
     }
   };
 

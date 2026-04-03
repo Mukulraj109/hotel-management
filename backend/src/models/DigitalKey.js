@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 const digitalKeySchema = new mongoose.Schema({
   userId: { 
@@ -155,8 +156,8 @@ const digitalKeySchema = new mongoose.Schema({
       type: String,
       validate: {
         validator: function(value) {
-          // Allow raw PINs (4-6 digits) and hashed PINs (64-char hex from sha256)
-          return !this.securitySettings.requirePin || (value && (/^\d{4,6}$/.test(value) || /^[a-f0-9]{64}$/.test(value)));
+          // Allow raw PINs (4-6 digits), hashed PINs (64-char hex from sha256), and bcrypt hashes
+          return !this.securitySettings.requirePin || (value && (/^\d{4,6}$/.test(value) || /^[a-f0-9]{64}$/.test(value) || /^\$2[aby]\$/.test(value)));
         },
         message: 'PIN must be 4-6 digits when required'
       }
@@ -176,23 +177,31 @@ const digitalKeySchema = new mongoose.Schema({
     }
   },
   metadata: {
-    generatedBy: { 
-      type: mongoose.Schema.ObjectId, 
-      ref: 'User' 
+    generatedBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
     },
     deviceInfo: {
       userAgent: String,
       ipAddress: String,
       location: String
     },
-    notes: { 
-      type: String, 
-      maxlength: [500, 'Notes cannot exceed 500 characters'] 
+    notes: {
+      type: String,
+      maxlength: [500, 'Notes cannot exceed 500 characters']
     }
+  },
+  // Revocation metadata — persisted so audit trails survive even if accessLogs grow large
+  revokedAt: {
+    type: Date
+  },
+  revokedReason: {
+    type: String,
+    maxlength: [500, 'Revoked reason cannot exceed 500 characters']
   }
-}, { 
-  timestamps: true, 
-  toJSON: { virtuals: true }, 
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
   toObject: { virtuals: true } 
 });
 
@@ -368,32 +377,37 @@ digitalKeySchema.methods.revokeShare = function(userIdOrEmail) {
   throw new Error('Share not found');
 };
 
-digitalKeySchema.methods.revokeKey = function() {
+/**
+ * Revoke this key, optionally recording who performed the revocation.
+ * @param {string|null} revokedByUserId - ObjectId string of the user revoking the key
+ * @param {object} deviceInfo - Optional device/IP information for the audit log
+ */
+digitalKeySchema.methods.revokeKey = function(revokedByUserId = null, deviceInfo = {}) {
   this.status = 'revoked';
   // Add access log without saving
   this.accessLogs.push({
     action: 'revoked',
-    userId: null,
-    deviceInfo: {},
-    metadata: {}
+    userId: revokedByUserId || null,
+    deviceInfo,
+    metadata: revokedByUserId ? { revokedBy: revokedByUserId } : {}
   });
   return this.save();
 };
 
-// Static helper to hash PINs
-digitalKeySchema.statics.hashPin = function(pin) {
-  return crypto.createHash('sha256').update(pin).digest('hex');
+// Static helper to hash PINs (async — uses bcrypt)
+digitalKeySchema.statics.hashPin = async function(pin) {
+  return bcrypt.hash(pin.toString(), 10);
 };
 
-// Instance method to verify PIN
-digitalKeySchema.methods.verifyPin = function(pin) {
+// Instance method to verify PIN (async — uses bcrypt)
+digitalKeySchema.methods.verifyPin = async function(pin) {
   if (!this.securitySettings.requirePin) return true;
-  const hashedPin = crypto.createHash('sha256').update(pin).digest('hex');
-  return this.securitySettings.pin === hashedPin;
+  if (!this.securitySettings.pin) return true; // No PIN set
+  return bcrypt.compare(pin.toString(), this.securitySettings.pin);
 };
 
 // Pre-save middleware
-digitalKeySchema.pre('save', function(next) {
+digitalKeySchema.pre('save', async function(next) {
   // Auto-expire keys
   if (this.isExpired && this.status === 'active') {
     this.status = 'expired';
@@ -413,7 +427,7 @@ digitalKeySchema.pre('save', function(next) {
 
   // Hash PIN before storage if it looks unhashed (raw 4-6 digit PIN)
   if (this.securitySettings.pin && /^\d{4,6}$/.test(this.securitySettings.pin)) {
-    this.securitySettings.pin = crypto.createHash('sha256').update(this.securitySettings.pin).digest('hex');
+    this.securitySettings.pin = await bcrypt.hash(this.securitySettings.pin.toString(), 10);
   }
 
   next();

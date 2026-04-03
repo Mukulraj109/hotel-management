@@ -27,6 +27,7 @@ import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceFilters } from '../../services/adminGuestServicesService';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { useRealTime } from '../../services/realTimeService';
 
 interface InventoryRequest extends GuestService {
   items?: Array<{
@@ -58,6 +59,7 @@ function safeFormatDate(dateStr: string | undefined | null, formatStr: string): 
 
 export default function FrontDeskInventoryRequests() {
   const { selectedPropertyId, viewMode } = useProperty();
+  const { on, off } = useRealTime();
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,6 +172,23 @@ export default function FrontDeskInventoryRequests() {
   }, [filters, selectedPropertyId]);
 
   useEffect(() => { computeStats(requests); }, [requests, computeStats]);
+
+  // Real-time WebSocket listeners for guest service / inventory events
+  useEffect(() => {
+    const handleServiceEvent = () => {
+      fetchRequests();
+    };
+    on('guest-services:created', handleServiceEvent);
+    on('guest-services:updated', handleServiceEvent);
+    on('guest-services:status_changed', handleServiceEvent);
+    on('guest-services:assigned', handleServiceEvent);
+    return () => {
+      off('guest-services:created', handleServiceEvent);
+      off('guest-services:updated', handleServiceEvent);
+      off('guest-services:status_changed', handleServiceEvent);
+      off('guest-services:assigned', handleServiceEvent);
+    };
+  }, [on, off]);
 
   const displayedRequests = searchTerm.trim()
     ? requests.filter((request) => {

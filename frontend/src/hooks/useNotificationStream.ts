@@ -1,4 +1,11 @@
 /**
+ * @deprecated This SSE notification stream hook is not used in production.
+ * All real-time notifications use Socket.IO via realTimeService.ts and
+ * the useNotificationStream function exported from useNotifications.ts.
+ * This file is kept for potential future use but should not be imported.
+ */
+
+/**
  * PLAN 1: Phase 1.3 - Real-time Implementation Hook
  * React hook for managing SSE notification stream connections
  */

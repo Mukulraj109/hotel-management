@@ -14,22 +14,25 @@ export interface GuestServiceRequest {
   bookingId: {
     _id: string;
     bookingNumber: string;
-    rooms: {
-      roomId: {
+    rooms?: {
+      roomId?: {
         _id: string;
         roomNumber: string;
       };
     }[];
   };
   serviceType: 'room_service' | 'housekeeping' | 'maintenance' | 'concierge' | 'transport' | 'spa' | 'laundry' | 'other';
-  serviceVariation: string;
-  serviceVariations: string[];
-  title: string;
-  description: string;
+  serviceVariation?: string;
+  serviceVariations?: string[];
+  completedServiceVariations?: string[];
+  title?: string;
+  description?: string;
   priority: 'now' | 'later' | 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
   scheduledTime?: string;
-  items: {
+  completedTime?: string;
+  estimatedCost?: number;
+  items?: {
     name: string;
     quantity: number;
     price?: number;
@@ -41,10 +44,13 @@ export interface GuestServiceRequest {
     email: string;
     role: string;
   };
-  notes: string;
+  notes?: string;
   actualCost?: number;
+  estimatedCost?: number;
+  completedTime?: string;
   rating?: number;
   feedback?: string;
+  cancellationReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,6 +76,9 @@ export interface UpdateGuestServiceRequest {
   scheduledTime?: string;
   priority?: GuestServiceRequest['priority'];
   completedServiceVariations?: string[];
+  cancellationReason?: string;
+  rating?: number;
+  feedback?: string;
 }
 
 export interface ServiceRequestStats {

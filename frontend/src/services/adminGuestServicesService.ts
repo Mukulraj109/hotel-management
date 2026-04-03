@@ -8,7 +8,7 @@ export interface GuestService {
   serviceVariations?: string[];
   title: string;
   description: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
+  priority: 'now' | 'later' | 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
   userId?: { _id: string; name: string; email: string; phone?: string };
   bookingId?: {

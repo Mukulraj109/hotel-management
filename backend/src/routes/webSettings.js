@@ -3,6 +3,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import webSettingsController from '../controllers/webSettingsController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { requireRole } from '../middleware/roleAuth.js';
 import logger from '../utils/logger.js';
@@ -31,6 +32,7 @@ const handleValidationErrors = (req, res, next) => {
 
 // Apply authentication and admin role requirement to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('webSettings', 'adminAccess'));
 router.use(requireRole(['admin']));

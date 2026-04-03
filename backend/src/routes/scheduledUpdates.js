@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import ScheduledUpdatesService from '../services/scheduledUpdates.js';
@@ -11,6 +12,7 @@ import Joi from 'joi';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('scheduledUpdates', 'baseAccess'));
 
@@ -59,6 +61,7 @@ const rescheduleScheduledUpdateSchema = Joi.object({
  */
 router.post('/',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   validate(createScheduledUpdateSchema),
   catchAsync(async (req, res) => {
@@ -117,6 +120,7 @@ router.post('/',
  */
 router.get('/',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const {
@@ -158,6 +162,7 @@ router.get('/',
  */
 router.get('/:id',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const update = await ScheduledUpdatesService.getScheduledUpdate(req.params.id);
@@ -184,6 +189,7 @@ router.get('/:id',
  */
 router.delete('/:id',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   validate(cancelScheduledUpdateSchema),
   catchAsync(async (req, res) => {
@@ -218,6 +224,7 @@ router.delete('/:id',
  */
 router.put('/:id/reschedule',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   validate(rescheduleScheduledUpdateSchema),
   catchAsync(async (req, res) => {
@@ -251,6 +258,7 @@ router.put('/:id/reschedule',
  */
 router.post('/:id/execute',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   validate(Joi.object({})),
   catchAsync(async (req, res) => {
@@ -280,6 +288,7 @@ router.post('/:id/execute',
  */
 router.get('/upcoming/:hours?',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const hours = parseInt(req.params.hours) || 24;
@@ -310,6 +319,7 @@ router.get('/upcoming/:hours?',
  */
 router.get('/property/:propertyId',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { propertyId } = req.params;
@@ -342,6 +352,7 @@ router.get('/property/:propertyId',
  */
 router.get('/stats/summary',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const stats = await ScheduledUpdatesService.getStatistics(req.user._id);

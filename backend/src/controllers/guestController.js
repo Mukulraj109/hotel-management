@@ -1,6 +1,8 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Review from '../models/Review.js';
+import Notification from '../models/Notification.js';
+import DigitalKey from '../models/DigitalKey.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
@@ -12,6 +14,10 @@ const buildGuestByIdFilter = (req, guestId) => {
   const filter = { _id: guestId, role: 'guest' };
   if (TENANT_SCOPED_ROLES.includes(req.user.role)) {
     filter.hotelId = req.user.hotelId;
+  }
+  // Guest role users can only access their own profile
+  if (req.user.role === 'guest') {
+    filter._id = req.user._id;
   }
   return filter;
 };
@@ -54,32 +60,55 @@ export const getAllGuests = catchAsync(async (req, res) => {
     query.guestType = guestType;
   }
 
-  // Filter by booking history
+  // Filter by booking history — use aggregation with limit to avoid unbounded distinct()
+  const FILTER_ID_LIMIT = 10000;
   if (hasBookings === 'true') {
-    const guestsWithBookings = await Booking.distinct('userId', { hotelId });
-    query._id = { $in: guestsWithBookings };
+    const rows = await Booking.aggregate([
+      { $match: { hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId } },
+      { $group: { _id: '$userId' } },
+      { $limit: FILTER_ID_LIMIT }
+    ]);
+    query._id = { $in: rows.map((r) => r._id) };
   } else if (hasBookings === 'false') {
-    const guestsWithBookings = await Booking.distinct('userId', { hotelId });
-    query._id = { $nin: guestsWithBookings };
+    const rows = await Booking.aggregate([
+      { $match: { hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId } },
+      { $group: { _id: '$userId' } },
+      { $limit: FILTER_ID_LIMIT }
+    ]);
+    query._id = { $nin: rows.map((r) => r._id) };
   }
 
-  // Filter by review history
+  // Filter by review history — use aggregation with limit
   if (hasReviews === 'true') {
-    const guestsWithReviews = await Review.distinct('userId', { hotelId });
-    query._id = { $in: guestsWithReviews };
+    const rows = await Review.aggregate([
+      { $match: { hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId } },
+      { $group: { _id: '$userId' } },
+      { $limit: FILTER_ID_LIMIT }
+    ]);
+    query._id = { ...(query._id || {}), $in: rows.map((r) => r._id) };
   } else if (hasReviews === 'false') {
-    const guestsWithReviews = await Review.distinct('userId', { hotelId });
-    query._id = { $nin: guestsWithReviews };
+    const rows = await Review.aggregate([
+      { $match: { hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId } },
+      { $group: { _id: '$userId' } },
+      { $limit: FILTER_ID_LIMIT }
+    ]);
+    query._id = { ...(query._id || {}), $nin: rows.map((r) => r._id) };
   }
 
-  // Filter by last stay date
+  // Filter by last stay date — use aggregation with limit
   if (lastStayDate) {
     const date = new Date(lastStayDate);
-    const guestsWithRecentStays = await Booking.distinct('userId', {
-      hotelId,
-      checkOut: { $gte: date }
-    });
-    query._id = { $in: guestsWithRecentStays };
+    const rows = await Booking.aggregate([
+      {
+        $match: {
+          hotelId: mongoose.Types.ObjectId.isValid(hotelId) ? new mongoose.Types.ObjectId(hotelId) : hotelId,
+          checkOut: { $gte: date }
+        }
+      },
+      { $group: { _id: '$userId' } },
+      { $limit: FILTER_ID_LIMIT }
+    ]);
+    query._id = { ...(query._id || {}), $in: rows.map((r) => r._id) };
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -94,51 +123,70 @@ export const getAllGuests = catchAsync(async (req, res) => {
 
   const total = await User.countDocuments(query);
 
-  // Get additional data for each guest
-  const guestsWithStats = await Promise.all(
-    guests.map(async (guest) => {
-      try {
-        const [bookingStats, reviewStats] = await Promise.all([
-          // Booking statistics
-          Booking.aggregate([
-            { $match: { userId: guest._id, hotelId: guest.hotelId } },
-            {
-              $group: {
-                _id: null,
-                totalBookings: { $sum: 1 },
-                totalNights: { $sum: { $subtract: ['$checkOut', '$checkIn'] } },
-                totalSpent: { $sum: '$totalAmount' },
-                lastStay: { $max: '$checkOut' }
-              }
-            }
-          ]),
-          // Review statistics
-          Review.aggregate([
-            { $match: { userId: guest._id, hotelId: guest.hotelId } },
-            {
-              $group: {
-                _id: null,
-                totalReviews: { $sum: 1 },
-                averageRating: { $avg: '$rating' }
-              }
-            }
-          ])
-        ]);
+  // Batch stats lookup: single aggregation per collection across ALL guests on this page
+  const guestIds = guests.map((g) => g._id);
+  const hotelObjectId = mongoose.Types.ObjectId.isValid(hotelId)
+    ? new mongoose.Types.ObjectId(hotelId)
+    : hotelId;
 
-        return {
-          ...guest.toObject(),
-          stats: {
-            bookings: bookingStats[0] || { totalBookings: 0, totalNights: 0, totalSpent: 0, lastStay: null },
-            reviews: reviewStats[0] || { totalReviews: 0, averageRating: 0 }
-          }
-        };
-    
-      } catch (error) {
-        console.error('Operation failed:', error.message);
-        throw error;
+  const [bookingAggResults, reviewAggResults] = await Promise.all([
+    Booking.aggregate([
+      { $match: { userId: { $in: guestIds }, hotelId: hotelObjectId } },
+      {
+        $group: {
+          _id: '$userId',
+          totalBookings: { $sum: 1 },
+          totalNights: { $sum: { $subtract: ['$checkOut', '$checkIn'] } },
+          totalSpent: { $sum: '$totalAmount' },
+          lastStay: { $max: '$checkOut' }
+        }
       }
-    })
-  );
+    ]),
+    Review.aggregate([
+      { $match: { userId: { $in: guestIds }, hotelId: hotelObjectId } },
+      {
+        $group: {
+          _id: '$userId',
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' }
+        }
+      }
+    ])
+  ]);
+
+  // Build lookup maps keyed by guest ID string
+  const bookingStatsByGuest = new Map(bookingAggResults.map((r) => [r._id.toString(), r]));
+  const reviewStatsByGuest = new Map(reviewAggResults.map((r) => [r._id.toString(), r]));
+
+  const guestsWithStats = guests.map((guest) => {
+    const guestIdStr = guest._id.toString();
+    const bStats = bookingStatsByGuest.get(guestIdStr) || { totalBookings: 0, totalNights: 0, totalSpent: 0, lastStay: null };
+    const rStats = reviewStatsByGuest.get(guestIdStr) || { totalReviews: 0, averageRating: 0 };
+
+    // Compute billing completeness: both a GST number and company name must be present
+    const billing = guest.billingDetails || {};
+    const hasCompleteBillingInfo = !!(
+      billing.gstNumber && billing.gstNumber.trim() &&
+      billing.companyName && billing.companyName.trim()
+    );
+
+    return {
+      ...guest,
+      hasCompleteBillingInfo,
+      stats: {
+        bookings: {
+          totalBookings: bStats.totalBookings,
+          totalNights: bStats.totalNights,
+          totalSpent: bStats.totalSpent,
+          lastStay: bStats.lastStay
+        },
+        reviews: {
+          totalReviews: rStats.totalReviews,
+          averageRating: rStats.averageRating
+        }
+      }
+    };
+  });
 
   res.json({
     status: 'success',
@@ -229,11 +277,31 @@ export const createGuest = catchAsync(async (req, res) => {
   });
 });
 
+// Fields that guest-role users are allowed to update on their own profile
+const GUEST_SELF_UPDATE_ALLOWED_FIELDS = ['name', 'phone', 'preferences', 'avatar'];
+
 // Update guest
 export const updateGuest = catchAsync(async (req, res) => {
+  let updateData = req.body;
+
+  // For guest-role users, whitelist allowed fields to prevent privilege escalation
+  if (req.user.role === 'guest') {
+    const sanitized = {};
+    for (const field of GUEST_SELF_UPDATE_ALLOWED_FIELDS) {
+      if (updateData[field] !== undefined) {
+        sanitized[field] = updateData[field];
+      }
+    }
+    updateData = sanitized;
+
+    if (Object.keys(updateData).length === 0) {
+      throw new ApplicationError('No allowed fields to update', 400);
+    }
+  }
+
   const guest = await User.findOneAndUpdate(
     buildGuestByIdFilter(req, req.params.id),
-    req.body,
+    updateData,
     { new: true, runValidators: true }
   )
     .populate('salutationId', 'title fullForm')
@@ -257,13 +325,18 @@ export const deleteGuest = catchAsync(async (req, res) => {
     throw new ApplicationError('Guest not found', 404);
   }
 
-  // Check if guest has bookings
-  const hasBookings = await Booking.exists({ userId: guest._id });
-  if (hasBookings) {
-    throw new ApplicationError('Cannot delete guest with existing bookings', 400);
-  }
+  const guestId = guest._id;
 
   await User.findOneAndDelete(buildGuestByIdFilter(req, req.params.id));
+
+  // Cascade: anonymize/clean up related data
+  const cleanupPromises = [
+    Booking.updateMany({ userId: guestId }, { $set: { 'guestDetails.anonymized': true } }),
+    Review.updateMany({ userId: guestId }, { $set: { guestName: 'Deleted User', isAnonymous: true } }),
+    Notification.deleteMany({ userId: guestId }),
+    DigitalKey.updateMany({ userId: guestId }, { status: 'revoked', revokedReason: 'Account deleted' }),
+  ];
+  await Promise.allSettled(cleanupPromises);
 
   res.status(204).json({
     status: 'success',

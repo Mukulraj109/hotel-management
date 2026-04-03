@@ -14,6 +14,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { useRealTime } from '../../services/realTimeService';
 import {
   Calendar,
   Users,
@@ -41,6 +42,7 @@ interface UpcomingBookingsStats {
 
 function AdminUpcomingBookings() {
   const { user } = useAuth();
+  const { on, off } = useRealTime();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<UpcomingBookingsStats>({
     todayArrivals: 0,
@@ -87,6 +89,21 @@ function AdminUpcomingBookings() {
   useEffect(() => {
     fetchUpcomingBookings();
   }, [filters.days, filters.page]);
+
+  // Real-time WebSocket listeners for booking events
+  useEffect(() => {
+    const handleBookingEvent = () => {
+      fetchUpcomingBookings();
+    };
+    on('booking:created', handleBookingEvent);
+    on('booking:updated', handleBookingEvent);
+    on('booking:cancelled', handleBookingEvent);
+    return () => {
+      off('booking:created', handleBookingEvent);
+      off('booking:updated', handleBookingEvent);
+      off('booking:cancelled', handleBookingEvent);
+    };
+  }, [on, off]);
 
   // Filter bookings by search term and remove invalid entries
   const filteredBookings = bookings

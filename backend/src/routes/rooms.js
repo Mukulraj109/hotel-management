@@ -245,63 +245,55 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   });
 }));
 
-// Temporary debug endpoint
-router.get('/debug', async (req, res) => {
-  try {
-    const { hotelId } = req.query;
-
-    // Convert hotelId to ObjectId if provided
-    const hotelQuery = hotelId ? { hotelId: new mongoose.Types.ObjectId(hotelId) } : {};
-    const baseQuery = { isActive: true, ...hotelQuery };
-
-    // Get total rooms
-    const totalRooms = await Room.countDocuments(baseQuery);
-
-    // Get rooms with different statuses
-    const statusCounts = await Room.aggregate([
-      { $match: baseQuery },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-    
-    // Get all bookings
-    const allBookings = await Booking.find({
-      ...hotelQuery,
-      status: { $in: ['confirmed', 'checked_in'] }
-    }).select('status checkIn checkOut rooms.roomId hotelId').lean().limit(1000);
-
-    // Get current date info
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-
-    // Get current bookings
-    const currentBookings = await Booking.find({
-      ...hotelQuery,
-      status: { $in: ['confirmed', 'checked_in'] },
-      checkOut: { $gte: today },
-      checkIn: { $lte: tomorrow }
-    }).select('status checkIn checkOut rooms.roomId hotelId').lean().limit(1000);
-    
-    res.json({
-      totalRooms,
-      statusCounts,
-      allBookings: allBookings.length,
-      currentBookings: currentBookings.length,
-      currentBookingsDetails: currentBookings.map(b => ({
-        id: b._id,
-        status: b.status,
-        checkIn: b.checkIn,
-        checkOut: b.checkOut,
-        roomIds: b.rooms.map(r => r.roomId.toString())
-      })),
-      today: today.toISOString(),
-      tomorrow: tomorrow.toISOString(),
-      hotelId
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+// Debug endpoint — requires authentication and admin role
+router.get('/debug', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
+  // Restrict to admin/manager roles only
+  if (!['admin', 'manager'].includes(req.user?.role)) {
+    throw new ApplicationError('Access denied: admin or manager role required', 403);
   }
-});
+
+  const hotelId = req.query.hotelId || req.user.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  const hotelObjectId = new mongoose.Types.ObjectId(hotelId);
+  const baseQuery = { isActive: true, hotelId: hotelObjectId };
+
+  const totalRooms = await Room.countDocuments(baseQuery);
+
+  const statusCounts = await Room.aggregate([
+    { $match: baseQuery },
+    { $group: { _id: '$status', count: { $sum: 1 } } }
+  ]);
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+
+  const currentBookings = await Booking.find({
+    hotelId: hotelObjectId,
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkOut: { $gte: today },
+    checkIn: { $lte: tomorrow }
+  }).select('status checkIn checkOut rooms.roomId hotelId').lean().limit(100);
+
+  res.json({
+    totalRooms,
+    statusCounts,
+    currentBookings: currentBookings.length,
+    currentBookingsDetails: currentBookings.map(b => ({
+      id: b._id,
+      status: b.status,
+      checkIn: b.checkIn,
+      checkOut: b.checkOut,
+      roomIds: b.rooms.map(r => r.roomId?.toString())
+    })),
+    today: today.toISOString(),
+    tomorrow: tomorrow.toISOString(),
+    hotelId
+  });
+}));
 
 // Get room metrics for admin dashboard
 router.get('/metrics', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {

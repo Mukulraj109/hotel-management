@@ -4,11 +4,14 @@ import Notification from '../models/Notification.js';
 import logger from '../utils/logger.js';
 import { coerceDbNotificationType } from '../utils/notificationTypeCoercion.js';
 
-// Configure web-push (these should be environment variables in production)
 const vapidKeys = {
-  publicKey: process.env.VAPID_PUBLIC_KEY || 'BMqSvZjJj5s_1V8nW8l8g2q2Q5rP5K5c4b2D1w7X4q2c',
-  privateKey: process.env.VAPID_PRIVATE_KEY || 'example-private-key'
+  publicKey: process.env.VAPID_PUBLIC_KEY || '',
+  privateKey: process.env.VAPID_PRIVATE_KEY || ''
 };
+
+if (!vapidKeys.publicKey || !vapidKeys.privateKey) {
+  console.warn('VAPID keys not configured. Push notifications will be disabled.');
+}
 
 webpush.setVapidDetails(
   'mailto:admin@hotelmanagement.com',
@@ -467,13 +470,16 @@ class PushNotificationService {
   /**
    * Get notification history for user
    */
-  async getNotificationHistory(userId, limit = 50) {
+  async getNotificationHistory(userId, hotelId, limit = 50) {
     try {
-      const notifications = await Notification.find({ userId })
+      const safeLimit = Math.min(100, Math.max(1, limit));
+      const query = { userId };
+      if (hotelId) query.hotelId = hotelId;
+      const notifications = await Notification.find(query)
         .sort({ createdAt: -1 })
-        .limit(limit)
+        .limit(safeLimit)
         .lean();
-      
+
       return notifications;
     } catch (error) {
       logger.error('Error fetching notification history:', error);
@@ -502,14 +508,16 @@ class PushNotificationService {
   /**
    * Get unread notification count
    */
-  async getUnreadCount(userId) {
+  async getUnreadCount(userId, hotelId) {
     try {
-      const count = await Notification.countDocuments({
+      const query = {
         userId,
         status: { $in: ['pending', 'sent', 'delivered'] },
         readAt: { $exists: false }
-      });
-      
+      };
+      if (hotelId) query.hotelId = hotelId;
+      const count = await Notification.countDocuments(query);
+
       return count;
     } catch (error) {
       logger.error('Error getting unread count:', error);

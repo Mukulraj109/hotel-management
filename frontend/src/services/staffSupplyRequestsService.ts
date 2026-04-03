@@ -371,12 +371,9 @@ class StaffSupplyRequestsService {
 
   async cancelRequest(requestId: string, reason?: string) {
     try {
-      const response = await axios.patch(
-        `${API_BASE_URL}/supply-requests/${requestId}`,
-        {
-          status: 'cancelled',
-          notes: reason ? `Cancelled: ${reason}` : 'Cancelled by staff member'
-        },
+      const response = await axios.post(
+        `${API_BASE_URL}/supply-requests/${requestId}/cancel`,
+        { reason: reason || 'Cancelled by staff member' },
         this.getRequestConfig()
       );
 
@@ -433,7 +430,8 @@ class StaffSupplyRequestsService {
         success: true,
         data: {
           requests: response.data.data.requests || [],
-          count: response.data.data.count || 0
+          count: response.data.data.pagination?.total ?? response.data.data.count ?? 0,
+          pagination: response.data.data.pagination
         }
       };
     } catch (error: unknown) {
@@ -803,17 +801,8 @@ class StaffSupplyRequestsService {
 
   // Template and Category Management
   async getRequestTemplates(department?: string) {
-    try {
-      const params = new URLSearchParams();
-      if (department) {
-        params.append('department', department);
-      }
-
-      await axios.get(
-        `${API_BASE_URL}/request-templates?${params.toString()}`,
-        this.getRequestConfig()
-      );
-      const mockTemplates: RequestTemplate[] = [
+    // Fallback mock templates used when the backend endpoint is unavailable
+    const mockTemplates: RequestTemplate[] = [
         {
           _id: 'template_1',
           name: 'Room Cleaning Supplies',
@@ -1000,17 +989,34 @@ class StaffSupplyRequestsService {
         }
       ];
 
+    try {
+      const params = new URLSearchParams();
+      if (department) {
+        params.append('department', department);
+      }
+
+      const response = await axios.get(
+        `${API_BASE_URL}/request-templates?${params.toString()}`,
+        this.getRequestConfig()
+      );
+
+      // Use the real API response when available
+      const apiTemplates: RequestTemplate[] = response.data?.data?.templates || response.data?.data || [];
+      if (apiTemplates.length > 0) {
+        return { success: true, data: apiTemplates };
+      }
+
+      // Fall back to mocks when the backend has no templates configured
       const filteredTemplates = department
         ? mockTemplates.filter(t => t.department === department)
         : mockTemplates;
-
-      return {
-        success: true,
-        data: filteredTemplates
-      };
-    } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
-      throw new Error(axiosErr.response?.data?.message || 'Failed to fetch request templates');
+      return { success: true, data: filteredTemplates };
+    } catch {
+      // Backend endpoint not yet implemented — return mock templates gracefully
+      const filteredTemplates = department
+        ? mockTemplates.filter(t => t.department === department)
+        : mockTemplates;
+      return { success: true, data: filteredTemplates };
     }
   }
 

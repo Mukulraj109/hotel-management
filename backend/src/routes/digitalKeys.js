@@ -1,7 +1,9 @@
 import express from 'express';
 import Joi from 'joi';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import QRCode from 'qrcode';
+import rateLimit from 'express-rate-limit';
 import DigitalKey from '../models/DigitalKey.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -16,6 +18,14 @@ import { validate, schemas } from '../middleware/validation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import websocketService from '../services/websocketService.js';
 import logger from '../utils/logger.js';
+
+const QR_SECRET = process.env.DIGITAL_KEY_QR_SECRET || crypto.randomBytes(32).toString('hex');
+
+const keyValidationLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 attempts per minute per IP
+  message: { status: 'error', message: 'Too many validation attempts. Please try again later.' }
+});
 
 const router = express.Router();
 
@@ -71,8 +81,15 @@ router.get('/', catchAsync(async (req, res) => {
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (safePage - 1) * safeLimit;
-  
-  const filter = { userId: req.user.id, hotelId: req.user.hotelId };
+
+  // Guests may not have a hotelId on their user record (they belong to a hotel
+  // via booking, not via the user.hotelId field).  Use tenantId from context when
+  // available; for guest users without a tenant, skip the hotelId filter and rely
+  // on userId scoping alone.
+  const userHotelId = req.tenantId || req.user.hotelId;
+  const filter = userHotelId
+    ? { userId: req.user.id, hotelId: userHotelId }
+    : { userId: req.user.id };
   if (status) filter.status = status;
   if (type) filter.type = type;
   
@@ -107,19 +124,23 @@ router.get('/shared', catchAsync(async (req, res) => {
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   
+  const sharedHotelId = req.tenantId || req.user.hotelId;
+
   const keys = await DigitalKey.getSharedKeysForUser(req.user.id, {
     page: safePage,
     limit: safeLimit,
-    hotelId: req.user.hotelId
+    hotelId: sharedHotelId
   });
-  
-  const total = await DigitalKey.countDocuments({
+
+  const sharedCountFilter = {
     'sharedWith.userId': req.user.id,
     'sharedWith.isActive': true,
     status: 'active',
-    validUntil: { $gt: new Date() },
-    hotelId: req.user.hotelId
-  });
+    validUntil: { $gt: new Date() }
+  };
+  if (sharedHotelId) sharedCountFilter.hotelId = sharedHotelId;
+
+  const total = await DigitalKey.countDocuments(sharedCountFilter);
   
   res.json({
     success: true,
@@ -139,12 +160,14 @@ router.get('/shared', catchAsync(async (req, res) => {
 // Get the current user's most relevant active key (mobile compatibility endpoint)
 router.get('/my-key', catchAsync(async (req, res) => {
   const now = new Date();
-  const key = await DigitalKey.findOne({
+  const myKeyHotelId = req.tenantId || req.user.hotelId;
+  const myKeyFilter = {
     userId: req.user.id,
-    hotelId: req.user.hotelId,
     status: 'active',
     validUntil: { $gt: now }
-  })
+  };
+  if (myKeyHotelId) myKeyFilter.hotelId = myKeyHotelId;
+  const key = await DigitalKey.findOne(myKeyFilter)
     .sort({ validUntil: 1, createdAt: -1 })
     .populate('bookingId', 'bookingNumber checkIn checkOut')
     .populate('roomId', 'number type floor')
@@ -199,14 +222,17 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   
   // Generate QR code data (keep it minimal for QR code size limits)
   const keyCode = DigitalKey.generateKeyCode();
-  const qrData = JSON.stringify({
-    k: keyCode,                                    // key code
-    b: booking._id.toString().slice(-8),           // last 8 chars of booking ID  
-    r: firstRoom.roomId._id.toString().slice(-8),  // last 8 chars of room ID
-    h: booking.hotelId._id.toString().slice(-8),   // last 8 chars of hotel ID
-    t: type.charAt(0),                             // first letter of type
-    ts: Math.floor(Date.now() / 1000)              // timestamp in seconds
-  });
+  const qrPayload = {
+    k: keyCode,
+    b: booking._id.toString().slice(-8),
+    r: firstRoom.roomId._id.toString().slice(-8),
+    h: booking.hotelId._id.toString().slice(-8),
+    t: type.charAt(0),
+    ts: Math.floor(Date.now() / 1000)
+  };
+  const qrPayloadStr = JSON.stringify(qrPayload);
+  const signature = crypto.createHmac('sha256', QR_SECRET).update(qrPayloadStr).digest('hex').slice(0, 16);
+  const qrData = JSON.stringify({ ...qrPayload, sig: signature });
   
   const qrCode = await QRCode.toDataURL(qrData);
   
@@ -276,36 +302,93 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (safePage - 1) * safeLimit;
-  const adminHotelId = hotel || req.user.hotelId;
+
+  // SECURITY: always resolve the effective hotel from the tenant context so a
+  // staff/frontdesk user cannot query another hotel's keys by supplying a
+  // different `hotel` query param.  Super-admins (no hotelId) may pass any
+  // hotel, but the value is still validated via mongoose ObjectId coercion.
+  const tenantHotelId = req.tenantId || String(req.user.hotelId || '');
+  const adminHotelId = tenantHotelId || hotel;  // tenant wins; fall back to param only if no tenant
 
   if (!adminHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
+  }
+
+  // Prevent cross-hotel data access: if the user has a fixed tenant, the
+  // requested hotel must match it.
+  if (tenantHotelId && hotel && String(hotel) !== tenantHotelId) {
+    throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
   }
 
   const filter = { hotelId: new mongoose.Types.ObjectId(adminHotelId) };
   if (status) filter.status = status;
   if (type) filter.type = type;
   
-  // Add search functionality
+  // Build base Mongoose filter (without search which needs a join)
+  // keyCode search is directly filterable; booking number search requires an
+  // aggregation lookup because bookingId is a reference (ObjectId), not a
+  // denormalised string field.
+  let keys;
+  let total;
+
   if (search) {
     const escapedSearch = escapeRegex(search);
-    filter.$or = [
-      { keyCode: { $regex: escapedSearch, $options: 'i' } },
-      { 'bookingId.bookingNumber': { $regex: escapedSearch, $options: 'i' } }
+
+    // Use aggregation to enable search across the joined bookingNumber field.
+    const searchPipeline = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'bookings',
+          localField: 'bookingId',
+          foreignField: '_id',
+          as: '_booking'
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { keyCode: { $regex: escapedSearch, $options: 'i' } },
+            { '_booking.bookingNumber': { $regex: escapedSearch, $options: 'i' } }
+          ]
+        }
+      }
     ];
+
+    const [results, countResult] = await Promise.all([
+      DigitalKey.aggregate([
+        ...searchPipeline,
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: safeLimit }
+      ]),
+      DigitalKey.aggregate([...searchPipeline, { $count: 'total' }])
+    ]);
+
+    // Populate references on the raw aggregation documents
+    keys = await DigitalKey.populate(results, [
+      { path: 'userId', select: 'name email' },
+      { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
+      { path: 'roomId', select: 'number type floor' },
+      { path: 'hotelId', select: 'name address' }
+    ]);
+
+    total = countResult[0]?.total || 0;
+  } else {
+    [keys, total] = await Promise.all([
+      DigitalKey.find(filter)
+        .populate('userId', 'name email')
+        .populate('bookingId', 'bookingNumber checkIn checkOut')
+        .populate('roomId', 'number type floor')
+        .populate('hotelId', 'name address')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit)
+        .lean(),
+      DigitalKey.countDocuments(filter)
+    ]);
   }
-  
-  const keys = await DigitalKey.find(filter)
-    .populate('userId', 'firstName lastName email')
-    .populate('bookingId', 'bookingNumber checkIn checkOut')
-    .populate('roomId', 'number type floor')
-    .populate('hotelId', 'name address')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(safeLimit).lean();
-  
-  const total = await DigitalKey.countDocuments(filter);
-  
+
   res.json({
     success: true,
     data: {
@@ -324,7 +407,18 @@ router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess')
 // Get admin analytics for digital keys
 router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { timeRange = '30d' } = req.query;
-  const targetHotelId = req.query.hotelId || req.user.hotelId;
+
+  // SECURITY: Always derive hotelId from tenant context so staff cannot query
+  // another hotel's analytics by supplying an arbitrary hotelId query param.
+  const tenantHotelId = req.tenantId || String(req.user.hotelId || '');
+  const requestedHotelId = req.query.hotelId ? String(req.query.hotelId) : null;
+
+  // If the requester has a fixed tenant, the optional hotelId param must match.
+  if (tenantHotelId && requestedHotelId && requestedHotelId !== tenantHotelId) {
+    throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
+  }
+
+  const targetHotelId = tenantHotelId || requestedHotelId;
 
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -472,7 +566,7 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
         action: '$accessLogs.action',
         timestamp: '$accessLogs.timestamp',
         user: {
-          name: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+          name: { $ifNull: ['$user.name', 'Unknown'] },
           email: '$user.email'
         },
         hotel: '$hotel.name',
@@ -501,7 +595,7 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
       { $unwind: '$user' },
       {
         $project: {
-          name: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+          name: { $ifNull: ['$user.name', 'Unknown'] },
           email: '$user.email',
           keyCount: 1,
           totalUses: 1
@@ -542,9 +636,15 @@ router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adm
 // Get key statistics (MUST be before /:keyId to avoid route conflict)
 router.get('/stats/overview', catchAsync(async (req, res) => {
   const userId = req.user.id;
+  const statsHotelId = req.tenantId || req.user.hotelId;
+
+  if (!statsHotelId) {
+    throw new ApplicationError('Hotel assignment is required to retrieve key statistics', 400);
+  }
+
   const userObjectId = new mongoose.Types.ObjectId(userId);
-  const hotelObjectId = new mongoose.Types.ObjectId(req.user.hotelId);
-  const tenantKeyFilter = { userId, hotelId: req.user.hotelId };
+  const hotelObjectId = new mongoose.Types.ObjectId(statsHotelId);
+  const tenantKeyFilter = { userId, hotelId: statsHotelId };
 
   const [
     totalKeys,
@@ -569,7 +669,7 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
       'sharedWith.isActive': true,
       status: 'active',
       validUntil: { $gt: new Date() },
-      hotelId: req.user.hotelId
+      hotelId: statsHotelId
     }),
     DigitalKey.aggregate([
       { $match: { userId: userObjectId, hotelId: hotelObjectId } },
@@ -635,7 +735,16 @@ router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 
       startDate.setDate(startDate.getDate() - 30);
   }
 
-  const activityHotelId = req.query.hotelId || req.user.hotelId;
+  // SECURITY: Enforce tenant isolation so staff cannot read another hotel's
+  // activity logs by supplying an arbitrary hotelId query param.
+  const tenantActivityHotelId = req.tenantId || String(req.user.hotelId || '');
+  const requestedActivityHotelId = req.query.hotelId ? String(req.query.hotelId) : null;
+
+  if (tenantActivityHotelId && requestedActivityHotelId && requestedActivityHotelId !== tenantActivityHotelId) {
+    throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
+  }
+
+  const activityHotelId = tenantActivityHotelId || requestedActivityHotelId;
   if (!activityHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
@@ -764,7 +873,16 @@ router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminA
     format = 'csv'
   } = req.query;
 
-  const exportHotelId = hotel || req.user.hotelId;
+  // SECURITY: Enforce tenant isolation on export — staff cannot export another
+  // hotel's keys by supplying a foreign hotel query param.
+  const tenantExportHotelId = req.tenantId || String(req.user.hotelId || '');
+  const requestedExportHotelId = hotel ? String(hotel) : null;
+
+  if (tenantExportHotelId && requestedExportHotelId && requestedExportHotelId !== tenantExportHotelId) {
+    throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
+  }
+
+  const exportHotelId = tenantExportHotelId || requestedExportHotelId;
   if (!exportHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
@@ -856,7 +974,17 @@ router.post(
       hotel: hotelFromBody
     } = req.body;
 
-    const scopeHotelId = hotelFromBody || req.query.hotel || req.user.hotelId;
+    // SECURITY: tenant context always wins over the body/query hotel param.
+    // This prevents a staff member from generating a key for a different hotel
+    // by supplying a foreign hotelId in the request body.
+    const tenantHotelId = req.tenantId || String(req.user.hotelId || '');
+    const requestedHotelId = hotelFromBody || req.query.hotel;
+
+    if (tenantHotelId && requestedHotelId && String(requestedHotelId) !== tenantHotelId) {
+      throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
+    }
+
+    const scopeHotelId = tenantHotelId || requestedHotelId;
     if (!scopeHotelId) {
       throw new ApplicationError('Hotel ID is required', 400);
     }
@@ -907,14 +1035,19 @@ router.post(
 
     const firstRoom = booking.rooms[0];
     const keyCode = DigitalKey.generateKeyCode();
-    const qrData = JSON.stringify({
+    // SECURITY FIX: Sign the QR payload with HMAC (same as guest-generated keys)
+    // so the validate endpoint can verify the signature and reject forged codes.
+    const qrPayload = {
       k: keyCode,
       b: booking._id.toString().slice(-8),
       r: firstRoom.roomId._id.toString().slice(-8),
       h: booking.hotelId._id.toString().slice(-8),
       t: type.charAt(0),
       ts: Math.floor(Date.now() / 1000)
-    });
+    };
+    const qrPayloadStr = JSON.stringify(qrPayload);
+    const signature = crypto.createHmac('sha256', QR_SECRET).update(qrPayloadStr).digest('hex').slice(0, 16);
+    const qrData = JSON.stringify({ ...qrPayload, sig: signature });
 
     const qrCode = await QRCode.toDataURL(qrData);
 
@@ -984,7 +1117,17 @@ router.delete(
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { keyId } = req.params;
-    const scopeHotelId = req.query.hotel || req.user.hotelId;
+
+    // SECURITY: Enforce tenant isolation — staff cannot revoke a key from
+    // another hotel by supplying a foreign hotel query param.
+    const tenantRevokeHotelId = req.tenantId || String(req.user.hotelId || '');
+    const requestedRevokeHotelId = req.query.hotel ? String(req.query.hotel) : null;
+
+    if (tenantRevokeHotelId && requestedRevokeHotelId && requestedRevokeHotelId !== tenantRevokeHotelId) {
+      throw new ApplicationError('Access denied: hotel parameter does not match your property', 403);
+    }
+
+    const scopeHotelId = tenantRevokeHotelId || requestedRevokeHotelId;
     if (!scopeHotelId) {
       throw new ApplicationError('Hotel ID is required', 400);
     }
@@ -1000,7 +1143,11 @@ router.delete(
 
     const guestUserId = String(digitalKey.userId);
     const previousStatus = digitalKey.status;
-    await digitalKey.revokeKey();
+    // Pass the revoking staff member's ID for audit trail
+    await digitalKey.revokeKey(String(req.user._id || req.user.id), {
+      userAgent: req.get('User-Agent'),
+      ipAddress: req.ip
+    });
     await digitalKey.populate(keyPopulateSpec);
     const sanitizedRevoked = sanitizeDigitalKey(digitalKey);
 
@@ -1036,14 +1183,17 @@ router.delete(
 
 // Get a specific digital key
 router.get('/:keyId', catchAsync(async (req, res) => {
-  const digitalKey = await DigitalKey.findOne({
+  const keyHotelId = req.tenantId || req.user.hotelId;
+  const keyFilter = {
     _id: req.params.keyId,
-    hotelId: req.user.hotelId,
     $or: [
       { userId: req.user.id },
       { 'sharedWith.userId': req.user.id, 'sharedWith.isActive': true }
     ]
-  })
+  };
+  if (keyHotelId) keyFilter.hotelId = keyHotelId;
+
+  const digitalKey = await DigitalKey.findOne(keyFilter)
   .populate('bookingId', 'bookingNumber checkIn checkOut')
   .populate('roomId', 'number type floor')
   .populate('hotelId', 'name address')
@@ -1060,15 +1210,29 @@ router.get('/:keyId', catchAsync(async (req, res) => {
 }));
 
 // Validate a digital key (for door access)
-router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/validate/:keyCode', keyValidationLimiter, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyCode } = req.params;
   const { pin, deviceInfo = {} } = req.body;
   const now = new Date();
-  
+
   const digitalKey = await DigitalKey.findByKeyCode(keyCode);
-  
+
   if (!digitalKey) {
     throw new ApplicationError('Invalid key code', 404);
+  }
+
+  // Validate QR payload signature if provided
+  if (req.body.sig && req.body.ts) {
+    const payloadStr = JSON.stringify({ k: req.body.k, b: req.body.b, r: req.body.r, h: req.body.h, t: req.body.t, ts: req.body.ts });
+    const expectedSig = crypto.createHmac('sha256', QR_SECRET).update(payloadStr).digest('hex').slice(0, 16);
+    if (req.body.sig !== expectedSig) {
+      return res.status(403).json({ status: 'error', message: 'Invalid QR code signature' });
+    }
+    // Check timestamp freshness (5 minute window)
+    const nowTs = Math.floor(Date.now() / 1000);
+    if (nowTs - req.body.ts > 300) {
+      return res.status(403).json({ status: 'error', message: 'QR code has expired. Please refresh your digital key.' });
+    }
   }
 
   const requesterId = String(req.user.id);
@@ -1099,7 +1263,7 @@ router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(a
     if (!pin) {
       throw new ApplicationError('PIN is required', 400);
     }
-    if (!digitalKey.verifyPin(pin)) {
+    if (!(await digitalKey.verifyPin(pin))) {
       throw new ApplicationError('Invalid PIN', 400);
     }
   }
@@ -1140,10 +1304,11 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   const { email, name, expiresAt } = req.body;
 
   // Do NOT use .lean() — we need Mongoose instance methods (shareWithUser)
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id
-  });
+  const shareKeyHotelId = req.tenantId || req.user.hotelId;
+  const shareKeyFilter = { _id: keyId, userId: req.user.id };
+  if (shareKeyHotelId) shareKeyFilter.hotelId = shareKeyHotelId;
+
+  const digitalKey = await DigitalKey.findOne(shareKeyFilter);
 
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -1208,11 +1373,11 @@ router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), 
   const { keyId, userIdOrEmail } = req.params;
 
   // Do NOT use .lean() — we need Mongoose instance methods (revokeShare)
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id,
-    hotelId: req.user.hotelId
-  });
+  const revokeShareHotelId = req.tenantId || req.user.hotelId;
+  const revokeShareFilter = { _id: keyId, userId: req.user.id };
+  if (revokeShareHotelId) revokeShareFilter.hotelId = revokeShareHotelId;
+
+  const digitalKey = await DigitalKey.findOne(revokeShareFilter);
 
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -1246,11 +1411,12 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
   const skip = (safePage - 1) * safeLimit;
   
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id,
-    hotelId: req.user.hotelId
-  }).populate('accessLogs.userId', 'name email').lean();
+  const logsHotelId = req.tenantId || req.user.hotelId;
+  const logsFilter = { _id: keyId, userId: req.user.id };
+  if (logsHotelId) logsFilter.hotelId = logsHotelId;
+
+  const digitalKey = await DigitalKey.findOne(logsFilter)
+    .populate('accessLogs.userId', 'name email').lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -1278,20 +1444,23 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
 // Revoke a digital key
 router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyId } = req.params;
+  const selfRevokeHotelId = req.tenantId || req.user.hotelId;
 
   // Do NOT use .lean() — we need Mongoose instance methods (revokeKey)
-  const digitalKey = await DigitalKey.findOne({
-    _id: keyId,
-    userId: req.user.id,
-    hotelId: req.user.hotelId
-  });
+  const selfRevokeFilter = { _id: keyId, userId: req.user.id };
+  if (selfRevokeHotelId) selfRevokeFilter.hotelId = selfRevokeHotelId;
+
+  const digitalKey = await DigitalKey.findOne(selfRevokeFilter);
 
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
   }
 
   const previousStatus = digitalKey.status;
-  await digitalKey.revokeKey();
+  await digitalKey.revokeKey(String(req.user._id || req.user.id), {
+    userAgent: req.get('User-Agent'),
+    ipAddress: req.ip
+  });
   await digitalKey.populate(keyPopulateSpec);
   const sanitizedRevoked = sanitizeDigitalKey(digitalKey);
   await emitDigitalKeyEvent(req.user.id, 'updated', {

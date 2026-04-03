@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
 import { reviewService } from '../../services/reviewService';
+import { useRealTime } from '../../services/realTimeService';
 import { Booking } from '../../types/booking';
 import { Review } from '../../services/reviewService';
 import {
@@ -91,6 +93,7 @@ const toSafeHotelInfo = (hotelId: unknown): SafeHotelInfo => {
 
 export default function GuestFeedback() {
   const { user } = useAuth();
+  const { on, off } = useRealTime();
   const [checkedOutBookings, setCheckedOutBookings] = useState<CheckedOutBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,11 +103,8 @@ export default function GuestFeedback() {
   const [activeTab, setActiveTab] = useState<'leave' | 'history'>('leave');
 
   // Feedback history state
-  const [myReviews, setMyReviews] = useState<Review[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
-  const [reviewsPagination, setReviewsPagination] = useState<PaginationInfo>({
-    page: 1, limit: 10, total: 0, pages: 0
-  });
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const queryClient = useQueryClient();
 
   // Bookings pagination state
   const BOOKINGS_PER_PAGE = 10;
@@ -171,18 +171,20 @@ export default function GuestFeedback() {
     }
   }, [bookingsPage]);
 
-  const fetchMyReviews = useCallback(async (page = 1) => {
-    try {
-      setReviewsLoading(true);
-      const response = await reviewService.getMyReviews({ page, limit: 10 });
-      setMyReviews(response.reviews || []);
-      setReviewsPagination(response.pagination || { page: 1, limit: 10, total: 0, pages: 0 });
-    } catch (error) {
-      toast.error('Failed to load your feedback history');
-    } finally {
-      setReviewsLoading(false);
-    }
-  }, []);
+  // Fetch reviews via TanStack Query
+  const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
+    queryKey: ['my-reviews', reviewsPage],
+    queryFn: async () => {
+      const response = await reviewService.getMyReviews({ page: reviewsPage, limit: 10 });
+      return response;
+    },
+    enabled: !!user && activeTab === 'history',
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev: unknown) => prev,
+  });
+
+  const myReviews = reviewsData?.reviews || [];
+  const reviewsPagination: PaginationInfo = reviewsData?.pagination || { page: 1, limit: 10, total: 0, pages: 0 };
 
   useEffect(() => {
     if (user) {
@@ -190,11 +192,22 @@ export default function GuestFeedback() {
     }
   }, [user, fetchCheckedOutBookings]);
 
+  // Real-time updates for review responses and moderation changes
   useEffect(() => {
-    if (user && activeTab === 'history') {
-      fetchMyReviews(reviewsPagination.page);
-    }
-  }, [user, activeTab, reviewsPagination.page, fetchMyReviews]);
+    const handleReviewUpdate = () => {
+      queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
+    };
+
+    on('review:responded', handleReviewUpdate);
+    on('review:moderation_updated', handleReviewUpdate);
+    on('review:updated', handleReviewUpdate);
+
+    return () => {
+      off('review:responded', handleReviewUpdate);
+      off('review:moderation_updated', handleReviewUpdate);
+      off('review:updated', handleReviewUpdate);
+    };
+  }, [on, off, queryClient]);
 
   const handleStartFeedback = (booking: CheckedOutBooking) => {
     setSelectedBooking(booking);
@@ -252,10 +265,8 @@ export default function GuestFeedback() {
       setSelectedBooking(null);
       resetForm();
       fetchCheckedOutBookings(); // Refresh to show updated status
-      // Also refresh history if it's been loaded
-      if (myReviews.length > 0) {
-        fetchMyReviews(1);
-      }
+      // Also refresh reviews history
+      queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to submit feedback. Please try again.';
       toast.error(message);
@@ -294,8 +305,7 @@ export default function GuestFeedback() {
   };
 
   const handleReviewsPageChange = (newPage: number) => {
-    setReviewsPagination(prev => ({ ...prev, page: newPage }));
-    fetchMyReviews(newPage);
+    setReviewsPage(newPage);
   };
 
   const renderStarRating = (rating: number, size: 'sm' | 'md' = 'md') => {

@@ -57,6 +57,21 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 export default function AdminStaffManagement() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const { user } = useAuth();
+
+  // SECURITY: Only admin and manager roles may access this page.
+  // Frontdesk users get a restricted view; guests/staff are denied entirely.
+  const ALLOWED_ROLES = ['admin', 'manager', 'frontdesk'];
+  if (user && !ALLOWED_ROLES.includes(user.role)) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">Access Denied</div>
+          <p className="text-gray-600">You do not have permission to view staff management.</p>
+        </div>
+      </div>
+    );
+  }
+
   const isFrontDesk = user?.role === 'frontdesk';
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);

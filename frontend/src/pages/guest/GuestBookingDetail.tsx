@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import toast from 'react-hot-toast';
 import {
   Calendar,
   MapPin,
@@ -23,9 +23,9 @@ import {
   History,
   Info
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { toEntityIdString } from '../../utils/entityId';
 
@@ -61,6 +61,10 @@ interface HotelInfo {
     phone: string;
     email: string;
   };
+  policies?: {
+    checkInTime?: string;
+    checkOutTime?: string;
+  };
 }
 
 interface PriceAdjustment {
@@ -92,6 +96,12 @@ interface BookingDetail {
   surchargeAmount?: number;
   currency: string;
   guestDetails: GuestDetails;
+  userId?: {
+    _id: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
   rooms: Room[];
   hotelId: HotelInfo;
   createdAt: string;
@@ -177,18 +187,12 @@ function GuestBookingDetail() {
   const { id: rawParam } = useParams<{ id: string }>();
   const id = toEntityIdString(rawParam);
   const navigate = useNavigate();
-  const [booking, setBooking] = useState<BookingDetail | null>(null);
-  const [priceHistory, setPriceHistory] = useState<PriceAdjustment[]>([]);
-  const [loading, setLoading] = useState(() => Boolean(id));
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchBookingDetails = async () => {
-    if (!id) return;
-    try {
-      setLoading(true);
-      setError(null);
+  // Fetch booking details via TanStack Query
+  const { data: booking, isLoading: loading, error: bookingError, refetch } = useQuery<BookingDetail | null, Error>({
+    queryKey: ['booking-detail', id],
+    queryFn: async () => {
       // Try the enhanced endpoint first; fall back to standard bookings endpoint
       let response;
       try {
@@ -199,47 +203,27 @@ function GuestBookingDetail() {
 
       const bookingData = response.data?.data?.booking || response.data?.data || response.data?.booking || null;
       if (bookingData) {
-        setBooking(bookingData);
-      } else {
-        throw new Error('Invalid response format');
+        return bookingData;
       }
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string } } };
-      const errorMessage = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Failed to load booking details');
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
+      throw new Error('Invalid response format');
+    },
+    enabled: !!id,
+    staleTime: 2 * 60 * 1000, // 2 minutes for detail view
+  });
 
-  const fetchPriceHistory = async () => {
-    if (!id) return;
-    try {
-      setHistoryLoading(true);
+  const error = bookingError?.message || null;
+
+  // Fetch price history via TanStack Query (only when showHistory is toggled on)
+  const { data: priceHistory = [], isLoading: historyLoading } = useQuery<PriceAdjustment[]>({
+    queryKey: ['booking-price-history', id],
+    queryFn: async () => {
       const response = await api.get(`/bookings/enhanced/${id}/price-history`);
-      setPriceHistory(response.data?.data?.adjustmentHistory || []);
-    } catch (_err: unknown) {
-      // Price history is supplementary; don't block the page on failure
-      toast.error('Failed to load price history');
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (id) {
-      fetchBookingDetails();
-    } else {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (showHistory && id) {
-      fetchPriceHistory();
-    }
-  }, [showHistory, id]);
+      return response.data?.data?.adjustmentHistory || [];
+    },
+    enabled: !!id && showHistory,
+    staleTime: 2 * 60 * 1000,
+    meta: { errorMessage: 'Failed to load price history' },
+  });
 
   if (!rawParam || !id) {
     return (
@@ -284,7 +268,7 @@ function GuestBookingDetail() {
           <h2 className="text-xl font-bold text-gray-900 mb-2">Error Loading Booking</h2>
           <p className="text-gray-600 mb-6">{error || 'Booking not found'}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button onClick={fetchBookingDetails} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => refetch()} className="bg-blue-600 hover:bg-blue-700">
               Try Again
             </Button>
             <Button onClick={() => navigate('/app/bookings')} className="bg-yellow-600 hover:bg-yellow-700">
@@ -372,12 +356,12 @@ function GuestBookingDetail() {
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-4 border border-blue-200">
                   <p className="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">Check-in</p>
                   <p className="text-lg font-bold text-gray-900">{formatDate(booking.checkIn)}</p>
-                  <p className="text-xs text-gray-600 mt-1">After 2:00 PM</p>
+                  <p className="text-xs text-gray-600 mt-1">After {booking.hotelId?.policies?.checkInTime || '2:00 PM'}</p>
                 </div>
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 border border-purple-200">
                   <p className="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">Check-out</p>
                   <p className="text-lg font-bold text-gray-900">{formatDate(booking.checkOut)}</p>
-                  <p className="text-xs text-gray-600 mt-1">Before 11:00 AM</p>
+                  <p className="text-xs text-gray-600 mt-1">Before {booking.hotelId?.policies?.checkOutTime || '11:00 AM'}</p>
                 </div>
                 <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-xl p-4 border border-green-200">
                   <p className="text-xs text-green-700 font-semibold mb-1 uppercase tracking-wide">Duration</p>
@@ -625,7 +609,7 @@ function GuestBookingDetail() {
                 <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                   <p className="text-xs text-gray-600 mb-1 uppercase tracking-wide">Name</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {booking.guestDetails.firstName} {booking.guestDetails.lastName}
+                    {booking.userId?.name?.split(' ')[0] || ''} {booking.userId?.name?.split(' ').slice(1).join(' ') || ''}
                   </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
@@ -633,15 +617,15 @@ function GuestBookingDetail() {
                     <Mail className="w-3 h-3" />
                     Email
                   </p>
-                  <p className="text-sm font-semibold text-gray-900 break-all">{booking.guestDetails.email}</p>
+                  <p className="text-sm font-semibold text-gray-900 break-all">{booking.userId?.email || ''}</p>
                 </div>
-                {booking.guestDetails.phone && (
+                {booking.userId?.phone && (
                   <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                     <p className="text-xs text-gray-600 mb-1 uppercase tracking-wide flex items-center gap-1">
                       <Phone className="w-3 h-3" />
                       Phone
                     </p>
-                    <p className="text-sm font-semibold text-gray-900">{booking.guestDetails.phone}</p>
+                    <p className="text-sm font-semibold text-gray-900">{booking.userId.phone}</p>
                   </div>
                 )}
                 <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">

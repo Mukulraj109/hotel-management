@@ -9,8 +9,6 @@ interface ProfileFormData {
   name: string;
   email: string;
   phone: string;
-  dateOfBirth: string;
-  nationality: string;
   avatar: string;
   timezone: string;
   language: string;
@@ -32,8 +30,6 @@ const ProfileSettings: React.FC = () => {
         setValue('name', user.name || '');
         setValue('email', user.email || '');
         setValue('phone', user.phone || '');
-        setValue('dateOfBirth', (user as Record<string, unknown>).dateOfBirth ? String((user as Record<string, unknown>).dateOfBirth).split('T')[0] : '');
-        setValue('nationality', (user as Record<string, unknown>).nationality as string || '');
       }
 
       try {
@@ -189,38 +185,7 @@ const ProfileSettings: React.FC = () => {
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Birth
-                </label>
-                <input
-                  type="date"
-                  {...register('dateOfBirth')}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nationality
-                </label>
-                <select
-                  {...register('nationality')}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select nationality</option>
-                  <option value="US">United States</option>
-                  <option value="UK">United Kingdom</option>
-                  <option value="CA">Canada</option>
-                  <option value="AU">Australia</option>
-                  <option value="DE">Germany</option>
-                  <option value="FR">France</option>
-                  <option value="IN">India</option>
-                  <option value="JP">Japan</option>
-                  <option value="CN">China</option>
-                  <option value="BR">Brazil</option>
-                </select>
-              </div>
+              {/* Date of birth and nationality editing not yet supported by the backend */}
             </div>
           </div>
         )}

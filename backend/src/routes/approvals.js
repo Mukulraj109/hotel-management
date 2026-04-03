@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import {
@@ -73,6 +74,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 router.post(
   '/',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   validate(mutationBaselineSchema),
@@ -136,6 +138,7 @@ router.post(
 router.get(
   '/',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequests
@@ -164,6 +167,7 @@ router.get(
 router.get(
   '/my-requests',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequests
@@ -186,6 +190,7 @@ router.get(
 router.get(
   '/pending-count',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   getPendingCount
@@ -221,6 +226,7 @@ router.get(
 router.get(
   '/stats',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'managerAccess'),
   getApprovalStats
@@ -253,6 +259,7 @@ router.get(
 router.get(
   '/:id',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequestById
@@ -295,6 +302,7 @@ router.get(
 router.put(
   '/:id/approve',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -341,6 +349,7 @@ router.put(
 router.put(
   '/:id/reject',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -376,6 +385,7 @@ router.put(
 router.put(
   '/:id/cancel',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   validate(mutationBaselineSchema),
@@ -411,6 +421,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
+  ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('approvals', 'frontdeskAccess'),
   validate(mutationBaselineSchema),

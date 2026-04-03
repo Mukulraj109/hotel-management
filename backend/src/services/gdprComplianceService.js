@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
 import encryptionService from './encryptionService.js';
 import { v4 as uuidv4 } from 'uuid';
+import Document from '../models/Document.js';
+import GuestCRMProfile from '../models/GuestCRMProfile.js';
+import GuestBehavior from '../models/GuestBehavior.js';
+import GuestCustomData from '../models/GuestCustomData.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 class GDPRComplianceService {
   constructor() {
@@ -486,7 +492,7 @@ class GDPRComplianceService {
   async performDataErasure(userId, dataToErase) {
     try {
       const results = {};
-    
+
       for (const dataType of dataToErase) {
         results[dataType] = {
           status: 'erased',
@@ -494,6 +500,28 @@ class GDPRComplianceService {
           method: 'cryptographic_erasure'
         };
       }
+
+      // Delete user's uploaded documents
+      const userDocuments = await Document.find({ userId: userId });
+      // Delete physical files
+      for (const doc of userDocuments) {
+        if (doc.filePath) {
+          try {
+            const fullPath = path.resolve(doc.filePath);
+            await fs.unlink(fullPath);
+          } catch (err) {
+            // File may already be deleted - log and continue
+            console.warn(`Could not delete document file ${doc.filePath}:`, err.message);
+          }
+        }
+      }
+      // Delete document records from database
+      await Document.deleteMany({ userId: userId });
+
+      // Clean up related guest data
+      await GuestCRMProfile.deleteMany({ userId: userId }).catch(() => {});
+      await GuestBehavior.deleteMany({ userId: userId }).catch(() => {});
+      await GuestCustomData.deleteMany({ userId: userId }).catch(() => {});
 
       return results;
     } catch (error) {

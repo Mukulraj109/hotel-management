@@ -82,12 +82,6 @@ export default function StaffInventory() {
 
   const { lowStockAlert, inspectionsDue } = inventoryData;
 
-  // Compute total items: lowStockAlert.count gives the count of low-stock items.
-  // Use the total from lowStockAlert to avoid a hardcoded percentage.
-  const totalItems = lowStockAlert.count + (lowStockAlert.items?.length || 0);
-  // Best-effort: if the backend provides a total, use it; otherwise show count-based summary
-  const wellStockedCount = Math.max(0, totalItems - lowStockAlert.count);
-
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">

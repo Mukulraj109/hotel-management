@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Bell, 
@@ -14,7 +15,7 @@ import {
   Zap,
   Circle
 } from 'lucide-react';
-import { staffAlertService, StaffAlert } from '../../services/staffAlertService';
+import { staffAlertService, StaffAlert, StaffAlertType } from '../../services/staffAlertService';
 import { useRealTime } from '../../services/realTimeService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,13 +31,15 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
   const [showAll, setShowAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const navigate = useNavigate();
+  const { connectionState, connect, on, off } = useRealTime();
 
   // Real-time connection setup - FIXED: Don't disconnect singleton service
   useEffect(() => {
     if (isOpen) {
       // Only connect if not already connected - singleton handles this
-      connect().catch(error => {
+      connect().catch((error: unknown) => {
+        console.warn('StaffAlertDropdown: real-time connection failed', error);
       });
     }
     // CRITICAL FIX: Never disconnect singleton service from dropdown component
@@ -64,17 +67,14 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
   useEffect(() => {
     if (connectionState !== 'connected') return;
 
-    const handleNewAlert = (data: Record<string, unknown>) => {
+    const handleNewAlert = (data: { alert: StaffAlert }) => {
       const newAlert = data.alert;
-      
+
       // Update queries immediately
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
-      
+
       // Show priority-based toast notification
-      const priorityInfo = staffAlertService.getPriorityInfo(newAlert.priority);
-      const typeInfo = staffAlertService.getAlertTypeInfo(newAlert.type);
-      
       if (staffAlertService.requiresImmediate(newAlert)) {
         toast.error(newAlert.title, {
           duration: 8000,
@@ -93,25 +93,25 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
       }
     };
 
-    const handleAlertUpdated = (data: Record<string, unknown>) => {
+    const handleAlertUpdated = (_data: { alert: StaffAlert }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
     };
 
-    const handleAlertResolved = (data: Record<string, unknown>) => {
+    const handleAlertResolved = (data: { alert: StaffAlert }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
-      
+
       toast.success(`Alert resolved: ${data.alert.title}`, {
         duration: 3000,
         icon: '✅'
       });
     };
 
-    const handleAlertEscalated = (data: Record<string, unknown>) => {
+    const handleAlertEscalated = (data: { alert: StaffAlert }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
-      
+
       toast.error(`Alert escalated: ${data.alert.title}`, {
         duration: 5000,
         icon: '🚨'
@@ -132,10 +132,10 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
     };
   }, [connectionState, on, off, queryClient]);
 
-  // Fetch alert summary
+  // Fetch alert summary (arrow function to preserve 'this' binding)
   const { data: alertSummary } = useQuery({
     queryKey: ['staff-alert-summary'],
-    queryFn: staffAlertService.getAlertSummary,
+    queryFn: () => staffAlertService.getAlertSummary(),
     refetchInterval: 30000,
     enabled: true
   });
@@ -151,23 +151,29 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
     refetchInterval: 30000
   });
 
-  // Acknowledge alert mutation
+  // Acknowledge alert mutation — arrow function preserves 'this' context
   const acknowledgeAlertMutation = useMutation({
-    mutationFn: staffAlertService.acknowledgeAlert,
-    onSuccess: (updatedAlert) => {
+    mutationFn: (id: string) => staffAlertService.acknowledgeAlert(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       toast.success('Alert acknowledged');
+    },
+    onError: () => {
+      toast.error('Failed to acknowledge alert. Please try again.');
     }
   });
 
-  // Start working mutation
+  // Start working mutation — arrow function preserves 'this' context
   const startWorkingMutation = useMutation({
-    mutationFn: staffAlertService.startWorkingOnAlert,
-    onSuccess: (updatedAlert) => {
+    mutationFn: (id: string) => staffAlertService.startWorkingOnAlert(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       toast.success('Started working on alert');
+    },
+    onError: () => {
+      toast.error('Failed to update alert status. Please try again.');
     }
   });
 
@@ -180,14 +186,13 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
   };
 
   const handleViewAllAlerts = () => {
-    window.location.href = '/staff/alerts';
+    navigate('/staff/alerts');
     onToggle();
   };
 
   const getAlertIcon = (alert: StaffAlert) => {
     const typeInfo = staffAlertService.getAlertTypeInfo(alert.type);
-    const priorityInfo = staffAlertService.getPriorityInfo(alert.priority);
-    
+
     return (
       <div className={`p-2 rounded-full flex-shrink-0 ${typeInfo.color}`}>
         {staffAlertService.requiresImmediate(alert) ? (
@@ -229,9 +234,9 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
           <div className="flex items-center space-x-2">
             <Bell className="h-5 w-5 text-gray-600" />
             <h3 className="text-sm font-semibold text-gray-900">Staff Alerts</h3>
-            {alertSummary?.totalUnacknowledged > 0 && (
+            {(alertSummary?.totalUnacknowledged ?? 0) > 0 && (
               <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
-                {alertSummary.totalUnacknowledged}
+                {alertSummary!.totalUnacknowledged}
               </span>
             )}
           </div>
@@ -342,7 +347,7 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
                             size="sm"
                             variant="ghost"
                             onClick={() => handleAcknowledgeAlert(alert._id)}
-                            disabled={acknowledgeAlertMutation.isLoading}
+                            disabled={acknowledgeAlertMutation.isPending}
                             className="text-xs px-2 py-1 h-6"
                           >
                             <Check className="h-3 w-3 mr-1" />
@@ -352,7 +357,7 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
                             size="sm"
                             variant="ghost"
                             onClick={() => handleStartWorking(alert._id)}
-                            disabled={startWorkingMutation.isLoading}
+                            disabled={startWorkingMutation.isPending}
                             className="text-xs px-2 py-1 h-6 text-blue-600"
                           >
                             <Play className="h-3 w-3 mr-1" />

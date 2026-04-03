@@ -161,8 +161,10 @@ export default function FrontDeskDashboard() {
 
     realTimeService.on('booking:created', invalidateAll);
     realTimeService.on('booking:updated', invalidateAll);
-    realTimeService.on('booking_cancelled', invalidateAll);
-    realTimeService.on('room_status_changed', invalidateAll);
+    realTimeService.on('booking:cancelled', invalidateAll);
+    realTimeService.on('booking:status_changed', invalidateAll);
+    realTimeService.on('booking:overdue_checkout', invalidateAll);
+    realTimeService.on('room:status_changed', invalidateAll);
     realTimeService.on('guest-services:created', handleGuestServiceEvent);
     realTimeService.on('guest-services:assigned', handleGuestServiceEvent);
     realTimeService.on('guest-services:updated', handleGuestServiceEvent);
@@ -172,8 +174,10 @@ export default function FrontDeskDashboard() {
     return () => {
       realTimeService.off('booking:created', invalidateAll);
       realTimeService.off('booking:updated', invalidateAll);
-      realTimeService.off('booking_cancelled', invalidateAll);
-      realTimeService.off('room_status_changed', invalidateAll);
+      realTimeService.off('booking:cancelled', invalidateAll);
+      realTimeService.off('booking:status_changed', invalidateAll);
+      realTimeService.off('booking:overdue_checkout', invalidateAll);
+      realTimeService.off('room:status_changed', invalidateAll);
       realTimeService.off('guest-services:created', handleGuestServiceEvent);
       realTimeService.off('guest-services:assigned', handleGuestServiceEvent);
       realTimeService.off('guest-services:updated', handleGuestServiceEvent);

@@ -106,13 +106,13 @@ function FrontDeskUpcomingBookings() {
 
     realTimeService.on('booking:created', handleBookingEvent);
     realTimeService.on('booking:updated', handleBookingEvent);
-    realTimeService.on('booking_cancelled', handleBookingEvent);
+    realTimeService.on('booking:cancelled', handleBookingEvent);
     realTimeService.on('booking:modification_requested', handleBookingEvent);
 
     return () => {
       realTimeService.off('booking:created', handleBookingEvent);
       realTimeService.off('booking:updated', handleBookingEvent);
-      realTimeService.off('booking_cancelled', handleBookingEvent);
+      realTimeService.off('booking:cancelled', handleBookingEvent);
       realTimeService.off('booking:modification_requested', handleBookingEvent);
     };
   }, [filters.days, filters.page, selectedPropertyId, user?.hotelId]);

@@ -86,6 +86,9 @@ maintenanceRequestSchema.index({ vendorId: 1, status: 1 });
 maintenanceRequestSchema.index({ floorId: 1, status: 1 });
 
 // NOTIFICATION AUTOMATION HOOKS
+// Note: In Mongoose post('save') hooks, `this` refers to the document instance
+// (with isModified/isNew available), and `doc` is the saved document.
+// We use `this` for isModified/isNew checks and `doc` for data access.
 maintenanceRequestSchema.post('save', async function(doc) {
   try {
     // Get room data for notifications
@@ -114,8 +117,8 @@ maintenanceRequestSchema.post('save', async function(doc) {
       );
     }
 
-    // 2. Maintenance assigned to staff
-    if (doc.isModified('assignedTo') && doc.assignedTo) {
+    // 2. Maintenance assigned to staff — use `this` for isModified check
+    if (this.isModified('assignedTo') && doc.assignedTo) {
       await NotificationAutomationService.triggerNotification(
         'maintenance_assigned',
         {
@@ -134,7 +137,7 @@ maintenanceRequestSchema.post('save', async function(doc) {
     }
 
     // 3. Maintenance status changed to in_progress
-    if (doc.isModified('status') && doc.status === 'in_progress') {
+    if (this.isModified('status') && doc.status === 'in_progress') {
       await NotificationAutomationService.triggerNotification(
         'maintenance_started',
         {
@@ -151,7 +154,7 @@ maintenanceRequestSchema.post('save', async function(doc) {
     }
 
     // 4. Maintenance completed
-    if (doc.isModified('status') && doc.status === 'completed') {
+    if (this.isModified('status') && doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'maintenance_completed',
         {
@@ -171,7 +174,7 @@ maintenanceRequestSchema.post('save', async function(doc) {
     }
 
     // 5. High-cost maintenance alert
-    if (doc.isModified('actualCost') && doc.actualCost && doc.actualCost >= 500) {
+    if (this.isModified('actualCost') && doc.actualCost && doc.actualCost >= 500) {
       await NotificationAutomationService.triggerNotification(
         'maintenance_high_cost',
         {
@@ -202,12 +205,12 @@ maintenanceRequestSchema.post('save', async function(doc) {
 
         // If we have 3 or more similar failures, trigger pattern alert
         if (similarFailures >= 3) {
-          // Get all similar requests for detailed analysis
+          // Get similar requests for pattern analysis (bounded to prevent memory issues)
           const recentRequests = await mongoose.model('MaintenanceRequest').find({
             hotelId: doc.hotelId,
             issueType: doc.issueType,
             createdAt: { $gte: last30Days }
-          }).select('roomId priority actualCost estimatedCost createdAt').populate('roomId', 'roomNumber');
+          }).select('roomId priority actualCost estimatedCost createdAt').populate('roomId', 'roomNumber').limit(50);
 
           const urgentCount = recentRequests.filter(req => req.priority === 'urgent').length;
           const avgCost = recentRequests.reduce((sum, req) => sum + (req.actualCost || req.estimatedCost || 0), 0) / recentRequests.length;

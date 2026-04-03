@@ -171,30 +171,34 @@ staffTaskSchema.pre('save', function(next) {
   // Set completedAt when status changes to completed
   if (this.isModified('status') && this.status === 'completed' && !this.completedAt) {
     this.completedAt = new Date();
-    
+
     // Calculate actual duration if startedAt exists
     if (this.startedAt) {
       const totalMinutes = Math.floor((this.completedAt.getTime() - this.startedAt.getTime()) / (1000 * 60));
-      this.actualDuration = totalMinutes - this.pausedDuration;
+      this.actualDuration = totalMinutes - (this.pausedDuration || 0);
     }
   }
-  
+
   // Set startedAt when status changes to in_progress
   if (this.isModified('status') && this.status === 'in_progress' && !this.startedAt) {
     this.startedAt = new Date();
   }
-  
-  // Update overdue status
-  if (this.isOverdue && this.status !== 'overdue' && this.status !== 'completed') {
+
+  // Auto-flag overdue: only apply when status is a non-terminal, non-overdue value
+  // and the task's dueDate has passed.  Do NOT do this when the caller has
+  // explicitly set status to 'completed' or 'cancelled' (their value wins).
+  const nonTerminal = !['completed', 'cancelled', 'overdue'].includes(this.status);
+  if (nonTerminal && this.dueDate && new Date() > this.dueDate) {
     this.status = 'overdue';
   }
-  
+
   next();
 });
 
 // Static methods
 staffTaskSchema.statics.getStaffTasks = function(staffId, options = {}) {
   const {
+    hotelId,
     status,
     taskType,
     priority,
@@ -203,9 +207,11 @@ staffTaskSchema.statics.getStaffTasks = function(staffId, options = {}) {
     skip = 0,
     sortBy = '-createdAt'
   } = options;
-  
+
+  // Always scope by the staff member's hotel to prevent cross-tenant data access
   let query = { assignedTo: staffId };
-  
+  if (hotelId) query.hotelId = hotelId;
+
   if (status) query.status = status;
   if (taskType) query.taskType = taskType;
   if (priority) query.priority = priority;
@@ -215,30 +221,36 @@ staffTaskSchema.statics.getStaffTasks = function(staffId, options = {}) {
     nextDay.setDate(nextDay.getDate() + 1);
     query.dueDate = { $gte: date, $lt: nextDay };
   }
-  
+
   return this.find(query)
     .populate('roomIds', 'roomNumber type floor')
     .populate('inventoryItems.itemId', 'name category unitPrice')
     .populate('createdBy', 'name email')
     .sort(sortBy)
     .limit(limit)
-    .skip(skip);
+    .skip(skip)
+    .lean();
 };
 
-staffTaskSchema.statics.getTodaysTasks = function(staffId) {
+staffTaskSchema.statics.getTodaysTasks = function(staffId, hotelId) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  return this.find({
+
+  const query = {
     assignedTo: staffId,
     dueDate: { $gte: today, $lt: tomorrow },
     status: { $nin: ['completed', 'cancelled'] }
-  })
-  .populate('roomIds', 'roomNumber type floor')
-  .populate('inventoryItems.itemId', 'name category')
-  .sort('priority dueDate');
+  };
+  if (hotelId) query.hotelId = hotelId;
+
+  return this.find(query)
+    .populate('roomIds', 'roomNumber type floor')
+    .populate('inventoryItems.itemId', 'name category')
+    .sort('priority dueDate')
+    .limit(100)
+    .lean();
 };
 
 staffTaskSchema.statics.getOverdueTasks = function(hotelId) {
@@ -249,12 +261,14 @@ staffTaskSchema.statics.getOverdueTasks = function(hotelId) {
   })
   .populate('assignedTo', 'name email')
   .populate('roomIds', 'roomNumber')
-  .sort('dueDate');
+  .sort('dueDate')
+  .limit(200)
+  .lean();
 };
 
 staffTaskSchema.statics.getTaskStats = function(hotelId, startDate, endDate) {
   const matchStage = {
-    hotelId: mongoose.Types.ObjectId(hotelId)
+    hotelId: new mongoose.Types.ObjectId(hotelId)
   };
   
   if (startDate && endDate) {

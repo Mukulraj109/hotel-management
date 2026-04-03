@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   DocumentTextIcon,
   FolderIcon,
@@ -87,6 +88,7 @@ export default function GuestDocuments() {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedBooking, setSelectedBooking] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [activeTab, setActiveTab] = useState<'overview' | 'upload' | 'documents'>('overview');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -103,10 +105,10 @@ export default function GuestDocuments() {
     fetchBookings();
   }, []);
 
-  // Re-fetch when page or server-side filters change
+  // Re-fetch when page or server-side filters change (uses debounced search)
   useEffect(() => {
     fetchDocuments();
-  }, [page, selectedCategory, selectedStatus, selectedBooking, searchTerm]);
+  }, [page, selectedCategory, selectedStatus, selectedBooking, debouncedSearchTerm]);
 
   const fetchDocuments = async () => {
     try {
@@ -117,7 +119,7 @@ export default function GuestDocuments() {
           category: selectedCategory !== 'all' ? selectedCategory : undefined,
           status: selectedStatus !== 'all' ? selectedStatus : undefined,
           bookingId: selectedBooking !== 'all' && selectedBooking !== 'no_booking' ? selectedBooking : undefined,
-          search: searchTerm.trim() || undefined,
+          search: debouncedSearchTerm.trim() || undefined,
           page,
           limit: PAGE_SIZE,
           skip: page ? undefined : (page - 1) * PAGE_SIZE
@@ -143,8 +145,8 @@ export default function GuestDocuments() {
         params: { limit: 50, page: 1 }
       });
       setBookings(data.data.bookings || []);
-    } catch {
-      // Non-critical: bookings filter is optional
+    } catch (error) {
+      console.error('Failed to fetch bookings for filter:', error);
     }
   };
 
@@ -287,7 +289,7 @@ export default function GuestDocuments() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedCategory, selectedStatus, selectedBooking, searchTerm]);
+  }, [selectedCategory, selectedStatus, selectedBooking, debouncedSearchTerm]);
 
   if (loading) {
     return (
@@ -551,6 +553,7 @@ export default function GuestDocuments() {
               </div>
 
               <select
+                aria-label="Filter by document category"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
@@ -562,6 +565,7 @@ export default function GuestDocuments() {
               </select>
 
               <select
+                aria-label="Filter by document status"
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
@@ -575,6 +579,7 @@ export default function GuestDocuments() {
               </select>
 
               <select
+                aria-label="Filter by booking"
                 value={selectedBooking}
                 onChange={(e) => setSelectedBooking(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"

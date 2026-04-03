@@ -121,7 +121,7 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters'],
+    minlength: [8, 'Password must be at least 8 characters'],
     select: false
   },
   role: {
@@ -438,6 +438,12 @@ const userSchema = new mongoose.Schema({
   lastLogin: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  // Tracks when password was last changed. authenticate() middleware uses this
+  // to invalidate JWTs issued before this timestamp (session revocation on breach).
+  passwordChangedAt: {
+    type: Date,
+    select: false
+  },
 
   // GDPR Compliance Fields
   gdprConsent: { type: Boolean, default: false },
@@ -502,12 +508,19 @@ userSchema.virtual('bookings', {
   foreignField: 'userId'
 });
 
-// Hash password before saving
+// Hash password before saving and record change timestamp for token invalidation
 userSchema.pre('save', async function(next) {
   try {
     if (!this.isModified('password')) return next();
-  
+
     this.password = await bcrypt.hash(this.password, 12);
+
+    // Stamp the change time so that authenticate() can invalidate pre-change tokens.
+    // Subtract 1 second to avoid edge cases where token iat === passwordChangedAt.
+    if (!this.isNew) {
+      this.passwordChangedAt = new Date(Date.now() - 1000);
+    }
+
     next();
   } catch (error) {
     throw new Error(`${error.message}`);

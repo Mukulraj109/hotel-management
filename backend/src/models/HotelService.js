@@ -505,16 +505,19 @@ hotelServiceSchema.statics.getServicesForStaff = async function(staffId, hotelId
 };
 
 // Pre-save middleware to validate operating hours
+// Allow overnight operating hours (e.g., bar from 20:00 to 02:00)
+// Only validate that both times are present if either is set
 hotelServiceSchema.pre('save', function(next) {
-  if (this.operatingHours?.open && this.operatingHours?.close) {
-    const openTime = new Date(`2000-01-01 ${this.operatingHours.open}`);
-    const closeTime = new Date(`2000-01-01 ${this.operatingHours.close}`);
-    
-    if (openTime >= closeTime) {
-      return next(new Error('Close time must be after open time'));
+  if (this.operatingHours) {
+    if (this.operatingHours.open && !this.operatingHours.close) {
+      return next(new Error('Close time is required when open time is set'));
     }
+    if (!this.operatingHours.open && this.operatingHours.close) {
+      return next(new Error('Open time is required when close time is set'));
+    }
+    // Remove the openTime >= closeTime rejection - overnight services are valid
   }
-  
+
   next();
 });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { bookingService } from '../../services/bookingService';
+import { useRealTime } from '../../services/realTimeService';
 import {
   Plus,
   Package,
@@ -53,6 +54,7 @@ const getPriorityColor = (priority: string) => {
 
 export default function InventoryRequests() {
   const { user } = useAuth();
+  const { on, off } = useRealTime();
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,25 @@ export default function InventoryRequests() {
       fetchBookings();
     }
   }, [user, fetchRequests, fetchBookings]);
+
+  // Real-time updates for guest service events
+  useEffect(() => {
+    const handleServiceUpdate = () => {
+      fetchRequests();
+    };
+
+    on('guest-services:updated', handleServiceUpdate);
+    on('guest-services:status_changed', handleServiceUpdate);
+    on('guest-services:assigned', handleServiceUpdate);
+    on('guest-services:completed', handleServiceUpdate);
+
+    return () => {
+      off('guest-services:updated', handleServiceUpdate);
+      off('guest-services:status_changed', handleServiceUpdate);
+      off('guest-services:assigned', handleServiceUpdate);
+      off('guest-services:completed', handleServiceUpdate);
+    };
+  }, [on, off, fetchRequests]);
 
   // Reset page when filter changes
   useEffect(() => {

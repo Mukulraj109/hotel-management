@@ -489,7 +489,7 @@ class BookingWorkflowEngine {
       // Staff notifications via WebSocket — scoped to hotel tenant
       const hotelId = booking.hotelId?.toString();
       if (hotelId) {
-        websocketService.broadcastToHotel(hotelId, 'booking_status_changed', {
+        websocketService.broadcastToHotel(hotelId, 'booking:status_changed', {
           bookingId: booking._id,
           bookingNumber: booking.bookingNumber,
           guestName: booking.guestInfo.name,
@@ -572,7 +572,7 @@ class BookingWorkflowEngine {
 
       if (hotelId) {
         const room0 = Array.isArray(booking.rooms) ? booking.rooms[0] : undefined;
-        await websocketService.broadcastToHotel(hotelId, 'overdue_checkout', {
+        await websocketService.broadcastToHotel(hotelId, 'booking:overdue_checkout', {
           bookingId: booking._id,
           bookingNumber: booking.bookingNumber,
           guestName,

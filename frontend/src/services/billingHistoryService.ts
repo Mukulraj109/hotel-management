@@ -38,10 +38,14 @@ export interface BillingHistorySummary {
   paymentCount: number;
   refundCount: number;
   bookingCount: number;
+  checkoutChargeCount: number;
   totalInvoiceAmount: number;
   totalPaymentAmount: number;
   totalRefundAmount: number;
   totalBookingAmount: number;
+  totalCheckoutChargeAmount: number;
+  /** Present when summary is computed from a capped result set (subQueryLimit hit) */
+  note?: string;
 }
 
 export interface BillingHistoryResponse {
@@ -167,7 +171,7 @@ class BillingHistoryService {
     filters: {
       startDate?: string;
       endDate?: string;
-      type?: 'all' | 'invoice' | 'payment' | 'refund';
+      type?: 'all' | 'invoice' | 'payment' | 'refund' | 'booking' | 'checkout_charges';
       hotelId?: string;
     } = {}
   ): Promise<ExportResponse> {
@@ -371,41 +375,52 @@ class BillingHistoryService {
   }
 
   /**
-   * Get status badge color for UI
+   * Get status badge variant for UI (maps to Badge component variants:
+   * 'default' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'outline' | 'destructive')
    */
-  getStatusColor(status: string, type: string): string {
+  getStatusColor(status: string, type: string): 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'default' {
     switch (type) {
       case 'invoice':
         switch (status) {
-          case 'paid': return 'green';
-          case 'issued': return 'blue';
-          case 'partially_paid': return 'orange';
-          case 'overdue': return 'red';
-          case 'draft': return 'gray';
-          case 'cancelled': return 'red';
-          default: return 'gray';
+          case 'paid': return 'success';
+          case 'issued': return 'info';
+          case 'partially_paid': return 'warning';
+          case 'overdue': return 'error';
+          case 'draft': return 'secondary';
+          case 'cancelled': return 'error';
+          default: return 'default';
         }
       case 'payment':
         switch (status) {
-          case 'succeeded': return 'green';
-          case 'pending': return 'yellow';
-          case 'failed': return 'red';
-          case 'canceled': return 'gray';
-          case 'refunded': return 'purple';
-          case 'partially_refunded': return 'orange';
-          default: return 'gray';
+          case 'succeeded': return 'success';
+          case 'pending': return 'warning';
+          case 'failed': return 'error';
+          case 'canceled': return 'secondary';
+          case 'refunded': return 'info';
+          case 'partially_refunded': return 'warning';
+          default: return 'default';
         }
       case 'refund':
-        return 'purple';
+        return 'info';
+      case 'booking':
+        switch (status) {
+          case 'confirmed': return 'success';
+          case 'checked_in': return 'info';
+          case 'checked_out': return 'secondary';
+          case 'cancelled': return 'error';
+          case 'pending': return 'warning';
+          case 'no_show': return 'error';
+          default: return 'default';
+        }
       case 'checkout_charges':
         switch (status) {
-          case 'paid': return 'green';
-          case 'pending': return 'yellow';
-          case 'failed': return 'red';
-          default: return 'gray';
+          case 'paid': return 'success';
+          case 'pending': return 'warning';
+          case 'failed': return 'error';
+          default: return 'default';
         }
       default:
-        return 'gray';
+        return 'default';
     }
   }
 
@@ -417,6 +432,7 @@ class BillingHistoryService {
       case 'invoice': return '📄';
       case 'payment': return '💳';
       case 'refund': return '↩️';
+      case 'booking': return '🏨';
       case 'checkout_charges': return '🧾';
       default: return '📋';
     }

@@ -10,19 +10,32 @@ import { validate } from '../middleware/validation.js';
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
+// Middleware: enforce guest self-service ownership — guests can only access their own profile
+const enforceGuestOwnership = (req, res, next) => {
+  if (req.user.role === 'guest') {
+    if (req.user._id.toString() !== req.params.id) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Guests can only access their own profile'
+      });
+    }
+  }
+  next();
+};
+
 // Apply authentication and property access to all routes
 router.use(authenticate);
 router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('guests', 'baseAccess'));
 
-// Public routes (for guest self-service)
-router.get('/:id', guestController.getGuest);
-router.get('/:id/bookings', guestController.getGuest);
-router.patch('/:id', validate(mutationBaselineSchema), guestController.updateGuest);
+// Guest self-service routes — guests can only view/update their own profile
+router.get('/:id', enforceGuestOwnership, guestController.getGuest);
+router.get('/:id/bookings', enforceGuestOwnership, guestController.getGuest);
+router.patch('/:id', enforceGuestOwnership, validate(mutationBaselineSchema), guestController.updateGuest);
 
-// Admin/Staff routes
-router.use(authorize('admin', 'manager', 'staff'));
+// Admin/Staff routes (frontdesk also needs read access to manage guests on behalf of hotel)
+router.use(authorize('admin', 'manager', 'staff', 'frontdesk'));
 
 // Enhanced guest management routes
 router.route('/')

@@ -27,7 +27,9 @@ class GuestServicePOSIntegrationService {
       }
 
       // Find the appropriate outlet for the service request
-      const outlet = await this.findAppropriateOutlet(serviceRequest);
+      const hotelId = serviceRequest.hotelId
+        || serviceRequest.bookingId?.hotelId;
+      const outlet = await this.findAppropriateOutlet(serviceRequest, hotelId);
       if (!outlet) {
         logger.error('No appropriate outlet found for service request');
         return null;
@@ -100,15 +102,19 @@ class GuestServicePOSIntegrationService {
   /**
    * Find appropriate outlet for the service request
    * @param {Object} serviceRequest - The service request
+   * @param {string} hotelId - The hotel ID for tenant isolation
    * @returns {Object} POS outlet or null
    */
-  async findAppropriateOutlet(serviceRequest) {
+  async findAppropriateOutlet(serviceRequest, hotelId) {
     try {
+      const hotelFilter = hotelId ? { hotelId } : {};
+
       // For room service, find room service outlet
       if (serviceRequest.serviceType === 'room_service') {
         const roomServiceOutlet = await POSOutlet.findOne({
           type: 'room_service',
-          isActive: true
+          isActive: true,
+          ...hotelFilter
         }).lean();
         if (roomServiceOutlet) return roomServiceOutlet;
       }
@@ -116,12 +122,16 @@ class GuestServicePOSIntegrationService {
       // Fallback to main restaurant
       const mainRestaurant = await POSOutlet.findOne({
         type: 'restaurant',
-        isActive: true
+        isActive: true,
+        ...hotelFilter
       }).lean();
       if (mainRestaurant) return mainRestaurant;
 
-      // Last resort - any active outlet
-      const anyOutlet = await POSOutlet.findOne({ isActive: true }).lean();
+      // Last resort - any active outlet for this hotel
+      const anyOutlet = await POSOutlet.findOne({
+        isActive: true,
+        ...hotelFilter
+      }).lean();
       return anyOutlet;
 
     } catch (error) {

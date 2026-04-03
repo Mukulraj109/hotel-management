@@ -27,7 +27,7 @@ import { CheckoutInventoryForm } from '../../components/staff/CheckoutInventoryF
 import { CheckoutInventoryDetails } from '../../components/staff/CheckoutInventoryDetails';
 
 export default function CheckoutInventory() {
-  
+
   const [checkoutInventories, setCheckoutInventories] = useState<CheckoutInventoryType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,32 +35,51 @@ export default function CheckoutInventory() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState<CheckoutInventoryType | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 20;
 
+  useEffect(() => {
+    setPage(1); // Reset to page 1 whenever the filter changes
+  }, [filter]);
 
   useEffect(() => {
     fetchCheckoutInventories();
-  }, [filter]);
+  }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const fetchCheckoutInventories = async () => {
     try {
       setLoading(true);
-      
-      // Build query parameters based on filter
-      let queryParams: Record<string, unknown> = { limit: 50 };
-      
+
+      // Build query parameters based on filter — always paginate
+      const queryParams: Record<string, unknown> = { page, limit: PAGE_SIZE };
+
       if (filter === 'pending') {
         queryParams.status = 'pending';
       } else if (filter === 'completed') {
+        // 'completed' in UI means status=completed AND paymentStatus=pending
         queryParams.status = 'completed';
-        // Note: We'll filter for paymentStatus === 'pending' on frontend since backend doesn't support combined filters
       } else if (filter === 'paid') {
         queryParams.paymentStatus = 'paid';
       }
-      // If filter === 'all', don't add any filters (fetch all)
-      
+      // If filter === 'all', no extra status filter
+
       const response = await checkoutInventoryService.getCheckoutInventories(queryParams);
-      setCheckoutInventories(response.data.checkoutInventories || []);
+      const inventories = response.data.checkoutInventories || [];
+      setCheckoutInventories(inventories);
+
+      // Pagination metadata is nested at response.data.pagination (inside the backend envelope)
+      const pagination = response.data.pagination;
+      if (pagination) {
+        setTotalPages(pagination.pages || 1);
+        setTotalCount(pagination.total || inventories.length);
+      } else {
+        setTotalPages(1);
+        setTotalCount(inventories.length);
+      }
     } catch (error) {
       toast.error('Failed to load checkout inventories');
     } finally {
@@ -85,16 +104,20 @@ export default function CheckoutInventory() {
     toast.success('Payment processed successfully');
   };
 
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
   const handleCompleteCheck = async (inventory: CheckoutInventoryType) => {
     try {
-      setLoading(true);
+      setActionLoading(inventory._id);
       await checkoutInventoryService.completeInventoryCheck(inventory._id);
       toast.success('Inventory check completed successfully!');
-      fetchCheckoutInventories();
-    } catch (error) {
-      toast.error('Failed to complete inventory check');
+      await fetchCheckoutInventories();
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const msg = axiosError?.response?.data?.message || 'Failed to complete inventory check';
+      toast.error(msg);
     } finally {
-      setLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -116,18 +139,24 @@ export default function CheckoutInventory() {
     }
   };
 
+  // Client-side search is applied to the current page only.
+  // Status filtering is done server-side via the filter state.
+  // Client-side filter is only used for search and to guard against stale data between fetches.
   const filteredInventories = checkoutInventories.filter(inventory => {
-    const matchesSearch = 
-      inventory.bookingId.bookingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inventory.roomId.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inventory.checkedBy.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = 
+    const lowerSearch = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || (
+      (inventory.bookingId?.bookingNumber ?? '').toLowerCase().includes(lowerSearch) ||
+      (inventory.roomId?.roomNumber ?? '').toLowerCase().includes(lowerSearch) ||
+      (inventory.checkedBy?.name ?? '').toLowerCase().includes(lowerSearch)
+    );
+
+    // Trust the server-side filter; client re-check only guards stale in-flight data
+    const matchesFilter =
       filter === 'all' ||
       (filter === 'pending' && inventory.status === 'pending') ||
-      (filter === 'completed' && inventory.status === 'completed' && inventory.paymentStatus === 'pending') ||
+      (filter === 'completed' && inventory.status === 'completed') ||
       (filter === 'paid' && inventory.paymentStatus === 'paid');
-    
+
     return matchesSearch && matchesFilter;
   });
 
@@ -157,7 +186,7 @@ export default function CheckoutInventory() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards — when a specific filter is active, totalCount is accurate from the server */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <Card>
           <CardContent className="p-6">
@@ -167,7 +196,8 @@ export default function CheckoutInventory() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Checks</p>
-                <p className="text-2xl font-semibold text-gray-900">{checkoutInventories.length}</p>
+                {/* totalCount from backend pagination is accurate when filter==='all' */}
+                <p className="text-2xl font-semibold text-gray-900">{totalCount}</p>
               </div>
             </div>
           </CardContent>
@@ -182,7 +212,8 @@ export default function CheckoutInventory() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Pending</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {checkoutInventories.filter(i => i.status === 'pending').length}
+                  {/* Accurate when filter=pending; otherwise show visible page count */}
+                  {filter === 'pending' ? totalCount : checkoutInventories.filter(i => i.status === 'pending').length}
                 </p>
               </div>
             </div>
@@ -196,9 +227,9 @@ export default function CheckoutInventory() {
                 <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Completed</p>
+                <p className="text-sm font-medium text-gray-600">Completed (Awaiting Payment)</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {checkoutInventories.filter(i => i.status === 'completed' && i.paymentStatus === 'pending').length}
+                  {filter === 'completed' ? totalCount : checkoutInventories.filter(i => i.status === 'completed' && i.paymentStatus === 'pending').length}
                 </p>
               </div>
             </div>
@@ -214,7 +245,7 @@ export default function CheckoutInventory() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Paid</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {checkoutInventories.filter(i => i.paymentStatus === 'paid').length}
+                  {filter === 'paid' ? totalCount : checkoutInventories.filter(i => i.paymentStatus === 'paid').length}
                 </p>
               </div>
             </div>
@@ -237,25 +268,25 @@ export default function CheckoutInventory() {
         </div>
         <div className="flex gap-2">
           <Button
-            variant={filter === 'all' ? 'primary' : 'outline'}
+            variant={filter === 'all' ? 'default' : 'outline'}
             onClick={() => setFilter('all')}
           >
             All
           </Button>
           <Button
-            variant={filter === 'pending' ? 'primary' : 'outline'}
+            variant={filter === 'pending' ? 'default' : 'outline'}
             onClick={() => setFilter('pending')}
           >
             Pending
           </Button>
           <Button
-            variant={filter === 'completed' ? 'primary' : 'outline'}
+            variant={filter === 'completed' ? 'default' : 'outline'}
             onClick={() => setFilter('completed')}
           >
             Completed
           </Button>
           <Button
-            variant={filter === 'paid' ? 'primary' : 'outline'}
+            variant={filter === 'paid' ? 'default' : 'outline'}
             onClick={() => setFilter('paid')}
           >
             Paid
@@ -277,7 +308,7 @@ export default function CheckoutInventory() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold">
-                        Booking #{inventory.bookingId.bookingNumber}
+                        Booking #{inventory.bookingId?.bookingNumber ?? '—'}
                       </h3>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(inventory.status)}`}>
                         {inventory.status}
@@ -290,11 +321,11 @@ export default function CheckoutInventory() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                       <div>
                         <p className="text-sm text-gray-600">Room</p>
-                        <p className="font-medium">{inventory.roomId.roomNumber} ({inventory.roomId.type})</p>
+                        <p className="font-medium">{inventory.roomId?.roomNumber ?? '—'} {inventory.roomId?.type ? `(${inventory.roomId.type})` : ''}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-600">Checked By</p>
-                        <p className="font-medium">{inventory.checkedBy.name}</p>
+                        <p className="font-medium">{inventory.checkedBy?.name ?? '—'}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-600">Total Amount</p>
@@ -325,7 +356,7 @@ export default function CheckoutInventory() {
                         size="sm"
                         className="bg-blue-600 hover:bg-blue-700"
                         onClick={() => handleCompleteCheck(inventory)}
-                        disabled={loading}
+                        disabled={actionLoading === inventory._id}
                       >
                         <CheckCircle className="h-4 w-4 mr-1" />
                         Complete Check
@@ -364,6 +395,33 @@ export default function CheckoutInventory() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Page {page} of {totalPages} &bull; {totalCount} total record{totalCount !== 1 ? 's' : ''}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Create Form Modal */}
       {showCreateForm && (

@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import HotelServiceFavorite from '../models/HotelServiceFavorite.js';
@@ -486,22 +487,70 @@ router.post('/:serviceId/bookings',
     }
     
     // Get the service
-    const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId }).lean();
+    const service = await HotelService.findOne({ _id: serviceId, hotelId: resolvedHotelId, isActive: true }).lean();
     if (!service) {
       throw new ApplicationError('Service not found', 404);
     }
     
+    // Check operating hours
+    if (service.operatingHours && service.operatingHours.open && service.operatingHours.close) {
+      const bookingDate_ = new Date(bookingDate);
+      const bookingHour = bookingDate_.getHours();
+      const bookingMinute = bookingDate_.getMinutes();
+      const bookingTimeStr = `${String(bookingHour).padStart(2, '0')}:${String(bookingMinute).padStart(2, '0')}`;
+
+      const openTime = service.operatingHours.open;
+      const closeTime = service.operatingHours.close;
+
+      // Simple time comparison (works for same-day services)
+      if (bookingTimeStr < openTime || bookingTimeStr >= closeTime) {
+        return res.status(400).json({
+          status: 'error',
+          message: `This service is only available between ${openTime} and ${closeTime}`
+        });
+      }
+    }
+
     // Check availability
     const availability = await ServiceBooking.checkAvailability(
       serviceId,
       new Date(bookingDate),
       numberOfPeople
     );
-    
+
     if (!availability.available) {
       throw new ApplicationError(availability.reason, 400);
     }
-    
+
+    // Re-verify capacity atomically to prevent TOCTOU race condition
+    // (another request may have booked between the check above and the create below)
+    if (service.capacity) {
+      const bookingDateObj = new Date(bookingDate);
+      const startOfDay = new Date(bookingDateObj);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(bookingDateObj);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingBookingsCount = await ServiceBooking.aggregate([
+        {
+          $match: {
+            serviceId: new mongoose.Types.ObjectId(serviceId),
+            bookingDate: { $gte: startOfDay, $lte: endOfDay },
+            status: { $nin: ['cancelled'] }
+          }
+        },
+        { $group: { _id: null, totalPeople: { $sum: '$numberOfPeople' } } }
+      ]);
+
+      const totalBooked = existingBookingsCount.length > 0 ? existingBookingsCount[0].totalPeople : 0;
+      if (totalBooked + numberOfPeople > service.capacity) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Service is fully booked for this date'
+        });
+      }
+    }
+
     // Calculate total amount
     const totalAmount = service.price * numberOfPeople;
     const maxDaily = Number.parseInt(process.env.HOTEL_SERVICE_BOOKING_DAILY_LIMIT || '10', 10);

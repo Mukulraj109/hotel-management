@@ -2,6 +2,7 @@ import express from 'express';
 import phoneExtensionController from '../controllers/phoneExtensionController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -292,6 +293,7 @@ const idParamValidation = [
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Public API endpoints (accessible to all authenticated users)

@@ -87,12 +87,24 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
   
   // Attach API key info to request
   req.apiKey = validKey;
+
+  // Map API key types to restricted roles - never allow full admin impersonation
+  const apiKeyRoleMap = {
+    'admin': 'staff',      // Admin API keys get staff-level access, not full admin
+    'write': 'staff',
+    'read': 'guest',
+    'readonly': 'guest'
+  };
+
   req.user = {
+    _id: validKey._id,
     id: validKey._id,
     type: 'api_key',
     permissions: validKey.permissions,
     hotelId: validKey.hotelId,
-    role: validKey.type
+    role: apiKeyRoleMap[validKey.type] || 'guest',
+    isActive: true,
+    properties: validKey.hotelId ? [validKey.hotelId] : []
   };
   
   logger.info('API key authenticated successfully', {

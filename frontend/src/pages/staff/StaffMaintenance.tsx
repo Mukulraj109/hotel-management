@@ -1,31 +1,62 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw, User, Calendar, Flag } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw, User, Calendar, Flag, ChevronLeft, ChevronRight, Wifi, WifiOff } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
-import { maintenanceService, MaintenanceTask } from '../../services/maintenanceService';
+import { maintenanceService, MaintenanceTask, GroupedTasks } from '../../services/maintenanceService';
 import { useRealTime } from '../../services/realTimeService';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
 
-interface GroupedTasks {
-  urgent: MaintenanceTask[];
-  pending: MaintenanceTask[];
-  inProgress: MaintenanceTask[];
-  completed: MaintenanceTask[];
-}
-
 export default function StaffMaintenance() {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<GroupedTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completedPage, setCompletedPage] = useState(1);
 
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchTasksRef = useRef<(() => Promise<void>) | null>(null);
   const { connect, on, off, isConnected } = useRealTime();
+
+  const getApiErrorMessage = (err: unknown, fallback: string): string => {
+    if (err && typeof err === 'object') {
+      const e = err as Record<string, unknown>;
+      const response = e.response as Record<string, unknown> | undefined;
+      if (response?.status === 401) return 'Authentication failed. Please login again.';
+      if (response?.status === 403) return 'You do not have permission to perform this action.';
+      if (response?.status === 404) return 'Task not found. It may have been deleted.';
+      const data = response?.data as Record<string, unknown> | undefined;
+      if (typeof data?.message === 'string') return data.message;
+    }
+    return fallback;
+  };
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const groupedTasks = await maintenanceService.getTasksGrouped(completedPage);
+      setTasks(groupedTasks);
+    } catch (err) {
+      const errorMessage = getApiErrorMessage(err, 'Failed to load maintenance tasks');
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [completedPage]);
+
+  // Keep a stable ref to fetchTasks so real-time handlers always call the latest version
+  // without needing to re-register socket listeners on every completedPage change.
+  useEffect(() => {
+    fetchTasksRef.current = fetchTasks;
+  }, [fetchTasks]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -34,18 +65,25 @@ export default function StaffMaintenance() {
     };
   }, []);
 
+  // Connect to real-time socket once on mount — do NOT include in completedPage effect
+  // to avoid redundant reconnections on pagination.
   useEffect(() => {
-    fetchTasks();
     connect().catch(() => {
       // Keep page functional if socket connection is unavailable.
     });
   }, [connect]);
 
   useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  useEffect(() => {
     if (!isConnected) return;
 
+    // Use ref so this handler always calls the latest fetchTasks without
+    // needing to re-register listeners on every completedPage change.
     const handleMaintenanceRealtimeUpdate = () => {
-      fetchTasks();
+      fetchTasksRef.current?.();
     };
 
     on('maintenance:created', handleMaintenanceRealtimeUpdate);
@@ -57,59 +95,21 @@ export default function StaffMaintenance() {
       off('maintenance:updated', handleMaintenanceRealtimeUpdate);
       off('maintenance:status_changed', handleMaintenanceRealtimeUpdate);
     };
-  }, [isConnected, on, off]);
-
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const groupedTasks = await maintenanceService.getTasksGrouped();
-      setTasks(groupedTasks);
-    } catch (err) {
-
-      let errorMessage = 'Failed to load maintenance tasks';
-      if (err.response?.status === 401) {
-        errorMessage = 'Authentication failed. Please login again.';
-      } else if (err.response?.status === 403) {
-        errorMessage = 'You do not have permission to view maintenance tasks.';
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      }
-
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [isConnected, on, off]); // stable — does NOT re-register on completedPage changes
 
   const handleStartTask = async (taskId: string) => {
     try {
       setActionLoading(taskId);
-      const result = await maintenanceService.startTask(taskId);
-
-      await fetchTasks(); // Refresh data
-
+      await maintenanceService.startTask(taskId);
+      await fetchTasks();
       toast.success('Task started successfully!');
     } catch (err) {
-
-      // More specific error messages
-      let errorMessage = 'Failed to start task. Please try again.';
-      if (err.response?.status === 401) {
-        errorMessage = 'Authentication failed. Please login again.';
-      } else if (err.response?.status === 403) {
-        errorMessage = 'You do not have permission to perform this action.';
-      } else if (err.response?.status === 404) {
-        errorMessage = 'Task not found. It may have been deleted.';
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      }
-
-      setError(errorMessage);
+      const errorMessage = getApiErrorMessage(err, 'Failed to start task. Please try again.');
+      // Show as inline banner, not page-level error (tasks remain visible)
       toast.error(errorMessage);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = setTimeout(() => setError(null), 5000); // Clear error after 5 seconds
+      setError(errorMessage);
+      errorTimerRef.current = setTimeout(() => setError(null), 5000);
     } finally {
       setActionLoading(null);
     }
@@ -130,13 +130,16 @@ export default function StaffMaintenance() {
           ? `Completed steps: ${completedSteps.join(', ')}`
           : 'Task completed'
       });
-      await fetchTasks(); // Refresh data
+      await fetchTasks();
       setShowCompletionModal(false);
       setSelectedTask(null);
+      toast.success('Task completed successfully!');
     } catch (err) {
-      setError('Failed to complete task. Please try again.');
+      const errorMessage = getApiErrorMessage(err, 'Failed to complete task. Please try again.');
+      toast.error(errorMessage);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = setTimeout(() => setError(null), 3000); // Clear error after 3 seconds
+      setError(errorMessage);
+      errorTimerRef.current = setTimeout(() => setError(null), 3000);
     } finally {
       setActionLoading(null);
     }
@@ -188,7 +191,8 @@ export default function StaffMaintenance() {
     );
   }
 
-  if (error || !tasks) {
+  // Only show the full-page error screen on initial load failure (tasks never loaded)
+  if (!tasks && error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
         <div className="max-w-7xl mx-auto">
@@ -202,13 +206,22 @@ export default function StaffMaintenance() {
             <h3 className="text-xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent mb-4">
               Failed to load maintenance data
             </h3>
-            <p className="text-gray-600 mb-6">There was an issue loading your maintenance tasks. Please try again.</p>
+            <p className="text-gray-600 mb-6">{error}</p>
             <Button onClick={fetchTasks} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 rounded-xl px-6 py-3">
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Safety guard: tasks is null only transiently during the initial fetch
+  if (!tasks) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <LoadingSpinner />
       </div>
     );
   }
@@ -240,25 +253,36 @@ export default function StaffMaintenance() {
                 {/* Task Summary Stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                   <div className="bg-gradient-to-r from-red-500 to-pink-500 text-white px-3 py-2 rounded-xl text-center">
-                    <div className="text-xl font-bold">{tasks?.urgent.length || 0}</div>
+                    <div className="text-xl font-bold">{tasks?.urgentTotal ?? tasks?.urgent?.length ?? 0}</div>
                     <div className="text-xs opacity-90">Urgent</div>
                   </div>
                   <div className="bg-gradient-to-r from-orange-500 to-yellow-500 text-white px-3 py-2 rounded-xl text-center">
-                    <div className="text-xl font-bold">{tasks?.pending.length || 0}</div>
+                    <div className="text-xl font-bold">{tasks?.pendingTotal ?? tasks?.pending?.length ?? 0}</div>
                     <div className="text-xs opacity-90">Pending</div>
                   </div>
                   <div className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-3 py-2 rounded-xl text-center">
-                    <div className="text-xl font-bold">{tasks?.inProgress.length || 0}</div>
+                    <div className="text-xl font-bold">{tasks?.inProgressTotal ?? tasks?.inProgress?.length ?? 0}</div>
                     <div className="text-xs opacity-90">In Progress</div>
                   </div>
                   <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-3 py-2 rounded-xl text-center">
-                    <div className="text-xl font-bold">{tasks?.completed.length || 0}</div>
+                    <div className="text-xl font-bold">{tasks?.completedTotal ?? tasks?.completed.length ?? 0}</div>
                     <div className="text-xs opacity-90">Completed</div>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center space-x-3">
+                <div className={`flex items-center px-3 py-1.5 rounded-full text-xs font-medium ${
+                  isConnected
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {isConnected ? (
+                    <><Wifi className="w-3 h-3 mr-1" /> Live Updates</>
+                  ) : (
+                    <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
+                  )}
+                </div>
                 <Button
                   onClick={fetchTasks}
                   className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 rounded-xl"
@@ -516,7 +540,7 @@ export default function StaffMaintenance() {
                               )}
                               <div className="flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-lg">
                                 <Calendar className="h-3 w-3 mr-1" />
-                                Started: {formatTimeAgo(task.updatedAt)}
+                                Started: {formatTimeAgo(task.startedDate || task.updatedAt)}
                               </div>
                               {task.reportedBy && (
                                 <div className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">
@@ -580,14 +604,14 @@ export default function StaffMaintenance() {
                     </div>
                   </div>
                   <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                    Completed Today ({tasks.completed.length})
+                    Completed ({tasks.completedTotal ?? tasks.completed.length})
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {tasks.completed.length > 0 ? (
-                    tasks.completed.slice(0, 5).map((task) => (
+                    tasks.completed.map((task) => (
                       <div key={task._id} className="group/task relative">
                         <div className="absolute inset-0 bg-gradient-to-r from-green-100 to-emerald-100 rounded-2xl opacity-70 group-hover/task:opacity-100 transition duration-200"></div>
                         <div className="relative flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-green-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-102">
@@ -635,11 +659,38 @@ export default function StaffMaintenance() {
                           <Clock className="h-8 w-8 text-gray-400" />
                         </div>
                       </div>
-                      <p className="text-gray-600 font-medium">No completed tasks today</p>
+                      <p className="text-gray-600 font-medium">No completed tasks</p>
                       <p className="text-sm text-gray-500 mt-1">Tasks you complete will appear here</p>
                     </div>
                   )}
                 </div>
+
+                {/* Completed Tasks Pagination */}
+                {(tasks.completedTotal ?? 0) > 10 && (
+                  <div className="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-green-100">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCompletedPage(p => Math.max(1, p - 1))}
+                      disabled={completedPage <= 1 || loading}
+                      className="rounded-xl"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-xs text-gray-600">
+                      Page {completedPage} of {Math.ceil((tasks.completedTotal ?? 0) / 10)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCompletedPage(p => p + 1)}
+                      disabled={completedPage >= Math.ceil((tasks.completedTotal ?? 0) / 10) || loading}
+                      className="rounded-xl"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

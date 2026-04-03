@@ -507,16 +507,13 @@ app.use('/api/v1/travel-agents', piiResponseFilter);
 app.use(maintenanceMode);
 
 // Block direct public access to sensitive document uploads.
-// Documents must be accessed through authenticated document routes.
-app.use('/uploads/documents', (_req, res) => {
-    res.status(404).json({
-        status: 'error',
-        message: 'Not found'
-    });
-});
-
-// Keep non-document uploads publicly accessible (e.g. non-sensitive assets/photos).
-app.use('/uploads', express.static('uploads'));
+// Serve uploads but exclude sensitive documents directory - documents have authenticated endpoints
+app.use('/uploads', (req, res, next) => {
+  if (req.path.startsWith('/documents')) {
+    return res.status(403).json({ error: 'Access denied. Use the authenticated document endpoints.' });
+  }
+  next();
+}, express.static('uploads'));
 
 // API Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

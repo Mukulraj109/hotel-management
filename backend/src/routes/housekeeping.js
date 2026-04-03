@@ -40,6 +40,7 @@ const updateTaskSchema = Joi.object({
   assignedToUserId: Joi.string().allow(null).optional(),
   assignedTo: Joi.string().allow(null).optional(),
   estimatedDuration: Joi.number().integer().min(1).max(480).optional(),
+  actualDuration: Joi.number().integer().min(0).optional(),
   status: Joi.string().valid('pending', 'assigned', 'in_progress', 'completed', 'inspected', 'cancelled').optional(),
   startedAt: Joi.date().allow(null).optional(),
   completedAt: Joi.date().allow(null).optional(),
@@ -339,7 +340,8 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     throw new ApplicationError('Invalid task ID format', 400);
   }
 
-  const existingTask = await Housekeeping.findOne({ _id: id, hotelId }).select('status').lean();
+  const existingTask = await Housekeeping.findOne({ _id: id, hotelId })
+    .select('status startedAt assignedToUserId assignedTo').lean();
   if (!existingTask) {
     logger.debug('Housekeeping task not found', { id });
     throw new ApplicationError('Housekeeping task not found', 404);
@@ -352,14 +354,31 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     }
   }
 
-  // If task is being started, set startedAt
-  if (updateData.status === 'in_progress' && !updateData.startedAt) {
-    updateData.startedAt = new Date();
+  // If task is being started, set startedAt and self-assign if unassigned
+  if (updateData.status === 'in_progress') {
+    if (!updateData.startedAt) {
+      updateData.startedAt = new Date();
+    }
+    // Self-assign to current user when picking up an unassigned/pending task
+    const isUnassigned = !existingTask.assignedToUserId && !existingTask.assignedTo;
+    if (isUnassigned && !updateData.assignedToUserId && !updateData.assignedTo) {
+      updateData.assignedToUserId = req.user._id;
+      updateData.assignedTo = req.user._id;
+    }
   }
 
-  // If task is being completed, set completedAt
-  if (updateData.status === 'completed' && !updateData.completedAt) {
-    updateData.completedAt = new Date();
+  // If task is being completed, set completedAt and calculate actualDuration
+  if (updateData.status === 'completed') {
+    if (!updateData.completedAt) {
+      updateData.completedAt = new Date();
+    }
+    // Calculate actualDuration from startedAt (prefer the existing value if already set)
+    const startedAt = updateData.startedAt || existingTask.startedAt;
+    if (startedAt && !updateData.actualDuration) {
+      updateData.actualDuration = Math.round(
+        (new Date(updateData.completedAt).getTime() - new Date(startedAt).getTime()) / (1000 * 60)
+      );
+    }
   }
 
   const task = await Housekeeping.findOneAndUpdate(
@@ -401,7 +420,7 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
 
     // If task is completed, also broadcast normalized room status change
     if (updateData.status === 'completed' && task.roomId) {
-      await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
+      await websocketService.broadcastToHotel(hotelId, 'room:status_changed', {
         roomId: task.roomId._id || task.roomId,
         status: 'cleaning',
         taskId: task._id,
@@ -532,7 +551,7 @@ router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('
 
     // Broadcast room status change for both pass/fail with normalized room statuses.
     if (task.roomId) {
-      await websocketService.broadcastToHotel(hotelId, 'room_status_changed', {
+      await websocketService.broadcastToHotel(hotelId, 'room:status_changed', {
         roomId: task.roomId._id || task.roomId,
         status: passed ? 'vacant' : 'dirty',
         taskId: task._id,

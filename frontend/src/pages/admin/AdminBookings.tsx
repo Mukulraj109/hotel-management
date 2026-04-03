@@ -9,6 +9,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { adminService } from '../../services/adminService';
 import { bookingEditingService } from '../../services/bookingEditingService';
+import { useRealTime } from '../../services/realTimeService';
 import { api } from '../../services/api';
 import { paymentService } from '../../services/paymentService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
@@ -56,6 +57,7 @@ function AdminBookings() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
+  const { on, off } = useRealTime();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,6 +207,28 @@ function AdminBookings() {
     fetchBookings();
     fetchStats();
   }, [fetchBookings]);
+
+  // Real-time WebSocket updates for bookings
+  useEffect(() => {
+    const handleBookingEvent = () => {
+      fetchBookings();
+      fetchStats();
+    };
+
+    on('booking:created', handleBookingEvent);
+    on('booking:updated', handleBookingEvent);
+    on('booking:cancelled', handleBookingEvent);
+    on('booking:payment_updated', handleBookingEvent);
+    on('booking:modification_requested', handleBookingEvent);
+
+    return () => {
+      off('booking:created', handleBookingEvent);
+      off('booking:updated', handleBookingEvent);
+      off('booking:cancelled', handleBookingEvent);
+      off('booking:payment_updated', handleBookingEvent);
+      off('booking:modification_requested', handleBookingEvent);
+    };
+  }, [on, off, fetchBookings]);
 
   // Handle status update
   const handleStatusUpdate = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show') => {

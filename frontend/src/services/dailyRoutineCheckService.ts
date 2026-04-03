@@ -8,7 +8,7 @@ export interface RoomInventoryItem {
   description: string;
   unitPrice: number;
   quantity: number;
-  status: 'available' | 'missing' | 'damaged' | 'needs_cleaning';
+  status: 'available' | 'missing' | 'damaged' | 'needs_cleaning' | 'working';
   lastReplaced?: string;
   lastCleaned?: string;
 }
@@ -42,7 +42,7 @@ export interface DailyCheckData {
   roomNumber: string;
   type: string;
   floor: string;
-  checkStatus: 'pending' | 'completed' | 'overdue';
+  checkStatus: 'pending' | 'in_progress' | 'completed' | 'overdue';
   lastChecked: string | null;
   fixedInventory: RoomInventoryItem[];
   dailyInventory: RoomInventoryItem[];
@@ -55,7 +55,7 @@ export interface AssignedRoomData {
   roomNumber: string;
   type: string;
   floor: string;
-  checkStatus: 'pending' | 'completed' | 'overdue';
+  checkStatus: 'pending' | 'in_progress' | 'completed' | 'overdue';
   lastChecked: string | null;
   estimatedDuration: number;
   fixedInventory?: RoomInventoryItem[];
@@ -77,7 +77,7 @@ export interface DailyCheckResult {
 }
 
 interface DailyCheckFilters {
-  filter?: 'all' | 'pending' | 'completed' | 'overdue';
+  filter?: 'all' | 'pending' | 'in_progress' | 'completed' | 'overdue';
   floor?: string;
   type?: string;
   assignedStaff?: string;

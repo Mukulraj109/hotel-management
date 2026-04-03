@@ -156,7 +156,7 @@ class InventoryNotificationService {
 
         if (createdNotifications.length > 0) {
           const sampleNotification = createdNotifications[0];
-          websocketService.broadcastInventoryNotification(hotelId.toString(), {
+          websocketService.broadcastToHotel(hotelId.toString(), 'inventory:alert', {
             type: sampleNotification.type,
             title: sampleNotification.title,
             message: sampleNotification.message,
@@ -282,11 +282,12 @@ class InventoryNotificationService {
   /**
    * Get inventory-related notifications for admin
    */
-  async getInventoryNotifications(userId, hotelId, limit = 50) {
+  async getInventoryNotifications(userId, hotelId, limit = 20) {
     try {
+      const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
       const inventoryTypes = [
         'inventory_damage',
-        'inventory_missing', 
+        'inventory_missing',
         'inventory_replacement_needed',
         'inventory_guest_charged',
         'inventory_low_stock',
@@ -300,7 +301,7 @@ class InventoryNotificationService {
         type: { $in: inventoryTypes }
       })
       .sort({ createdAt: -1 })
-      .limit(limit).lean();
+      .limit(safeLimit).lean();
     } catch (error) {
       throw new Error(`${error.message}`);
     }
@@ -401,7 +402,7 @@ class InventoryNotificationService {
         await deliverInAppNotificationsBulk(created);
 
         const sampleNotification = notifications[0];
-        websocketService.broadcastInventoryNotification(hotelId.toString(), {
+        websocketService.broadcastToHotel(hotelId.toString(), 'inventory:alert', {
           type: 'inventory_audit_alert',
           title: sampleNotification.title,
           message: sampleNotification.message,
@@ -461,6 +462,60 @@ class InventoryNotificationService {
       return notifications.length;
     } catch (error) {
       throw new Error(`${error.message}`);
+    }
+  }
+
+  /**
+   * Notify the assigned staff member when a new task is created for them.
+   */
+  async notifyTaskAssignment(task) {
+    try {
+      const hotelId = task.hotelId?.toString ? task.hotelId.toString() : task.hotelId;
+      const assignedToId = task.assignedTo?._id?.toString
+        ? task.assignedTo._id.toString()
+        : task.assignedTo?.toString
+          ? task.assignedTo.toString()
+          : null;
+
+      if (!assignedToId) {
+        logger.warn('notifyTaskAssignment: no assignedTo on task', { taskId: task._id });
+        return 0;
+      }
+
+      const notification = await Notification.create({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        userId: new mongoose.Types.ObjectId(assignedToId),
+        type: 'task_assigned',
+        title: `New Task Assigned: ${task.title}`,
+        message: `You have been assigned a new task: "${task.title}". Due: ${task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'N/A'}.`,
+        channels: ['in_app'],
+        priority: task.priority === 'urgent' ? 'high' : 'medium',
+        metadata: {
+          taskId: task._id?.toString(),
+          taskType: task.taskType,
+          dueDate: task.dueDate
+        },
+        isRead: false,
+        readAt: null
+      });
+
+      await deliverInAppNotificationsBulk([notification]);
+
+      // Real-time push to the assigned staff member via Socket.io
+      websocketService.broadcastToHotel(hotelId, 'task:assigned', {
+        taskId: task._id?.toString(),
+        title: task.title,
+        taskType: task.taskType,
+        priority: task.priority,
+        dueDate: task.dueDate,
+        timestamp: new Date().toISOString()
+      });
+
+      return 1;
+    } catch (error) {
+      logger.error('notifyTaskAssignment failed', { error: error.message, taskId: task._id });
+      // Non-fatal — do not surface notification failures to the API caller
+      return 0;
     }
   }
 }

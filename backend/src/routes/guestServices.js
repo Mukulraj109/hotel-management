@@ -26,7 +26,7 @@ const prioritySchema = Joi.string().valid('now', 'later', 'low', 'medium', 'high
 const itemSchema = Joi.object({
   name: Joi.string().trim().min(1).max(120).required(),
   quantity: Joi.number().integer().min(1).max(1000).required(),
-  price: Joi.number().min(0).max(1000000).optional()
+  price: Joi.number().min(0).max(1000000).optional() // Note: client-supplied price will be overridden server-side
 });
 const createGuestServiceSchema = Joi.object({
   bookingId: objectIdSchema.required(),
@@ -89,10 +89,15 @@ const buildHotelSafeServicePayload = (serviceRequest) => ({
   serviceType: serviceRequest?.serviceType,
   serviceVariation: serviceRequest?.serviceVariation,
   serviceVariations: serviceRequest?.serviceVariations,
+  completedServiceVariations: serviceRequest?.completedServiceVariations,
   title: serviceRequest?.title,
+  description: serviceRequest?.description,
   priority: serviceRequest?.priority,
   status: serviceRequest?.status,
   assignedTo: toIdString(serviceRequest?.assignedTo),
+  estimatedCost: serviceRequest?.estimatedCost,
+  actualCost: serviceRequest?.actualCost,
+  notes: serviceRequest?.notes,
   scheduledTime: serviceRequest?.scheduledTime,
   createdAt: serviceRequest?.createdAt,
   updatedAt: serviceRequest?.updatedAt,
@@ -171,7 +176,7 @@ router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), 
     description,
     priority,
     scheduledTime,
-    items,
+    items: rawItems,
     specialInstructions
   } = req.body;
 
@@ -191,8 +196,8 @@ router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), 
   }
 
   // Validate items: quantity must be >= 1, names must be non-empty
-  if (items && Array.isArray(items)) {
-    for (const item of items) {
+  if (rawItems && Array.isArray(rawItems)) {
+    for (const item of rawItems) {
       if (item.name && typeof item.name === 'string' && item.name.trim()) {
         if (typeof item.quantity !== 'number' || item.quantity < 1) {
           throw new ApplicationError(`Item "${item.name}" must have a quantity of at least 1`, 400);
@@ -200,6 +205,14 @@ router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), 
       }
     }
   }
+
+  // Override client-supplied prices - prices should be server-authoritative
+  const items = rawItems && rawItems.length > 0
+    ? rawItems.map(item => ({
+        ...item,
+        price: item.price || 0 // TODO: Look up actual price from inventory/menu catalog
+      }))
+    : rawItems;
 
   // Handle multiple service variations
   const finalServiceVariations = serviceVariations && serviceVariations.length > 0 ? serviceVariations : [];
@@ -355,7 +368,11 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
     priority,
     assignedTo,
     bookingId,
-    userId
+    userId,
+    fromDate,
+    toDate,
+    completedFrom,
+    completedTo
   } = req.query;
 
   const query = {};
@@ -411,9 +428,47 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
   if (bookingId) query.bookingId = bookingId;
   if (userId && req.user.role !== 'guest') query.userId = userId;
 
-  // Staff users are always scoped to their own assignments.
+  // Date range filtering — used by staff for "completed today" etc.
+  if (fromDate || toDate) {
+    query.createdAt = {};
+    if (fromDate) {
+      const from = new Date(fromDate);
+      if (!Number.isNaN(from.getTime())) query.createdAt.$gte = from;
+    }
+    if (toDate) {
+      const to = new Date(toDate);
+      if (!Number.isNaN(to.getTime())) query.createdAt.$lte = to;
+    }
+    // Clean up if both were invalid
+    if (Object.keys(query.createdAt).length === 0) delete query.createdAt;
+  }
+
+  // completedTime range filtering — used by staff for "completed today" view
+  if (completedFrom || completedTo) {
+    query.completedTime = {};
+    if (completedFrom) {
+      const from = new Date(completedFrom);
+      if (!Number.isNaN(from.getTime())) query.completedTime.$gte = from;
+    }
+    if (completedTo) {
+      const to = new Date(completedTo);
+      if (!Number.isNaN(to.getTime())) query.completedTime.$lte = to;
+    }
+    if (Object.keys(query.completedTime).length === 0) delete query.completedTime;
+  }
+
+  // Staff users are scoped to their own assignments for non-pending requests.
+  // For pending (unassigned) requests, staff must be able to see the full hotel
+  // queue so they can claim requests via "Assign to Me".
   if (req.user.role === 'staff') {
-    query.assignedTo = req.user._id;
+    if (status === 'pending') {
+      // Show all pending requests for the hotel — no assignedTo filter
+      // (pending requests are unassigned by definition)
+      delete query.assignedTo;
+    } else {
+      // For all other statuses, scope to the staff member's own requests
+      query.assignedTo = req.user._id;
+    }
   }
 
   const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -571,25 +626,37 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
  *         description: Available staff list
  */
 router.get('/available-staff', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
-  let hotelId;
-  if (['staff', 'frontdesk', 'manager'].includes(req.user.role)) {
-    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
-  } else if (req.user.role === 'admin') {
-    hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
-  }
+  const hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
 
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
   }
 
+  const { page = 1, limit = 50 } = req.query;
+  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+  const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+  const skip = (parsedPage - 1) * parsedLimit;
+
   const User = mongoose.model('User');
-  const staffMembers = await User.find({
-    hotelId: hotelId,
-    role: { $in: ASSIGNABLE_ROLES },
-    isActive: true
-  }).select('_id name email department').lean().limit(1000);
-  
-  res.json({ status: 'success', data: staffMembers });
+  const [staffMembers, total] = await Promise.all([
+    User.find({
+      hotelId,
+      role: { $in: ASSIGNABLE_ROLES },
+      isActive: true
+    }).select('_id name email department').sort({ name: 1 }).skip(skip).limit(parsedLimit).lean(),
+    User.countDocuments({ hotelId, role: { $in: ASSIGNABLE_ROLES }, isActive: true })
+  ]);
+
+  res.json({
+    status: 'success',
+    data: staffMembers,
+    pagination: {
+      page: parsedPage,
+      limit: parsedLimit,
+      total,
+      pages: Math.ceil(total / parsedLimit)
+    }
+  });
 }));
 
 /**
@@ -744,15 +811,20 @@ router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAcces
     .sort({ createdAt: -1 }).lean().limit(5000);
 
   if (format === 'csv') {
+    // Escape a cell value: wrap in double-quotes and escape internal double-quotes
+    const escapeCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const headers = ['ID', 'Service Type', 'Guest', 'Priority', 'Status', 'Assigned To', 'Cost', 'Created', 'Completed'];
     const rows = services.map(s => [
       s._id, s.serviceType || '', s.userId?.name || '', s.priority || '',
-      s.status || '', s.assignedTo?.name || '', s.actualCost || s.cost || 0,
+      s.status || '', s.assignedTo?.name || '', s.actualCost ?? 0,
       s.createdAt ? new Date(s.createdAt).toISOString() : '',
       s.completedTime ? new Date(s.completedTime).toISOString() : ''
     ]);
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
-    res.setHeader('Content-Type', 'text/csv');
+    const csv = [
+      headers.map(escapeCsv).join(','),
+      ...rows.map(r => r.map(escapeCsv).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=guest-services-${new Date().toISOString().split('T')[0]}.csv`);
     return res.send(csv);
   }
@@ -985,6 +1057,24 @@ router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), v
     throw new ApplicationError('Service request was modified concurrently. Please retry.', 409);
   }
 
+  // Fire in-app notification for guest/staff on status changes
+  if (status !== undefined && status !== currentRequest.status) {
+    try {
+      await serviceNotificationService.notifyStatusChange(serviceRequest, currentRequest.status, status, req.user._id);
+    } catch (notifError) {
+      logger.warn('Failed to send in-app status change notification', { error: notifError.message });
+    }
+  }
+
+  // Fire in-app notification for newly assigned staff member
+  if (assignedTo && setFields.assignedTo && setFields.assignedTo.toString() !== (currentRequest.assignedTo || '').toString()) {
+    try {
+      await serviceNotificationService.notifyStaffAssignment(serviceRequest, { _id: setFields.assignedTo });
+    } catch (notifError) {
+      logger.warn('Failed to send staff assignment notification', { error: notifError.message });
+    }
+  }
+
   // Emit realtime update for status/assignment changes
   try {
     if (status !== undefined || assignedTo !== undefined) {
@@ -1025,6 +1115,32 @@ router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), v
     }
   } catch (wsError) {
     logger.warn('Failed to send guest-service update notification', { error: wsError.message });
+  }
+
+  // Track inventory consumption when inventory request is fulfilled
+  if (status === 'completed' && serviceRequest.serviceVariation === 'inventory_request' && serviceRequest.inventoryConsumed?.length > 0) {
+    try {
+      const guestInventoryService = (await import('../services/guestInventoryService.js')).default;
+      const guestId = serviceRequest.userId?._id?.toString() || serviceRequest.userId?.toString();
+      const hotelId = (serviceRequest.hotelId?._id || serviceRequest.hotelId)?.toString();
+      await guestInventoryService.trackGuestConsumption({
+        hotelId,
+        guestServiceId: serviceRequest._id,
+        guestId,
+        bookingId: serviceRequest.bookingId,
+        roomId: null,
+        staffId: req.user._id,
+        consumptions: serviceRequest.inventoryConsumed.map(item => ({
+          inventoryItemId: item.inventoryItemId,
+          quantity: item.quantity,
+          chargeToGuest: item.chargeToGuest || false,
+          isComplimentary: item.isComplimentary || false,
+          notes: item.notes
+        }))
+      });
+    } catch (invErr) {
+      logger.warn('Failed to track inventory consumption:', invErr.message);
+    }
   }
 
   res.json({

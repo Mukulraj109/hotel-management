@@ -37,6 +37,7 @@ import { api } from '../../services/api';
 import '../../styles/inventory-requests-animations.css';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { useRealTime } from '../../services/realTimeService';
 
 interface InventoryRequest extends GuestService {
   items?: Array<{
@@ -93,6 +94,7 @@ function safeFormatDate(dateStr: string | undefined | null, formatStr: string): 
 
 export default function AdminInventoryRequests() {
   const { selectedPropertyId, viewMode } = useProperty();
+  const { on, off } = useRealTime();
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,8 +107,6 @@ export default function AdminInventoryRequests() {
   });
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [availableStaff, setAvailableStaff] = useState<Array<{ _id: string; name: string; email: string; department: string }>>([]);
-
-  // Real-time connection disabled for now -- will implement later
 
   // Search and bulk operations state
   const [searchTerm, setSearchTerm] = useState('');
@@ -356,6 +356,23 @@ export default function AdminInventoryRequests() {
   useEffect(() => {
     computeStats(requests);
   }, [requests, computeStats]);
+
+  // Real-time WebSocket listeners for guest service / inventory events
+  useEffect(() => {
+    const handleServiceEvent = () => {
+      fetchRequests();
+    };
+    on('guest-services:created', handleServiceEvent);
+    on('guest-services:updated', handleServiceEvent);
+    on('guest-services:status_changed', handleServiceEvent);
+    on('guest-services:assigned', handleServiceEvent);
+    return () => {
+      off('guest-services:created', handleServiceEvent);
+      off('guest-services:updated', handleServiceEvent);
+      off('guest-services:status_changed', handleServiceEvent);
+      off('guest-services:assigned', handleServiceEvent);
+    };
+  }, [on, off]);
 
   // Handle status update
   const handleStatusUpdate = async (requestId: string, newStatus: 'assigned' | 'in_progress' | 'completed' | 'cancelled') => {

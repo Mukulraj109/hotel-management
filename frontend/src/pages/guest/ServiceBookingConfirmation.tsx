@@ -184,7 +184,7 @@ For any queries, please contact us.
             Booking Confirmed!
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Your service booking has been confirmed. We've sent you a confirmation email with all the details.
+            Your booking has been recorded. Check your bookings page for status updates.
           </p>
         </div>
 
@@ -325,9 +325,13 @@ For any queries, please contact us.
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Booking Status</h3>
               
               <div className="text-center mb-4">
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+                  booking.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                  booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-blue-100 text-blue-800'
+                }`}>
                   <CheckCircle className="h-4 w-4" />
-                  Confirmed
+                  {booking.status?.charAt(0).toUpperCase() + booking.status?.slice(1) || 'Pending'}
                 </div>
               </div>
 

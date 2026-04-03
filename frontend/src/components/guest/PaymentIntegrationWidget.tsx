@@ -109,13 +109,6 @@ export function PaymentIntegrationWidget({
     error: null
   });
 
-  const [cardDetails, setCardDetails] = useState({
-    cardNumber: '',
-    expiryDate: '',
-    cvv: '',
-    cardholderName: ''
-  });
-
   const [digitalWalletDetails, setDigitalWalletDetails] = useState({
     walletType: '',
     phoneNumber: ''
@@ -171,11 +164,9 @@ export function PaymentIntegrationWidget({
 
     switch (paymentState.selectedMethod) {
       case 'card':
-        if (!cardDetails.cardNumber || !cardDetails.expiryDate || !cardDetails.cvv || !cardDetails.cardholderName) {
-          setPaymentState(prev => ({ ...prev, error: 'Please fill in all card details' }));
-          return false;
-        }
-        break;
+        // Card payments are handled via Stripe Elements on the billing page
+        window.location.href = '/app/billing';
+        return false;
 
       case 'digital_wallet':
         if (!digitalWalletDetails.walletType || !digitalWalletDetails.phoneNumber) {
@@ -211,7 +202,6 @@ export function PaymentIntegrationWidget({
         roomNumber,
         bookingId,
         paymentDetails: {
-          ...(paymentState.selectedMethod === 'card' && { card: cardDetails }),
           ...(paymentState.selectedMethod === 'digital_wallet' && { digitalWallet: digitalWalletDetails }),
           billingAddress
         }
@@ -225,8 +215,8 @@ export function PaymentIntegrationWidget({
           break;
 
         case 'card':
-          response = await processCardPayment(paymentData);
-          break;
+          // Card payments are redirected to billing page (handled in validation)
+          return;
 
         case 'digital_wallet':
           response = await processDigitalWalletPayment(paymentData);
@@ -277,15 +267,6 @@ export function PaymentIntegrationWidget({
     }
   };
 
-  const processCardPayment = async (paymentData: Record<string, unknown>) => {
-    try {
-      const response = await api.post('/payments/card', paymentData);
-      return response.data;
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Card payment failed');
-    }
-  };
-
   const processDigitalWalletPayment = async (paymentData: Record<string, unknown>) => {
     try {
       const response = await api.post('/payments/digital-wallet', paymentData);
@@ -309,53 +290,18 @@ export function PaymentIntegrationWidget({
       case 'card':
         return (
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="cardNumber">Card Number</Label>
-              <Input
-                id="cardNumber"
-                type="text"
-                placeholder="1234 5678 9012 3456"
-                value={cardDetails.cardNumber}
-                onChange={(e) => setCardDetails(prev => ({ ...prev, cardNumber: e.target.value }))}
-                maxLength={19}
-              />
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-700">
+                Card payments are processed securely through Stripe.
+                Please use the secure payment form on the billing page.
+              </p>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="expiryDate">Expiry Date</Label>
-                <Input
-                  id="expiryDate"
-                  type="text"
-                  placeholder="MM/YY"
-                  value={cardDetails.expiryDate}
-                  onChange={(e) => setCardDetails(prev => ({ ...prev, expiryDate: e.target.value }))}
-                  maxLength={5}
-                />
-              </div>
-              <div>
-                <Label htmlFor="cvv">CVV</Label>
-                <Input
-                  id="cvv"
-                  type="text"
-                  placeholder="123"
-                  value={cardDetails.cvv}
-                  onChange={(e) => setCardDetails(prev => ({ ...prev, cvv: e.target.value }))}
-                  maxLength={4}
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="cardholderName">Cardholder Name</Label>
-              <Input
-                id="cardholderName"
-                type="text"
-                placeholder="Name on Card"
-                value={cardDetails.cardholderName}
-                onChange={(e) => setCardDetails(prev => ({ ...prev, cardholderName: e.target.value }))}
-              />
-            </div>
+            <Button
+              onClick={() => window.location.href = '/app/billing'}
+              className="w-full"
+            >
+              Go to Secure Payment
+            </Button>
           </div>
         );
 

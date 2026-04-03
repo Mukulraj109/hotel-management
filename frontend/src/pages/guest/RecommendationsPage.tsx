@@ -175,7 +175,7 @@ const RecommendationsPage: React.FC = () => {
                           <span className="font-medium">{offer.pointsRequired} points</span>
                         </div>
                         <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                          Match: {offer.recommendationScore}/5
+                          Match: {(offer.recommendationScore * 100 / 6).toFixed(0)}%
                         </div>
                       </div>
 

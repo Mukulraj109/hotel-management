@@ -9,6 +9,8 @@ import {
   Moon,
   Globe,
   Zap,
+  Clock,
+  Calendar,
   Save,
   Loader2
 } from 'lucide-react';
@@ -19,6 +21,8 @@ interface StaffDisplayFormData {
   theme: 'light' | 'dark';
   compactView: boolean;
   language: string;
+  dateFormat: string;
+  timeFormat: '12h' | '24h';
   quickActions: string[];
 }
 
@@ -32,12 +36,15 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { isDirty }
   } = useForm<StaffDisplayFormData>({
     defaultValues: {
       theme: 'light',
       compactView: false,
       language: 'en',
+      dateFormat: 'DD/MM/YYYY',
+      timeFormat: '24h',
       quickActions: ['daily-check', 'guest-request']
     }
   });
@@ -60,6 +67,8 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
 
         setValue('theme', displayPrefs.theme || 'light', { shouldDirty: false });
         setValue('compactView', displayPrefs.compactView ?? false, { shouldDirty: false });
+        setValue('dateFormat', displayPrefs.dateFormat || 'DD/MM/YYYY', { shouldDirty: false });
+        setValue('timeFormat', displayPrefs.timeFormat || '24h', { shouldDirty: false });
         setValue('language', profilePrefs.language || 'en', { shouldDirty: false });
         setValue('quickActions', staffPrefs.quickActions || ['daily-check', 'guest-request'], { shouldDirty: false });
       } catch {
@@ -83,6 +92,12 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
     { value: 'hi', label: 'Hindi' }
   ];
 
+  const dateFormats = [
+    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2025)' },
+    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2025)' },
+    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2025-12-31)' }
+  ];
+
   const availableQuickActions = [
     { id: 'daily-check', label: 'Daily Room Check', icon: '🛏️' },
     { id: 'guest-request', label: 'Guest Request', icon: '👤' },
@@ -94,19 +109,24 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
   // Save display settings mutation
   const saveDisplayMutation = useMutation({
     mutationFn: async (data: StaffDisplayFormData) => {
-      const { data: result } = await api.put('/user-preferences/display', {
-        theme: data.theme,
-        compactView: data.compactView
-      });
-      await api.put('/user-preferences/staff', {
-        quickActions: data.quickActions
-      });
-      await api.put('/user-preferences/profile', {
-        language: data.language
-      });
-      return result;
+      await Promise.all([
+        api.put('/user-preferences/display', {
+          theme: data.theme,
+          compactView: data.compactView,
+          dateFormat: data.dateFormat,
+          timeFormat: data.timeFormat
+        }),
+        api.put('/user-preferences/staff', {
+          quickActions: data.quickActions
+        }),
+        api.put('/user-preferences/profile', {
+          language: data.language
+        })
+      ]);
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (savedData) => {
+      reset(savedData);
       toast.success('Display settings updated successfully');
       if (onSettingsChange) {
         onSettingsChange(false);
@@ -219,6 +239,64 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Date & Time Format */}
+          <div>
+            <h3 className="text-md font-medium text-gray-900 mb-4 flex items-center space-x-2">
+              <Calendar className="h-4 w-4" />
+              <span>Date &amp; Time Format</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                <select
+                  {...register('dateFormat')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {dateFormats.map(fmt => (
+                    <option key={fmt.value} value={fmt.value}>
+                      {fmt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Clock className="h-4 w-4 inline mr-1" />
+                  Time Format
+                </label>
+                <div className="flex space-x-4">
+                  <label className={`
+                    flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-colors
+                    ${watchedValues.timeFormat === '12h' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}
+                  `}>
+                    <input
+                      {...register('timeFormat')}
+                      type="radio"
+                      value="12h"
+                      className="sr-only"
+                    />
+                    <p className="font-medium text-gray-900">12h</p>
+                    <p className="text-xs text-gray-500">2:30 PM</p>
+                  </label>
+                  <label className={`
+                    flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-colors
+                    ${watchedValues.timeFormat === '24h' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}
+                  `}>
+                    <input
+                      {...register('timeFormat')}
+                      type="radio"
+                      value="24h"
+                      className="sr-only"
+                    />
+                    <p className="font-medium text-gray-900">24h</p>
+                    <p className="text-xs text-gray-500">14:30</p>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Quick Actions */}

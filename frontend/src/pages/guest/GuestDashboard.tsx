@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
 import { Booking } from '../../types/booking';
@@ -15,80 +17,45 @@ import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import toast from 'react-hot-toast';
 import { toEntityIdString } from '../../utils/entityId';
 
-interface BookingStats {
-  totalBookings: number;
-  upcomingBookings: number;
-  totalSpent: number;
-  loyaltyPoints: number;
-  recentBookings: Booking[];
-}
-
-export default function GuestDashboard() {
+function GuestDashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<BookingStats>({
-    totalBookings: 0,
-    upcomingBookings: 0,
-    totalSpent: 0,
-    loyaltyPoints: 0,
-    recentBookings: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (user) {
-      fetchDashboardData();
-    }
-  }, [user]);
-
-  // Real-time connections removed for performance optimization
-
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data: dashboardData, isLoading: loading, error, refetch } = useQuery({
+    queryKey: ['guest-dashboard', user?._id],
+    queryFn: async () => {
       const response = await bookingService.getUserBookings({ limit: 5 });
       const bookings = Array.isArray(response.data?.bookings) ? response.data.bookings :
                       Array.isArray(response.data) ? response.data : [];
 
-      // Use pagination total if available, otherwise fall back to array length
+      // Use server-provided stats/pagination when available, don't compute from limited dataset
       const totalBookings = (response as any).pagination?.total
         ?? (response as any).stats?.totalBookings
         ?? bookings.length;
-      // Active or upcoming bookings: confirmed/pending (future) + checked_in (current stay)
-      const upcomingBookings = bookings.filter(b =>
-        ['confirmed', 'pending', 'checked_in'].includes(b.status)
-      ).length;
-      const totalSpent = bookings
-        .filter(b => b.paymentStatus === 'paid')
-        .reduce((total, booking) => total + (Number(booking.totalAmount) || 0), 0);
+      const totalSpent = (response as any).stats?.totalRevenue ?? bookings
+        .filter((b: any) => b.paymentStatus === 'paid')
+        .reduce((sum: number, b: any) => sum + (Number(b.totalAmount) || 0), 0);
+      const upcomingBookings = (response as any).stats?.upcomingCount ?? bookings
+        .filter((b: any) => new Date(b.checkIn) > new Date() && b.status !== 'cancelled')
+        .length;
+      const loyaltyPoints = user?.loyalty?.points || 0;
+      const loyaltyTier = user?.loyalty?.tier || 'bronze';
 
-      setStats({
-        totalBookings,
-        upcomingBookings,
-        totalSpent,
-        loyaltyPoints: user?.loyalty?.points || 0,
-        recentBookings: bookings.slice(0, 5)
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to load your bookings. Please try again.';
-      setError(message);
-      toast.error('Unable to load your bookings. Please try refreshing.');
-      // Keep previous data if available, only set defaults if first load
-      setStats(prev => prev.totalBookings > 0 ? prev : {
-        totalBookings: 0,
-        upcomingBookings: 0,
-        totalSpent: 0,
-        loyaltyPoints: user?.loyalty?.points || 0,
-        recentBookings: []
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+      return {
+        bookings: bookings.slice(0, 5) as Booking[],
+        stats: { totalBookings, totalSpent, upcomingBookings, loyaltyPoints, loyaltyTier }
+      };
+    },
+    enabled: !!user,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const bookings = dashboardData?.bookings || [];
+  const stats = dashboardData?.stats || { totalBookings: 0, totalSpent: 0, upcomingBookings: 0, loyaltyPoints: 0, loyaltyTier: 'bronze' };
 
   if (loading) {
     return (
@@ -98,15 +65,16 @@ export default function GuestDashboard() {
     );
   }
 
-  if (error && stats.recentBookings.length === 0) {
+  if (error && bookings.length === 0) {
+    const message = error instanceof Error ? error.message : 'Unable to load your bookings. Please try again.';
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <Clock className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load dashboard</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4">{message}</p>
           <button
-            onClick={fetchDashboardData}
+            onClick={() => refetch()}
             className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
           >
             Try Again
@@ -136,8 +104,8 @@ export default function GuestDashboard() {
       </div>
 
       {/* Current Stay Banner — show if guest is checked in */}
-      {stats.recentBookings.some(b => b.status === 'checked_in') && (() => {
-        const activeBooking = stats.recentBookings.find(b => b.status === 'checked_in');
+      {bookings.some(b => b.status === 'checked_in') && (() => {
+        const activeBooking = bookings.find(b => b.status === 'checked_in');
         return activeBooking ? (
           <Card className="p-4 sm:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -233,19 +201,19 @@ export default function GuestDashboard() {
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Recent Bookings</h2>
             <button 
-              onClick={() => window.location.href = '/app/bookings'}
+              onClick={() => navigate('/app/bookings')}
               className="text-yellow-600 hover:text-yellow-700 text-sm font-medium"
             >
               View All
             </button>
           </div>
 
-          {stats.recentBookings.length === 0 ? (
+          {bookings.length === 0 ? (
             <div className="text-center py-8">
               <Calendar className="mx-auto h-8 w-8 text-gray-400 mb-3" />
               <p className="text-gray-500">No bookings yet</p>
               <button 
-                onClick={() => window.location.href = '/rooms'}
+                onClick={() => navigate('/rooms')}
                 className="mt-2 text-yellow-600 hover:text-yellow-700 text-sm font-medium"
               >
                 Browse Rooms
@@ -253,7 +221,7 @@ export default function GuestDashboard() {
             </div>
           ) : (
             <div className="space-y-4">
-              {stats.recentBookings.map((booking) => (
+              {bookings.map((booking) => (
                 <a href={`/app/bookings/${toEntityIdString(booking._id) ?? ''}`} key={toEntityIdString(booking._id) ?? booking.bookingNumber} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0 hover:bg-gray-100 transition-colors cursor-pointer">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{booking.hotelId?.name || 'Hotel'}</p>
@@ -304,20 +272,33 @@ export default function GuestDashboard() {
           </div>
 
           {/* Loyalty Progress */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">Progress to next tier</span>
-              <span className="text-sm font-medium text-gray-900">
-                {Math.min(stats.loyaltyPoints % 1000, 1000)}/1000
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full" 
-                style={{ width: `${Math.min((stats.loyaltyPoints % 1000) / 1000 * 100, 100)}%` }}
-              />
-            </div>
-          </div>
+          {(() => {
+            const TIER_THRESHOLDS: Record<string, number> = {
+              bronze: 1000,
+              silver: 5000,
+              gold: 10000,
+              platinum: 25000,
+              diamond: 50000
+            };
+            const currentTierThreshold = TIER_THRESHOLDS[user?.loyalty?.tier || 'bronze'] || 1000;
+            const progress = (stats.loyaltyPoints % currentTierThreshold) / currentTierThreshold * 100;
+            return (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-600">Progress to next tier</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {Math.min(stats.loyaltyPoints % currentTierThreshold, currentTierThreshold)}/{currentTierThreshold}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full"
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Benefits */}
           <div>
@@ -359,8 +340,8 @@ export default function GuestDashboard() {
       </div>
 
       {/* Room Service Section - Only show if user has a checked-in booking */}
-      {stats.recentBookings.some(b => b.status === 'checked_in') && (() => {
-        const activeBooking = stats.recentBookings.find(b =>
+      {bookings.some(b => b.status === 'checked_in') && (() => {
+        const activeBooking = bookings.find(b =>
           b.status === 'checked_in' && new Date(b.checkOut) > new Date()
         );
         if (!activeBooking) return null;
@@ -387,21 +368,21 @@ export default function GuestDashboard() {
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <button
-              onClick={() => window.location.href = '/rooms'}
+              onClick={() => navigate('/rooms')}
               className="group flex items-center justify-center p-5 bg-gradient-to-br from-yellow-50 to-yellow-100 border-2 border-yellow-200 rounded-xl hover:from-yellow-100 hover:to-yellow-200 hover:border-yellow-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
               <Calendar className="w-5 h-5 text-yellow-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
               <span className="font-semibold text-yellow-700 text-sm sm:text-base">Book a Room</span>
             </button>
             <button
-              onClick={() => window.location.href = '/app/bookings'}
+              onClick={() => navigate('/app/bookings')}
               className="group flex items-center justify-center p-5 bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl hover:from-blue-100 hover:to-blue-200 hover:border-blue-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
               <CreditCard className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
               <span className="font-semibold text-blue-700 text-sm sm:text-base">My Bookings</span>
             </button>
             <button
-              onClick={() => window.location.href = '/contact'}
+              onClick={() => navigate('/contact')}
               className="group flex items-center justify-center p-5 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl hover:from-green-100 hover:to-green-200 hover:border-green-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
               <Users className="w-5 h-5 text-green-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
@@ -413,3 +394,5 @@ export default function GuestDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestDashboard, { level: 'page' });

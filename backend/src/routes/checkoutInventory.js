@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
@@ -11,6 +12,7 @@ import logger from '../utils/logger.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
+import websocketService from '../services/websocketService.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -20,7 +22,7 @@ const checkoutItemSchema = Joi.object({
   category: Joi.string().trim().min(1).max(80).required(),
   quantity: Joi.number().min(1).max(1000).required(),
   unitPrice: Joi.number().min(0).max(1000000).required(),
-  status: Joi.string().valid('intact', 'missing', 'damaged', 'consumed').required(),
+  status: Joi.string().valid('intact', 'used', 'missing', 'damaged', 'consumed').required(),
   notes: Joi.string().allow('').max(500).optional()
 });
 const createCheckoutInventorySchema = Joi.object({
@@ -42,6 +44,7 @@ const emptyBodySchema = Joi.object({}).max(0).optional();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -67,7 +70,11 @@ router.get('/booking/:bookingId', authorizePolicy('checkoutInventory', 'staffAcc
     bookingId: req.params.bookingId,
     hotelId: req.user.hotelId
   }).populate([
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount' },
+    {
+      path: 'bookingId',
+      select: 'bookingNumber checkIn checkOut totalAmount userId',
+      populate: { path: 'userId', select: 'name email' }
+    },
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'checkedBy', select: 'name email' }
   ]);
@@ -245,10 +252,10 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
   const [checkoutInventories, total] = await Promise.all([
     CheckoutInventory.find(filter)
       .populate([
-        { 
-          path: 'bookingId', 
-          select: 'bookingNumber checkIn checkOut totalAmount',
-          match: { hotelId }
+        {
+          path: 'bookingId',
+          select: 'bookingNumber checkIn checkOut totalAmount userId',
+          populate: { path: 'userId', select: 'name email' }
         },
         { path: 'roomId', select: 'roomNumber type' },
         { path: 'checkedBy', select: 'name email' }
@@ -259,7 +266,8 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
     CheckoutInventory.countDocuments(filter)
   ]);
 
-  // Filter out results where bookingId is null (due to hotelId mismatch)
+  // hotelId is already enforced on the filter, so bookingId should never be null here.
+  // Defensive filter kept for safety.
   const filteredInventories = checkoutInventories.filter(inv => inv.bookingId);
 
   res.status(200).json({
@@ -267,8 +275,8 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
     data: {
       checkoutInventories: filteredInventories,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         pages: Math.ceil(total / limit)
       }
@@ -297,7 +305,11 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
 router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
   const checkoutInventory = await CheckoutInventory.findById(req.params.id)
     .populate([
-      { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount userId' },
+      {
+        path: 'bookingId',
+        select: 'bookingNumber checkIn checkOut totalAmount userId',
+        populate: { path: 'userId', select: 'name email' }
+      },
       { path: 'roomId', select: 'roomNumber type' },
       { path: 'checkedBy', select: 'name email' }
     ]).lean();
@@ -352,13 +364,20 @@ router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsy
 router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), validate(updateCheckoutInventorySchema), catchAsync(async (req, res) => {
   const { items, status, notes } = req.body;
 
+  // Only allow updates on pending inventory checks to prevent overwriting completed/paid records
   const checkoutInventory = await CheckoutInventory.findOne({
     _id: req.params.id,
-    hotelId: req.user.hotelId
+    hotelId: req.user.hotelId,
+    status: { $in: ['pending'] }
   });
 
   if (!checkoutInventory) {
-    throw new ApplicationError('Checkout inventory check not found or access denied', 404);
+    // Determine specific failure reason
+    const existing = await CheckoutInventory.findOne({ _id: req.params.id, hotelId: req.user.hotelId }).lean();
+    if (!existing) {
+      throw new ApplicationError('Checkout inventory check not found or access denied', 404);
+    }
+    throw new ApplicationError(`Cannot update a checkout inventory with status '${existing.status}'. Only pending records can be modified.`, 400);
   }
 
   if (items) {
@@ -369,13 +388,17 @@ router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), valida
   }
 
   if (status) checkoutInventory.status = status;
-  if (notes) checkoutInventory.notes = notes;
+  if (notes !== undefined) checkoutInventory.notes = notes;
 
   // .save() triggers the pre-save hook that recomputes subtotal/tax/totalAmount
   await checkoutInventory.save();
 
   await checkoutInventory.populate([
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount' },
+    {
+      path: 'bookingId',
+      select: 'bookingNumber checkIn checkOut totalAmount userId',
+      populate: { path: 'userId', select: 'name email' }
+    },
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'checkedBy', select: 'name email' }
   ]);
@@ -426,14 +449,31 @@ router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess')
   if (checkoutInventory.roomId) {
     try {
       const roomId = checkoutInventory.roomId._id || checkoutInventory.roomId;
-      await Room.findByIdAndUpdate(roomId, { status: 'dirty' }, { new: true });
+      const updatedRoom = await Room.findByIdAndUpdate(roomId, { status: 'dirty' }, { new: true }).lean();
+      // Broadcast room status change so StaffRooms and housekeeping dashboards update in real-time
+      if (updatedRoom) {
+        try {
+          websocketService.broadcastToHotel(req.user.hotelId.toString(), 'room:status_changed', {
+            roomId: roomId.toString(),
+            roomNumber: updatedRoom.roomNumber,
+            status: 'dirty',
+            reason: 'Guest checkout inventory completed'
+          });
+        } catch (wsErr) {
+          logger.warn('Failed to broadcast room status change via WebSocket', { error: wsErr.message });
+        }
+      }
     } catch (err) {
       logger.warn('Failed to update room status to dirty after checkout', { error: err.message });
     }
   }
 
   await checkoutInventory.populate([
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount' },
+    {
+      path: 'bookingId',
+      select: 'bookingNumber checkIn checkOut totalAmount userId',
+      populate: { path: 'userId', select: 'name email' }
+    },
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'checkedBy', select: 'name email' }
   ]);
@@ -514,11 +554,47 @@ router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'),
     throw new ApplicationError('Inventory check must be completed before payment can be processed', 400);
   }
 
+  // Mark room as dirty for housekeeping now that the guest has paid and left
+  if (checkoutInventory.roomId) {
+    try {
+      const roomId = checkoutInventory.roomId._id || checkoutInventory.roomId;
+      const updatedRoom = await Room.findByIdAndUpdate(roomId, { status: 'dirty' }, { new: true }).lean();
+      // Broadcast room status change so StaffRooms and housekeeping dashboards update in real-time
+      if (updatedRoom) {
+        try {
+          websocketService.broadcastToHotel(req.user.hotelId.toString(), 'room:status_changed', {
+            roomId: roomId.toString(),
+            roomNumber: updatedRoom.roomNumber,
+            status: 'dirty',
+            reason: 'Guest checkout payment processed'
+          });
+        } catch (wsErr) {
+          logger.warn('Failed to broadcast room status change via WebSocket after payment', { error: wsErr.message });
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to update room status to dirty after checkout payment', { error: err.message });
+    }
+  }
+
   // Update booking status to checked out
   const booking = await Booking.findByIdAndUpdate(checkoutInventory.bookingId, {
     status: 'checked_out',
     checkOutTime: new Date()
   }, { new: true });
+
+  // Broadcast booking checked out event for real-time dashboard updates
+  if (booking) {
+    try {
+      websocketService.broadcastToHotel(req.user.hotelId.toString(), 'booking:checked_out', {
+        bookingId: booking._id.toString(),
+        bookingNumber: booking.bookingNumber,
+        checkoutInventoryId: checkoutInventory._id.toString()
+      });
+    } catch (wsErr) {
+      logger.warn('Failed to broadcast booking checked_out event', { error: wsErr.message });
+    }
+  }
 
   // Add billing history to user account if user exists
   if (booking && booking.userId) {
@@ -554,7 +630,11 @@ router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'),
   }
 
   await checkoutInventory.populate([
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount' },
+    {
+      path: 'bookingId',
+      select: 'bookingNumber checkIn checkOut totalAmount userId',
+      populate: { path: 'userId', select: 'name email' }
+    },
     { path: 'roomId', select: 'roomNumber type' },
     { path: 'checkedBy', select: 'name email' }
   ]);

@@ -85,8 +85,12 @@ router.get('/', catchAsync(async (req, res, next) => {
   const safePage = Math.max(1, parseInt(page) || 1);
   const skip = (safePage - 1) * safeLimit;
 
+  // Calculate today's start (for todayCount)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   // Get notifications with populated metadata
-  const [notifications, total, unreadCount, totalCount, weeklyCount, highPriorityCount] = await Promise.all([
+  const [notifications, total, unreadCount, totalCount, todayCount, urgentCount] = await Promise.all([
     Notification.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -97,34 +101,31 @@ router.get('/', catchAsync(async (req, res, next) => {
       .populate('metadata.loyaltyTransactionId', 'points type description')
       .lean(),
 
-    // Get total count for pagination
+    // Get total count for pagination (filtered)
     Notification.countDocuments(query),
 
     // Get unread count with tenant isolation
     Notification.getUnreadCount(userId, hotelId),
 
-    // Get total count (all notifications for user in this hotel)
+    // Get total count (all notifications for user in this hotel, unfiltered)
     Notification.countDocuments(hotelId ? { userId, hotelId } : { userId }),
 
-    // Get weekly count (notifications from last 7 days)
+    // Get today's count (notifications created today for this user)
     (() => {
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - 7);
-      const weekQuery = { userId, createdAt: { $gte: weekStart } };
-      if (hotelId) weekQuery.hotelId = hotelId;
-      return Notification.countDocuments(weekQuery);
+      const todayQuery = { userId, createdAt: { $gte: todayStart } };
+      if (hotelId) todayQuery.hotelId = hotelId;
+      return Notification.countDocuments(todayQuery);
     })(),
 
-    // Get high priority count (urgent and high priority notifications)
+    // Get urgent unread count (urgent priority notifications not yet read)
     (() => {
-      const hpQuery = {
+      const urgentQuery = {
         userId,
-        priority: { $in: ['high', 'urgent'] },
-        status: { $in: ['pending', 'sent', 'delivered'] },
+        priority: 'urgent',
         readAt: { $exists: false }
       };
-      if (hotelId) hpQuery.hotelId = hotelId;
-      return Notification.countDocuments(hpQuery);
+      if (hotelId) urgentQuery.hotelId = hotelId;
+      return Notification.countDocuments(urgentQuery);
     })()
   ]);
 
@@ -138,10 +139,12 @@ router.get('/', catchAsync(async (req, res, next) => {
         totalItems: total,
         itemsPerPage: safeLimit
       },
+      // Top-level aliases expected by the frontend
+      totalPages: Math.ceil(total / safeLimit),
       unreadCount,
       totalCount,
-      weeklyCount,
-      highPriorityCount
+      todayCount,
+      urgentCount
     }
   });
 }));

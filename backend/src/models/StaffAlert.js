@@ -5,6 +5,7 @@ const staffAlertSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
+      // Legacy types (kept for backwards compatibility)
       'maintenance_request',
       'housekeeping_urgent',
       'guest_complaint',
@@ -34,7 +35,23 @@ const staffAlertSchema = new mongoose.Schema({
       'meetup_supervision_required',
       'meetup_high_risk',
       'meetup_safety_concern',
-      'meetup_staff_required'
+      'meetup_staff_required',
+      // Frontend-aligned types
+      'guest_service_request',
+      'maintenance_required',
+      'room_ready',
+      'inventory_low',
+      'checkout_ready',
+      'system_alert',
+      'vip_arrival',
+      'complaint_received',
+      'emergency_request',
+      'payment_issue',
+      'booking_modification',
+      'deadline_approaching',
+      'quality_check',
+      'audit_required',
+      'room_out_of_service'
     ]
   },
 
@@ -100,11 +117,85 @@ const staffAlertSchema = new mongoose.Schema({
     default: null
   },
 
+  // User who resolved the alert
+  resolvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+
+  // Resolution notes
+  resolution: {
+    type: String,
+    maxlength: 1000,
+    trim: true,
+    default: null
+  },
+
   // User who last updated the alert
   lastUpdatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+
+  // Source of the alert (system, booking, maintenance request, etc.)
+  source: {
+    type: {
+      type: String,
+      enum: ['guest_request', 'system', 'staff', 'maintenance', 'inventory', 'booking', 'payment', 'meetup'],
+      default: 'system'
+    },
+    id: {
+      type: String,
+      default: null
+    },
+    details: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }
+  },
+
+  // Department and role filters for targeted alerts
+  departmentFilter: [{
+    type: String,
+    enum: ['housekeeping', 'maintenance', 'front_desk', 'kitchen', 'security', 'management', 'all']
+  }],
+
+  roleFilter: [{
+    type: String,
+    enum: ['staff', 'admin', 'manager', 'frontdesk', 'housekeeping', 'maintenance', 'guest', 'travel_agent']
+  }],
+
+  // Action link for quick navigation
+  actionUrl: {
+    type: String,
+    trim: true,
+    default: null
+  },
+
+  actionText: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: null
+  },
+
+  // Expiry and auto-escalation timestamps
+  expiresAt: {
+    type: Date,
+    default: null
+  },
+
+  escalatesAt: {
+    type: Date,
+    default: null
+  },
+
+  // Flag for alerts needing immediate attention (critical + requiresImmediate)
+  requiresImmediate: {
+    type: Boolean,
+    default: false
   },
 
   // Additional metadata
@@ -249,6 +340,10 @@ staffAlertSchema.index({ hotelId: 1, category: 1 });
 staffAlertSchema.index({ hotelId: 1, assignedTo: 1 });
 staffAlertSchema.index({ hotelId: 1, createdAt: -1 });
 staffAlertSchema.index({ hotelId: 1, type: 1, status: 1 });
+staffAlertSchema.index({ hotelId: 1, expiresAt: 1 }, { sparse: true });
+staffAlertSchema.index({ hotelId: 1, escalatesAt: 1 }, { sparse: true });
+// Compound index for common filtered queries (active alerts by priority)
+staffAlertSchema.index({ hotelId: 1, status: 1, priority: 1, createdAt: -1 });
 
 // Virtual for alert age in minutes
 staffAlertSchema.virtual('ageInMinutes').get(function() {

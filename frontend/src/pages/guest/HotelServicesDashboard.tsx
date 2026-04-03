@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Search,
   Filter,
@@ -31,6 +32,7 @@ import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
 function HotelServicesDashboard() {
   const [selectedType, setSelectedType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [filterFeatured, setFilterFeatured] = useState(false);
   const [availabilityNow, setAvailabilityNow] = useState(false);
@@ -168,45 +170,40 @@ function HotelServicesDashboard() {
     };
   }, [connectionState, on, off, queryClient]);
 
-  // Load favorites from API (fallback to localStorage when unavailable)
+  // Load favorites from API only
   useEffect(() => {
-    hotelServicesService.getFavorites(publicHotelId)
-      .then((ids) => setFavorites(Array.isArray(ids) ? ids : []))
-      .catch(() => {
-        const savedFavorites = localStorage.getItem('hotelServicesFavorites');
-        try {
-          const parsed = savedFavorites ? JSON.parse(savedFavorites) : [];
-          setFavorites(Array.isArray(parsed) ? parsed : []);
-        } catch {
-          localStorage.removeItem('hotelServicesFavorites');
-          setFavorites([]);
-        }
-      });
+    const loadFavorites = async () => {
+      try {
+        const ids = await hotelServicesService.getFavorites(publicHotelId);
+        setFavorites(Array.isArray(ids) ? ids : []);
+      } catch {
+        setFavorites([]);
+      }
+    };
+    loadFavorites();
   }, [publicHotelId]);
 
-  // Save favorites to localStorage
-  const saveFavorites = (newFavorites: string[]) => {
-    setFavorites(newFavorites);
-    localStorage.setItem('hotelServicesFavorites', JSON.stringify(newFavorites));
-  };
-
-  // Toggle favorite
-  const toggleFavorite = (serviceId: string) => {
-    const newFavorites = favorites.includes(serviceId)
-      ? favorites.filter(id => id !== serviceId)
-      : [...favorites, serviceId];
-    saveFavorites(newFavorites);
-    const op = favorites.includes(serviceId)
-      ? hotelServicesService.removeFavorite(serviceId, publicHotelId)
-      : hotelServicesService.addFavorite(serviceId, publicHotelId);
-    op.catch(() => { /* local fallback already applied */ });
+  // Toggle favorite via API only
+  const toggleFavorite = async (serviceId: string) => {
+    try {
+      const isFav = favorites.includes(serviceId);
+      if (isFav) {
+        await hotelServicesService.removeFavorite(serviceId, publicHotelId);
+        setFavorites(prev => prev.filter(id => id !== serviceId));
+      } else {
+        await hotelServicesService.addFavorite(serviceId, publicHotelId);
+        setFavorites(prev => [...prev, serviceId]);
+      }
+    } catch (error) {
+      console.error('Failed to update favorite:', error);
+    }
   };
 
   // Get services based on filters
   const getServicesQuery = () => {
     const params: Record<string, unknown> = {};
     if (selectedType) params.type = selectedType;
-    if (searchTerm) params.search = searchTerm;
+    if (debouncedSearchTerm) params.search = debouncedSearchTerm;
     if (filterFeatured) params.featured = true;
     if (availabilityNow) params.availabilityNow = true;
     if (tagsFilter.trim()) params.tags = tagsFilter.split(',').map((t) => t.trim()).filter(Boolean);
@@ -220,7 +217,7 @@ function HotelServicesDashboard() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedType, searchTerm, filterFeatured, availabilityNow, tagsFilter, minPrice, maxPrice, publicHotelId]);
+  }, [selectedType, debouncedSearchTerm, filterFeatured, availabilityNow, tagsFilter, minPrice, maxPrice, publicHotelId]);
 
   // Queries
   const { data: servicesData, isLoading: servicesLoading, error: servicesError, refetch: refetchServices } = useQuery({

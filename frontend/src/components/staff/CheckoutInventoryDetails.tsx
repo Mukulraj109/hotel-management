@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { Card, CardContent } from '../ui/Card';
-import { Badge } from '../ui/Badge';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Card, CardContent } from '../ui/card';
+import { Badge } from '../ui/badge';
 import { 
   X, 
   Package,
@@ -39,9 +39,12 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
         paymentMethod,
         notes: paymentNotes
       });
+      toast.success('Payment processed and guest checked out successfully');
       onSuccess();
-    } catch (error) {
-      toast.error('Failed to process payment');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const msg = axiosError?.response?.data?.message || 'Failed to process payment';
+      toast.error(msg);
     } finally {
       setProcessing(false);
     }
@@ -53,8 +56,10 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
       await checkoutInventoryService.completeInventoryCheck(inventory._id);
       toast.success('Inventory check completed successfully!');
       onSuccess();
-    } catch (error) {
-      toast.error('Failed to complete inventory check');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const msg = axiosError?.response?.data?.message || 'Failed to complete inventory check';
+      toast.error(msg);
     } finally {
       setProcessing(false);
     }
@@ -66,6 +71,7 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
       case 'used': return 'bg-blue-100 text-blue-800';
       case 'damaged': return 'bg-red-100 text-red-800';
       case 'missing': return 'bg-orange-100 text-orange-800';
+      case 'consumed': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -76,6 +82,7 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
       case 'used': return <Clock className="h-4 w-4" />;
       case 'damaged': return <AlertTriangle className="h-4 w-4" />;
       case 'missing': return <X className="h-4 w-4" />;
+      case 'consumed': return <Package className="h-4 w-4" />;
       default: return <Package className="h-4 w-4" />;
     }
   };
@@ -465,7 +472,7 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
                       </label>
                       <select
                         value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value as unknown)}
+                        onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'upi' | 'bank_transfer')}
                         className="w-full p-4 border-2 border-gray-200 rounded-2xl bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-900"
                       >
                         <option value="cash">💵 Cash</option>

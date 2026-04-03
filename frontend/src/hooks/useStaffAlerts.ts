@@ -1,27 +1,34 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRealTime } from '../services/realTimeService';
-import { staffAlertService } from '../services/staffAlertService';
+import { staffAlertService, StaffAlert } from '../services/staffAlertService';
 import toast from 'react-hot-toast';
 
 export function useStaffAlerts() {
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
 
-  // Real-time connection is managed externally - no auto-connect
+  // Ensure real-time connection is active while this hook is mounted.
+  // The underlying realTimeService is a singleton so multiple callers are safe.
+  useEffect(() => {
+    connect().catch((err: unknown) => {
+      console.warn('useStaffAlerts: real-time connection failed', err);
+    });
+    // Do NOT disconnect on unmount — other components may share the singleton.
+  }, [connect]);
 
   // Real-time event listeners for staff alerts
   useEffect(() => {
     if (connectionState !== 'connected') return;
 
-    const handleNewAlert = (data: { alert: Record<string, unknown> }) => {
+    const handleNewAlert = (data: { alert: StaffAlert }) => {
       const newAlert = data.alert;
-      
+
       // Update all relevant queries
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
-      
+
       // Show priority-based toast notification with sound for critical/urgent
       if (staffAlertService.requiresImmediate(newAlert)) {
         // Critical alert - most urgent
@@ -67,19 +74,19 @@ export function useStaffAlerts() {
       }
     };
 
-    const handleAlertUpdated = (data: { alert: Record<string, unknown> }) => {
+    const handleAlertUpdated = (_data: { alert: StaffAlert }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
     };
 
-    const handleAlertResolved = (data: { alert: Record<string, unknown> }) => {
+    const handleAlertResolved = (_data: { alert: StaffAlert }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
     };
 
-    const handleAlertEscalated = (data: { alert: Record<string, unknown> & { title: string } }) => {
+    const handleAlertEscalated = (data: { alert: StaffAlert }) => {
       const escalatedAlert = data.alert;
       
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
@@ -98,7 +105,7 @@ export function useStaffAlerts() {
       });
     };
 
-    const handleAlertAssigned = (data: { alert: Record<string, unknown> & { title: string }; assignedToMe?: boolean }) => {
+    const handleAlertAssigned = (data: { alert: StaffAlert; assignedToMe?: boolean }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       queryClient.invalidateQueries({ queryKey: ['recent-staff-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
@@ -144,10 +151,11 @@ export function useStaffAlerts() {
   }, [connectionState, on, off, queryClient]);
 
   // Get alert summary with real-time updates
+  // NOTE: bind to avoid losing 'this' context when passed as queryFn
   const { data: alertSummary, isLoading: isLoadingAlertSummary } = useQuery({
     queryKey: ['staff-alert-summary'],
-    queryFn: staffAlertService.getAlertSummary,
-    refetchInterval: 30000, // Fallback polling
+    queryFn: () => staffAlertService.getAlertSummary(),
+    refetchInterval: 30000, // Fallback polling when WebSocket is unavailable
     staleTime: 5000
   });
 

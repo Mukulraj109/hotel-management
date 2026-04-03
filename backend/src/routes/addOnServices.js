@@ -3,6 +3,7 @@ import addOnController from '../controllers/addOnController.js';
 import { authenticate } from '../middleware/auth.js';
 import adminAuth from '../middleware/adminAuth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Public routes (accessible by authenticated users)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Get services with filtering and pagination

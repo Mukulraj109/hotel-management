@@ -37,25 +37,43 @@ const ensureTenantContext = (req, res, next) => {
   // Canonical tenant id string (avoids "[object Object]" from Object.prototype.toString on plain objects)
   req.tenantId = hotelIdStr;
 
-  // For multi-property admins on read requests, respect the client-provided
-  // hotelId so they can view data for any property they have access to.
+  // For multi-property admins, respect the client-provided hotelId on both read
+  // AND write requests so they can operate across any property they manage.
   // ensurePropertyAccess (downstream) validates they actually own / are
   // assigned to the requested property — no IDOR risk.
   const isAdmin = req.user.role === 'admin';
   const hasMultiPropertyAccess =
     req.user.multiPropertyAccess?.enabled === true ||
     (Array.isArray(req.user.properties) && req.user.properties.length > 1);
-  const isReadRequest = req.method === 'GET' || req.method === 'HEAD';
 
-  if (isReadRequest && isAdmin && hasMultiPropertyAccess) {
-    const clientQueryHotelId = refToHotelIdString(req.query?.hotelId);
-    if (clientQueryHotelId) {
-      // Keep the client-provided hotelId — don't override
-      return next();
+  if (isAdmin && hasMultiPropertyAccess) {
+    const isReadRequest = req.method === 'GET' || req.method === 'HEAD';
+
+    if (isReadRequest) {
+      const clientQueryHotelId = refToHotelIdString(req.query?.hotelId);
+      if (clientQueryHotelId) {
+        // Keep the client-provided hotelId — ensurePropertyAccess validates it.
+        return next();
+      }
+    } else {
+      // Write/mutation request — allow admin to specify target hotel in body or query.
+      // ensurePropertyAccess will reject the request if they don't own the target hotel.
+      const clientBodyHotelId = req.body && typeof req.body === 'object'
+        ? refToHotelIdString(req.body.hotelId)
+        : null;
+      const clientQueryHotelId = refToHotelIdString(req.query?.hotelId);
+      const clientHotelId = clientBodyHotelId || clientQueryHotelId;
+      if (clientHotelId) {
+        // Preserve client-specified hotel; ensurePropertyAccess will enforce ownership.
+        req.tenantId = clientHotelId;
+        return next();
+      }
     }
   }
 
-  // CRITICAL: Override any client-provided hotelId to prevent IDOR
+  // CRITICAL: Override any client-provided hotelId to prevent IDOR.
+  // For single-property users (all roles) and multi-property admins who did not
+  // explicitly specify a hotel, always scope to the user's primary hotelId.
   if (req.body && typeof req.body === 'object') {
     req.body.hotelId = hotelIdStr;
   }

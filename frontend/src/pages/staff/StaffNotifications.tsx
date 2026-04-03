@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
@@ -16,6 +16,18 @@ import {
   Mail,
   MessageCircle,
   Smartphone,
+  CheckCircle,
+  Clock,
+  CreditCard,
+  Star,
+  Gift,
+  Heart,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  Tag,
+  HelpCircle,
+  type LucideProps,
 } from 'lucide-react';
 import { notificationService } from '../../services/notificationService';
 import type { Notification, NotificationChannelValue } from '../../services/notificationService';
@@ -27,6 +39,28 @@ import { PushNotificationSetup } from '../../components/notifications/PushNotifi
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+
+// Map from icon-name string (returned by notificationService.getNotificationTypeInfo) to
+// actual Lucide component so React.createElement works correctly.
+type LucideComponent = React.FC<LucideProps>;
+const ICON_MAP: Record<string, LucideComponent> = {
+  'check-circle': CheckCircle,
+  'clock': Clock,
+  'x-circle': AlertCircle,
+  'credit-card': CreditCard,
+  'alert-circle': AlertCircle,
+  'star': Star,
+  'calendar': Calendar,
+  'bell': Bell,
+  'gift': Gift,
+  'alert-triangle': AlertTriangle,
+  'heart': Heart,
+  'log-in': LogIn,
+  'log-out': LogOut,
+  'message-square': MessageSquare,
+  'tag': Tag,
+  'help-circle': HelpCircle,
+};
 
 function StaffNotifications() {
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,44 +75,59 @@ function StaffNotifications() {
   const [expandedNotification, setExpandedNotification] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { connectionState, connect, disconnect, on, off } = useRealTime();
+  const { connectionState, connect, on, off } = useRealTime();
 
-  // Real-time connection setup - FIXED: Don't disconnect singleton service
+  // Real-time connection setup - Don't disconnect on unmount as other components may share the singleton.
   useEffect(() => {
-    connect().catch(error => {
+    connect().catch((error: unknown) => {
+      console.warn('StaffNotifications: real-time connection failed', error);
     });
-    return () => {
-      // Don't disconnect on unmount as other components may be using the same connection
-    };
   }, [connect]);
+
+  // Invalidate both notification list and unread badge in one call.
+  const invalidateNotificationQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
+    queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+  }, [queryClient]);
 
   // Real-time event listeners
   useEffect(() => {
     if (connectionState !== 'connected') return;
 
-    const handleNewNotification = (data: Record<string, unknown>) => {
-      queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
-
-      toast.success('New task notification', {
+    const handleNewNotification = (_data: Record<string, unknown>) => {
+      invalidateNotificationQueries();
+      toast.success('New notification received', {
         duration: 3000,
         icon: '🔔'
       });
     };
 
-    const handleNotificationRead = (data: Record<string, unknown>) => {
-      queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+    const handleNotificationRead = (_data: Record<string, unknown>) => {
+      invalidateNotificationQueries();
+    };
+
+    // Also refresh when a notification is deleted from another session/tab
+    const handleNotificationDeleted = (_data: Record<string, unknown>) => {
+      invalidateNotificationQueries();
+    };
+
+    // Bulk updates (mark-all-read, bulk delete)
+    const handleBulkUpdate = (_data: Record<string, unknown>) => {
+      invalidateNotificationQueries();
     };
 
     on('notification:new', handleNewNotification);
     on('notification:read', handleNotificationRead);
+    on('notification:deleted', handleNotificationDeleted);
+    on('notifications:bulk-update', handleBulkUpdate);
 
     return () => {
       off('notification:new', handleNewNotification);
       off('notification:read', handleNotificationRead);
+      off('notification:deleted', handleNotificationDeleted);
+      off('notifications:bulk-update', handleBulkUpdate);
     };
-  }, [connectionState, on, off, queryClient]);
+  }, [connectionState, on, off, invalidateNotificationQueries]);
 
   // Fetch notifications with filters
   const {
@@ -91,10 +140,13 @@ function StaffNotifications() {
       page: currentPage,
       limit: 20,
       ...filters,
+      // Do not pass status directly when using unreadOnly/readOnly — the backend handles both
+      status: filters.status !== 'unread' && filters.status !== 'read' ? filters.status : undefined,
       unreadOnly: filters.status === 'unread',
       readOnly: filters.status === 'read'
     }),
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000, // Fallback polling every 30 seconds
+    keepPreviousData: true, // Smooth page transitions
   });
 
   // Fetch unread count
@@ -104,8 +156,8 @@ function StaffNotifications() {
     refetchInterval: 10000, // Refetch every 10 seconds
   });
 
-  // Fetch notification preferences
-  const { data: preferences } = useQuery({
+  // Fetch notification preferences (pre-load when user opens settings panel)
+  useQuery({
     queryKey: ['notification-preferences'],
     queryFn: notificationService.getPreferences,
     enabled: showPreferences
@@ -138,6 +190,19 @@ function StaffNotifications() {
       queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
       toast.success('Notification deleted');
+    }
+  });
+
+  // Bulk mark-as-read mutation — uses the efficient batch endpoint
+  const bulkMarkAsReadMutation = useMutation({
+    mutationFn: notificationService.markMultipleAsRead,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+      toast.success(`${result.modifiedCount} notification${result.modifiedCount !== 1 ? 's' : ''} marked as read`);
+    },
+    onError: () => {
+      toast.error('Failed to mark notifications as read');
     }
   });
 
@@ -174,16 +239,43 @@ function StaffNotifications() {
       return;
     }
 
-    selectedNotifications.forEach(id => {
-      if (action === 'read') {
-        markAsReadMutation.mutate(id);
-      } else {
-        deleteNotificationMutation.mutate(id);
-      }
-    });
+    const ids = [...selectedNotifications];
 
-    setSelectedNotifications([]);
+    if (action === 'read') {
+      // Use the efficient batch endpoint instead of firing N individual mutations
+      bulkMarkAsReadMutation.mutate(ids, {
+        onSuccess: () => setSelectedNotifications([]),
+        onError: () => {
+          // Keep selection so the user can retry
+        }
+      });
+    } else {
+      // Delete each one; clear selection only after all settle
+      const promises = ids.map(id =>
+        notificationService.deleteNotification(id).catch(() => null)
+      );
+      Promise.allSettled(promises).then((results) => {
+        // A delete resolves to `undefined` (void) on success or `null` (our catch fallback) on failure
+        const successCount = results.filter(r => r.status === 'fulfilled' && r.value !== null).length;
+        const failCount = ids.length - successCount;
+        queryClient.invalidateQueries({ queryKey: ['staff-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+        if (successCount > 0) {
+          toast.success(`${successCount} notification${successCount !== 1 ? 's' : ''} deleted`);
+          setSelectedNotifications([]);
+        }
+        if (failCount > 0) {
+          toast.error(`${failCount} notification${failCount !== 1 ? 's' : ''} could not be deleted`);
+        }
+      });
+    }
   };
+
+  // Update a single filter key and reset pagination to page 1
+  const updateFilter = useCallback((key: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
+  }, []);
 
   const toggleNotificationSelection = (notificationId: string) => {
     setSelectedNotifications(prev =>
@@ -203,12 +295,12 @@ function StaffNotifications() {
   const getNotificationIcon = (notification: Notification) => {
     const typeInfo = notificationService.getNotificationTypeInfo(notification.type);
     const isUnread = notificationService.isUnread(notification);
+    // typeInfo.icon is a string key (e.g. 'check-circle') — resolve to Lucide component
+    const IconComponent: LucideComponent = ICON_MAP[typeInfo.icon] ?? Bell;
 
     return (
       <div className={`p-2 rounded-full flex-shrink-0 ${typeInfo.color}`}>
-        {React.createElement(typeInfo.icon, {
-          className: `h-4 w-4 ${isUnread ? 'fill-current' : ''}`
-        })}
+        <IconComponent className={`h-4 w-4 ${isUnread ? 'fill-current' : ''}`} />
       </div>
     );
   };
@@ -313,7 +405,7 @@ function StaffNotifications() {
                 <div>
                   <p className="text-sm text-gray-600">Unread Tasks</p>
                   <p className="text-2xl font-bold text-red-600">
-                    {unreadCount || 0}
+                    {unreadCount ?? 0}
                   </p>
                 </div>
                 <Circle className="h-8 w-8 text-red-500 fill-current" />
@@ -358,14 +450,14 @@ function StaffNotifications() {
                     type="text"
                     placeholder="Search notifications..."
                     value={filters.search}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    onChange={(e) => updateFilter('search', e.target.value)}
                     className="pl-10 w-64"
                   />
                 </div>
 
                 <select
                   value={filters.status}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                  onChange={(e) => updateFilter('status', e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Status</option>
@@ -375,21 +467,22 @@ function StaffNotifications() {
 
                 <select
                   value={filters.type}
-                  onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                  onChange={(e) => updateFilter('type', e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Types</option>
-                  <option value="room_assigned">Room Assignment</option>
-                  <option value="task_assigned">Task Assignment</option>
-                  <option value="guest_request">Guest Request</option>
-                  <option value="schedule_change">Schedule Change</option>
-                  <option value="inventory_request">Inventory Request</option>
-                  <option value="maintenance">Maintenance</option>
+                  <option value="task_assignment">Task Assignment</option>
+                  <option value="guest_service_created">Guest Request</option>
+                  <option value="housekeeping_assigned">Housekeeping</option>
+                  <option value="maintenance_assigned">Maintenance</option>
+                  <option value="inventory_low_stock">Inventory Alert</option>
+                  <option value="room_needs_cleaning">Room Cleaning</option>
+                  <option value="system_alert">System Alert</option>
                 </select>
 
                 <select
                   value={filters.priority}
-                  onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+                  onChange={(e) => updateFilter('priority', e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Priorities</option>
@@ -401,7 +494,7 @@ function StaffNotifications() {
               </div>
 
               <div className="flex space-x-2">
-                {unreadCount > 0 && (
+                {(unreadCount ?? 0) > 0 && (
                   <Button
                     onClick={handleMarkAllAsRead}
                     disabled={markAllAsReadMutation.isPending}
@@ -417,6 +510,7 @@ function StaffNotifications() {
                   <div className="flex space-x-2">
                     <Button
                       onClick={() => handleBulkAction('read')}
+                      disabled={bulkMarkAsReadMutation.isPending}
                       variant="outline"
                       size="sm"
                     >
@@ -511,12 +605,19 @@ function StaffNotifications() {
                                 </span>
                               )}
 
-                              {notification.channel && (
+                              {notification.channels && notification.channels.length > 0 && (
                                 <div className="flex items-center space-x-1 text-gray-500">
-                                  {React.createElement(getChannelIcon(notification.channel), {
-                                    className: 'h-3 w-3'
-                                  })}
-                                  <span className="text-xs">{notification.channel.replace('_', ' ')}</span>
+                                  {(() => {
+                                    // Show the first delivery channel as the primary channel indicator
+                                    const primaryChannel = notification.channels[0] as NotificationChannelValue;
+                                    const ChannelIcon = getChannelIcon(primaryChannel);
+                                    return (
+                                      <>
+                                        <ChannelIcon className="h-3 w-3" />
+                                        <span className="text-xs">{primaryChannel.replace('_', ' ')}</span>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -529,7 +630,7 @@ function StaffNotifications() {
                               {notification.message}
                             </p>
 
-                            {notification.data && Object.keys(notification.data).length > 0 && (
+                            {notification.metadata && Object.keys(notification.metadata).length > 0 && (
                               <div className="mt-2">
                                 <Button
                                   variant="ghost"
@@ -555,7 +656,7 @@ function StaffNotifications() {
                                 {expandedNotification === notification._id && (
                                   <div className="mt-2 p-3 bg-gray-50 rounded-md">
                                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                                      {JSON.stringify(notification.data, null, 2)}
+                                      {JSON.stringify(notification.metadata, null, 2)}
                                     </pre>
                                   </div>
                                 )}

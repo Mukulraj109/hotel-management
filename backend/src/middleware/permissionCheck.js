@@ -236,31 +236,36 @@ export function requireResourceOwnership(resourceType, resourceIdParam = 'id') {
 }
 
 /**
- * Helper function to check resource ownership
+ * Helper function to check resource ownership.
+ * Performs real database lookups — no placeholders.
  */
 async function checkResourceOwnership(userId, resourceType, resourceId) {
   try {
-    // This would integrate with your actual data models
-    // For now, implementing basic ownership checks
-
     switch (resourceType) {
-      case 'booking':
-        // Check if booking belongs to user
-        // const booking = await Booking.findById(resourceId).lean();
-        // return booking && booking.userId.toString() === userId;
-        return true; // Placeholder
+      case 'booking': {
+        // Dynamically import to avoid circular deps at module load time
+        const { default: Booking } = await import('../models/Booking.js');
+        const booking = await Booking.findById(resourceId).select('userId guestId').lean();
+        if (!booking) return false;
+        const ownerId = (booking.userId || booking.guestId)?.toString();
+        return ownerId === userId.toString();
+      }
 
       case 'profile':
-        // User can access their own profile
-        return resourceId === userId;
+        // User can only access their own profile
+        return resourceId.toString() === userId.toString();
 
-      case 'invoice':
-        // Check if invoice belongs to user
-        // const invoice = await Invoice.findById(resourceId).lean();
-        // return invoice && invoice.userId.toString() === userId;
-        return true; // Placeholder
+      case 'invoice': {
+        const { default: Invoice } = await import('../models/Invoice.js');
+        const invoice = await Invoice.findById(resourceId).select('userId guestId').lean();
+        if (!invoice) return false;
+        const invoiceOwner = (invoice.userId || invoice.guestId)?.toString();
+        return invoiceOwner === userId.toString();
+      }
 
       default:
+        // Deny by default for unknown resource types — fail closed
+        logger.warn('Unknown resource type in ownership check', { resourceType, resourceId, userId });
         return false;
     }
   } catch (error) {
@@ -270,6 +275,7 @@ async function checkResourceOwnership(userId, resourceType, resourceId) {
       resourceType,
       resourceId
     });
+    // Fail closed: if we can't verify, deny
     return false;
   }
 }

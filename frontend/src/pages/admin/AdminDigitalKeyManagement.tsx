@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Key,
   Plus,
@@ -37,6 +37,7 @@ import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { useRealTime } from '../../services/realTimeService';
 
 interface AdminDigitalKeyManagementProps {}
 
@@ -45,6 +46,8 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
   const propertyScopeId = selectedPropertyId || primaryTenantHotelId || '';
   const [activeTab, setActiveTab] = useState<'all-keys' | 'analytics' | 'logs'>('all-keys');
   const [searchTerm, setSearchTerm] = useState('');
+  // Debounced search term — only triggers API calls after user stops typing for 400ms
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,18 +57,52 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
   const [timeRange, setTimeRange] = useState('30d');
 
   const queryClient = useQueryClient();
+  const { on, off } = useRealTime();
+
+  // Real-time WebSocket listeners for digital key events
+  useEffect(() => {
+    const handleDigitalKeyEvent = () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-key-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-activity-logs'] });
+    };
+    on('digital-key:created', handleDigitalKeyEvent);
+    on('digital-key:updated', handleDigitalKeyEvent);
+    on('digital-key:shared', handleDigitalKeyEvent);
+    on('digital-key:share-revoked', handleDigitalKeyEvent);
+    return () => {
+      off('digital-key:created', handleDigitalKeyEvent);
+      off('digital-key:updated', handleDigitalKeyEvent);
+      off('digital-key:shared', handleDigitalKeyEvent);
+      off('digital-key:share-revoked', handleDigitalKeyEvent);
+    };
+  }, [on, off, queryClient]);
+
+  // Debounce search input to avoid firing API request on every keystroke
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // reset to first page on new search
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchTerm]);
 
   // Fetch all digital keys (admin view)
   const { data: keysData, isLoading: keysLoading } = useQuery({
-    queryKey: ['admin-digital-keys', propertyScopeId, currentPage, statusFilter, typeFilter, searchTerm],
+    queryKey: ['admin-digital-keys', propertyScopeId, currentPage, statusFilter, typeFilter, debouncedSearchTerm],
     queryFn: () => digitalKeyService.getAdminKeys({
       page: currentPage,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
       hotel: propertyScopeId || undefined,
-      search: searchTerm || undefined
+      search: debouncedSearchTerm || undefined
     }),
     enabled: !!propertyScopeId,
+    placeholderData: keepPreviousData, // Keep prior page data visible while fetching next page
     staleTime: 30 * 1000 // 30 seconds
   });
 
@@ -120,21 +157,10 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
     }
   });
 
-  const filteredKeys = keysData?.keys.filter(key => {
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const roomPart = key.roomId?.number?.toLowerCase?.() ?? '';
-      const hotelPart = key.hotelId?.name?.toLowerCase?.() ?? '';
-      const codePart = key.keyCode?.toLowerCase?.() ?? '';
-      return (
-        roomPart.includes(searchLower) ||
-        hotelPart.includes(searchLower) ||
-        codePart.includes(searchLower) ||
-        (key.bookingId?.bookingNumber || '').toLowerCase().includes(searchLower)
-      );
-    }
-    return true;
-  }) || [];
+  // Search is handled server-side (passed as `search` param in the query).
+  // Do not re-filter the current page client-side — that would incorrectly
+  // reduce visible results when paginating.
+  const filteredKeys = keysData?.keys || [];
 
   const handleGenerateKey = (formData: GenerateKeyRequest) => {
     generateKeyMutation.mutate(formData);
@@ -249,7 +275,7 @@ function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as unknown)}
+                onClick={() => setActiveTab(tab.id as 'all-keys' | 'analytics' | 'logs')}
                 className={`flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all duration-200 ${
                   activeTab === tab.id
                     ? 'bg-white text-blue-600 shadow-sm'

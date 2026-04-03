@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -17,6 +18,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -28,17 +30,20 @@ router.get('/my-tasks', authorizePolicy('staffTasks', 'staffAccess'), catchAsync
     taskType,
     priority,
     dueDate,
-    limit = 50,
-    skip = 0
   } = req.query;
 
+  // SECURITY: Hard-cap pagination params to prevent unbounded data fetch.
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+  const skip = Math.max(0, parseInt(req.query.skip) || 0);
+
   const tasks = await StaffTask.getStaffTasks(req.user._id, {
+    hotelId: req.user.hotelId,
     status,
     taskType,
     priority,
     dueDate,
-    limit: parseInt(limit),
-    skip: parseInt(skip)
+    limit,
+    skip
   });
 
   res.json({
@@ -52,7 +57,7 @@ router.get('/my-tasks', authorizePolicy('staffTasks', 'staffAccess'), catchAsync
  * Get today's tasks for staff member
  */
 router.get('/today', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
-  const tasks = await StaffTask.getTodaysTasks(req.user._id);
+  const tasks = await StaffTask.getTodaysTasks(req.user._id, req.user.hotelId);
 
   res.json({
     status: 'success',
@@ -62,23 +67,59 @@ router.get('/today', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(as
 }));
 
 /**
+ * Get overdue tasks for hotel (admin only)
+ * MUST be registered before /:taskId to prevent 'overdue' matching the param route
+ */
+router.get('/overdue', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
+  const tasks = await StaffTask.getOverdueTasks(req.user.hotelId);
+
+  res.json({
+    status: 'success',
+    results: tasks.length,
+    data: { tasks }
+  });
+}));
+
+/**
+ * Get task statistics for hotel (admin only)
+ * MUST be registered before /:taskId to prevent 'stats' matching the param route
+ */
+router.get('/stats', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  const stats = await StaffTask.getTaskStats(req.user.hotelId, startDate, endDate);
+
+  res.json({
+    status: 'success',
+    data: { stats: stats[0] || {} }
+  });
+}));
+
+/**
  * Get specific task details
  */
 router.get('/:taskId', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
-  const task = await StaffTask.findById(req.params.taskId)
+  const userHotelId = req.user.hotelId?.toString();
+
+  // Scope task lookup to the user's hotel first to prevent cross-tenant IDOR
+  const task = await StaffTask.findOne({
+    _id: req.params.taskId,
+    hotelId: userHotelId
+  })
     .populate('assignedTo', 'name email')
     .populate('createdBy', 'name email')
     .populate('roomIds', 'roomNumber type floor status')
     .populate('inventoryItems.itemId', 'name category unitPrice stockThreshold')
     .populate('verifiedBy', 'name email').lean();
 
+  // Return 404 (not 403) to avoid leaking existence of cross-hotel tasks
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
 
-  // Staff can only view their own tasks unless they're admin
+  // Staff can only view tasks assigned to them; admins see all tasks in their hotel
   if (req.user.role === 'staff' && task.assignedTo._id.toString() !== req.user._id.toString()) {
-    throw new ApplicationError('You can only view your own tasks', 403);
+    throw new ApplicationError('Task not found', 404);
   }
 
   res.json({
@@ -91,16 +132,18 @@ router.get('/:taskId', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(
  * Update task status
  */
 router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const { status, completionNotes, completionData } = req.body;
+  const { status, completionNotes, completionPhotos, completionData } = req.body;
+  const userHotelId = req.user.hotelId?.toString();
 
-  const task = await StaffTask.findById(req.params.taskId);
+  // Scope to user's hotel to prevent cross-tenant task manipulation
+  const task = await StaffTask.findOne({ _id: req.params.taskId, hotelId: userHotelId });
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
 
-  // Staff can only update their own tasks
+  // Staff can only update tasks assigned to them
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new ApplicationError('You can only update your own tasks', 403);
+    throw new ApplicationError('Task not found', 404);
   }
 
   // Validate status transition
@@ -109,9 +152,13 @@ router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), va
     throw new ApplicationError('Invalid status', 400);
   }
 
-  // Update task
+  // Update task fields
   task.status = status;
   if (completionNotes) task.completionNotes = completionNotes;
+  // Persist completion photo URLs sent from client (already uploaded separately)
+  if (Array.isArray(completionPhotos) && completionPhotos.length > 0) {
+    task.completionPhotos = completionPhotos;
+  }
   if (completionData) task.completionData = { ...task.completionData, ...completionData };
 
   // Handle specific status changes
@@ -119,20 +166,36 @@ router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), va
     task.startedAt = new Date();
   } else if (status === 'completed') {
     task.completedAt = new Date();
-    
+
     // Calculate actual duration
     if (task.startedAt) {
       const totalMinutes = Math.floor((task.completedAt.getTime() - task.startedAt.getTime()) / (1000 * 60));
       task.actualDuration = totalMinutes - (task.pausedDuration || 0);
     }
 
-    // Create recurring task if applicable
-    if (task.isRecurring) {
-      await createRecurringTask(task);
+    // Set nextOccurrence before saving so the pre-save hook sees the full state,
+    // then create the next recurring task instance after the save completes.
+    if (task.isRecurring && task.recurringPattern) {
+      const nextDue = new Date(task.dueDate);
+      switch (task.recurringPattern) {
+        case 'daily':   nextDue.setDate(nextDue.getDate() + 1); break;
+        case 'weekly':  nextDue.setDate(nextDue.getDate() + 7); break;
+        case 'monthly': nextDue.setMonth(nextDue.getMonth() + 1); break;
+      }
+      task.nextOccurrence = nextDue;
     }
   }
 
   await task.save();
+
+  // Spawn the next recurring task after the original is persisted so there is
+  // no double-save race condition on the original document.
+  if (status === 'completed' && task.isRecurring) {
+    await createRecurringTask(task).catch(err => {
+      // Non-fatal: log but do not fail the request
+      console.error('Failed to create recurring task:', err.message);
+    });
+  }
 
   // Populate for response
   await task.populate([
@@ -151,14 +214,16 @@ router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), va
  */
 router.patch('/:taskId/progress', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { progressData } = req.body;
+  const userHotelId = req.user.hotelId?.toString();
 
-  const task = await StaffTask.findById(req.params.taskId).lean();
+  // Do NOT use .lean() here — we need Mongoose document methods (updateProgress)
+  const task = await StaffTask.findOne({ _id: req.params.taskId, hotelId: userHotelId });
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
 
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new ApplicationError('You can only update your own tasks', 403);
+    throw new ApplicationError('Task not found', 404);
   }
 
   await task.updateProgress(progressData);
@@ -174,14 +239,16 @@ router.patch('/:taskId/progress', authorizePolicy('staffTasks', 'staffAccess'), 
  */
 router.post('/:taskId/photos', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { photoUrl, description } = req.body;
+  const userHotelId = req.user.hotelId?.toString();
 
-  const task = await StaffTask.findById(req.params.taskId).lean();
+  // Do NOT use .lean() here — we need Mongoose document methods (addCompletionPhoto)
+  const task = await StaffTask.findOne({ _id: req.params.taskId, hotelId: userHotelId });
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
 
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new ApplicationError('You can only update your own tasks', 403);
+    throw new ApplicationError('Task not found', 404);
   }
 
   await task.addCompletionPhoto(photoUrl, description);
@@ -255,10 +322,16 @@ router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (
     priority,
     startDate,
     endDate,
-    limit = 100,
-    skip = 0,
-    sortBy = '-createdAt'
   } = req.query;
+
+  // SECURITY: Allowlist sort fields to prevent NoSQL injection via unsanitized sort param.
+  const ALLOWED_SORT_FIELDS = ['createdAt', '-createdAt', 'dueDate', '-dueDate', 'priority', '-priority', 'status', '-status'];
+  const rawSortBy = req.query.sortBy || '-createdAt';
+  const sortBy = ALLOWED_SORT_FIELDS.includes(rawSortBy) ? rawSortBy : '-createdAt';
+
+  // SECURITY: Hard-cap pagination to prevent unbounded queries on large datasets.
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+  const skip = Math.max(0, parseInt(req.query.skip) || 0);
 
   let query = { hotelId: req.user.hotelId };
 
@@ -279,8 +352,9 @@ router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (
       .populate('createdBy', 'name email')
       .populate('roomIds', 'roomNumber type')
       .sort(sortBy)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip)),
+      .limit(limit)
+      .skip(skip)
+      .lean(),
     StaffTask.countDocuments(query)
   ]);
 
@@ -289,33 +363,6 @@ router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (
     results: tasks.length,
     totalCount: total,
     data: { tasks }
-  });
-}));
-
-/**
- * Get overdue tasks for hotel (admin only)
- */
-router.get('/overdue', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
-  const tasks = await StaffTask.getOverdueTasks(req.user.hotelId);
-
-  res.json({
-    status: 'success',
-    results: tasks.length,
-    data: { tasks }
-  });
-}));
-
-/**
- * Get task statistics for hotel (admin only)
- */
-router.get('/stats', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
-  const { startDate, endDate } = req.query;
-
-  const stats = await StaffTask.getTaskStats(req.user.hotelId, startDate, endDate);
-
-  res.json({
-    status: 'success',
-    data: { stats: stats[0] || {} }
   });
 }));
 
@@ -405,23 +452,23 @@ router.post('/create-daily-inventory-checks', authorizePolicy('staffTasks', 'adm
   });
 }));
 
-// Helper function to create recurring tasks
+// Helper function to create the next instance of a recurring task.
+// The caller is responsible for setting originalTask.nextOccurrence before
+// the first save; this function only creates the new document.
 async function createRecurringTask(originalTask) {
   if (!originalTask.isRecurring || !originalTask.recurringPattern) return;
 
-  const nextDue = new Date(originalTask.dueDate);
-  
-  switch (originalTask.recurringPattern) {
-    case 'daily':
-      nextDue.setDate(nextDue.getDate() + 1);
-      break;
-    case 'weekly':
-      nextDue.setDate(nextDue.getDate() + 7);
-      break;
-    case 'monthly':
-      nextDue.setMonth(nextDue.getMonth() + 1);
-      break;
-  }
+  // nextOccurrence was already computed and saved by the caller; use it
+  // directly so we don't re-derive and risk a different value.
+  const nextDue = originalTask.nextOccurrence || (() => {
+    const d = new Date(originalTask.dueDate);
+    switch (originalTask.recurringPattern) {
+      case 'daily':   d.setDate(d.getDate() + 1); break;
+      case 'weekly':  d.setDate(d.getDate() + 7); break;
+      case 'monthly': d.setMonth(d.getMonth() + 1); break;
+    }
+    return d;
+  })();
 
   const newTask = await StaffTask.create({
     hotelId: originalTask.hotelId,
@@ -439,10 +486,6 @@ async function createRecurringTask(originalTask) {
     recurringPattern: originalTask.recurringPattern,
     tags: originalTask.tags
   });
-
-  // Update original task's nextOccurrence
-  originalTask.nextOccurrence = nextDue;
-  await originalTask.save();
 
   return newTask;
 }

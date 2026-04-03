@@ -4,7 +4,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 import meetUpSupervisionAlertService from '../services/meetUpSupervisionAlertService.js';
-import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import websocketService from '../services/websocketService.js';
 
 /**
  * Get meet-ups requiring staff supervision
@@ -21,64 +21,109 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
   const parsedPage = Math.max(1, parseInt(rawPage) || 1);
   const parsedLimit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
-  // Build query for meet-ups that require supervision
+  // Build query for meet-ups that require supervision.
+  // By default show only upcoming active meet-ups. When a specific status filter
+  // is supplied (e.g. completed / cancelled) drop the date and default-status
+  // constraints so staff can review historical supervised meet-ups.
+  const UPCOMING_STATUSES = ['pending', 'accepted'];
+  const PAST_ALLOWED_STATUSES = ['completed', 'declined', 'cancelled'];
+  const isPastStatusFilter = status && PAST_ALLOWED_STATUSES.includes(status);
+
   const query = {
-    hotelId,
-    status: { $in: ['pending', 'accepted'] },
-    proposedDate: { $gt: new Date() }
+    hotelId
   };
 
-  // Apply filters
-  if (status) query.status = status;
+  if (isPastStatusFilter) {
+    query.status = status;
+  } else {
+    query.status = status || { $in: UPCOMING_STATUSES };
+    query.proposedDate = { $gt: new Date() };
+  }
 
-  const skip = (parsedPage - 1) * parsedLimit;
-
-  // Fetch meet-ups
-  let meetUps = await MeetUpRequest.find(query)
-    .populate('requesterId', 'name email avatar')
-    .populate('targetUserId', 'name email avatar')
-    .populate('hotelId', 'name address')
-    .populate('assignedStaff', 'name email')
-    .sort({ proposedDate: 1, createdAt: -1 })
-    .skip(skip)
-    .limit(parsedLimit).lean();
-
-  // Apply post-query filters for supervision priority
+  // When computed filters (priority/safetyLevel) are applied we must annotate all docs
+  // before slicing, because those fields are not stored in MongoDB. We fetch all matching
+  // docs from the DB and then paginate in-memory. The set is bounded to active/upcoming
+  // meet-ups for a single hotel so this is safe.
   if (priority || safetyLevel) {
-    meetUps = meetUps.filter(meetUp => {
-      const supervisionPriority = calculateSupervisionPriority(meetUp);
-      const safetyAssessment = calculateSafetyLevel(meetUp);
+    const allMeetUps = await MeetUpRequest.find(query)
+      .populate('requesterId', 'name email avatar')
+      .populate('targetUserId', 'name email avatar')
+      .populate('hotelId', 'name address')
+      .populate('assignedStaff', 'name email')
+      .sort({ proposedDate: 1, createdAt: -1 })
+      .lean();
 
-      if (priority && supervisionPriority.priority !== priority) return false;
-      if (safetyLevel && safetyAssessment.level !== safetyLevel) return false;
+    const annotated = allMeetUps.map(meetUp => ({
+      ...meetUp,
+      supervision: {
+        priority: calculateSupervisionPriority(meetUp),
+        safetyLevel: calculateSafetyLevel(meetUp),
+        requiresStaffPresence: meetUp.safety?.hotelStaffPresent || false,
+        riskFactors: identifyRiskFactors(meetUp)
+      }
+    }));
 
+    const filtered = annotated.filter(meetUp => {
+      if (priority && meetUp.supervision.priority.priority !== priority) return false;
+      if (safetyLevel && meetUp.supervision.safetyLevel.level !== safetyLevel) return false;
       return true;
+    });
+
+    const totalCount = filtered.length;
+    const totalPages = parsedLimit > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
+    const skip = (parsedPage - 1) * parsedLimit;
+    const paginated = filtered.slice(skip, skip + parsedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Supervision meet-ups retrieved successfully',
+      data: {
+        meetUps: paginated,
+        pagination: {
+          currentPage: parsedPage,
+          totalPages,
+          totalItems: totalCount,
+          hasNext: parsedPage < totalPages,
+          hasPrev: parsedPage > 1
+        }
+      }
     });
   }
 
-  // Calculate supervision metadata for each meet-up
-  const meetUpsWithSupervision = meetUps.map(meetUp => {
-    const supervisionData = {
+  const skip = (parsedPage - 1) * parsedLimit;
+
+  // No computed filters — use normal DB pagination.
+  const [meetUps, totalCount] = await Promise.all([
+    MeetUpRequest.find(query)
+      .populate('requesterId', 'name email avatar')
+      .populate('targetUserId', 'name email avatar')
+      .populate('hotelId', 'name address')
+      .populate('assignedStaff', 'name email')
+      .sort({ proposedDate: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    MeetUpRequest.countDocuments(query)
+  ]);
+
+  // Annotate every meet-up with its computed supervision metadata
+  const filteredMeetUps = meetUps.map(meetUp => ({
+    ...meetUp,
+    supervision: {
       priority: calculateSupervisionPriority(meetUp),
       safetyLevel: calculateSafetyLevel(meetUp),
       requiresStaffPresence: meetUp.safety?.hotelStaffPresent || false,
       riskFactors: identifyRiskFactors(meetUp)
-    };
+    }
+  }));
 
-    return {
-      ...meetUp,
-      supervision: supervisionData
-    };
-  });
-
-  const totalCount = await MeetUpRequest.countDocuments(query);
   const totalPages = parsedLimit > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
 
   res.status(200).json({
     success: true,
     message: 'Supervision meet-ups retrieved successfully',
     data: {
-      meetUps: meetUpsWithSupervision,
+      meetUps: filteredMeetUps,
       pagination: {
         currentPage: parsedPage,
         totalPages,
@@ -98,8 +143,33 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
   const { staffId, supervisionNotes } = req.body;
   const { hotelId } = req.user;
 
-  const meetUp = await MeetUpRequest.findOneAndUpdate(
-    { _id: meetUpId, hotelId },
+  if (!mongoose.Types.ObjectId.isValid(meetUpId)) {
+    return next(new ApplicationError('Invalid meetUpId', 400));
+  }
+
+  if (!staffId) {
+    return next(new ApplicationError('staffId is required', 400));
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(staffId)) {
+    return next(new ApplicationError('Invalid staffId', 400));
+  }
+
+  // Ensure the assigned staff belongs to the same hotel (prevent cross-hotel assignment)
+  const User = (await import('../models/User.js')).default;
+  const staffUser = await User.findOne({ _id: staffId, hotelId }).select('_id').lean();
+  if (!staffUser) {
+    return next(new ApplicationError('Staff member not found in this property', 404));
+  }
+
+  // Prevent race condition: only assign when supervision is not already in_progress or completed.
+  // findOneAndUpdate is atomic so only one concurrent caller can match the filter.
+  const meetUpDoc = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: meetUpId,
+      hotelId,
+      supervisionStatus: { $nin: ['in_progress', 'completed'] }
+    },
     {
       $set: {
         assignedStaff: staffId,
@@ -108,11 +178,35 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
       }
     },
     { new: true, runValidators: true }
-  ).populate('assignedStaff', 'name email');
+  )
+    .populate('requesterId', 'name email')
+    .populate('targetUserId', 'name email')
+    .populate('hotelId', 'name')
+    .populate('assignedStaff', 'name email')
+    .lean();
 
-  if (!meetUp) {
-    return next(new ApplicationError('Meet-up not found', 404));
+  if (!meetUpDoc) {
+    // Distinguish between "not found" and "already supervised" by checking existence
+    const exists = await MeetUpRequest.exists({ _id: meetUpId, hotelId });
+    if (!exists) {
+      return next(new ApplicationError('Meet-up not found', 404));
+    }
+    return next(new ApplicationError(
+      'Cannot reassign supervision: meet-up is already in progress or completed',
+      409
+    ));
   }
+
+  // Annotate with computed supervision fields
+  const meetUp = {
+    ...meetUpDoc,
+    supervision: {
+      priority: calculateSupervisionPriority(meetUpDoc),
+      safetyLevel: calculateSafetyLevel(meetUpDoc),
+      requiresStaffPresence: meetUpDoc.safety?.hotelStaffPresent || false,
+      riskFactors: identifyRiskFactors(meetUpDoc)
+    }
+  };
 
   // Update related alert
   try {
@@ -123,6 +217,19 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
     );
   } catch (error) {
     logger.warn('Failed to update supervision alert', { meetUpId, error: error.message });
+  }
+
+  // Broadcast real-time update to all hotel staff on supervision page
+  try {
+    if (websocketService.isInitialized()) {
+      websocketService.broadcastToHotel(hotelId.toString(), 'meetup:supervision-updated', {
+        meetUpId,
+        supervisionStatus: 'assigned',
+        assignedStaffId: staffId
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to broadcast supervision assignment', { meetUpId, error: error.message });
   }
 
   res.status(200).json({
@@ -155,31 +262,30 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
 
   const skip = (parsedAssignPage - 1) * parsedAssignLimitVal;
 
-  const assignments = await MeetUpRequest.find(query)
-    .populate('requesterId', 'name email avatar')
-    .populate('targetUserId', 'name email avatar')
-    .populate('hotelId', 'name address')
-    .sort({ proposedDate: 1, createdAt: -1 })
-    .skip(skip)
-    .limit(parsedAssignLimitVal).lean();
+  const [assignments, totalCount] = await Promise.all([
+    MeetUpRequest.find(query)
+      .populate('requesterId', 'name email avatar')
+      .populate('targetUserId', 'name email avatar')
+      .populate('hotelId', 'name address')
+      .populate('assignedStaff', 'name email')
+      .sort({ proposedDate: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(parsedAssignLimitVal)
+      .lean(),
+    MeetUpRequest.countDocuments(query)
+  ]);
 
-  const assignmentsWithSupervision = assignments.map(meetUp => {
-    const supervisionData = {
+  const assignmentsWithSupervision = assignments.map(meetUp => ({
+    ...meetUp,
+    supervision: {
       priority: calculateSupervisionPriority(meetUp),
       safetyLevel: calculateSafetyLevel(meetUp),
       requiresStaffPresence: meetUp.safety?.hotelStaffPresent || false,
       riskFactors: identifyRiskFactors(meetUp)
-    };
+    }
+  }));
 
-    return {
-      ...meetUp,
-      supervision: supervisionData
-    };
-  });
-
-  const totalCount = await MeetUpRequest.countDocuments(query);
-  const parsedAssignLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
-  const totalPages = Math.ceil(totalCount / parsedAssignLimit);
+  const totalPages = parsedAssignLimitVal > 0 ? Math.ceil(totalCount / parsedAssignLimitVal) : 0;
 
   res.status(200).json({
     success: true,
@@ -197,6 +303,8 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
   });
 });
 
+const VALID_SUPERVISION_STATUSES = ['not_required', 'assigned', 'in_progress', 'completed'];
+
 /**
  * Update supervision status
  */
@@ -204,6 +312,29 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
   const { meetUpId } = req.params;
   const { supervisionStatus, supervisionNotes } = req.body;
   const { _id: staffId, hotelId } = req.user;
+
+  if (!mongoose.Types.ObjectId.isValid(meetUpId)) {
+    return next(new ApplicationError('Invalid meetUpId', 400));
+  }
+
+  if (!supervisionStatus) {
+    return next(new ApplicationError('supervisionStatus is required', 400));
+  }
+
+  if (!VALID_SUPERVISION_STATUSES.includes(supervisionStatus)) {
+    return next(new ApplicationError(
+      `Invalid supervisionStatus. Must be one of: ${VALID_SUPERVISION_STATUSES.join(', ')}`,
+      400
+    ));
+  }
+
+  if (supervisionNotes && typeof supervisionNotes !== 'string') {
+    return next(new ApplicationError('supervisionNotes must be a string', 400));
+  }
+
+  if (supervisionNotes && supervisionNotes.length > 500) {
+    return next(new ApplicationError('supervisionNotes cannot exceed 500 characters', 400));
+  }
 
   const updateFields = {
     supervisionStatus
@@ -213,15 +344,38 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
     updateFields.supervisionCompletedAt = new Date();
   }
 
-  const meetUp = await MeetUpRequest.findOneAndUpdate(
-    { _id: meetUpId, hotelId, assignedStaff: staffId },
+  // Admins and managers can update supervision on any hotel meet-up.
+  // Regular staff can only update their own assigned meet-ups.
+  const isPrivileged = ['admin', 'manager'].includes(req.user.role);
+  const findFilter = isPrivileged
+    ? { _id: meetUpId, hotelId }
+    : { _id: meetUpId, hotelId, assignedStaff: staffId };
+
+  const meetUpDoc = await MeetUpRequest.findOneAndUpdate(
+    findFilter,
     { $set: updateFields },
     { new: true, runValidators: true }
-  );
+  )
+    .populate('requesterId', 'name email')
+    .populate('targetUserId', 'name email')
+    .populate('hotelId', 'name')
+    .populate('assignedStaff', 'name email')
+    .lean();
 
-  if (!meetUp) {
-    return next(new ApplicationError('Meet-up assignment not found', 404));
+  if (!meetUpDoc) {
+    return next(new ApplicationError('Meet-up assignment not found or not authorized', 404));
   }
+
+  // Annotate with computed supervision fields
+  const meetUp = {
+    ...meetUpDoc,
+    supervision: {
+      priority: calculateSupervisionPriority(meetUpDoc),
+      safetyLevel: calculateSafetyLevel(meetUpDoc),
+      requiresStaffPresence: meetUpDoc.safety?.hotelStaffPresent || false,
+      riskFactors: identifyRiskFactors(meetUpDoc)
+    }
+  };
 
   // Update related alert
   try {
@@ -232,6 +386,18 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
     );
   } catch (error) {
     logger.warn('Failed to update supervision alert', { meetUpId, error: error.message });
+  }
+
+  // Broadcast real-time update to all hotel staff on supervision page
+  try {
+    if (websocketService.isInitialized()) {
+      websocketService.broadcastToHotel(hotelId.toString(), 'meetup:supervision-updated', {
+        meetUpId,
+        supervisionStatus
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to broadcast supervision status update', { meetUpId, error: error.message });
   }
 
   res.status(200).json({
@@ -245,12 +411,16 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
  * Get supervision statistics for staff dashboard
  */
 export const getSupervisionStats = catchAsync(async (req, res, next) => {
-  const { hotelId } = req.user;
+  const { hotelId: rawHotelId } = req.user;
   const { period = '7d' } = req.query;
 
-  if (!hotelId) {
+  if (!rawHotelId) {
     return res.status(400).json({ status: 'error', message: 'Hotel context required' });
   }
+
+  const hotelId = mongoose.Types.ObjectId.isValid(rawHotelId)
+    ? new mongoose.Types.ObjectId(rawHotelId)
+    : rawHotelId;
 
   // Calculate date range based on period
   const now = new Date();
@@ -281,8 +451,15 @@ export const getSupervisionStats = catchAsync(async (req, res, next) => {
       $group: {
         _id: null,
         totalMeetUps: { $sum: 1 },
+        // Count both 'assigned' and 'in_progress' as pending supervision work
         pendingSupervision: {
-          $sum: { $cond: [{ $eq: ['$supervisionStatus', 'assigned'] }, 1, 0] }
+          $sum: {
+            $cond: [
+              { $in: ['$supervisionStatus', ['assigned', 'in_progress']] },
+              1,
+              0
+            ]
+          }
         },
         completedSupervision: {
           $sum: { $cond: [{ $eq: ['$supervisionStatus', 'completed'] }, 1, 0] }
@@ -306,6 +483,17 @@ export const getSupervisionStats = catchAsync(async (req, res, next) => {
           $sum: { $cond: [{ $eq: ['$safety.hotelStaffPresent', true] }, 1, 0] }
         }
       }
+    },
+    {
+      // Strip the internal _id: null field before returning
+      $project: {
+        _id: 0,
+        totalMeetUps: 1,
+        pendingSupervision: 1,
+        completedSupervision: 1,
+        highRiskMeetUps: 1,
+        staffRequiredMeetUps: 1
+      }
     }
   ]);
 
@@ -323,7 +511,7 @@ export const getSupervisionStats = catchAsync(async (req, res, next) => {
       $match: {
         hotelId,
         createdAt: { $gte: startDate, $lte: now },
-        assignedStaff: { $exists: true }
+        assignedStaff: { $exists: true, $ne: null }
       }
     },
     {
@@ -338,7 +526,7 @@ export const getSupervisionStats = catchAsync(async (req, res, next) => {
   const upcomingSupervised = await MeetUpRequest.countDocuments({
     hotelId,
     proposedDate: { $gt: now },
-    assignedStaff: { $exists: true },
+    assignedStaff: { $exists: true, $ne: null },
     supervisionStatus: { $in: ['assigned', 'in_progress'] }
   });
 

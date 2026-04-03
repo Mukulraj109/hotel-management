@@ -32,6 +32,7 @@ import {
   assertNotInMeetUpQuietHours
 } from '../services/meetUpSafetyService.js';
 import { createAndDeliverToHotelOps } from '../services/inAppNotificationDeliveryService.js';
+import meetUpSupervisionAlertService from '../services/meetUpSupervisionAlertService.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
@@ -543,6 +544,56 @@ router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAs
   });
 }));
 
+// Admin/Staff/Frontdesk: List guest meet-up reports for a property
+router.get('/admin/guest-meetup-reports', authorize('admin', 'staff', 'frontdesk', 'manager'), catchAsync(async (req, res) => {
+  const { status } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+
+  // Tenant isolation: require hotelId
+  const resolvedHotelId = req.query.hotelId || req.user?.hotelId;
+  if (!resolvedHotelId) {
+    return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+  }
+
+  const query = { hotelId: resolvedHotelId };
+  if (status && status !== 'all') {
+    if (!['pending', 'reviewed', 'dismissed'].includes(status)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid status filter' });
+    }
+    query.status = status;
+  }
+
+  const [reports, total] = await Promise.all([
+    GuestMeetUpReport.find(query)
+      .populate('reporterId', 'name email')
+      .populate('reportedUserId', 'name email')
+      .populate('meetUpRequestId', 'title status')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    GuestMeetUpReport.countDocuments(query)
+  ]);
+
+  const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+  res.json({
+    success: true,
+    data: {
+      reports,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: total,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    }
+  });
+}));
+
 // Admin/Staff/Frontdesk: Force cancel any meet-up request
 router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
@@ -590,6 +641,50 @@ router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'front
     { path: 'hotelId', select: 'name' }
   ]);
 
+  // Notify both guests about the admin cancellation
+  const forceCancelHotelId = meetUpRequest.hotelId?._id || meetUpRequest.hotelId;
+  const cancelMessage = 'Your meet-up was cancelled by hotel management.';
+  try {
+    const requesterId = meetUpRequest.requesterId?._id || meetUpRequest.requesterId;
+    if (requesterId) {
+      await deliverMeetUpGuestNotification({
+        hotelId: forceCancelHotelId,
+        recipientId: requesterId,
+        type: 'meetup_cancelled',
+        title: 'Meet-up cancelled',
+        message: cancelMessage,
+        meetUpRequestId: meetUpRequest._id
+      });
+    }
+    const targetUserId = meetUpRequest.targetUserId?._id || meetUpRequest.targetUserId;
+    if (targetUserId) {
+      await deliverMeetUpGuestNotification({
+        hotelId: forceCancelHotelId,
+        recipientId: targetUserId,
+        type: 'meetup_cancelled',
+        title: 'Meet-up cancelled',
+        message: cancelMessage,
+        meetUpRequestId: meetUpRequest._id
+      });
+    }
+  } catch (notifErr) {
+    console.warn('Failed to send force-cancel notifications:', notifErr.message);
+  }
+
+  // Auto-resolve any open supervision alert for this meet-up
+  try {
+    await meetUpSupervisionAlertService.updateAlertOnSupervisionChange(
+      req.params.requestId,
+      'cancelled',
+      req.user._id
+    );
+  } catch (alertErr) {
+    logger.warn('Failed to resolve supervision alert on force-cancel', {
+      meetUpId: req.params.requestId,
+      error: alertErr.message
+    });
+  }
+
   res.json({
     success: true,
     message: 'Meet-up request forcefully cancelled',
@@ -610,7 +705,8 @@ router.get('/', catchAsync(async (req, res) => {
       { requesterId: req.user._id },
       { targetUserId: req.user._id },
       { 'participants.confirmedParticipants.userId': req.user._id }
-    ]
+    ],
+    hotelId: req.user.hotelId
   };
 
   if (status) query.status = status;
@@ -618,15 +714,15 @@ router.get('/', catchAsync(async (req, res) => {
 
   // Filter by role (sent vs received)
   if (filter === 'sent') {
-    query = { requesterId: req.user._id };
+    query = { requesterId: req.user._id, hotelId: req.user.hotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   } else if (filter === 'received') {
-    query = { targetUserId: req.user._id };
+    query = { targetUserId: req.user._id, hotelId: req.user.hotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   } else if (filter === 'participating') {
-    query = { 'participants.confirmedParticipants.userId': req.user._id };
+    query = { 'participants.confirmedParticipants.userId': req.user._id, hotelId: req.user.hotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   }
@@ -675,16 +771,23 @@ router.get('/pending', catchAsync(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
+  const pendingQuery = {
+    targetUserId: req.user._id,
+    status: 'pending',
+    hotelId: req.user.hotelId
+  };
+
   const pendingRequests = attachVirtualsToList(
-    await MeetUpRequest.getPendingRequests(req.user._id)
+    await MeetUpRequest.find(pendingQuery)
+      .populate('requesterId', 'name email avatar')
+      .populate('hotelId', 'name address')
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
+      .lean()
   );
 
-  const total = await MeetUpRequest.countDocuments({
-    targetUserId: req.user._id,
-    status: 'pending'
-  });
+  const total = await MeetUpRequest.countDocuments(pendingQuery);
 
   res.json({
     success: true,
@@ -707,21 +810,30 @@ router.get('/upcoming', catchAsync(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  const upcomingMeetUps = attachVirtualsToList(
-    await MeetUpRequest.getUpcomingMeetUps(req.user._id)
-      .skip(skip)
-      .limit(limit)
-  );
-
-  const total = await MeetUpRequest.countDocuments({
+  const upcomingQuery = {
     $or: [
       { requesterId: req.user._id },
       { targetUserId: req.user._id },
       { 'participants.confirmedParticipants.userId': req.user._id }
     ],
     status: 'accepted',
-    proposedDate: { $gt: new Date() }
-  });
+    proposedDate: { $gt: new Date() },
+    hotelId: req.user.hotelId
+  };
+
+  const upcomingMeetUps = attachVirtualsToList(
+    await MeetUpRequest.find(upcomingQuery)
+      .populate('requesterId', 'name email avatar')
+      .populate('targetUserId', 'name email avatar')
+      .populate('hotelId', 'name address')
+      .populate('meetingRoomBooking.roomId', 'number type')
+      .sort({ proposedDate: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+  );
+
+  const total = await MeetUpRequest.countDocuments(upcomingQuery);
 
   res.json({
     success: true,
@@ -799,7 +911,7 @@ router.get('/search/partners', meetUpPartnerSearchLimiter, catchAsync(async (req
 
   const total = await User.countDocuments(userQuery);
   const users = await User.find(userQuery)
-    .select('name email avatar')
+    .select('name avatar')
     .sort({ name: 1 })
     .skip(skip)
     .limit(limit)
@@ -821,7 +933,8 @@ router.get('/search/partners', meetUpPartnerSearchLimiter, catchAsync(async (req
 }));
 
 router.get('/stats/overview', catchAsync(async (req, res) => {
-  const stats = await MeetUpRequest.getMeetUpStats(req.user._id);
+  const userHotelId = req.user.hotelId;
+  const stats = await MeetUpRequest.getMeetUpStats(req.user._id, userHotelId);
 
   const [
     totalRequests,
@@ -834,25 +947,13 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
       $or: [
         { requesterId: req.user._id },
         { targetUserId: req.user._id }
-      ]
+      ],
+      hotelId: userHotelId
     }),
     MeetUpRequest.countDocuments({
       targetUserId: req.user._id,
-      status: 'pending'
-    }),
-    MeetUpRequest.countDocuments({
-      $or: [
-        { requesterId: req.user._id },
-        { targetUserId: req.user._id }
-      ],
-      status: 'accepted'
-    }),
-    MeetUpRequest.countDocuments({
-      $or: [
-        { requesterId: req.user._id },
-        { targetUserId: req.user._id }
-      ],
-      status: 'completed'
+      status: 'pending',
+      hotelId: userHotelId
     }),
     MeetUpRequest.countDocuments({
       $or: [
@@ -860,7 +961,24 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
         { targetUserId: req.user._id }
       ],
       status: 'accepted',
-      proposedDate: { $gt: new Date() }
+      hotelId: userHotelId
+    }),
+    MeetUpRequest.countDocuments({
+      $or: [
+        { requesterId: req.user._id },
+        { targetUserId: req.user._id }
+      ],
+      status: 'completed',
+      hotelId: userHotelId
+    }),
+    MeetUpRequest.countDocuments({
+      $or: [
+        { requesterId: req.user._id },
+        { targetUserId: req.user._id }
+      ],
+      status: 'accepted',
+      proposedDate: { $gt: new Date() },
+      hotelId: userHotelId
     })
   ]);
 
@@ -1333,6 +1451,20 @@ router.post('/:requestId/cancel', meetUpWriteLimiter, validate(mutationBaselineS
     action: 'cancelled',
     meetUpRequestId: meetUpRequest._id.toString()
   });
+
+  // Auto-resolve any open supervision alert for this meet-up
+  try {
+    await meetUpSupervisionAlertService.updateAlertOnSupervisionChange(
+      meetUpRequest._id.toString(),
+      'cancelled',
+      req.user._id
+    );
+  } catch (alertErr) {
+    logger.warn('Failed to resolve supervision alert on cancellation', {
+      meetUpId: meetUpRequest._id,
+      error: alertErr.message
+    });
+  }
 
   res.json({
     success: true,

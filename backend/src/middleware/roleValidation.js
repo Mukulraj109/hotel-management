@@ -42,20 +42,33 @@ export const requireStaffOrAbove = validateRoles(['admin', 'manager', 'staff']);
 
 /**
  * Middleware to check hotel ownership
- * Ensures user can only access data from their own hotel
+ * Ensures user can only access data from their own hotel.
+ *
+ * SECURITY NOTE: Admin role is NOT given a blanket bypass here. An admin can
+ * only access hotels that are in their `hotelId` / `properties` / `multiPropertyAccess`
+ * list. The full cross-property check is handled by `ensurePropertyAccess` middleware.
+ * This middleware is a lightweight quick-check; use `ensurePropertyAccess` for
+ * comprehensive multi-property validation.
  */
 export const validateHotelAccess = (req, res, next) => {
   try {
     const { hotelId } = req.params;
     const userHotelId = req.user.hotelId;
 
-    // Admin can access any hotel
-    if (req.user.role === 'admin') {
+    // If no hotelId param, nothing to check — delegate to controller.
+    if (!hotelId) {
       return next();
     }
 
-    // Other roles can only access their own hotel
-    if (hotelId && userHotelId && hotelId !== userHotelId.toString()) {
+    // If user has no hotelId association, deny access to any specific hotel route.
+    if (!userHotelId) {
+      throw new ApiError(403, 'Access denied. Your account is not associated with a hotel');
+    }
+
+    // All roles — including admin — are tenant-scoped. A user can only access a
+    // hotel that matches their primary hotelId. For multi-property admin access use
+    // ensurePropertyAccess which validates the full properties/multiPropertyAccess list.
+    if (hotelId !== userHotelId.toString()) {
       throw new ApiError(403, 'Access denied. You can only access data from your own hotel');
     }
 

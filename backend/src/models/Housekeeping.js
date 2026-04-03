@@ -96,6 +96,7 @@ housekeepingSchema.index({ hotelId: 1, status: 1 });
 housekeepingSchema.index({ hotelId: 1, status: 1, createdAt: -1 }); // Compound index for operational dashboard aggregation pipelines
 housekeepingSchema.index({ roomId: 1, status: 1 });
 housekeepingSchema.index({ assignedToUserId: 1, status: 1 });
+housekeepingSchema.index({ assignedTo: 1, status: 1 }); // Backward-compatible field alias
 
 // Handle field compatibility and calculate actual duration
 housekeepingSchema.pre('save', function(next) {
@@ -128,6 +129,9 @@ housekeepingSchema.pre('save', function(next) {
 });
 
 // NOTIFICATION AUTOMATION HOOKS
+// Note: In Mongoose post('save') hooks, `this` refers to the document instance
+// (with isModified/isNew available), and `doc` is the saved document.
+// We use `this` for isModified/isNew checks and `doc` for data access.
 housekeepingSchema.post('save', async function(doc) {
   try {
     // Get room data for notifications
@@ -158,7 +162,8 @@ housekeepingSchema.post('save', async function(doc) {
     }
 
     // 2. Housekeeping task assigned to staff
-    if (doc.isModified('assignedTo') && doc.assignedTo) {
+    // Use `this` (the document instance) to check if the field was modified in this save
+    if (this.isModified('assignedTo') && doc.assignedTo) {
       await NotificationAutomationService.triggerNotification(
         'housekeeping_assigned',
         {
@@ -178,7 +183,7 @@ housekeepingSchema.post('save', async function(doc) {
     }
 
     // 3. Cleaning started
-    if (doc.isModified('status') && doc.status === 'in_progress') {
+    if (this.isModified('status') && doc.status === 'in_progress') {
       await NotificationAutomationService.triggerNotification(
         'cleaning_started',
         {
@@ -195,17 +200,9 @@ housekeepingSchema.post('save', async function(doc) {
       );
     }
 
-    // 4. Cleaning completed — update room status to vacant/clean
-    if (doc.isModified('status') && doc.status === 'completed') {
-      // Update the room status back to vacant (clean and available)
-      try {
-        await mongoose.model('Room').findByIdAndUpdate(doc.roomId, {
-          $set: { status: 'vacant', lastCleaned: new Date() }
-        });
-      } catch (roomUpdateErr) {
-        console.error('Failed to update room status after cleaning:', roomUpdateErr.message);
-      }
-
+    // 4. Cleaning completed — room status is managed by the route handler
+    // (sets to 'cleaning' pending QA inspection; the inspect endpoint sets it to 'vacant')
+    if (this.isModified('status') && doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'cleaning_completed',
         {
@@ -225,7 +222,7 @@ housekeepingSchema.post('save', async function(doc) {
     }
 
     // 5. Quality issue notification
-    if (doc.isModified('roomStatus') && doc.roomStatus === 'maintenance_required') {
+    if (this.isModified('roomStatus') && doc.roomStatus === 'maintenance_required') {
       await NotificationAutomationService.triggerNotification(
         'cleaning_quality_issue',
         {

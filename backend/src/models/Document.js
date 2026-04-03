@@ -626,13 +626,13 @@ documentSchema.statics.getComplianceStats = async function(hotelId, options = {}
     const { userType, departmentId, startDate, endDate } = options;
 
     let matchStage = {
-      hotelId: mongoose.Types.ObjectId(hotelId),
+      hotelId: new mongoose.Types.ObjectId(String(hotelId)),
       isActive: true,
       isDeleted: false
     };
 
     if (userType) matchStage.userType = userType;
-    if (departmentId) matchStage.departmentId = mongoose.Types.ObjectId(departmentId);
+    if (departmentId) matchStage.departmentId = new mongoose.Types.ObjectId(String(departmentId));
     if (startDate && endDate) {
       matchStage.createdAt = {
         $gte: new Date(startDate),

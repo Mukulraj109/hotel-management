@@ -1,20 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import {
   CheckSquare,
   Clock,
   AlertTriangle,
-  Play, 
-  Pause, 
-  CheckCircle, 
+  Play,
+  CheckCircle,
   Camera,
   MessageSquare,
   Calendar,
   Filter,
   RefreshCw,
-  BarChart3,
-  Upload,
-  X
+  BarChart3
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -69,45 +67,75 @@ export function StaffTaskDashboard() {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedTask, setSelectedTask] = useState<StaffTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  // Guard state updates after unmount
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const fetchTodaysTasks = useCallback(async () => {
+    try {
+      const { data } = await api.get('/staff-tasks/today');
+      if (mountedRef.current) setTodaysTasks(data?.data?.tasks ?? []);
+    } catch {
+      // Today's tasks failure is non-critical; silent is acceptable
+    }
+  }, []);
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      if (mountedRef.current) setLoading(true);
+      const params: Record<string, unknown> = {
+        // Explicit pagination so we never fire an unbounded query
+        limit: 100,
+        skip: 0,
+      };
+      if (selectedStatus !== 'all') params.status = selectedStatus;
+
+      const { data } = await api.get('/staff-tasks/my-tasks', { params });
+      if (mountedRef.current) setTasks(data.data.tasks ?? []);
+    } catch {
+      if (mountedRef.current) toast.error('Failed to load tasks');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [selectedStatus]);
 
   useEffect(() => {
     fetchTasks();
     fetchTodaysTasks();
-  }, [selectedStatus]);
+  }, [fetchTasks, fetchTodaysTasks]);
 
-  const fetchTasks = async () => {
+  const updateTaskStatus = useCallback(async (
+    taskId: string,
+    status: string,
+    completionPayload?: Record<string, unknown>
+  ) => {
     try {
-      setLoading(true);
-      const params: Record<string, unknown> = {};
-      if (selectedStatus !== 'all') params.status = selectedStatus;
-
-      const { data } = await api.get('/staff-tasks/my-tasks', { params });
-      setTasks(data.data.tasks);
-    } catch {
-      // Error handled silently
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchTodaysTasks = async () => {
-    try {
-      const { data } = await api.get('/staff-tasks/today');
-      setTodaysTasks(data.data.tasks);
-    } catch {
-      // Error handled silently
-    }
-  };
-
-  const updateTaskStatus = async (taskId: string, status: string, completionData?: Record<string, unknown>) => {
-    try {
-      await api.patch(`/staff-tasks/${taskId}/status`, { status, completionData });
+      // The backend PATCH /:taskId/status accepts:
+      //   { status, completionNotes, completionPhotos, completionData }
+      // Extract each field to the correct top-level key.
+      const body: Record<string, unknown> = { status };
+      if (completionPayload) {
+        if (completionPayload.completionNotes) {
+          body.completionNotes = completionPayload.completionNotes;
+        }
+        if (Array.isArray(completionPayload.completionPhotos)) {
+          body.completionPhotos = completionPayload.completionPhotos;
+        }
+        if (completionPayload.completionData) {
+          body.completionData = completionPayload.completionData;
+        }
+      }
+      await api.patch(`/staff-tasks/${taskId}/status`, body);
+      toast.success(`Task marked as ${status.replace(/_/g, ' ')}`);
       await fetchTasks();
       await fetchTodaysTasks();
     } catch {
-      // Error handled silently
+      toast.error('Failed to update task status');
     }
-  };
+  }, [fetchTasks, fetchTodaysTasks]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -230,7 +258,7 @@ export function StaffTaskDashboard() {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Today's Priority Tasks</h2>
-            <Badge variant="primary">{todaysTasks.length} tasks</Badge>
+            <Badge variant="info">{todaysTasks.length} tasks</Badge>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {todaysTasks.map((task) => (
@@ -243,7 +271,7 @@ export function StaffTaskDashboard() {
                     </Badge>
                   </div>
                   <Badge variant="secondary" className={getStatusColor(task.status)} size="sm">
-                    {task.status.replace('_', ' ')}
+                    {task.status.replace(/_/g, ' ')}
                   </Badge>
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-1">{task.title}</h3>
@@ -252,7 +280,7 @@ export function StaffTaskDashboard() {
                 {task.roomIds.length > 0 && (
                   <div className="flex items-center space-x-1 mb-2">
                     <span className="text-xs text-gray-500">Rooms:</span>
-                    {task.roomIds.slice(0, 3).map((room, index) => (
+                    {task.roomIds.slice(0, 3).map((room) => (
                       <Badge key={room._id} variant="secondary" size="sm" className="text-xs">
                         {room.roomNumber}
                       </Badge>
@@ -342,7 +370,7 @@ export function StaffTaskDashboard() {
                         {task.priority}
                       </Badge>
                       <Badge variant="secondary" className={getStatusColor(task.status)} size="sm">
-                        {task.status.replace('_', ' ')}
+                        {task.status.replace(/_/g, ' ')}
                       </Badge>
                     </div>
                     
@@ -480,19 +508,33 @@ interface Photo {
 function TaskCompletionModal({ task, onComplete, onClose }: TaskCompletionModalProps) {
   const [completionNotes, setCompletionNotes] = useState('');
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [completionData, setCompletionData] = useState<unknown>({});
+  const [completionData, setCompletionData] = useState<{ completedRooms?: string[]; [key: string]: unknown }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleComplete = async () => {
     if (isSubmitting) return;
-    
+
     setIsSubmitting(true);
     try {
-      // Upload photos first if any
+      // Upload photos that have a File object (not yet persisted to server)
       const photoUrls: string[] = [];
       for (const photo of photos) {
         if (photo.file) {
-          // Upload photo (you might want to implement actual upload logic here)
+          // Upload photo to server and collect returned URL.
+          // The endpoint is POST /photos/upload (multipart/form-data).
+          // Response shape: { status: 'success', data: { url: '...', ... } }
+          const formData = new FormData();
+          formData.append('photo', photo.file);
+          formData.append('description', photo.description || '');
+          const { data: responseBody } = await api.post('/photos/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          // responseBody = { status, data: { url, ... } }
+          const serverUrl: string =
+            responseBody?.data?.url || responseBody?.url || photo.url;
+          photoUrls.push(serverUrl);
+        } else if (photo.url && !photo.url.startsWith('blob:')) {
+          // Already-uploaded photo (server URL)
           photoUrls.push(photo.url);
         }
       }
@@ -503,11 +545,11 @@ function TaskCompletionModal({ task, onComplete, onClose }: TaskCompletionModalP
         completionData: {
           ...completionData,
           completedAt: new Date().toISOString(),
-          photosCount: photos.length
+          photosCount: photoUrls.length
         }
       });
-    } catch {
-      // Error handled silently
+    } catch (err) {
+      toast.error('Failed to upload photos. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -545,9 +587,9 @@ function TaskCompletionModal({ task, onComplete, onClose }: TaskCompletionModalP
                     <input
                       type="checkbox"
                       id={`room-${room._id}`}
-                      checked={completionData.completedRooms?.includes(room._id) || false}
+                      checked={(completionData.completedRooms ?? []).includes(room._id)}
                       onChange={(e) => {
-                        const completedRooms = completionData.completedRooms || [];
+                        const completedRooms = completionData.completedRooms ?? [];
                         if (e.target.checked) {
                           setCompletionData({
                             ...completionData,
@@ -556,7 +598,7 @@ function TaskCompletionModal({ task, onComplete, onClose }: TaskCompletionModalP
                         } else {
                           setCompletionData({
                             ...completionData,
-                            completedRooms: completedRooms.filter((id: string) => id !== room._id)
+                            completedRooms: completedRooms.filter((id) => id !== room._id)
                           });
                         }
                       }}

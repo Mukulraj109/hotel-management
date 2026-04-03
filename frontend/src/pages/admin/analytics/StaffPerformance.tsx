@@ -18,10 +18,26 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useStaffPerformance } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
+import { useAuth } from '../../../context/AuthContext';
 import { formatPercentage, formatDuration } from '../../../utils/dashboardUtils';
 
 export default function StaffPerformance() {
   const { selectedPropertyId, properties } = useProperty();
+  const { user } = useAuth();
+
+  // SECURITY: Staff performance analytics are sensitive HR data.
+  // Only admin and manager roles may access this page.
+  const ALLOWED_ROLES = ['admin', 'manager'];
+  if (user && !ALLOWED_ROLES.includes(user.role)) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">Access Denied</div>
+          <p className="text-gray-600">Staff performance analytics are restricted to admin and manager roles.</p>
+        </div>
+      </div>
+    );
+  }
 
   const [filters, setFilters] = useState({
     hotelId: '',

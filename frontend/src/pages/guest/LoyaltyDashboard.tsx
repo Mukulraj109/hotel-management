@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useRealTime } from '../../services/realTimeService';
 import {
   Star,
   Gift,
@@ -58,12 +59,30 @@ const getOfferIcon = (type: string) => {
 export default function LoyaltyDashboard() {
   const [redeemingOffer, setRedeemingOffer] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { on, off } = useRealTime();
 
   const { data: dashboard, isLoading, error, refetch } = useQuery({
     queryKey: ['loyalty-dashboard'],
     queryFn: loyaltyService.getDashboard,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+
+  // Real-time updates for loyalty points changes
+  useEffect(() => {
+    const handleLoyaltyUpdate = () => {
+      refetch();
+    };
+
+    on('loyalty:points_awarded', handleLoyaltyUpdate);
+    on('loyalty:points_redeemed', handleLoyaltyUpdate);
+    on('loyalty:tier_changed', handleLoyaltyUpdate);
+
+    return () => {
+      off('loyalty:points_awarded', handleLoyaltyUpdate);
+      off('loyalty:points_redeemed', handleLoyaltyUpdate);
+      off('loyalty:tier_changed', handleLoyaltyUpdate);
+    };
+  }, [on, off, refetch]);
 
   const handleRedeemOffer = async (offerId: string) => {
     try {

@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { api } from '../../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,16 +8,20 @@ import { staffDashboardService, StaffTodayData, StaffActivityData } from '../../
 import { useRealTime } from '../../services/realTimeService';
 import { reportsService, CheckoutInventoryData } from '../../services/reportsService';
 import { formatCurrency } from '../../utils/formatters';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
 export default function StaffReports() {
+  const { user } = useAuth();
   const [todayData, setTodayData] = useState<StaffTodayData | null>(null);
   const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
   const [checkoutInventoryData, setCheckoutInventoryData] = useState<CheckoutInventoryData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportingReport, setExportingReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
     fetchTodayData();
@@ -93,6 +96,42 @@ export default function StaffReports() {
     }
   };
 
+  const handleDownloadReport = useCallback(async (
+    reportLabel: string,
+    reportType: 'financial' | 'operational' | 'comprehensive',
+    format: 'csv' | 'excel' | 'pdf' = 'csv'
+  ) => {
+    if (exportingReport) return;
+    setExportingReport(reportLabel);
+    try {
+      const today = new Date();
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+      const blob = await reportsService.exportReport(reportType, {
+        startDate: startOfMonth,
+        endDate: endOfDay,
+        groupBy: 'day',
+        // Pass hotelId so backend report/export endpoints can enforce tenant isolation
+        ...(user?.hotelId
+          ? { hotelId: typeof user.hotelId === 'string' ? user.hotelId : user.hotelId._id }
+          : {})
+      }, format);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${reportLabel.toLowerCase().replace(/\s+/g, '-')}-${today.toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success(`${reportLabel} downloaded`);
+    } catch {
+      toast.error(`Failed to download ${reportLabel}`);
+    } finally {
+      setExportingReport(null);
+    }
+  }, [exportingReport, user]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -162,40 +201,6 @@ export default function StaffReports() {
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh Data
-          </Button>
-          <Button
-            onClick={async () => {
-              try {
-                const { data } = await api.post('/test/create-checked-in-booking');
-                if (data.status === 'success') {
-                  const steps = data.data.nextSteps.join('\n');
-                  alert(`${data.message}\n\nNext Steps:\n${steps}\n\nCreated:\n- Room ${data.data.roomNumber} (${data.data.roomType || 'Double'})\n- Guest: ${data.data.guest}\n- Booking: ${data.data.bookingNumber}\n- Status: ${data.data.status}`);
-                  fetchTodayData(); // Refresh the data
-                } else {
-                  alert('Error: ' + data.message);
-                }
-              } catch (error) {
-                alert('Error creating test booking: ' + (error instanceof Error ? error.message : 'Unknown error'));
-              }
-            }}
-            variant="secondary"
-            className="flex items-center"
-          >
-            Create Test Booking
-          </Button>
-          <Button
-            onClick={async () => {
-              try {
-                const { data } = await api.get('/test/debug-checkins');
-                alert(`Check-ins Debug:\nCount: ${data.data.todayCheckInsCount}\nBookings: ${data.data.actualTodayBookings.length}\n\nCheck console for details`);
-              } catch (error) {
-                alert('Debug error: ' + (error instanceof Error ? error.message : 'Unknown error'));
-              }
-            }}
-            variant="outline"
-            size="sm"
-          >
-            Debug Check-ins
           </Button>
         </div>
       </div>
@@ -319,11 +324,11 @@ export default function StaffReports() {
                   </div>
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                     <div>
-                      <p className="font-medium">Total Value</p>
+                      <p className="font-medium">Total Revenue</p>
                       <p className="text-sm text-gray-600">Revenue</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold text-green-600">{formatCurrency(checkoutInventoryData.summary.totalValue)}</div>
+                      <div className="text-lg font-bold text-green-600">{formatCurrency(checkoutInventoryData.summary.totalRevenue)}</div>
                       <Badge variant="outline" className="text-green-700">Revenue</Badge>
                     </div>
                   </div>
@@ -333,10 +338,10 @@ export default function StaffReports() {
                       <p className="text-sm text-gray-600">Per checkout</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold text-blue-600">{formatCurrency(checkoutInventoryData.summary.averageValue)}</div>
+                      <div className="text-lg font-bold text-blue-600">{formatCurrency(checkoutInventoryData.summary.avgAmount)}</div>
                       <Badge variant="outline" className="text-blue-700">
-                        {checkoutInventoryData.summary.averageValue >= 500 ? 'High' : 
-                         checkoutInventoryData.summary.averageValue >= 200 ? 'Normal' : 'Low'}
+                        {checkoutInventoryData.summary.avgAmount >= 500 ? 'High' :
+                         checkoutInventoryData.summary.avgAmount >= 200 ? 'Normal' : 'Low'}
                       </Badge>
                     </div>
                   </div>
@@ -361,26 +366,28 @@ export default function StaffReports() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Button className="w-full justify-start" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Daily Task Report
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Housekeeping Summary
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Maintenance Log
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Guest Services Report
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Checkout Inventory Report
-              </Button>
+              {([
+                { label: 'Daily Task Report', type: 'operational' as const },
+                { label: 'Housekeeping Summary', type: 'operational' as const },
+                { label: 'Maintenance Log', type: 'operational' as const },
+                { label: 'Guest Services Report', type: 'operational' as const },
+                { label: 'Checkout Inventory Report', type: 'financial' as const }
+              ] as const).map(({ label, type }) => (
+                <Button
+                  key={label}
+                  className="w-full justify-start"
+                  variant="outline"
+                  disabled={exportingReport !== null}
+                  onClick={() => handleDownloadReport(label, type, 'csv')}
+                >
+                  {exportingReport === label ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {label}
+                </Button>
+              ))}
             </div>
           </CardContent>
         </Card>

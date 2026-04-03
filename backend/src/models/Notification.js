@@ -91,10 +91,12 @@ const notificationSchema = new mongoose.Schema({
   readAt: { 
     type: Date 
   },
-  scheduledFor: { 
-    type: Date, 
+  scheduledFor: {
+    type: Date,
     validate: {
       validator: function(value) {
+        // Only validate on new documents, not updates
+        if (!this.isNew) return true;
         return !value || value > new Date();
       },
       message: 'Scheduled time must be in the future'
@@ -125,10 +127,12 @@ const notificationSchema = new mongoose.Schema({
     errorMessage: { type: String },
     responseData: mongoose.Schema.Types.Mixed
   }],
-  expiresAt: { 
+  expiresAt: {
     type: Date,
     validate: {
       validator: function(value) {
+        // Only validate on new documents, not updates
+        if (!this.isNew) return true;
         return !value || value > new Date();
       },
       message: 'Expiration date must be in the future'

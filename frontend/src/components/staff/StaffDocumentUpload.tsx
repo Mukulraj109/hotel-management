@@ -7,8 +7,6 @@ import {
   AlertCircle,
   CheckCircle,
   X,
-  Eye,
-  Download,
   RefreshCw,
   Building,
   Shield,
@@ -59,7 +57,11 @@ interface Department {
   name: string;
 }
 
-export default function StaffDocumentUpload() {
+interface StaffDocumentUploadProps {
+  onUploadSuccess?: () => void;
+}
+
+export default function StaffDocumentUpload({ onUploadSuccess }: StaffDocumentUploadProps = {}) {
   const { user } = useAuth();
   const [selectedFiles, setSelectedFiles] = useState<DocumentUpload[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -73,7 +75,7 @@ export default function StaffDocumentUpload() {
   const [loadingRequirements, setLoadingRequirements] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const staffDocumentCategories = {
+  const staffDocumentCategories: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string; types: Record<string, string> }> = {
     employment_verification: {
       icon: Briefcase,
       label: 'Employment Verification',
@@ -180,9 +182,11 @@ export default function StaffDocumentUpload() {
   const fetchRequirements = async () => {
     try {
       const { data } = await api.get('/documents/requirements/staff');
-      setRequirements(data.requirements);
+      // Backend wraps under data.requirements (status:'success', data:{ requirements })
+      setRequirements(data.data?.requirements || data.requirements || []);
     } catch {
-      // Error handled silently
+      // Non-critical: upload still works without requirements metadata
+      setRequirements([]);
     } finally {
       setLoadingRequirements(false);
     }
@@ -191,13 +195,14 @@ export default function StaffDocumentUpload() {
   const fetchDepartments = async () => {
     try {
       const { data } = await api.get('/departments');
-      setDepartments(data.departments || []);
+      // Backend returns { success: true, data: { departments: [...], pagination: {...} } }
+      setDepartments(data.data?.departments || data.departments || []);
     } catch (error) {
       setDepartments([]);
     }
   };
 
-  const getApplicableRequirements = () => {
+  const getApplicableRequirements = useCallback(() => {
     return requirements.filter(req => {
       if (!req.isCurrentlyActive) return false;
 
@@ -220,27 +225,41 @@ export default function StaffDocumentUpload() {
 
       return true;
     });
-  };
+  }, [requirements, selectedDepartment, user?.departmentId, user?.role]);
 
-  const getCurrentRequirement = () => {
+  const getCurrentRequirement = useCallback(() => {
     if (!selectedCategory || !selectedDocumentType) return null;
 
     return getApplicableRequirements().find(req =>
       req.category === selectedCategory && req.documentType === selectedDocumentType
     );
-  };
+  }, [selectedCategory, selectedDocumentType, getApplicableRequirements]);
 
-  const validateFile = (file: File): string | null => {
+  const validateFile = useCallback((file: File): string | null => {
+    // MIME-type allowlist to guard against extension spoofing
+    const allowedMimeTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    if (!allowedMimeTypes.includes(file.type)) {
+      return `File type "${file.type}" is not allowed. Please upload a PDF, image (JPG/PNG), or Word document.`;
+    }
+
     const requirement = getCurrentRequirement();
 
     if (requirement) {
-      // Check file size
+      // Check file size against requirement
       const maxSizeBytes = requirement.maxSizeMB * 1024 * 1024;
       if (file.size > maxSizeBytes) {
         return `File size exceeds ${requirement.maxSizeMB}MB limit`;
       }
 
-      // Check file format
+      // Check file extension against requirement's allowed formats
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension && !requirement.allowedFormats.includes(fileExtension)) {
         return `File format .${fileExtension} not allowed. Allowed formats: ${requirement.allowedFormats.join(', ')}`;
@@ -252,17 +271,17 @@ export default function StaffDocumentUpload() {
         return 'File size exceeds 10MB limit';
       }
 
-      const allowedTypes = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+      const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      if (fileExtension && !allowedTypes.includes(fileExtension)) {
+      if (fileExtension && !allowedExtensions.includes(fileExtension)) {
         return `File format .${fileExtension} not allowed`;
       }
     }
 
     return null;
-  };
+  }, [getCurrentRequirement]);
 
-  const handleFiles = async (files: FileList) => {
+  const handleFiles = useCallback(async (files: FileList) => {
     if (!selectedCategory || !selectedDocumentType) {
       toast.error('Please select document category and type before uploading');
       return;
@@ -292,7 +311,7 @@ export default function StaffDocumentUpload() {
 
     setSelectedFiles(prev => [...prev, ...newFiles]);
     setNotes('');
-  };
+  }, [selectedCategory, selectedDocumentType, notes, selectedDepartment, user?.departmentId, validateFile]);
 
   const removeFile = (index: number) => {
     setSelectedFiles(prev => {
@@ -319,14 +338,25 @@ export default function StaffDocumentUpload() {
         formData.append('document', fileUpload.file);
         formData.append('category', fileUpload.category);
         formData.append('documentType', fileUpload.documentType);
-        formData.append('notes', fileUpload.notes);
+        // Backend stores notes as 'description'
+        formData.append('description', fileUpload.notes);
         formData.append('userType', 'staff');
 
         if (fileUpload.departmentId) {
           formData.append('departmentId', fileUpload.departmentId);
         }
 
-        const response = await api.post('/documents/upload', formData, {
+        // Auto-calculate expiryDate from the matched requirement's expiryMonths
+        const matchedRequirement = requirements.find(
+          req => req.category === fileUpload.category && req.documentType === fileUpload.documentType
+        );
+        if (matchedRequirement?.expiryMonths) {
+          const expiryDate = new Date();
+          expiryDate.setMonth(expiryDate.getMonth() + matchedRequirement.expiryMonths);
+          formData.append('expiryDate', expiryDate.toISOString().slice(0, 10));
+        }
+
+        await api.post('/documents/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         successCount++;
@@ -343,6 +373,7 @@ export default function StaffDocumentUpload() {
       setSelectedCategory('');
       setSelectedDocumentType('');
       setSelectedDepartment('');
+      onUploadSuccess?.();
     }
 
     if (errorCount > 0) {
@@ -368,7 +399,7 @@ export default function StaffDocumentUpload() {
     if (e.dataTransfer.files) {
       handleFiles(e.dataTransfer.files);
     }
-  }, [selectedCategory, selectedDocumentType, notes]);
+  }, [handleFiles]);
 
   const currentRequirement = getCurrentRequirement();
   const applicableRequirements = getApplicableRequirements();
@@ -497,7 +528,7 @@ export default function StaffDocumentUpload() {
           onDragOver={handleDrag}
           onDrop={handleDrop}
           onClick={() => selectedCategory && selectedDocumentType && fileInputRef.current?.click()}
-         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => selectedCategory && selectedDocumentType && fileInputRef.current?.click(); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (selectedCategory && selectedDocumentType) { fileInputRef.current?.click(); } } }}>
           <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-lg font-medium text-gray-700 mb-2">
             {selectedCategory && selectedDocumentType

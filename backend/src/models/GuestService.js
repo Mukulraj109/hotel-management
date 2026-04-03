@@ -122,8 +122,8 @@ const guestServiceSchema = new mongoose.Schema({
   },
   serviceVariation: {
     type: String,
-    required: [true, 'Service variation is required'],
-    trim: true
+    trim: true,
+    default: ''
   },
   serviceVariations: [{
     type: String,
@@ -457,12 +457,14 @@ guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, ho
     }
 
     // Fallback to random staff assignment if no hotel service match
+    // Limit to 100 to avoid unbounded fetch; for larger hotels the auto-assignment
+    // via HotelService records is the preferred path.
     const User = mongoose.model('User');
     const availableStaff = await User.find({
       hotelId,
       role: 'staff',
       isActive: true
-    }).lean().limit(1000);
+    }).lean().limit(100);
 
     if (availableStaff.length > 0) {
       const randomStaff = availableStaff[Math.floor(Math.random() * availableStaff.length)];
@@ -480,16 +482,16 @@ guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, ho
 guestServiceSchema.statics.mapServiceTypeToHotelServiceType = function(guestServiceType) {
   const mapping = {
     'room_service': 'dining',
-    'housekeeping': 'wellness',
-    'maintenance': 'business',
+    'housekeeping': 'housekeeping',
+    'maintenance': 'maintenance',
     'concierge': 'business',
     'transport': 'transport',
     'spa': 'spa',
-    'laundry': 'wellness',
-    'other': 'business'
+    'laundry': 'laundry',
+    'other': 'other'
   };
 
-  return mapping[guestServiceType] || 'business';
+  return mapping[guestServiceType] || 'other';
 };
 
 // Instance methods for inventory tracking

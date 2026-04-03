@@ -133,7 +133,7 @@ export function useBrowserNotifications() {
             type: 'NOTIFICATION_CLICKED',
             route: data.route,
             data: data
-          }, '*');
+          }, window.location.origin);
         }
 
         notification.close();
@@ -192,8 +192,12 @@ export function useBrowserNotifications() {
     // This requires service worker support for full functionality
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(registration => {
-        registration.getNotifications({ tag: 'pentouz' }).then(notifications => {
-          notifications.forEach(notification => notification.close());
+        registration.getNotifications().then(notifications => {
+          notifications.forEach(notification => {
+            if (notification.tag && notification.tag.startsWith('pentouz')) {
+              notification.close();
+            }
+          });
         });
       });
     }

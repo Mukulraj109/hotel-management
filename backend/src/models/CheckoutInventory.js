@@ -40,7 +40,7 @@ import mongoose from 'mongoose';
  *                 type: number
  *               status:
  *                 type: string
- *                 enum: [used, damaged, missing, intact]
+ *                 enum: [intact, used, damaged, missing, consumed]
  *               notes:
  *                 type: string
  *         subtotal:
@@ -119,7 +119,7 @@ const checkoutInventorySchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['used', 'damaged', 'missing', 'intact'],
+      enum: ['intact', 'used', 'damaged', 'missing', 'consumed'],
       default: 'intact'
     },
     notes: {
@@ -232,19 +232,19 @@ checkoutInventorySchema.statics.findByBooking = function(bookingId) {
   ]);
 };
 
-// Static method to get all checkout inventories for a hotel
-checkoutInventorySchema.statics.findByHotel = function(hotelId) {
-  return this.find({})
+// Static method to get all checkout inventories for a hotel (paginated)
+checkoutInventorySchema.statics.findByHotel = function(hotelId, { page = 1, limit = 20 } = {}) {
+  const skip = (Math.max(1, page) - 1) * Math.min(limit, 100);
+  return this.find({ hotelId })
     .populate([
-      {
-        path: 'bookingId',
-        select: 'bookingNumber checkIn checkOut totalAmount',
-        match: { hotelId }
-      },
+      { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount userId' },
       { path: 'roomId', select: 'roomNumber type' },
       { path: 'checkedBy', select: 'name email' }
     ])
-    .then(results => results.filter(result => result.bookingId));
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(Math.min(limit, 100))
+    .lean();
 };
 
 // Settlement integration methods
@@ -252,14 +252,19 @@ checkoutInventorySchema.statics.findByHotel = function(hotelId) {
 // Method to check if checkout has chargeable items
 checkoutInventorySchema.methods.hasChargeableItems = function() {
   return this.items.some(item =>
-    (item.status === 'damaged' || item.status === 'missing') && item.totalPrice > 0
+    (['damaged', 'missing', 'consumed'].includes(item.status)) && item.totalPrice > 0
   );
 };
 
 // Method to get chargeable items for settlement
 checkoutInventorySchema.methods.getChargeableItemsForSettlement = function() {
+  const chargeTypeMap = {
+    damaged: 'damage_charge',
+    missing: 'missing_item_charge',
+    consumed: 'consumption_charge'
+  };
   return this.items
-    .filter(item => (item.status === 'damaged' || item.status === 'missing') && item.totalPrice > 0)
+    .filter(item => (['damaged', 'missing', 'consumed'].includes(item.status)) && item.totalPrice > 0)
     .map(item => ({
       itemName: item.itemName,
       category: item.category,
@@ -268,7 +273,7 @@ checkoutInventorySchema.methods.getChargeableItemsForSettlement = function() {
       totalPrice: item.totalPrice,
       status: item.status,
       notes: item.notes,
-      chargeType: item.status === 'damaged' ? 'damage_charge' : 'missing_item_charge'
+      chargeType: chargeTypeMap[item.status] || 'other_charge'
     }));
 };
 
@@ -305,7 +310,10 @@ checkoutInventorySchema.methods.getSettlementSummary = function() {
 // Static method to find checkouts ready for settlement integration
 checkoutInventorySchema.statics.findReadyForSettlement = async function(hotelId, bookingId = null) {
   try {
+    if (!hotelId) throw new Error('hotelId is required');
+
     const query = {
+      hotelId,
       status: 'completed',
       settlementStatus: 'pending',
       totalAmount: { $gt: 0 }
@@ -317,16 +325,17 @@ checkoutInventorySchema.statics.findReadyForSettlement = async function(hotelId,
 
     const results = await this.find(query)
       .populate([
-        {
-          path: 'bookingId',
-          select: 'bookingNumber checkIn checkOut totalAmount hotelId',
-          match: hotelId ? { hotelId } : {}
-        },
+        { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount hotelId' },
         { path: 'roomId', select: 'roomNumber type' },
         { path: 'checkedBy', select: 'name email' }
-      ]).lean().limit(1000);
+      ])
+      .sort({ createdAt: -1 })
+      .limit(100);
 
-    return results.filter(result => result.bookingId && result.hasChargeableItems());
+    // Use instance method (not lean) to check chargeable items
+    return results.filter(result =>
+      result.bookingId && result.hasChargeableItems()
+    );
   } catch (error) {
     throw new Error(`${error.message}`);
   }
@@ -335,7 +344,10 @@ checkoutInventorySchema.statics.findReadyForSettlement = async function(hotelId,
 // Static method to get checkout integration statistics
 checkoutInventorySchema.statics.getCheckoutIntegrationStats = async function(hotelId, dateRange = {}) {
   try {
-    const matchStage = {};
+    if (!hotelId) throw new Error('hotelId is required');
+
+    // Always filter by hotelId first for tenant isolation and index efficiency
+    const matchStage = { hotelId };
 
     if (dateRange.start || dateRange.end) {
       matchStage.checkedAt = {};
@@ -343,19 +355,8 @@ checkoutInventorySchema.statics.getCheckoutIntegrationStats = async function(hot
       if (dateRange.end) matchStage.checkedAt.$lte = new Date(dateRange.end);
     }
 
-    // First get all checkouts, then filter by hotel through booking population
     const pipeline = [
       { $match: matchStage },
-      {
-        $lookup: {
-          from: 'bookings',
-          localField: 'bookingId',
-          foreignField: '_id',
-          as: 'booking'
-        }
-      },
-      { $unwind: '$booking' },
-      { $match: { 'booking.hotelId': hotelId } },
       {
         $group: {
           _id: '$settlementStatus',
@@ -390,5 +391,7 @@ checkoutInventorySchema.statics.getCheckoutIntegrationStats = async function(hot
 // Compound indexes for performance
 checkoutInventorySchema.index({ hotelId: 1, createdAt: -1 });
 checkoutInventorySchema.index({ hotelId: 1, bookingId: 1 });
+// Unique guard: prevent duplicate inventory checks per booking+room per hotel
+checkoutInventorySchema.index({ hotelId: 1, bookingId: 1, roomId: 1 }, { unique: true });
 
 export default mongoose.model('CheckoutInventory', checkoutInventorySchema);

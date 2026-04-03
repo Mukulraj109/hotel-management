@@ -8,7 +8,9 @@
 
 // ── Housekeeping tasks ──────────────────────────────────────────────────
 export const HOUSEKEEPING_TRANSITIONS = {
-  pending:     ['assigned', 'cancelled'],
+  // Allow pending → in_progress as a shortcut: staff can self-assign and start an
+  // unassigned task in one step (mirrors the maintenance pending → in_progress shortcut).
+  pending:     ['assigned', 'in_progress', 'cancelled'],
   assigned:    ['in_progress', 'pending', 'cancelled'], // can be unassigned or cancelled
   in_progress: ['completed', 'assigned', 'cancelled'],  // can be reassigned or cancelled
   completed:   ['inspected', 'assigned'],                // failed inspection -> reassign
@@ -36,13 +38,13 @@ export const GUEST_SERVICE_TRANSITIONS = {
 };
 
 // ── Meet-up requests ────────────────────────────────────────────────────
+// FIX: Use 'accepted'/'declined' to match MeetUpRequest model enum (not 'approved'/'rejected'/'in_progress')
 export const MEETUP_TRANSITIONS = {
-  pending:     ['approved', 'rejected', 'cancelled'],
-  approved:    ['in_progress', 'cancelled'],
-  in_progress: ['completed', 'cancelled'],
-  completed:   [],
-  rejected:    [],
-  cancelled:   [],
+  pending:   ['accepted', 'declined', 'cancelled'],
+  accepted:  ['completed', 'cancelled'],
+  declined:  [],
+  completed: [],
+  cancelled: [],
 };
 
 // ── Inventory consumption approvals ─────────────────────────────────────

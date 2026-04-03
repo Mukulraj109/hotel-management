@@ -564,9 +564,11 @@ supplyRequestSchema.statics.getDepartmentStats = async function(hotelId, startDa
   }
 };
 
-// Static method to get overdue requests
-supplyRequestSchema.statics.getOverdueRequests = async function(hotelId) {
+// Static method to get overdue requests (paginated)
+supplyRequestSchema.statics.getOverdueRequests = async function(hotelId, { page = 1, limit = 20 } = {}) {
   try {
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * safeLimit;
     return await this.find({
       hotelId,
       neededBy: { $lt: new Date() },
@@ -574,21 +576,29 @@ supplyRequestSchema.statics.getOverdueRequests = async function(hotelId) {
     })
     .populate('requestedBy', 'name')
     .populate('approvedBy', 'name')
-    .sort('neededBy').lean().limit(1000);
+    .sort('neededBy')
+    .skip(skip)
+    .limit(safeLimit)
+    .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }
 };
 
-// Static method to get pending approvals
-supplyRequestSchema.statics.getPendingApprovals = async function(hotelId) {
+// Static method to get pending approvals (paginated)
+supplyRequestSchema.statics.getPendingApprovals = async function(hotelId, { page = 1, limit = 20 } = {}) {
   try {
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * safeLimit;
     return await this.find({
       hotelId,
       status: 'pending'
     })
     .populate('requestedBy', 'name department')
-    .sort('-priority createdAt').lean().limit(1000);
+    .sort('-priority createdAt')
+    .skip(skip)
+    .limit(safeLimit)
+    .lean();
   } catch (error) {
     throw new Error(`${error.message}`);
   }

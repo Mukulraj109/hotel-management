@@ -295,11 +295,14 @@ const maintenanceTaskSchema = new mongoose.Schema({
 
 // Indexes
 maintenanceTaskSchema.index({ hotelId: 1, status: 1 });
+maintenanceTaskSchema.index({ hotelId: 1, status: 1, createdAt: -1 }); // compound for paginated staff dashboard
+maintenanceTaskSchema.index({ hotelId: 1, assignedTo: 1, status: 1 }); // staff "my tasks" query
 maintenanceTaskSchema.index({ roomId: 1, status: 1 });
 maintenanceTaskSchema.index({ assignedTo: 1, status: 1 });
 maintenanceTaskSchema.index({ priority: 1, dueDate: 1 });
 maintenanceTaskSchema.index({ type: 1, status: 1 });
 maintenanceTaskSchema.index({ isRecurring: 1, 'recurringSchedule.nextDue': 1 });
+maintenanceTaskSchema.index({ hotelId: 1, dueDate: 1, status: 1 }); // overdue queries
 
 // Virtual for overdue status
 maintenanceTaskSchema.virtual('isOverdue').get(function() {
@@ -440,27 +443,29 @@ maintenanceTaskSchema.statics.getMaintenanceStats = async function(hotelId, star
 };
 
 // Static method to get overdue tasks
-maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId, staffFilter = {}) {
+maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId, staffFilter = {}, limit = 100) {
   try {
+    const safeLimit = Math.min(500, Math.max(1, parseInt(limit) || 100));
     return await this.find({
       hotelId,
       ...staffFilter,
       dueDate: { $lt: new Date() },
       status: { $in: ['pending', 'assigned', 'in_progress'] }
     })
-    .populate('roomId', 'number type')
+    .populate('roomId', 'roomNumber type')
     .populate('assignedTo', 'name')
-    .sort('dueDate').lean().limit(1000);
+    .sort('dueDate').lean().limit(safeLimit);
   } catch (error) {
     throw new Error(`${error.message}`);
   }
 };
 
 // Static method to get upcoming recurring tasks
-maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId, days = 7, staffFilter = {}) {
+maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId, days = 7, staffFilter = {}, limit = 100) {
   try {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
+    const safeLimit = Math.min(500, Math.max(1, parseInt(limit) || 100));
 
     return await this.find({
       hotelId,
@@ -468,14 +473,17 @@ maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId
       isRecurring: true,
       'recurringSchedule.nextDue': { $lte: futureDate }
     })
-    .populate('roomId', 'number type')
-    .sort('recurringSchedule.nextDue').lean().limit(1000);
+    .populate('roomId', 'roomNumber type')
+    .sort('recurringSchedule.nextDue').lean().limit(safeLimit);
   } catch (error) {
     throw new Error(`${error.message}`);
   }
 };
 
 // NOTIFICATION AUTOMATION HOOKS
+// Note: In Mongoose post('save') hooks, `this` refers to the document instance
+// (with isModified/isNew available), and `doc` is the saved document.
+// We use `this` for isModified/isNew checks and `doc` for data access.
 maintenanceTaskSchema.post('save', async function(doc) {
   try {
     // Get room data for notifications
@@ -509,8 +517,8 @@ maintenanceTaskSchema.post('save', async function(doc) {
       );
     }
 
-    // 2. Task assigned to staff
-    if (doc.isModified('assignedTo') && doc.assignedTo) {
+    // 2. Task assigned to staff — use `this` to check if field was modified
+    if (this.isModified('assignedTo') && doc.assignedTo) {
       await NotificationAutomationService.triggerNotification(
         'maintenance_assigned',
         {
@@ -531,7 +539,7 @@ maintenanceTaskSchema.post('save', async function(doc) {
     }
 
     // 3. Task status changed to in_progress
-    if (doc.isModified('status') && doc.status === 'in_progress') {
+    if (this.isModified('status') && doc.status === 'in_progress') {
       await NotificationAutomationService.triggerNotification(
         'maintenance_started',
         {
@@ -549,7 +557,7 @@ maintenanceTaskSchema.post('save', async function(doc) {
     }
 
     // 4. Task completed
-    if (doc.isModified('status') && doc.status === 'completed') {
+    if (this.isModified('status') && doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'maintenance_completed',
         {
@@ -570,7 +578,7 @@ maintenanceTaskSchema.post('save', async function(doc) {
     }
 
     // 5. High-cost maintenance alert (threshold: $500)
-    if (doc.isModified('actualCost') && doc.actualCost && doc.actualCost >= 500) {
+    if (this.isModified('actualCost') && doc.actualCost && doc.actualCost >= 500) {
       await NotificationAutomationService.triggerNotification(
         'maintenance_high_cost',
         {
@@ -588,7 +596,7 @@ maintenanceTaskSchema.post('save', async function(doc) {
     }
 
     // 6. Emergency maintenance alert
-    if (doc.isModified('priority') && doc.priority === 'emergency') {
+    if (this.isModified('priority') && doc.priority === 'emergency') {
       await NotificationAutomationService.triggerNotification(
         'maintenance_urgent',
         {

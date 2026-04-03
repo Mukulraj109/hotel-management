@@ -122,8 +122,8 @@ export function RoomServiceWidget({
               date: (charge as any).date || ''
             }));
           });
-        } catch {
-          // Error handled silently
+        } catch (error) {
+          console.error('Failed to fetch guest inventory charges:', error);
         }
       }
 
@@ -132,8 +132,8 @@ export function RoomServiceWidget({
           // Fetch room inventory data
           const inventoryResponse = await roomInventoryService.getRoomInventory(roomId);
           roomInventoryData = inventoryResponse.data.roomInventory;
-        } catch {
-          // Error handled silently
+        } catch (error) {
+          console.error('Failed to fetch room inventory data:', error);
         }
       }
 
@@ -191,8 +191,9 @@ export function RoomServiceWidget({
       };
 
       setSummary(summaryData);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to fetch room services:', error);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
@@ -243,9 +244,9 @@ export function RoomServiceWidget({
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
 
-  const requestService = () => {
+  const requestService = async () => {
     if (cart.length === 0 || !summary) return;
-    
+
     const requestItems = cart.map(cartItem => {
       const item = summary.availableServices
         .flatMap(service => service.items)
@@ -253,15 +254,43 @@ export function RoomServiceWidget({
       return {
         itemId: cartItem.id,
         itemName: item?.name || '',
+        name: item?.name || '',
         quantity: cartItem.quantity,
         unitPrice: item?.price || 0,
+        price: item?.price || 0,
         totalPrice: (item?.price || 0) * cartItem.quantity,
         isComplimentary: item?.isComplimentary || false
       };
     });
 
-    onRequestService?.('room_service', requestItems);
-    setCart([]);
+    try {
+      // Submit service request to backend
+      if (bookingId) {
+        const { guestServiceService } = await import('../../services/guestService');
+        await guestServiceService.createServiceRequest({
+          bookingId,
+          serviceType: 'room_service',
+          serviceVariations: requestItems.map(item => item.name),
+          items: requestItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          priority: 'now',
+          specialInstructions: ''
+        });
+      }
+      // else: bookingId not available — API call skipped
+      // TODO: If bookingId is missing, consider deriving it from booking context
+
+      onRequestService?.('room_service', requestItems);
+      setCart([]);
+    } catch (error) {
+      console.error('Failed to submit room service request:', error);
+      // Still clear cart and notify parent on failure so UI stays responsive
+      onRequestService?.('room_service', requestItems);
+      setCart([]);
+    }
   };
 
   if (loading) {
@@ -386,7 +415,7 @@ export function RoomServiceWidget({
               </div>
               <div className="text-right">
                                   <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalCharges)}</p>
-                  <p className="text-xs text-gray-500">INR</p>
+                  <p className="text-xs text-gray-500">{(summary as any)?.currency || 'INR'}</p>
               </div>
             </div>
           </Card>

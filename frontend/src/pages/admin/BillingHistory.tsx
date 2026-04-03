@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { SplitFolioManager } from '../../components/reservations/SplitFolioManager';
 import { 
   billingHistoryService, 
   BillingHistoryItem, 
@@ -96,6 +95,8 @@ const BillingFilters: React.FC<BillingFiltersProps> = ({
               <option value="invoice">Invoices</option>
               <option value="payment">Payments</option>
               <option value="refund">Refunds</option>
+              <option value="booking">Bookings</option>
+              <option value="checkout_charges">Checkout Charges</option>
             </select>
           </div>
 
@@ -266,7 +267,7 @@ const HistoryTable: React.FC<HistoryTableProps> = ({ items, isLoading, onItemCli
                 key={item.id}
                 onClick={() => onItemClick(item)}
                 className="hover:bg-gray-50 cursor-pointer"
-               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onItemClick(item); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+                onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onItemClick(item); } }}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {billingHistoryService.formatDate(item.date)}
                 </td>
@@ -301,7 +302,7 @@ const HistoryTable: React.FC<HistoryTableProps> = ({ items, isLoading, onItemCli
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <Badge 
-                    variant={billingHistoryService.getStatusColor(item.status, item.type) as unknown}
+                    variant={billingHistoryService.getStatusColor(item.status, item.type)}
                   >
                     {item.status}
                   </Badge>
@@ -339,7 +340,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ item, isOpen, onClose }) => {
           <div>
             <label className="block text-sm font-medium text-gray-700">Status</label>
             <Badge 
-              variant={billingHistoryService.getStatusColor(item.status, item.type) as unknown}
+              variant={billingHistoryService.getStatusColor(item.status, item.type)}
               className="mt-1"
             >
               {item.status}
@@ -492,7 +493,6 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
 // Main Component
 export default function BillingHistory() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<BillingHistoryFilters>({
     page: 1,
     limit: 20,
@@ -504,21 +504,30 @@ export default function BillingHistory() {
   // Fetch billing history
   const {
     data: historyData,
-    isLoading,
-    refetch
+    isLoading
   } = useQuery({
     queryKey: ['billing-history', filters],
     queryFn: () => billingHistoryService.getBillingHistory(filters),
-    keepPreviousData: true
+    placeholderData: keepPreviousData
   });
+
+  // Resolve hotelId safely: user.hotelId may be a string or an object ref
+  const resolvedHotelId: string | undefined = (() => {
+    if (!user?.hotelId) return undefined;
+    if (typeof user.hotelId === 'string') return user.hotelId;
+    if (typeof user.hotelId === 'object' && '_id' in user.hotelId) return (user.hotelId as { _id: string })._id;
+    return undefined;
+  })();
 
   // Export mutation
   const exportMutation = useMutation({
     mutationFn: () => billingHistoryService.exportBillingHistory('csv', {
       startDate: filters.startDate,
       endDate: filters.endDate,
-      type: filters.type,
-      hotelId: user?.role === 'staff' ? user.hotelId : undefined
+      // Only pass exportable types; 'booking' and 'checkout_charges' are also
+      // valid now that the backend accepts them.
+      type: filters.type as 'all' | 'invoice' | 'payment' | 'refund' | 'booking' | 'checkout_charges' | undefined,
+      hotelId: resolvedHotelId
     }),
     onSuccess: (data) => {
       billingHistoryService.downloadExportFile(data.data);
@@ -571,7 +580,7 @@ export default function BillingHistory() {
         onFiltersChange={handleFiltersChange}
         onSearch={handleSearch}
         onExport={handleExport}
-        isExporting={exportMutation.isLoading}
+        isExporting={exportMutation.isPending}
       />
 
       {/* History Table */}

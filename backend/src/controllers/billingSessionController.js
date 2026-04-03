@@ -398,7 +398,8 @@ export const voidSession = catchAsync(async (req, res) => {
 // Get all billing sessions for a hotel
 export const getHotelBillingSessions = catchAsync(async (req, res) => {
   const { hotelId } = req.params;
-  const { status, page = 1, limit = 20 } = req.query;
+  const { status, page = 1, limit: rawLimit = 20 } = req.query;
+  const limit = Math.min(100, Math.max(1, parseInt(rawLimit) || 20));
 
   // Check access permissions
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
@@ -410,7 +411,7 @@ export const getHotelBillingSessions = catchAsync(async (req, res) => {
     query.status = status;
   }
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (parseInt(page) - 1) * limit;
 
   const billingSessions = await BillingSession.find(query)
     .populate('hotelId', 'name')
@@ -418,7 +419,7 @@ export const getHotelBillingSessions = catchAsync(async (req, res) => {
     .populate('createdBy', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
+    .limit(limit).lean();
 
   const total = await BillingSession.countDocuments(query);
 
@@ -427,7 +428,7 @@ export const getHotelBillingSessions = catchAsync(async (req, res) => {
     results: billingSessions.length,
     pagination: {
       current: parseInt(page),
-      pages: Math.ceil(total / parseInt(limit)),
+      pages: Math.ceil(total / limit),
       total
     },
     data: billingSessions

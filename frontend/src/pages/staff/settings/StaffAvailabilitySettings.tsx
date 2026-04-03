@@ -5,7 +5,6 @@ import { useMutation } from '@tanstack/react-query';
 import {
   Clock,
   CheckCircle,
-  XCircle,
   Coffee,
   UserX,
   Bell,
@@ -29,18 +28,20 @@ interface StaffAvailabilitySettingsProps {
 
 export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps = {}) {
   const [workInfo, setWorkInfo] = useState({
-    todayStatus: 'Loading...',
-    hoursWorked: '--',
-    tasksCompleted: '--',
-    nextBreak: '--'
+    todayStatus: '',
+    hoursWorked: '',
+    tasksCompleted: '',
+    nextBreak: ''
   });
+  const [workInfoLoaded, setWorkInfoLoaded] = useState(false);
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
-    formState: { isDirty }
+    reset,
+    formState: { isDirty, errors }
   } = useForm<StaffAvailabilityFormData>({
     defaultValues: {
       status: 'available',
@@ -66,20 +67,27 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
           setValue('breakDuration', prefs.breakDuration ?? 15, { shouldDirty: false });
           setValue('maxTasksPerHour', prefs.maxTasksPerHour ?? 8, { shouldDirty: false });
         }
+        const statusLabels: Record<string, string> = {
+          available: 'Available',
+          busy: 'Busy',
+          break: 'On Break',
+          offline: 'Offline'
+        };
         setWorkInfo({
-          todayStatus: prefs?.status || 'Off Shift',
+          todayStatus: statusLabels[prefs?.status || ''] || 'Off Shift',
           hoursWorked: 'N/A',
           tasksCompleted: 'N/A',
           nextBreak: 'N/A'
         });
       } catch {
-        // Use defaults if preferences not yet saved
         setWorkInfo({
           todayStatus: 'N/A',
           hoursWorked: 'N/A',
           tasksCompleted: 'N/A',
           nextBreak: 'N/A'
         });
+      } finally {
+        setWorkInfoLoaded(true);
       }
     };
     loadPreferences();
@@ -96,11 +104,28 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
   const saveAvailabilityMutation = useMutation({
     mutationFn: async (data: StaffAvailabilityFormData) => {
       const { data: result } = await api.put('/user-preferences/staff', {
-        availability: data
+        availability: {
+          status: data.status,
+          autoStatusChange: data.autoStatusChange,
+          breakReminder: data.breakReminder,
+          breakDuration: data.breakDuration,
+          maxTasksPerHour: data.maxTasksPerHour
+        }
       });
-      return result;
+      return { result, formData: data };
     },
-    onSuccess: () => {
+    onSuccess: ({ formData }) => {
+      reset(formData);
+      const statusLabels: Record<string, string> = {
+        available: 'Available',
+        busy: 'Busy',
+        break: 'On Break',
+        offline: 'Offline'
+      };
+      setWorkInfo(prev => ({
+        ...prev,
+        todayStatus: statusLabels[formData.status] || formData.status
+      }));
       toast.success('Availability settings updated successfully');
       if (onSettingsChange) {
         onSettingsChange(false);
@@ -218,12 +243,20 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
                       Max Tasks Per Hour
                     </label>
                     <input
-                      {...register('maxTasksPerHour', { min: 1, max: 20, valueAsNumber: true })}
+                      {...register('maxTasksPerHour', {
+                        required: 'Required',
+                        min: { value: 1, message: 'Minimum is 1' },
+                        max: { value: 20, message: 'Maximum is 20' },
+                        valueAsNumber: true
+                      })}
                       type="number"
                       min="1"
                       max="20"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    {errors.maxTasksPerHour && (
+                      <p className="text-red-500 text-xs mt-1">{errors.maxTasksPerHour.message}</p>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">
                       System will mark you as busy when this limit is reached
                     </p>
@@ -282,24 +315,31 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
               <Clock className="h-4 w-4" />
               <span>Work Hours Information</span>
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-700">Today's Status:</span>
-                <span className="ml-2 text-green-600">{workInfo.todayStatus}</span>
+            {!workInfoLoaded ? (
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading work info...</span>
               </div>
-              <div>
-                <span className="font-medium text-gray-700">Hours Worked:</span>
-                <span className="ml-2 text-gray-900">{workInfo.hoursWorked}</span>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">Today's Status:</span>
+                  <span className="ml-2 text-green-600">{workInfo.todayStatus}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Hours Worked:</span>
+                  <span className="ml-2 text-gray-900">{workInfo.hoursWorked}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Tasks Completed:</span>
+                  <span className="ml-2 text-gray-900">{workInfo.tasksCompleted}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Next Break:</span>
+                  <span className="ml-2 text-gray-900">{workInfo.nextBreak}</span>
+                </div>
               </div>
-              <div>
-                <span className="font-medium text-gray-700">Tasks Completed:</span>
-                <span className="ml-2 text-gray-900">{workInfo.tasksCompleted}</span>
-              </div>
-              <div>
-                <span className="font-medium text-gray-700">Next Break:</span>
-                <span className="ml-2 text-gray-900">{workInfo.nextBreak}</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Important Notes */}

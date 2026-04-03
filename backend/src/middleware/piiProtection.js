@@ -23,8 +23,14 @@ const PII_FIELDS = [
 // Fields that should be masked (partially visible) rather than removed
 const MASKABLE_FIELDS = ['email', 'phone', 'passport', 'nationalId', 'creditCardNumber'];
 
-// Roles allowed to view full PII (frontdesk needs PII for check-in/check-out workflows)
-const PII_AUTHORIZED_ROLES = ['admin', 'manager', 'staff', 'frontdesk'];
+// Roles allowed to view full PII in API responses.
+// - admin/manager: full operational access for hotel management.
+// - frontdesk: needs PII for check-in/check-out and guest service workflows.
+// SECURITY: 'staff' is intentionally NOT included. Staff see masked PII in list views.
+// Individual service request controllers that legitimately need full PII (e.g., a
+// staff member viewing their own assigned guest request) must explicitly grant access
+// through controller-level logic rather than blanket middleware bypass.
+const PII_AUTHORIZED_ROLES = ['admin', 'manager', 'frontdesk'];
 
 /**
  * Mask a PII value to show only partial information

@@ -4,6 +4,7 @@ import { vendorController } from '../controllers/vendorController.js';
 import vendorService from '../services/vendorService.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query, validationResult } from 'express-validator';
@@ -26,6 +27,7 @@ const validateRequest = (req, res, next) => {
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Enhanced validation schemas

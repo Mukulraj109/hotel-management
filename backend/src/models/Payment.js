@@ -75,7 +75,8 @@ paymentSchema.index({ hotelId: 1, createdAt: -1 });
 paymentSchema.index({ hotelId: 1, status: 1 });
 paymentSchema.index({ hotelId: 1, status: 1, createdAt: -1 }); // Compound index for billing/revenue aggregation pipelines
 paymentSchema.index({ hotelId: 1, bookingId: 1, status: 1 });
-paymentSchema.index({ guestId: 1, hotelId: 1 });
+// Removed: index on guestId was declared but guestId field doesn't exist in schema
+// paymentSchema.index({ guestId: 1, hotelId: 1 });
 
 // Exclude soft-deleted payments from all find queries by default
 paymentSchema.pre(/^find/, function(next) {

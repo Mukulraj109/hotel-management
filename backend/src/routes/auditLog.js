@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import auditAnalyticsService from '../services/auditAnalytics.js';
 import logger from '../utils/logger.js';
 
@@ -11,7 +12,7 @@ const router = express.Router();
  * @desc    Get audit logs with filtering and pagination
  * @access  Private (Admin, Manager)
  */
-router.get('/', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const {
       userId,
@@ -72,7 +73,7 @@ router.get('/', authenticate, ensurePropertyAccess, authorize('admin', 'manager'
  * @desc    Get usage statistics
  * @access  Private (Admin, Manager)
  */
-router.get('/statistics', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/statistics', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { startDate, endDate, groupBy } = req.query;
 
@@ -103,7 +104,7 @@ router.get('/statistics', authenticate, ensurePropertyAccess, authorize('admin',
  * @desc    Get property activity heatmap
  * @access  Private (Admin, Manager)
  */
-router.get('/heatmap', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/heatmap', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -130,7 +131,7 @@ router.get('/heatmap', authenticate, ensurePropertyAccess, authorize('admin', 'm
  * @desc    Calculate time savings from bulk operations
  * @access  Private (Admin, Manager)
  */
-router.get('/time-savings', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/time-savings', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -157,7 +158,7 @@ router.get('/time-savings', authenticate, ensurePropertyAccess, authorize('admin
  * @desc    Get recent activity feed
  * @access  Private (Admin, Manager)
  */
-router.get('/recent', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/recent', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { limit } = req.query;
 
@@ -185,7 +186,7 @@ router.get('/recent', authenticate, ensurePropertyAccess, authorize('admin', 'ma
  * @desc    Export audit log to CSV or JSON
  * @access  Private (Admin, Manager)
  */
-router.get('/export', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/export', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const {
       userId,
@@ -244,7 +245,7 @@ router.get('/export', authenticate, ensurePropertyAccess, authorize('admin', 'ma
  * @desc    Get user activity
  * @access  Private (Admin, Manager, or own data)
  */
-router.get('/user/:userId', authenticate, ensurePropertyAccess, async (req, res) => {
+router.get('/user/:userId', authenticate, ensureTenantContext, ensurePropertyAccess, async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit, skip } = req.query;
@@ -283,7 +284,7 @@ router.get('/user/:userId', authenticate, ensurePropertyAccess, async (req, res)
  * @desc    Get property activity
  * @access  Private (Admin, Manager)
  */
-router.get('/property/:propertyId', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/property/:propertyId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { propertyId } = req.params;
     const { limit, skip } = req.query;
@@ -314,7 +315,7 @@ router.get('/property/:propertyId', authenticate, ensurePropertyAccess, authoriz
  * @desc    Get specific audit log entry
  * @access  Private (Admin, Manager)
  */
-router.get('/:logId', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/:logId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
   try {
     const { logId } = req.params;
 

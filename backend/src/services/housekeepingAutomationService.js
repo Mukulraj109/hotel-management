@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
 import Housekeeping from '../models/Housekeeping.js';
 import Room from '../models/Room.js';
@@ -608,7 +609,8 @@ class HousekeepingAutomationService {
    */
   async autoAssignTasks(tasks, options = {}) {
     try {
-      if (!options.autoAssignTasks) {
+      // options.autoAssignTasks must be explicitly true to proceed
+      if (options.autoAssignTasks !== true) {
         return { assigned: 0, skipped: 0, reason: 'Auto-assignment disabled' };
       }
 
@@ -664,7 +666,7 @@ class HousekeepingAutomationService {
         hotelId,
         role: { $in: ['housekeeping', 'staff'] },
         isActive: true
-      }).select('_id name email role').lean().limit(1000);
+      }).select('_id name email role').lean().limit(200);
 
       // For now, return all active staff
       // In a more sophisticated system, this would check current workload

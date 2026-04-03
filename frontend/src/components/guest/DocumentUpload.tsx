@@ -480,7 +480,7 @@ export default function DocumentUpload({
               />
 
               <p className="text-xs text-gray-500 mt-4">
-                Your documents are encrypted and securely stored
+                Your documents are stored securely with access controls. Only authorized hotel staff can view your documents.
               </p>
             </div>
           )}

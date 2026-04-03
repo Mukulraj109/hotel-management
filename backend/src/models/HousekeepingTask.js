@@ -261,6 +261,9 @@ housekeepingTaskSchema.virtual('efficiencyStatus').get(function() {
 });
 
 // NOTIFICATION AUTOMATION HOOKS
+// Note: In Mongoose post('save') hooks, `this` refers to the document instance
+// (with isModified/isNew available), and `doc` is the saved document.
+// We use `this` for isModified/isNew checks and `doc` for data access.
 housekeepingTaskSchema.post('save', async function(doc) {
   try {
     // Get room data for notifications
@@ -289,8 +292,8 @@ housekeepingTaskSchema.post('save', async function(doc) {
       );
     }
 
-    // 2. Housekeeping task assigned to staff
-    if (doc.isModified('assignedTo') && doc.assignedTo) {
+    // 2. Housekeeping task assigned to staff — use `this` for isModified check
+    if (this.isModified('assignedTo') && doc.assignedTo) {
       await NotificationAutomationService.triggerNotification(
         'housekeeping_assigned',
         {
@@ -309,7 +312,7 @@ housekeepingTaskSchema.post('save', async function(doc) {
     }
 
     // 3. Cleaning started
-    if (doc.isModified('status') && doc.status === 'in_progress') {
+    if (this.isModified('status') && doc.status === 'in_progress') {
       await NotificationAutomationService.triggerNotification(
         'cleaning_started',
         {
@@ -326,7 +329,7 @@ housekeepingTaskSchema.post('save', async function(doc) {
     }
 
     // 4. Cleaning completed
-    if (doc.isModified('status') && doc.status === 'completed') {
+    if (this.isModified('status') && doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'cleaning_completed',
         {
@@ -346,7 +349,7 @@ housekeepingTaskSchema.post('save', async function(doc) {
     }
 
     // 5. Quality issue notification (low quality score)
-    if (doc.isModified('qualityScore') && doc.qualityScore && doc.qualityScore < 3) {
+    if (this.isModified('qualityScore') && doc.qualityScore && doc.qualityScore < 3) {
       await NotificationAutomationService.triggerNotification(
         'cleaning_quality_issue',
         {
@@ -365,7 +368,7 @@ housekeepingTaskSchema.post('save', async function(doc) {
     }
 
     // 6. High inventory consumption alert
-    if (doc.isModified('inventoryConsumed') && doc.inventoryConsumed.length > 0) {
+    if (this.isModified('inventoryConsumed') && doc.inventoryConsumed.length > 0) {
       const totalCost = doc.totalInventoryCost || 0;
       if (totalCost > 50) { // Threshold for high consumption
         await NotificationAutomationService.triggerNotification(

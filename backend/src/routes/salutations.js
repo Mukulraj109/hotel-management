@@ -2,11 +2,13 @@ import express from 'express';
 import * as salutationController from '../controllers/salutationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Public routes (for guest forms, etc.)

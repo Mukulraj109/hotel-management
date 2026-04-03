@@ -27,6 +27,20 @@ export interface HousekeepingTask {
   createdAt: string;
 }
 
+export interface HousekeepingListResponse {
+  status: string;
+  results: number;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+  data: {
+    tasks: HousekeepingTask[];
+  };
+}
+
 export type HousekeepingTaskStatus =
   'pending' |
   'assigned' |
@@ -38,7 +52,7 @@ export type HousekeepingTaskStatus =
 class HousekeepingService {
   private baseURL = '/housekeeping';
 
-  async getTasks(assignedToUserId?: string, page?: number, limit?: number): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
+  async getTasks(assignedToUserId?: string, page?: number, limit?: number): Promise<HousekeepingListResponse> {
     try {
       const normalizedParams = normalizeListParams({ page, limit });
       const queryParams = new URLSearchParams();

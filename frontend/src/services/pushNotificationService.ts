@@ -45,8 +45,7 @@ export class PushNotificationService {
       try {
         // Note: For development, you might need to generate proper VAPID keys
         // You can generate them using: npx web-push generate-vapid-keys
-        const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY ||
-          'BKagOWjyDhkBJxEWnVbirY2pLLuZQ2xJryYLGpDXj3OBIBsz5Vj8zj5x1Fu5SmLlYKkWHD2HWcPLt6xnUtwilIg';
+        const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
         const subscription = await this.registration!.pushManager.subscribe({
           userVisibleOnly: true,
@@ -62,7 +61,7 @@ export class PushNotificationService {
 
           // For local development, we can still use notifications without push
           // Just return a mock subscription for testing
-          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && import.meta.env.DEV) {
             return JSON.stringify({
               endpoint: 'mock://localhost/push',
               keys: {

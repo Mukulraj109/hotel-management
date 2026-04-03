@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   AlertTriangle,
   Bell,
   Filter,
@@ -9,17 +9,12 @@ import {
   Play,
   CheckCircle,
   XCircle,
-  Clock,
-  User,
   ArrowUp,
-  Settings,
   MoreHorizontal,
-  Eye,
-  Trash2,
-  AlertOctagon,
   Zap
 } from 'lucide-react';
 import { staffAlertService, StaffAlert, StaffAlertFilters } from '../../services/staffAlertService';
+import { useStaffAlerts } from '../../hooks/useStaffAlerts';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,42 +31,70 @@ export default function StaffAlertCenter() {
     activeOnly: true
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAlerts, setSelectedAlerts] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'created' | 'priority' | 'status'>('priority');
 
   const queryClient = useQueryClient();
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch alerts
+  // Debounce search input: wait 400 ms after user stops typing before firing query
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchTerm]);
+
+  // Enable real-time updates via WebSocket — invalidates queries when alerts change
+  useStaffAlerts();
+
+  // Fetch alerts with auto-refresh every 30 seconds
   const {
     data: alertsData,
     isLoading: isLoadingAlerts,
     error: alertsError
   } = useQuery({
-    queryKey: ['staff-alerts', currentPage, filters, searchTerm, sortBy],
+    queryKey: ['staff-alerts', currentPage, filters, debouncedSearch, sortBy],
     queryFn: () => staffAlertService.getAlerts({
       ...filters,
       page: currentPage,
       limit: 20,
-      ...(searchTerm && { search: searchTerm })
+      sortBy: sortBy === 'created' ? 'createdAt' : sortBy,
+      ...(debouncedSearch && { search: debouncedSearch })
     }),
-    keepPreviousData: true
+    placeholderData: (prev) => prev,
+    refetchInterval: 30000,
+    staleTime: 10000
   });
 
-  // Mutations
+  // Mutations — use arrow functions to preserve 'this' context on service methods
   const acknowledgeAlertMutation = useMutation({
-    mutationFn: staffAlertService.acknowledgeAlert,
+    mutationFn: (id: string) => staffAlertService.acknowledgeAlert(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       toast.success('Alert acknowledged');
+    },
+    onError: () => {
+      toast.error('Failed to acknowledge alert. Please try again.');
     }
   });
 
   const startWorkingMutation = useMutation({
-    mutationFn: staffAlertService.startWorkingOnAlert,
+    mutationFn: (id: string) => staffAlertService.startWorkingOnAlert(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       toast.success('Started working on alert');
+    },
+    onError: () => {
+      toast.error('Failed to update alert status. Please try again.');
     }
   });
 
@@ -80,7 +103,24 @@ export default function StaffAlertCenter() {
       staffAlertService.resolveAlert(id, resolution, notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       toast.success('Alert resolved');
+    },
+    onError: () => {
+      toast.error('Failed to resolve alert. Please try again.');
+    }
+  });
+
+  const dismissAlertMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      staffAlertService.dismissAlert(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
+      toast.success('Alert dismissed');
+    },
+    onError: () => {
+      toast.error('Failed to dismiss alert. Please try again.');
     }
   });
 
@@ -89,16 +129,24 @@ export default function StaffAlertCenter() {
       staffAlertService.escalateAlert(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
-      toast.success('Alert escalated');
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
+      toast.success('Alert escalated to critical');
+    },
+    onError: () => {
+      toast.error('Failed to escalate alert. Please try again.');
     }
   });
 
   const acknowledgeMultipleMutation = useMutation({
-    mutationFn: staffAlertService.acknowledgeMultiple,
+    mutationFn: (alertIds: string[]) => staffAlertService.acknowledgeMultiple(alertIds),
     onSuccess: ({ modifiedCount }) => {
       queryClient.invalidateQueries({ queryKey: ['staff-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-alert-summary'] });
       setSelectedAlerts([]);
       toast.success(`${modifiedCount} alerts acknowledged`);
+    },
+    onError: () => {
+      toast.error('Failed to acknowledge alerts. Please try again.');
     }
   });
 
@@ -127,22 +175,9 @@ export default function StaffAlertCenter() {
     }
   };
 
-  // Get alert priority sort value
-  const getPrioritySortValue = (priority: string): number => {
-    const priorityValues = { critical: 5, urgent: 4, high: 3, medium: 2, low: 1 };
-    return priorityValues[priority as keyof typeof priorityValues] || 2;
-  };
-
-  // Sort alerts
-  const sortedAlerts = alertsData?.alerts.slice().sort((a, b) => {
-    if (sortBy === 'priority') {
-      return getPrioritySortValue(b.priority) - getPrioritySortValue(a.priority);
-    }
-    if (sortBy === 'created') {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-    return 0;
-  }) || [];
+  // Alerts are already sorted server-side by the sortBy param sent to the API.
+  // No client-side re-sort needed — avoids incorrect ordering across paginated pages.
+  const sortedAlerts = alertsData?.alerts ?? [];
 
   if (isLoadingAlerts) {
     return (
@@ -231,7 +266,7 @@ export default function StaffAlertCenter() {
             </Button>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as unknown)}
+              onChange={(e) => setSortBy(e.target.value as 'created' | 'priority' | 'status')}
               className="border border-gray-300 rounded-md px-3 py-2 text-sm"
             >
               <option value="priority">Sort by Priority</option>
@@ -317,7 +352,7 @@ export default function StaffAlertCenter() {
               <Button
                 size="sm"
                 onClick={() => acknowledgeMultipleMutation.mutate(selectedAlerts)}
-                disabled={acknowledgeMultipleMutation.isLoading}
+                disabled={acknowledgeMultipleMutation.isPending}
               >
                 <Check className="h-4 w-4 mr-1" />
                 Acknowledge Selected
@@ -334,7 +369,7 @@ export default function StaffAlertCenter() {
             <Bell className="mx-auto h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No alerts found</h3>
             <p className="text-gray-600">
-              {Object.values(filters).some(f => f !== '' && f !== false) || searchTerm
+              {(filters.status !== '' || filters.type !== '' || filters.priority !== '' || filters.category !== '' || !filters.activeOnly || debouncedSearch)
                 ? 'No alerts match your current filters.'
                 : 'Great! All alerts have been resolved.'
               }
@@ -349,10 +384,13 @@ export default function StaffAlertCenter() {
               onSelect={() => handleAlertSelect(alert._id)}
               onAcknowledge={() => acknowledgeAlertMutation.mutate(alert._id)}
               onStartWorking={() => startWorkingMutation.mutate(alert._id)}
-              onResolve={(resolution, notes) => 
+              onResolve={(resolution, notes) =>
                 resolveAlertMutation.mutate({ id: alert._id, resolution, notes })
               }
-              onEscalate={(reason) => 
+              onDismiss={(reason) =>
+                dismissAlertMutation.mutate({ id: alert._id, reason })
+              }
+              onEscalate={(reason) =>
                 escalateAlertMutation.mutate({ id: alert._id, reason })
               }
             />
@@ -394,6 +432,7 @@ interface StaffAlertCardProps {
   onAcknowledge: () => void;
   onStartWorking: () => void;
   onResolve: (resolution: string, notes?: string) => void;
+  onDismiss: (reason: string) => void;
   onEscalate: (reason: string) => void;
 }
 
@@ -404,10 +443,24 @@ function StaffAlertCard({
   onAcknowledge,
   onStartWorking,
   onResolve,
+  onDismiss,
   onEscalate
 }: StaffAlertCardProps) {
   const [showActions, setShowActions] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const typeInfo = staffAlertService.getAlertTypeInfo(alert.type);
+
+  // Close the actions dropdown when clicking outside
+  useEffect(() => {
+    if (!showActions) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setShowActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showActions]);
   const priorityInfo = staffAlertService.getPriorityInfo(alert.priority);
 
   const getStatusColor = (status: string) => {
@@ -496,38 +549,64 @@ function StaffAlertCard({
                   </Button>
                 </>
               )}
-              
-              {alert.status === 'in_progress' && (
-                <Button 
-                  size="sm" 
+
+              {(alert.status === 'in_progress' || alert.status === 'acknowledged') && (
+                <Button
+                  size="sm"
                   variant="outline"
-                  onClick={() => onResolve('Resolved by staff', 'Issue has been addressed')}
+                  onClick={() => {
+                    const resolution = window.prompt('Resolution summary (required):');
+                    if (resolution && resolution.trim()) {
+                      onResolve(resolution.trim(), undefined);
+                    }
+                  }}
                 >
                   <CheckCircle className="h-4 w-4 mr-1" />
                   Resolve
                 </Button>
               )}
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setShowActions(!showActions)}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-
-              {showActions && (
-                <div className="absolute right-0 top-8 z-10 bg-white rounded-md shadow-lg border py-1 min-w-[120px]">
-                  <button
-                    onClick={() => {
-                      onEscalate('Needs immediate attention');
-                      setShowActions(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-gray-100"
+              {/* More actions dropdown */}
+              {alert.status !== 'resolved' && alert.status !== 'dismissed' && (
+                <div className="relative" ref={actionsRef}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowActions(!showActions)}
                   >
-                    <ArrowUp className="h-4 w-4 mr-2 inline" />
-                    Escalate
-                  </button>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+
+                  {showActions && (
+                    <div className="absolute right-0 top-8 z-20 bg-white rounded-md shadow-lg border py-1 min-w-[140px]">
+                      <button
+                        onClick={() => {
+                          const reason = window.prompt('Escalation reason (required):');
+                          if (reason && reason.trim()) {
+                            onEscalate(reason.trim());
+                            setShowActions(false);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-gray-100 flex items-center"
+                      >
+                        <ArrowUp className="h-4 w-4 mr-2" />
+                        Escalate
+                      </button>
+                      <button
+                        onClick={() => {
+                          const reason = window.prompt('Dismiss reason (required):');
+                          if (reason && reason.trim()) {
+                            onDismiss(reason.trim());
+                            setShowActions(false);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 flex items-center"
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

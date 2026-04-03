@@ -589,7 +589,7 @@ class LoyaltyService {
    */
   formatPoints(points: number): string {
     if (points == null || isNaN(points)) return '0';
-    return points.toLocaleString('en-IN');
+    return points.toLocaleString();
   }
 
   /**

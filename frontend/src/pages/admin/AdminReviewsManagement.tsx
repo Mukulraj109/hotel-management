@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Star, 
-  MessageCircle, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Star,
+  MessageCircle,
+  Clock,
+  CheckCircle,
+  XCircle,
   Filter,
   BarChart3,
   TrendingUp,
@@ -13,6 +13,7 @@ import {
   Calendar,
   Eye
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/Modal';
@@ -195,6 +196,8 @@ function ModerationModal({ review, isOpen, onClose, onSubmit }: ModerationModalP
   );
 }
 
+const ADMIN_PAGE_SIZE = 20;
+
 export default function AdminReviewsManagement() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -208,6 +211,8 @@ export default function AdminReviewsManagement() {
   const [moderationModalOpen, setModerationModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRating, setFilterRating] = useState<number | undefined>();
+  const [reviewPage, setReviewPage] = useState(1);
+  const [pendingPage, setPendingPage] = useState(1);
 
   const hotelId = selectedPropertyId || user?.hotelId || '';
 
@@ -217,16 +222,17 @@ export default function AdminReviewsManagement() {
     try {
       setLoading(true);
       const [allReviews, pendingReviewsData, summaryData] = await Promise.all([
-        reviewsService.getHotelReviews(hotelId, { limit: 50 }),
-        user?.role === 'admin' ? reviewsService.getPendingReviews({ limit: 50 }) : Promise.resolve({ reviews: [] }),
+        reviewsService.getHotelReviews(hotelId, { page: reviewPage, limit: ADMIN_PAGE_SIZE }),
+        user?.role === 'admin' ? reviewsService.getPendingReviews({ page: pendingPage, limit: ADMIN_PAGE_SIZE }) : Promise.resolve({ reviews: [] }),
         reviewsService.getHotelRatingSummary(hotelId)
       ]);
 
       setReviews(allReviews.reviews);
       setPendingReviews(pendingReviewsData.reviews);
       setSummary(summaryData);
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load reviews:', error);
+      toast.error('Failed to load reviews. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -236,14 +242,15 @@ export default function AdminReviewsManagement() {
     if (hotelId) {
       loadReviews();
     }
-  }, [hotelId]);
+  }, [hotelId, reviewPage, pendingPage]);
 
   const handleResponse = async (reviewId: string, content: string) => {
     try {
       await reviewsService.addResponse(reviewId, content);
       loadReviews(); // Reload to show the new response
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to respond to review:', error);
+      toast.error('Failed to send response. Please try again.');
     }
   };
 
@@ -251,8 +258,9 @@ export default function AdminReviewsManagement() {
     try {
       await reviewsService.moderateReview(reviewId, status, notes);
       loadReviews(); // Reload to update the review status
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to moderate review:', error);
+      toast.error('Failed to moderate review. Please try again.');
     }
   };
 
@@ -441,7 +449,7 @@ export default function AdminReviewsManagement() {
               <div>
                 <p className="text-sm font-medium text-purple-600">Response Rate</p>
                 <p className="text-2xl font-bold text-purple-700">
-                  {Math.round((reviews.filter(r => r.response).length / reviews.length) * 100)}%
+                  {Math.round(reviews.length > 0 ? (reviews.filter(r => r.response).length / reviews.length) * 100 : 0)}%
                 </p>
               </div>
               <TrendingUp className="h-8 w-8 text-purple-500" />
@@ -530,7 +538,26 @@ export default function AdminReviewsManagement() {
               <p className="text-gray-600">No reviews match your current filters.</p>
             </Card>
           ) : (
-            filteredReviews.map(renderReviewCard)
+            <>
+              {filteredReviews.map(renderReviewCard)}
+              <div className="flex justify-between items-center mt-4">
+                <button
+                  onClick={() => setReviewPage(p => Math.max(1, p - 1))}
+                  disabled={reviewPage === 1}
+                  className="px-3 py-1 border rounded disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span>Page {reviewPage}</span>
+                <button
+                  onClick={() => setReviewPage(p => p + 1)}
+                  disabled={reviews.length < ADMIN_PAGE_SIZE}
+                  className="px-3 py-1 border rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -544,7 +571,26 @@ export default function AdminReviewsManagement() {
               <p className="text-gray-600">No reviews are pending moderation.</p>
             </Card>
           ) : (
-            pendingReviews.map(renderReviewCard)
+            <>
+              {pendingReviews.map(renderReviewCard)}
+              <div className="flex justify-between items-center mt-4">
+                <button
+                  onClick={() => setPendingPage(p => Math.max(1, p - 1))}
+                  disabled={pendingPage === 1}
+                  className="px-3 py-1 border rounded disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span>Page {pendingPage}</span>
+                <button
+                  onClick={() => setPendingPage(p => p + 1)}
+                  disabled={pendingReviews.length < ADMIN_PAGE_SIZE}
+                  className="px-3 py-1 border rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

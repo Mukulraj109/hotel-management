@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Joi from 'joi';
 import Loyalty from '../models/Loyalty.js';
 import Offer from '../models/Offer.js';
@@ -125,13 +126,22 @@ async function getPendingStayPoints(userId) {
   const awardedBookingIds = new Set(awardedRows.map((row) => String(row.bookingId)));
   const pendingBookings = checkedOutBookings.filter((b) => !awardedBookingIds.has(String(b._id)));
 
-  const points = pendingBookings.reduce((sum, booking) => sum + calculateStayPoints(booking), 0);
+  // Load active rule version to use as cfg for point calculations
+  const activeRule = await getActiveRuleVersion();
+  const cfg = {
+    enabled: true,
+    pointsPerCurrencyUnit: activeRule?.rules?.pointsPerCurrencyUnit ?? 0.1,
+    pointsPerNight: activeRule?.rules?.pointsPerNight ?? 0,
+    maxPointsPerStay: activeRule?.rules?.maxPointsPerStay ?? 50000
+  };
+
+  const points = pendingBookings.reduce((sum, booking) => sum + calculateStayPoints(booking, cfg), 0);
   return {
     points,
     bookings: pendingBookings.slice(0, 10).map((booking) => ({
       bookingId: booking._id,
       bookingNumber: booking.bookingNumber,
-      estimatedPoints: calculateStayPoints(booking)
+      estimatedPoints: calculateStayPoints(booking, cfg)
     }))
   };
 }
@@ -464,6 +474,17 @@ router.post('/redeem',
       isValid: offer.isValid
     });
 
+    // Check if user already redeemed this offer
+    const existingRedemption = await Loyalty.findOne({
+      userId: req.user._id,
+      type: 'redeemed',
+      offerId: offer._id
+    }).lean();
+
+    if (existingRedemption) {
+      throw new ApplicationError('You have already redeemed this offer', 400);
+    }
+
     const redeemable = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
 
     if (!redeemable) {
@@ -478,60 +499,69 @@ router.post('/redeem',
       throw new ApplicationError('Cannot redeem this offer. Check tier requirements and available points.', 400);
     }
 
-    // FIX: Use atomic $inc to prevent race conditions on concurrent redemptions.
-    // This ensures two simultaneous requests cannot both deduct points from the same balance.
-    const updatedUser = await User.findOneAndUpdate(
-      {
-        _id: req.user._id,
-        'loyalty.points': { $gte: offer.pointsRequired }
-      },
-      { $inc: { 'loyalty.points': -offer.pointsRequired } },
-      { new: true, select: '+loyalty' }
-    );
+    // Wrap all three operations in a MongoDB transaction for atomicity.
+    // If any step fails, the entire transaction is rolled back automatically.
+    const session = await mongoose.startSession();
+    let updatedUser;
+    let loyaltyTransaction;
 
-    if (!updatedUser) {
-      throw new ApplicationError('Insufficient points or concurrent redemption detected. Please try again.', 400);
-    }
+    try {
+      await session.withTransaction(async () => {
+        // 1. Deduct points from user
+        updatedUser = await User.findOneAndUpdate(
+          {
+            _id: req.user._id,
+            'loyalty.points': { $gte: offer.pointsRequired }
+          },
+          { $inc: { 'loyalty.points': -offer.pointsRequired } },
+          { new: true, select: '+loyalty', session }
+        );
 
-    // Update tier based on new points
-    updatedUser.updateLoyaltyTier();
-    await updatedUser.save();
+        if (!updatedUser) {
+          throw new ApplicationError('Insufficient points or concurrent redemption detected. Please try again.', 400);
+        }
 
-    // Atomically increment offer redemption count
-    const updatedOffer = await Offer.findOneAndUpdate(
-      {
-        _id: offer._id,
-        ...(tenantHotelId ? { hotelId: tenantHotelId } : {}),
-        $or: [
-          { maxRedemptions: { $exists: false } },
-          { maxRedemptions: null },
-          { $expr: { $lt: ['$currentRedemptions', '$maxRedemptions'] } }
-        ]
-      },
-      { $inc: { currentRedemptions: 1 } },
-      { new: true }
-    );
+        // Update tier based on new points
+        updatedUser.updateLoyaltyTier();
+        await updatedUser.save({ session });
 
-    if (!updatedOffer) {
-      // Rollback: restore user points since offer couldn't be redeemed
-      await User.findByIdAndUpdate(req.user._id, {
-        $inc: { 'loyalty.points': offer.pointsRequired }
+        // 2. Increment offer redemption count
+        const updatedOffer = await Offer.findOneAndUpdate(
+          {
+            _id: offer._id,
+            ...(tenantHotelId ? { hotelId: tenantHotelId } : {}),
+            $or: [
+              { maxRedemptions: { $exists: false } },
+              { maxRedemptions: null },
+              { $expr: { $lt: ['$currentRedemptions', '$maxRedemptions'] } }
+            ]
+          },
+          { $inc: { currentRedemptions: 1 } },
+          { new: true, session }
+        );
+
+        if (!updatedOffer) {
+          throw new ApplicationError('This offer has reached its maximum redemption limit.', 400);
+        }
+
+        // 3. Create redemption transaction (array form required for sessions)
+        const [createdTransaction] = await Loyalty.create([{
+          userId: req.user._id,
+          hotelId: offer.hotelId,
+          type: 'redeemed',
+          points: -offer.pointsRequired,
+          description: `Redeemed: ${offer.title}`,
+          offerId: offer._id
+        }], { session });
+
+        loyaltyTransaction = createdTransaction;
+        logger.debug('Loyalty transaction created', { transactionId: loyaltyTransaction._id });
       });
-      throw new ApplicationError('This offer has reached its maximum redemption limit.', 400);
+    } finally {
+      await session.endSession();
     }
 
-    // Create redemption transaction
-    const loyaltyTransaction = await Loyalty.create({
-      userId: req.user._id,
-      hotelId: offer.hotelId,
-      type: 'redeemed',
-      points: -offer.pointsRequired,
-      description: `Redeemed: ${offer.title}`,
-      offerId: offer._id
-    });
-    logger.debug('Loyalty transaction created', { transactionId: loyaltyTransaction._id });
-
-    // Populate transaction data
+    // Populate transaction data (outside transaction, read-only)
     await loyaltyTransaction.populate([
       { path: 'offerId', select: 'title category' },
       { path: 'hotelId', select: 'name' }

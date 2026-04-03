@@ -4,6 +4,7 @@ import { body, param, query } from 'express-validator';
 import hotelAreaController from '../controllers/hotelAreaController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import hotelMiddleware from '../middleware/hotelMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
@@ -15,6 +16,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication middleware for all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('hotelAreas', 'baseAccess'));
 

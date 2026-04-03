@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import SupplyRequest from '../models/SupplyRequest.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -42,6 +43,7 @@ const enforceTenantHotelAccess = (req, supplyRequest, roles) => {
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**
@@ -441,18 +443,37 @@ router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsyn
  */
 router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.query.hotelId;
-  
+
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  const pendingRequests = await SupplyRequest.getPendingApprovals(hotelId);
+  const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = { hotelId, status: 'pending' };
+
+  const [pendingRequests, total] = await Promise.all([
+    SupplyRequest.find(query)
+      .populate('requestedBy', 'name department')
+      .sort('-priority createdAt')
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    SupplyRequest.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
     data: {
       requests: pendingRequests,
-      count: pendingRequests.length
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum) || 1
+      }
     }
   });
 }));
@@ -477,18 +498,47 @@ router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAcces
 router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
-  
+
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
 
-  const overdueRequests = await SupplyRequest.getOverdueRequests(hotelId);
+  const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const query = {
+    hotelId,
+    neededBy: { $lt: new Date() },
+    status: { $in: ['pending', 'approved', 'ordered', 'partial_received'] }
+  };
+
+  // Staff can only see their own overdue requests
+  if (req.user.role === 'staff') {
+    query.requestedBy = req.user._id;
+  }
+
+  const [overdueRequests, total] = await Promise.all([
+    SupplyRequest.find(query)
+      .populate('requestedBy', 'name')
+      .populate('approvedBy', 'name')
+      .sort('neededBy')
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    SupplyRequest.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
     data: {
       requests: overdueRequests,
-      count: overdueRequests.length
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum) || 1
+      }
     }
   });
 }));
@@ -511,7 +561,7 @@ router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAs
  *       200:
  *         description: Supply request details
  */
-router.get(`/:id${OBJECT_ID_PARAM}`, catchAsync(async (req, res) => {
+router.get(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const supplyRequest = await SupplyRequest.findById(req.params.id)
     .populate('hotelId', 'name address contact')
     .populate('requestedBy', 'name email department')
@@ -536,13 +586,6 @@ router.get(`/:id${OBJECT_ID_PARAM}`, catchAsync(async (req, res) => {
     status: 'success',
     data: { supplyRequest }
   });
-  try {
-    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:updated', {
-      supplyRequest
-    });
-  } catch (wsError) {
-    logger.warn('Failed to broadcast supply request update event', { error: wsError.message });
-  }
 }));
 
 /**
@@ -585,7 +628,7 @@ router.get(`/:id${OBJECT_ID_PARAM}`, catchAsync(async (req, res) => {
  */
 router.patch(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const supplyRequest = await SupplyRequest.findById(req.params.id);
-  
+
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);
   }
@@ -605,7 +648,7 @@ router.patch(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffA
   }
 
   const allowedUpdates = [
-    'title', 'description', 'priority', 'neededBy', 'items', 
+    'title', 'description', 'priority', 'neededBy', 'items',
     'notes', 'justification', 'supplier', 'expectedDelivery'
   ];
 
@@ -623,6 +666,84 @@ router.patch(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffA
     status: 'success',
     data: { supplyRequest }
   });
+}));
+
+/**
+ * @swagger
+ * /supply-requests/{id}/cancel:
+ *   post:
+ *     summary: Cancel a supply request (staff can cancel their own pending requests)
+ *     tags: [Supply Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Supply request cancelled successfully
+ */
+router.post(`/:id${OBJECT_ID_PARAM}/cancel`, authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const { reason } = req.body;
+
+  const supplyRequest = await SupplyRequest.findById(req.params.id);
+
+  if (!supplyRequest) {
+    throw new ApplicationError('Supply request not found', 404);
+  }
+
+  // Tenant isolation
+  const userHotelId = req.user?.hotelId ? req.user.hotelId.toString() : null;
+  if (userHotelId && supplyRequest.hotelId.toString() !== userHotelId) {
+    throw new ApplicationError('You can only cancel requests for your hotel', 403);
+  }
+
+  // Staff can only cancel their own requests
+  if (req.user.role === 'staff' && supplyRequest.requestedBy.toString() !== req.user._id.toString()) {
+    throw new ApplicationError('You can only cancel your own requests', 403);
+  }
+
+  // Only pending requests can be cancelled by staff
+  if (!['pending', 'approved'].includes(supplyRequest.status)) {
+    throw new ApplicationError('Only pending or approved requests can be cancelled', 400);
+  }
+
+  // Managers and above can cancel at any non-terminal state
+  const terminalStatuses = ['received', 'cancelled'];
+  if (terminalStatuses.includes(supplyRequest.status)) {
+    throw new ApplicationError('Request is already in a terminal state', 400);
+  }
+
+  supplyRequest.status = 'cancelled';
+  if (reason) supplyRequest.notes = supplyRequest.notes ? `${supplyRequest.notes}\nCancellation reason: ${reason}` : `Cancellation reason: ${reason}`;
+  await supplyRequest.save();
+
+  res.json({
+    status: 'success',
+    message: 'Supply request cancelled successfully',
+    data: { supplyRequest }
+  });
+
+  try {
+    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
+      supplyRequest,
+      status: 'cancelled'
+    });
+  } catch (wsError) {
+    logger.warn('Failed to broadcast supply request cancellation event', { error: wsError.message });
+  }
 }));
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,12 +16,16 @@ import {
   CheckSquare,
   Wifi,
   WifiOff,
-  Package
+  Package,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { housekeepingService, HousekeepingTask } from '../../services/housekeepingService';
+import { housekeepingService, HousekeepingTask, HousekeepingTaskStatus } from '../../services/housekeepingService';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
+
+const PAGE_LIMIT = 20;
 
 export default function StaffHousekeeping() {
   const { user } = useAuth();
@@ -33,14 +37,52 @@ export default function StaffHousekeeping() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [inventoryTaskId, setInventoryTaskId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Real-time connection
-  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  const { connect, on, off, isConnected } = useRealTime();
+
+  // Stable refs so real-time handlers always use current values without
+  // causing the listener effect to re-register on every page/user change.
+  const userIdRef = useRef<string | undefined>(undefined);
+  const pageRef = useRef(1);
+  const fetchTasksRef = useRef<((userId?: string, p?: number) => Promise<void>) | null>(null);
+
+  const fetchTasks = useCallback(async (assignedToUserId?: string, currentPage = 1) => {
+    if (!assignedToUserId) {
+      // No user context yet — clear state but don't enter loading limbo
+      setTasks([]);
+      setTotalPages(1);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await housekeepingService.getTasks(assignedToUserId, currentPage, PAGE_LIMIT);
+      setTasks(data.data.tasks || []);
+      setTotalPages(data.pagination?.pages ?? 1);
+      setTotalCount(data.pagination?.total ?? 0);
+    } catch {
+      setError('Unable to connect to server. Please check your internet connection.');
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Keep refs in sync with current state so real-time handlers always use current values
+  useEffect(() => { userIdRef.current = user?._id; }, [user?._id]);
+  useEffect(() => { pageRef.current = page; }, [page]);
+  useEffect(() => { fetchTasksRef.current = fetchTasks; }, [fetchTasks]);
 
   useEffect(() => {
     if (!user?._id) return;
-    fetchTasks(user._id);
-  }, [user?._id]);
+    fetchTasks(user._id, page);
+  }, [user?._id, page, fetchTasks]);
 
   // Real-time connection setup
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
@@ -48,24 +90,47 @@ export default function StaffHousekeeping() {
     connect().catch(() => { /* WebSocket unavailable */ });
   }, [connect]);
 
-  // Set up real-time event listeners
+  // Set up real-time event listeners.
+  // Uses refs for userId/page/fetchTasks so this effect only re-registers when the
+  // socket connection state changes — NOT on every page navigation.
   useEffect(() => {
-    if (!isConnected || !user?._id) return;
-    
+    if (!isConnected) return;
+
+    // Helper: extract scalar user ID from a potentially-populated field
+    const extractUserId = (field: unknown): string | undefined => {
+      if (!field) return undefined;
+      if (typeof field === 'string') return field;
+      if (typeof field === 'object') {
+        const obj = field as Record<string, unknown>;
+        if (obj._id) return String(obj._id);
+      }
+      return undefined;
+    };
+
     const handleTaskAssigned = (eventData: Record<string, unknown>) => {
+      const currentUserId = userIdRef.current;
+      if (!currentUserId) return;
       const task = (eventData.task as Record<string, unknown> | undefined) ?? eventData;
-      const assignedToUserId = (task.assignedToUserId as string | undefined) ?? (eventData.assignedToUserId as string | undefined);
-      if (assignedToUserId === user._id) {
-        fetchTasks(user._id);
+      const assignedId =
+        extractUserId(task.assignedToUserId) ??
+        extractUserId(task.assignedTo) ??
+        extractUserId(eventData.assignedToUserId);
+      if (assignedId === currentUserId) {
+        fetchTasksRef.current?.(currentUserId, pageRef.current);
         toast.success(`New housekeeping task assigned: ${String(task.title || 'Task')}!`);
       }
     };
-    
+
     const handleTaskUpdate = (eventData: Record<string, unknown>) => {
+      const currentUserId = userIdRef.current;
+      if (!currentUserId) return;
       const task = (eventData.task as Record<string, unknown> | undefined) ?? eventData;
-      const assignedToUserId = (task.assignedToUserId as string | undefined) ?? (eventData.assignedToUserId as string | undefined);
-      if (assignedToUserId === user._id) {
-        fetchTasks(user._id);
+      const assignedId =
+        extractUserId(task.assignedToUserId) ??
+        extractUserId(task.assignedTo) ??
+        extractUserId(eventData.assignedToUserId);
+      if (assignedId === currentUserId) {
+        fetchTasksRef.current?.(currentUserId, pageRef.current);
         if (task.status === 'cancelled') {
           toast.error(`Task cancelled: ${String(task.title || 'Task')}`);
         } else {
@@ -73,41 +138,23 @@ export default function StaffHousekeeping() {
         }
       }
     };
-    
+
     on('housekeeping:task_assigned', handleTaskAssigned);
     on('housekeeping:task_updated', handleTaskUpdate);
     on('housekeeping:status_changed', handleTaskUpdate);
-    
+
     return () => {
       off('housekeeping:task_assigned', handleTaskAssigned);
       off('housekeeping:task_updated', handleTaskUpdate);
       off('housekeeping:status_changed', handleTaskUpdate);
     };
-  }, [isConnected, on, off, user?._id]);
-
-  const fetchTasks = async (assignedToUserId?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      if (!assignedToUserId) {
-        setTasks([]);
-        return;
-      }
-      const data = await housekeepingService.getTasks(assignedToUserId);
-      setTasks(data.data.tasks || []);
-    } catch (error) {
-      setError('Unable to connect to server. Please check your internet connection.');
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [isConnected, on, off]); // stable — does NOT re-register on page/user changes
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
       setUpdating(true);
-      await housekeepingService.updateTaskStatus(taskId, newStatus);
-      await fetchTasks(user?._id);
+      await housekeepingService.updateTaskStatus(taskId, newStatus as HousekeepingTaskStatus);
+      await fetchTasks(user?._id, page);
       toast.success(`Task ${newStatus === 'in_progress' ? 'started' : 'updated'} successfully`);
     } catch {
       toast.error('Failed to update task status. Please try again.');
@@ -130,7 +177,7 @@ export default function StaffHousekeeping() {
         status: 'completed',
         notes: completedSteps.length > 0 ? `Completed steps: ${completedSteps.join(', ')}` : 'Task completed'
       });
-      await fetchTasks(user?._id);
+      await fetchTasks(user?._id, page);
       setShowCompletionModal(false);
       setSelectedTask(null);
       toast.success('Task completed successfully!');
@@ -162,7 +209,12 @@ export default function StaffHousekeeping() {
 
   const pendingTasks = tasks.filter(t => t.status === 'assigned' || t.status === 'pending');
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'inspected');
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setPage(newPage);
+  };
 
   if (loading) {
     return (
@@ -179,7 +231,7 @@ export default function StaffHousekeeping() {
           <AlertTriangle className="mx-auto h-8 w-8 text-red-500 mb-3" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Unable to Load Tasks</h3>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => fetchTasks(user?._id)} className="flex items-center gap-2">
+          <Button onClick={() => fetchTasks(user?._id, page)} className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
             Try Again
           </Button>
@@ -207,7 +259,7 @@ export default function StaffHousekeeping() {
               <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
             )}
           </div>
-          <Button onClick={() => fetchTasks(user?._id)} variant="secondary" size="sm">
+          <Button onClick={() => fetchTasks(user?._id, page)} variant="secondary" size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
@@ -223,7 +275,7 @@ export default function StaffHousekeeping() {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-600">Total Tasks</p>
-              <p className="text-lg font-semibold text-gray-900">{tasks.length}</p>
+              <p className="text-lg font-semibold text-gray-900">{totalCount}</p>
             </div>
           </div>
         </Card>
@@ -234,7 +286,7 @@ export default function StaffHousekeeping() {
               <Clock className="w-5 h-5 text-orange-600" />
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
+              <p className="text-sm font-medium text-gray-600">Pending (this page)</p>
               <p className="text-lg font-semibold text-gray-900">{pendingTasks.length}</p>
             </div>
           </div>
@@ -246,7 +298,7 @@ export default function StaffHousekeeping() {
               <Play className="w-5 h-5 text-yellow-600" />
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-600">In Progress</p>
+              <p className="text-sm font-medium text-gray-600">In Progress (this page)</p>
               <p className="text-lg font-semibold text-gray-900">{inProgressTasks.length}</p>
             </div>
           </div>
@@ -258,7 +310,7 @@ export default function StaffHousekeeping() {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-600">Completed</p>
+              <p className="text-sm font-medium text-gray-600">Completed (this page)</p>
               <p className="text-lg font-semibold text-gray-900">{completedTasks.length}</p>
             </div>
           </div>
@@ -331,15 +383,15 @@ export default function StaffHousekeeping() {
                       <div className="flex-1">
                         <div className="flex items-center mb-2">
                           {getTaskTypeIcon(task.taskType)}
-                          <p className="font-medium ml-2">{task.roomId.roomNumber}</p>
+                          <p className="font-medium ml-2">{task.roomId?.roomNumber || 'No Room'}</p>
                           <Badge variant="secondary" className="ml-2 text-xs">
-                            {task.taskType.replace('_', ' ')}
+                            {task.taskType ? task.taskType.replace('_', ' ') : 'Unknown'}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{task.title}</p>
+                        <p className="text-sm text-gray-600 mb-2">{task.title || 'Untitled Task'}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <Clock className="w-3 h-3 mr-1" />
-                          <span>Started {new Date(task.startedAt!).toLocaleTimeString()}</span>
+                          <span>{task.startedAt ? `Started ${new Date(task.startedAt).toLocaleTimeString()}` : 'In progress'}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -393,17 +445,19 @@ export default function StaffHousekeeping() {
                       <div className="flex-1">
                         <div className="flex items-center mb-2">
                           {getTaskTypeIcon(task.taskType)}
-                          <p className="font-medium ml-2">{task.roomId.roomNumber}</p>
+                          <p className="font-medium ml-2">{task.roomId?.roomNumber || 'No Room'}</p>
                           <Badge variant="secondary" className="ml-2 text-xs">
-                            {task.taskType.replace('_', ' ')}
+                            {task.taskType ? task.taskType.replace('_', ' ') : 'Unknown'}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{task.title}</p>
+                        <p className="text-sm text-gray-600 mb-2">{task.title || 'Untitled Task'}</p>
                         <div className="flex items-center text-xs text-gray-500">
                           <CheckCircle className="w-3 h-3 mr-1" />
                           <span>
-                            Completed {new Date(task.completedAt!).toLocaleTimeString()}
-                            {task.actualDuration && ` (${task.actualDuration} min)`}
+                            {task.completedAt
+                              ? `Completed ${new Date(task.completedAt).toLocaleTimeString()}`
+                              : 'Completed'}
+                            {task.actualDuration != null && ` (${task.actualDuration} min)`}
                           </span>
                         </div>
                       </div>
@@ -416,6 +470,33 @@ export default function StaffHousekeeping() {
         </Card>
       </div>
 
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(page - 1)}
+            disabled={page <= 1 || loading}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Previous
+          </Button>
+          <span className="text-sm text-gray-600">
+            Page {page} of {totalPages} ({totalCount} total tasks)
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(page + 1)}
+            disabled={page >= totalPages || loading}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
+      )}
+
       {/* Task Completion Modal */}
       {selectedTask && (
         <TaskCompletionModal
@@ -426,7 +507,7 @@ export default function StaffHousekeeping() {
           }}
           onComplete={handleCompleteTask}
           title="Complete Housekeeping Task"
-          taskName={`${selectedTask.roomId.roomNumber} - ${selectedTask.title}`}
+          taskName={`${selectedTask.roomId?.roomNumber ? `${selectedTask.roomId.roomNumber} - ` : ''}${selectedTask.title || 'Task'}`}
           steps={getDefaultSteps('housekeeping', selectedTask.taskType)}
           loading={updating}
         />
@@ -453,12 +534,12 @@ export default function StaffHousekeeping() {
               <InventoryConsumptionForm
                 mode="housekeeping"
                 taskId={inventoryTaskId}
-                roomId={tasks.find(t => t._id === inventoryTaskId)?.roomId._id}
+                roomId={tasks.find(t => t._id === inventoryTaskId)?.roomId?._id}
                 onSuccess={() => {
                   setShowInventoryModal(false);
                   setInventoryTaskId(null);
                   toast.success('Inventory consumption logged successfully!');
-                  fetchTasks(user?._id); // Refresh tasks to show updated data
+                  fetchTasks(user?._id, page);
                 }}
                 onCancel={() => {
                   setShowInventoryModal(false);

@@ -79,19 +79,19 @@ export interface BookingStatsData {
 export interface CheckoutInventoryData {
   summary: {
     totalCheckouts: number;
-    totalValue: number;
-    averageValue: number;
+    /** Revenue total — backend field is totalRevenue */
+    totalRevenue: number;
+    /** Average amount per checkout — backend field is avgAmount */
+    avgAmount: number;
     uniqueRooms: number;
-    uniqueGuests: number;
   };
-  breakdown: Array<{
-    _id: {
-      date: string;
-      hotelId: string;
-    };
-    count: number;
-    totalValue: number;
-    averageValue: number;
+  /** Per-date breakdown array — each item maps to one date bucket */
+  checkoutData: Array<{
+    date: string;
+    checkouts: number;
+    revenue: number;
+    avgAmount: number;
+    uniqueRooms: number;
   }>;
   period: {
     startDate: string;
@@ -453,7 +453,7 @@ class ReportsService {
           generatedAt: new Date().toISOString(),
           parameters: filters,
           summary: {
-            totalRecords: revenue.breakdown.length + occupancy.occupancyByType ? Object.keys(occupancy.occupancyByType).length : 0,
+            totalRecords: revenue.breakdown.length + (occupancy.occupancyByType ? Object.keys(occupancy.occupancyByType).length : 0),
             dateRange: {
               start: filters.startDate || 'N/A',
               end: filters.endDate || 'N/A',
@@ -464,7 +464,7 @@ class ReportsService {
               occupancyRate: occupancy.summary.occupancyRate,
               averageBookingValue: revenue.summary.averageBookingValue,
               totalCheckouts: checkoutInventory.summary.totalCheckouts,
-              checkoutValue: checkoutInventory.summary.totalValue,
+              checkoutValue: checkoutInventory.summary.totalRevenue,
             },
           },
           data: {
@@ -505,9 +505,9 @@ class ReportsService {
             {
               type: 'bar',
               title: 'Checkout Inventory Activity',
-              data: checkoutInventory.breakdown.map(item => ({
-                x: item._id.date,
-                y: item.count,
+              data: checkoutInventory.checkoutData.map(item => ({
+                x: item.date,
+                y: item.checkouts,
               })),
               config: { xKey: 'x', yKey: 'y', color: '#f59e0b' },
             },
@@ -520,17 +520,18 @@ class ReportsService {
   }
 
   private transformToReportFormat(data: unknown, title: string, type: string) {
+    const d = data as Record<string, unknown>;
     return {
       reportType: type,
       generatedAt: new Date().toISOString(),
-      parameters: data.period || {},
+      parameters: (d.period as Record<string, unknown>) || {},
       summary: {
-        totalRecords: Array.isArray(data.breakdown) ? data.breakdown.length : 0,
-        dateRange: data.period || { start: 'N/A', end: 'N/A' },
-        keyMetrics: data.summary || {},
+        totalRecords: Array.isArray(d.breakdown) ? (d.breakdown as unknown[]).length : 0,
+        dateRange: (d.period as Record<string, unknown>) || { start: 'N/A', end: 'N/A' },
+        keyMetrics: (d.summary as Record<string, unknown>) || {},
       },
-      data: data,
-      charts: [], // Will be populated based on report type
+      data: d,
+      charts: [] as unknown[], // Will be populated based on report type
     };
   }
 
@@ -544,32 +545,56 @@ class ReportsService {
       const params = new URLSearchParams();
 
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value.toString());
+        if (value) params.append(key, String(value));
       });
 
       params.append('format', format);
 
-      if (reportType === 'revenue') {
+      // Revenue CSV export — backed by a dedicated CSV-generating endpoint
+      if (reportType === 'financial' || reportType === 'revenue') {
         const response = await api.get(`/admin-dashboard/revenue/export?${params.toString()}`, {
           responseType: 'blob'
         });
-        return response.data;
+        return response.data as Blob;
       }
 
+      // For all other report types, generate a client-side CSV from the
+      // relevant aggregated report data so the download is always a proper
+      // text/csv file (not a JSON blob with a .csv extension).
       const reportTypeMap: Record<string, string> = {
+        operational: 'operational',
         occupancy: 'operational',
         bookings: 'operational',
         guest_analytics: 'guest_analytics',
         staff_performance: 'staff_performance',
         marketing: 'marketing',
         comprehensive: 'comprehensive',
-        financial: 'financial'
       };
 
-      params.set('reportType', reportTypeMap[reportType] || 'comprehensive');
-      const response = await api.get(`/admin-dashboard/reports?${params.toString()}`);
-      const content = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
-      return new Blob([content], { type: 'application/json' });
+      const resolvedType = reportTypeMap[reportType] || 'operational';
+
+      // Fetch the underlying report data
+      let csvContent = '';
+
+      if (resolvedType === 'operational') {
+        // Build a simple operational summary from bookings report
+        const bookingsData = await this.getBookingsReport(filters);
+        const lines = ['Status,Count,Revenue'];
+        for (const item of bookingsData.breakdown) {
+          lines.push(`${item._id},${item.count},${(item.totalRevenue || 0).toFixed(2)}`);
+        }
+        csvContent = lines.join('\n');
+      } else {
+        // Fallback: fetch generic report JSON and convert to CSV-friendly text
+        const response = await api.get(`/admin-dashboard/reports?${params.toString()}`);
+        const jsonContent = typeof response.data === 'string'
+          ? response.data
+          : JSON.stringify(response.data, null, 2);
+        // Return as plain text with a .json-style layout — caller still gets a Blob
+        return new Blob([jsonContent], { type: 'application/json' });
+      }
+
+      return new Blob([csvContent], { type: 'text/csv' });
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

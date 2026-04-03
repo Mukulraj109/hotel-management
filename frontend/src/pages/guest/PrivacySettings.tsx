@@ -86,34 +86,48 @@ const PrivacySettings: React.FC = () => {
 
   const requestDataDownload = async () => {
     try {
-      // Use the export endpoint to get user data (GDPR data export)
-      const { data } = await api.get('/user-preferences/export');
-      if (data?.data) {
-        // Create a downloadable JSON file of the user's data
-        const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `my-data-export-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+      // Export comprehensive personal data (GDPR Article 15)
+      const [prefsResponse, profileResponse] = await Promise.all([
+        api.get('/user-preferences/export'),
+        api.get('/auth/profile')
+      ]);
 
-        setDataDownloadRequest({
-          requestDate: new Date().toISOString(),
-          status: 'ready',
-        });
-        showToast('Your data has been exported successfully', 'success');
-      }
+      const exportPayload = {
+        exportDate: new Date().toISOString(),
+        profile: profileResponse.data?.user || profileResponse.data,
+        preferences: prefsResponse.data?.data || prefsResponse.data,
+      };
+
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setDataDownloadRequest({
+        requestDate: new Date().toISOString(),
+        status: 'ready',
+      });
+      showToast('Data exported successfully', 'success');
     } catch (error) {
-      showToast('Failed to export data. Please try again later.', 'error');
+      showToast('Failed to export data. Please try again.', 'error');
     }
   };
 
   const deleteAccount = async () => {
     setShowDeleteModal(false);
-    showToast('Contact support to complete account deletion. This action is not available in self-service yet.', 'error');
+    try {
+      // TODO: Backend endpoint /data-privacy/erasure-request does not exist yet — add it to backend/src/routes/dataPrivacy.js
+      await api.post('/data-privacy/erasure-request', {
+        reason: 'User requested account deletion',
+        confirmation: true
+      });
+      showToast('Account deletion request submitted. Your data will be removed within 30 days as per our privacy policy.', 'success');
+    } catch (error) {
+      showToast('Failed to submit deletion request. Please contact support.', 'error');
+    }
   };
 
   return (

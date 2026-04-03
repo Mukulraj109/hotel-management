@@ -1,5 +1,6 @@
 import express from 'express';
 import Stripe from 'stripe';
+import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import StripeWebhookEvent from '../models/StripeWebhookEvent.js';
@@ -7,6 +8,8 @@ import logger from '../utils/logger.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
 import { awardStayCompletionPoints } from '../services/loyaltyAwardService.js';
+import { dashboardUpdateService } from '../services/dashboardUpdateService.js';
+import websocketService from '../services/websocketService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -207,6 +210,35 @@ async function handlePaymentSuccess(paymentIntent) {
         });
       }
 
+      // Notify dashboards of payment update
+      try {
+        if (payment.bookingId) {
+          const fullBooking = await Booking.findById(payment.bookingId).populate('hotelId').lean();
+          if (fullBooking) {
+            dashboardUpdateService.notifyPaymentUpdate(fullBooking, 'pending', 'succeeded', null);
+            dashboardUpdateService.triggerDashboardRefresh(fullBooking.hotelId?._id || fullBooking.hotelId, 'payments');
+            // Broadcast to hotel
+            const hotelId = (fullBooking.hotelId?._id || fullBooking.hotelId)?.toString();
+            if (hotelId) {
+              websocketService.broadcastToHotel(hotelId, 'booking:payment_updated', {
+                bookingId: fullBooking._id,
+                paymentStatus: 'succeeded'
+              });
+            }
+            // Notify the guest directly
+            if (fullBooking.userId) {
+              const guestId = fullBooking.userId._id?.toString() || fullBooking.userId.toString();
+              websocketService.sendToUser(guestId, 'booking:payment_updated', {
+                bookingId: fullBooking._id,
+                paymentStatus: 'succeeded'
+              });
+            }
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to notify dashboard of payment webhook:', notifErr.message);
+      }
+
       logger.info('Payment and booking updated successfully', {
         paymentId: payment._id,
         bookingId: booking?._id,
@@ -257,26 +289,40 @@ async function handlePaymentFailed(paymentIntent) {
 async function handleRefund(charge) {
   try {
     // Find payment by charge ID (from payment intent)
-    const payment = await Payment.findOne({ 
-      stripePaymentIntentId: charge.payment_intent 
+    const payment = await Payment.findOne({
+      stripePaymentIntentId: charge.payment_intent
     });
 
     if (payment) {
-      // Update payment status
+      // Update payment and booking atomically within a transaction
       const totalRefunded = charge.amount_refunded;
       const originalAmount = charge.amount;
-      
-      payment.status = totalRefunded === originalAmount ? 'refunded' : 'partially_refunded';
-      await payment.save();
 
+      const newPaymentStatus = totalRefunded === originalAmount ? 'refunded' : 'partially_refunded';
       const bookingPaymentStatus = totalRefunded === originalAmount ? 'refunded' : 'partially_paid';
 
-      // Update booking status
-      const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
-        paymentStatus: bookingPaymentStatus
-      },
-        { new: true }
-      );
+      let booking = null;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          // Update payment record
+          payment.status = newPaymentStatus;
+          payment.refundAmount = charge.amount_refunded / 100;
+          payment.refundedAt = new Date();
+          await payment.save({ session });
+
+          // Update booking status
+          if (payment.bookingId) {
+            booking = await Booking.findByIdAndUpdate(
+              payment.bookingId,
+              { paymentStatus: bookingPaymentStatus },
+              { new: true, session }
+            );
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
 
       if (booking) {
         try {
@@ -312,6 +358,23 @@ async function handleRefund(charge) {
             refundAmount: totalRefunded / 100
           }
         });
+      }
+
+      // Notify dashboards of payment update
+      try {
+        if (payment.bookingId) {
+          const updatedBooking = booking || await Booking.findById(payment.bookingId).lean();
+          if (updatedBooking) {
+            await dashboardUpdateService.notifyPaymentUpdate(
+              updatedBooking,
+              'paid',
+              bookingPaymentStatus,
+              { name: 'Stripe Webhook', _id: null }
+            );
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to notify dashboard of webhook payment update:', err.message);
       }
 
       logger.info('Refund processed', {

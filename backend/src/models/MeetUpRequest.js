@@ -405,16 +405,16 @@ meetUpRequestSchema.statics.getSentRequests = function(userId, { page = 1, limit
   .lean();
 };
 
-meetUpRequestSchema.statics.getMeetUpStats = function(userId) {
+meetUpRequestSchema.statics.getMeetUpStats = function(userId, hotelId) {
+  const matchStage = {
+    $or: [
+      { requesterId: new mongoose.Types.ObjectId(userId) },
+      { targetUserId: new mongoose.Types.ObjectId(userId) }
+    ],
+    ...(hotelId ? { hotelId: new mongoose.Types.ObjectId(hotelId) } : {})
+  };
   return this.aggregate([
-    {
-      $match: {
-        $or: [
-          { requesterId: new mongoose.Types.ObjectId(userId) },
-          { targetUserId: new mongoose.Types.ObjectId(userId) }
-        ]
-      }
-    },
+    { $match: matchStage },
     {
       $group: {
         _id: '$status',
@@ -564,8 +564,13 @@ meetUpRequestSchema.methods.getSupervisionPriority = function() {
 
 // Pre-save middleware
 meetUpRequestSchema.pre('save', function(next) {
-  // Validate time format
-  if (this.proposedTime.start >= this.proposedTime.end) {
+  // FIX: Convert time strings to minutes for proper numeric comparison
+  // String comparison breaks for single-digit hours (e.g., "9:00" >= "10:00" is true because "9" > "1")
+  const toMinutes = (timeStr) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+  };
+  if (toMinutes(this.proposedTime.start) >= toMinutes(this.proposedTime.end)) {
     return next(new Error('End time must be after start time'));
   }
   

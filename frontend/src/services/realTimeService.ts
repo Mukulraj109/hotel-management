@@ -207,13 +207,9 @@ class RealTimeService extends EventEmitter {
           this.emit('maxReconnectAttemptsReached');
         });
 
-        this.socket.on('room_status_changed', (data: { roomId: string; status: string; bookingId?: string; event?: string }) => {
-          this.handleRealTimeEvent({ type: 'room_status_changed', ...data });
-        });
-
-        this.socket.on('booking_cancelled', (data: { bookingId: string; rooms?: unknown[] }) => {
-          this.handleRealTimeEvent({ type: 'booking_cancelled', ...data });
-        });
+        // REMOVED: Direct socket.on('room_status_changed') and socket.on('booking_cancelled')
+        // listeners were dead code — the backend wraps all events in the 'event' envelope,
+        // so these direct listeners never fired.
 
         // Start connection
         this.socket.connect();

@@ -11,7 +11,7 @@ import {
   AlertTriangle,
   Clock
 } from 'lucide-react';
-import { checkoutInventoryService } from '../../services/checkoutInventoryService';
+import { checkoutInventoryService, CheckoutInventory as CheckoutInventoryType } from '../../services/checkoutInventoryService';
 import { bookingService } from '../../services/bookingService';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -99,19 +99,21 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
   }>>([]);
   const [notes, setNotes] = useState('');
   const [checkingExisting, setCheckingExisting] = useState(false);
-  const [existingInventory, setExistingInventory] = useState<unknown>(null);
+  const [existingInventory, setExistingInventory] = useState<CheckoutInventoryType | null>(null);
 
   useEffect(() => {
     fetchBookings();
   }, []);
 
+  // Re-check for existing inventory whenever booking OR room selection changes,
+  // because the backend duplicate guard is per booking+room (not just per booking).
   useEffect(() => {
-    if (selectedBooking) {
-      checkExistingInventory(selectedBooking);
+    if (selectedBooking && selectedRoom) {
+      checkExistingInventory(selectedBooking, selectedRoom);
     } else {
       setExistingInventory(null);
     }
-  }, [selectedBooking]);
+  }, [selectedBooking, selectedRoom]);
 
   const fetchBookings = async () => {
     try {
@@ -124,16 +126,25 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
     }
   };
 
-  const checkExistingInventory = async (bookingId: string) => {
+  const checkExistingInventory = async (bookingId: string, roomId: string) => {
     try {
       setCheckingExisting(true);
-      const response = await checkoutInventoryService.getCheckoutInventoryByBooking(bookingId);
-      setExistingInventory(response.data.checkoutInventory);
-    } catch (error) {
-      // If error is 404, no existing inventory found - this is normal
-      if (error.response?.status === 404) {
+      // Query by bookingId — the backend duplicate guard is per booking+room, so we filter
+      // the returned list by roomId to check for an existing record for this exact combination.
+      const response = await checkoutInventoryService.getCheckoutInventories({ bookingId, limit: 50 });
+      const inventories = response.data.checkoutInventories || [];
+      const match = inventories.find(inv => {
+        const invRoomId = (inv.roomId as { _id?: string } | null)?._id ?? (inv.roomId as unknown as string);
+        return invRoomId === roomId;
+      });
+      setExistingInventory(match ?? null);
+    } catch (error: unknown) {
+      // 404 means no records — this is normal
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError?.response?.status === 404) {
         setExistingInventory(null);
       }
+      // Other errors (network, server) are silently ignored to avoid blocking form usage
     } finally {
       setCheckingExisting(false);
     }
@@ -161,8 +172,10 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
         notes
       });
       onSuccess();
-    } catch (error) {
-      toast.error('Failed to create checkout inventory');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const msg = axiosError?.response?.data?.message || 'Failed to create checkout inventory';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -211,6 +224,7 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
       case 'used': return 'bg-blue-100 text-blue-800';
       case 'damaged': return 'bg-red-100 text-red-800';
       case 'missing': return 'bg-orange-100 text-orange-800';
+      case 'consumed': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -221,6 +235,7 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
       case 'used': return <Clock className="h-4 w-4" />;
       case 'damaged': return <AlertTriangle className="h-4 w-4" />;
       case 'missing': return <X className="h-4 w-4" />;
+      case 'consumed': return <Package className="h-4 w-4" />;
       default: return <Package className="h-4 w-4" />;
     }
   };
@@ -413,6 +428,7 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
                             <option value="used">Used</option>
                             <option value="damaged">Damaged</option>
                             <option value="missing">Missing</option>
+                            <option value="consumed">Consumed</option>
                           </select>
                         </div>
 
@@ -490,10 +506,10 @@ export function CheckoutInventoryForm({ onSuccess, onCancel }: CheckoutInventory
 
           {/* Actions */}
           <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <Button 
-              type="submit" 
-              loading={loading} 
-              disabled={items.length === 0 || existingInventory || checkingExisting}
+            <Button
+              type="submit"
+              loading={loading}
+              disabled={items.length === 0 || !!existingInventory || checkingExisting}
             >
               {existingInventory ? 'Cannot Create - Already Exists' : 'Create Inventory Check'}
             </Button>

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import {
   Users,
   Calendar,
@@ -15,18 +15,25 @@ import {
   Search,
   RefreshCw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  UserCheck,
+  Activity
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { meetUpRequestService, MeetUpRequest, GuestMeetUpReportRow } from '../../services/meetUpRequestService';
-import { staffMeetUpSupervisionService } from '../../services/staffMeetUpSupervisionService';
+import {
+  staffMeetUpSupervisionService,
+  SupervisionMeetUp,
+  UpdateSupervisionStatusRequest
+} from '../../services/staffMeetUpSupervisionService';
+import { meetUpRequestService, GuestMeetUpReportRow } from '../../services/meetUpRequestService';
 import { formatDate } from '../../utils/formatters';
 import { format } from 'date-fns';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
+import { realTimeService } from '../../services/realTimeService';
 
 interface StaffMeetUpSupervisionProps {}
 
@@ -34,7 +41,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
   const { user } = useAuth();
   const staffHotelId = useMemo(() => {
     if (!user?.hotelId) return undefined;
-    return typeof user.hotelId === 'string' ? user.hotelId : user.hotelId._id;
+    return typeof user.hotelId === 'string' ? user.hotelId : (user.hotelId as { _id: string })._id;
   }, [user?.hotelId]);
 
   const [activeTab, setActiveTab] = useState('requiring-supervision');
@@ -44,10 +51,35 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const [reportPage, setReportPage] = useState(1);
   const [reportStatusFilter, setReportStatusFilter] = useState('');
-  const [selectedMeetUp, setSelectedMeetUp] = useState<MeetUpRequest | null>(null);
+  const [selectedMeetUp, setSelectedMeetUp] = useState<SupervisionMeetUp | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [supervisionStatusInput, setSupervisionStatusInput] = useState<UpdateSupervisionStatusRequest['supervisionStatus']>('assigned');
+  const [supervisionNotesInput, setSupervisionNotesInput] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+
+  // Real-time: invalidate supervision queries when a supervision update or new
+  // alert arrives so all connected staff clients stay in sync without waiting
+  // for the 30-second polling interval.
+  const handleSupervisionUpdated = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['staff-supervision-meetups'] });
+    queryClient.invalidateQueries({ queryKey: ['staff-supervision-stats'] });
+  }, [queryClient]);
+
+  const handleNewAlert = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['staff-supervision-meetups'] });
+    queryClient.invalidateQueries({ queryKey: ['staff-supervision-stats'] });
+  }, [queryClient]);
+
+  useEffect(() => {
+    realTimeService.on('meetup:supervision-updated', handleSupervisionUpdated);
+    realTimeService.on('staff-alert:new', handleNewAlert);
+    return () => {
+      realTimeService.off('meetup:supervision-updated', handleSupervisionUpdated);
+      realTimeService.off('staff-alert:new', handleNewAlert);
+    };
+  }, [handleSupervisionUpdated, handleNewAlert]);
 
   // Fetch meet-ups requiring supervision via staff supervision endpoint
   const { data: meetUpsData, isLoading, error } = useQuery({
@@ -59,11 +91,12 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
       priority: safetyFilter === 'high-risk' ? 'high' : undefined,
       safetyLevel: undefined,
     }),
+    placeholderData: keepPreviousData,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Get supervision statistics via staff supervision endpoint
-  const { data: supervisionStats } = useQuery({
+  const { data: supervisionStats, isLoading: statsLoading } = useQuery({
     queryKey: ['staff-supervision-stats'],
     queryFn: () => staffMeetUpSupervisionService.getSupervisionStats('7d'),
     refetchInterval: 60000, // Refresh every minute
@@ -79,12 +112,42 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
         status: reportStatusFilter || undefined
       }),
     enabled: activeTab === 'guest-reports' && !!staffHotelId,
-    staleTime: 30_000
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
-  const handleViewDetails = (meetUp: MeetUpRequest) => {
+  // Mutation: update supervision status
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ meetUpId, data }: { meetUpId: string; data: UpdateSupervisionStatusRequest }) =>
+      staffMeetUpSupervisionService.updateSupervisionStatus(meetUpId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-supervision-meetups'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-supervision-stats'] });
+      setActionError(null);
+      setShowDetailsModal(false);
+    },
+    onError: (err: Error) => {
+      setActionError(err.message || 'Failed to update supervision status');
+    }
+  });
+
+  const handleViewDetails = (meetUp: SupervisionMeetUp) => {
     setSelectedMeetUp(meetUp);
+    setSupervisionStatusInput(meetUp.supervisionStatus ?? 'assigned');
+    setSupervisionNotesInput(meetUp.supervisionNotes || '');
+    setActionError(null);
     setShowDetailsModal(true);
+  };
+
+  const handleUpdateSupervisionStatus = () => {
+    if (!selectedMeetUp) return;
+    updateStatusMutation.mutate({
+      meetUpId: selectedMeetUp._id,
+      data: {
+        supervisionStatus: supervisionStatusInput,
+        supervisionNotes: supervisionNotesInput || undefined
+      }
+    });
   };
 
   const handleClearFilters = () => {
@@ -92,37 +155,6 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
     setStatusFilter('');
     setSafetyFilter('');
     setCurrentPage(1);
-  };
-
-  const getSafetyLevel = (meetUp: MeetUpRequest) => {
-    if (!meetUp.safety) return { level: 'medium', color: 'bg-yellow-100 text-yellow-800', label: 'Standard' };
-
-    let score = 0;
-    if (meetUp.safety.publicLocation) score += 2;
-    if (meetUp.safety.hotelStaffPresent) score += 2;
-    if (meetUp.safety.verifiedOnly) score += 1;
-
-    if (score >= 4) {
-      return { level: 'high', color: 'bg-green-100 text-green-800', label: 'High Safety' };
-    } else if (score >= 2) {
-      return { level: 'medium', color: 'bg-yellow-100 text-yellow-800', label: 'Standard' };
-    } else {
-      return { level: 'low', color: 'bg-red-100 text-red-800', label: 'Requires Attention' };
-    }
-  };
-
-  const getSupervisionPriority = (meetUp: MeetUpRequest) => {
-    const safety = getSafetyLevel(meetUp);
-    const isNighttime = new Date(meetUp.proposedDate).getHours() > 20 || new Date(meetUp.proposedDate).getHours() < 6;
-    const isOffSite = meetUp.location?.type === 'outdoor' || meetUp.location?.type === 'other';
-
-    if (safety.level === 'low' || isNighttime || isOffSite) {
-      return { priority: 'high', color: 'bg-red-100 text-red-800', label: 'High Priority' };
-    } else if (safety.level === 'medium' || (meetUp.participants?.maxParticipants ?? 0) > 4) {
-      return { priority: 'medium', color: 'bg-yellow-100 text-yellow-800', label: 'Medium Priority' };
-    } else {
-      return { priority: 'low', color: 'bg-green-100 text-green-800', label: 'Low Priority' };
-    }
   };
 
   const filteredMeetUps = meetUpsData?.meetUps?.filter(meetUp => {
@@ -136,10 +168,6 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
     );
     if (!matchesSearch) return false;
 
-    if (safetyFilter === 'high-risk') {
-      const priority = getSupervisionPriority(meetUp);
-      return priority.priority === 'high';
-    }
     if (safetyFilter === 'staff-required') {
       return meetUp.safety?.hotelStaffPresent === true;
     }
@@ -147,9 +175,21 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
   }) || [];
 
   const tabs: Array<{ id: string; label: string; count?: number }> = [
-    { id: 'requiring-supervision', label: 'Supervision Required', count: filteredMeetUps.filter(m => getSupervisionPriority(m).priority !== 'low').length },
-    { id: 'all-meetups', label: 'All Meet-ups', count: filteredMeetUps.length },
-    { id: 'safety-alerts', label: 'Safety Alerts', count: filteredMeetUps.filter(m => getSafetyLevel(m).level === 'low').length },
+    // Use server-wide pending supervision count when available; page-local as fallback
+    {
+      id: 'requiring-supervision',
+      label: 'Supervision Required',
+      count: supervisionStats?.summary?.pendingSupervision
+        ?? filteredMeetUps.filter(m => m.supervision?.priority?.priority !== 'low').length
+    },
+    { id: 'all-meetups', label: 'All Meet-ups', count: meetUpsData?.pagination?.totalItems },
+    // Safety alerts count: server high-risk count when available
+    {
+      id: 'safety-alerts',
+      label: 'Safety Alerts',
+      count: supervisionStats?.summary?.highRiskMeetUps
+        ?? filteredMeetUps.filter(m => m.supervision?.safetyLevel?.level === 'low').length
+    },
     {
       id: 'guest-reports',
       label: 'Guest reports',
@@ -216,7 +256,8 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
               <dl>
                 <dt className="text-sm font-medium text-gray-500 truncate">Active Meet-ups</dt>
                 <dd className="text-lg font-medium text-gray-900">
-                  {filteredMeetUps.filter(m => m.status === 'accepted' || m.status === 'pending').length}
+                  {/* Use server total when available; fall back to page-local count */}
+                  {supervisionStats?.summary?.totalMeetUps ?? meetUpsData?.pagination?.totalItems ?? 0}
                 </dd>
               </dl>
             </div>
@@ -232,7 +273,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
               <dl>
                 <dt className="text-sm font-medium text-gray-500 truncate">High Priority</dt>
                 <dd className="text-lg font-medium text-gray-900">
-                  {supervisionStats?.summary?.highRiskMeetUps ?? filteredMeetUps.filter(m => getSupervisionPriority(m).priority === 'high').length}
+                  {supervisionStats?.summary?.highRiskMeetUps ?? filteredMeetUps.filter(m => m.supervision?.priority?.priority === 'high').length}
                 </dd>
               </dl>
             </div>
@@ -375,28 +416,40 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
             filteredMeetUps
               .filter(meetUp => {
                 if (activeTab === 'requiring-supervision') {
-                  return getSupervisionPriority(meetUp).priority !== 'low';
+                  return meetUp.supervision?.priority?.priority !== 'low';
                 }
                 if (activeTab === 'safety-alerts') {
-                  return getSafetyLevel(meetUp).level === 'low';
+                  return meetUp.supervision?.safetyLevel?.level === 'low';
                 }
                 return true;
               })
               .map((meetUp) => {
-                const safetyLevel = getSafetyLevel(meetUp);
-                const priority = getSupervisionPriority(meetUp);
+                const safetyLevel = meetUp.supervision?.safetyLevel;
+                const priority = meetUp.supervision?.priority;
                 const typeInfo = meetUpRequestService.getMeetUpTypeInfo(meetUp.type);
                 const statusInfo = meetUpRequestService.getStatusInfo(meetUp.status);
+                const supervisionStatusColor = staffMeetUpSupervisionService.getSupervisionStatusColor(meetUp.supervisionStatus);
+                const supervisionStatusLabel = staffMeetUpSupervisionService.getSupervisionStatusLabel(meetUp.supervisionStatus);
+                const urgency = staffMeetUpSupervisionService.getUrgencyIndicator(meetUp);
+                const timeUntil = staffMeetUpSupervisionService.getTimeUntil(meetUp.proposedDate);
+                const isUpcoming = staffMeetUpSupervisionService.isUpcoming(meetUp.proposedDate);
 
                 return (
-                  <Card key={meetUp._id} className="p-6">
+                  <Card key={meetUp._id} className={`p-6 ${urgency.level === 'urgent' ? 'border-red-400 border-2' : ''}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center gap-3 mb-3 flex-wrap">
                           <h3 className="text-lg font-semibold text-gray-900">{meetUp.title}</h3>
                           <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
                           <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
-                          <Badge className={priority.color}>{priority.label}</Badge>
+                          {priority && <Badge className={priority.color}>{priority.label}</Badge>}
+                          <Badge className={supervisionStatusColor}>{supervisionStatusLabel}</Badge>
+                          {isUpcoming && (
+                            <Badge className={urgency.color} title={`${timeUntil} until meet-up`}>
+                              {urgency.label}
+                              {timeUntil !== 'Now' && ` · ${timeUntil}`}
+                            </Badge>
+                          )}
                         </div>
 
                         <p className="text-gray-600 text-sm mb-4">{meetUp.description}</p>
@@ -427,11 +480,13 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4 mt-4">
-                          <div className="flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-gray-500" />
-                            <Badge className={safetyLevel.color}>{safetyLevel.label}</Badge>
-                          </div>
+                        <div className="flex items-center gap-4 mt-4 flex-wrap">
+                          {safetyLevel && (
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4 text-gray-500" />
+                              <Badge className={safetyLevel.color}>{safetyLevel.label}</Badge>
+                            </div>
+                          )}
 
                           {meetUp.safety?.hotelStaffPresent && (
                             <div className="flex items-center gap-2">
@@ -444,6 +499,24 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                             <div className="flex items-center gap-2">
                               <Users className="w-4 h-4 text-orange-500" />
                               <span className="text-sm text-orange-600 font-medium">Large Group ({meetUp.participants?.maxParticipants})</span>
+                            </div>
+                          )}
+
+                          {meetUp.assignedStaff && (
+                            <div className="flex items-center gap-2">
+                              <UserCheck className="w-4 h-4 text-green-500" />
+                              <span className="text-sm text-green-600 font-medium">
+                                Assigned: {meetUp.assignedStaff.name}
+                              </span>
+                            </div>
+                          )}
+
+                          {priority?.factors && priority.factors.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <Activity className="w-4 h-4 text-gray-400" />
+                              <span className="text-xs text-gray-500">
+                                {staffMeetUpSupervisionService.formatRiskFactors(priority.factors)}
+                              </span>
                             </div>
                           )}
                         </div>
@@ -601,61 +674,72 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
       )}
 
       {/* Statistics Tab */}
-      {activeTab === 'statistics' && supervisionStats && (
+      {activeTab === 'statistics' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Supervision Summary</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Meet-ups:</span>
-                  <span className="font-medium">{supervisionStats.summary?.totalMeetUps ?? 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Pending Supervision:</span>
-                  <span className="font-medium text-yellow-600">{supervisionStats.summary?.pendingSupervision ?? 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Completed Supervision:</span>
-                  <span className="font-medium text-green-600">{supervisionStats.summary?.completedSupervision ?? 0}</span>
-                </div>
-              </div>
+          {statsLoading ? (
+            <div className="flex justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : !supervisionStats ? (
+            <Card className="p-12 text-center text-gray-500">
+              <Activity className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>No statistics available yet.</p>
             </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Supervision Summary</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Meet-ups:</span>
+                    <span className="font-medium">{supervisionStats.summary?.totalMeetUps ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Pending Supervision:</span>
+                    <span className="font-medium text-yellow-600">{supervisionStats.summary?.pendingSupervision ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Completed Supervision:</span>
+                    <span className="font-medium text-green-600">{supervisionStats.summary?.completedSupervision ?? 0}</span>
+                  </div>
+                </div>
+              </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Overview</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">High Risk Meet-ups:</span>
-                  <span className="font-medium text-red-600">{supervisionStats.summary?.highRiskMeetUps ?? 0}</span>
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Overview</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">High Risk Meet-ups:</span>
+                    <span className="font-medium text-red-600">{supervisionStats.summary?.highRiskMeetUps ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Staff Required:</span>
+                    <span className="font-medium text-blue-600">{supervisionStats.summary?.staffRequiredMeetUps ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Upcoming Supervised:</span>
+                    <span className="font-medium">{supervisionStats.summary?.upcomingSupervised ?? 0}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Staff Required:</span>
-                  <span className="font-medium text-blue-600">{supervisionStats.summary?.staffRequiredMeetUps ?? 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Upcoming Supervised:</span>
-                  <span className="font-medium">{supervisionStats.summary?.upcomingSupervised ?? 0}</span>
-                </div>
-              </div>
-            </Card>
+              </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
-              <div className="space-y-3">
-                {(supervisionStats.statusBreakdown?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">No status data available</p>
-                ) : (
-                  supervisionStats.statusBreakdown?.map((status: { _id: string; count: number }) => (
-                    <div key={status._id} className="flex justify-between">
-                      <span className="text-gray-600 capitalize">{status._id}:</span>
-                      <span className="font-medium">{status.count}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Card>
-          </div>
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
+                <div className="space-y-3">
+                  {(supervisionStats.statusBreakdown?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No status data available</p>
+                  ) : (
+                    supervisionStats.statusBreakdown?.map((status: { _id: string; count: number }) => (
+                      <div key={status._id} className="flex justify-between">
+                        <span className="text-gray-600 capitalize">{status._id}:</span>
+                        <span className="font-medium">{status.count}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
         </div>
       )}
 
@@ -698,11 +782,29 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Safety Information</h4>
                   <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-500">Safety Level:</span> <Badge className={getSafetyLevel(selectedMeetUp).color}>{getSafetyLevel(selectedMeetUp).label}</Badge></div>
-                    <div><span className="text-gray-500">Supervision Priority:</span> <Badge className={getSupervisionPriority(selectedMeetUp).color}>{getSupervisionPriority(selectedMeetUp).label}</Badge></div>
+                    {selectedMeetUp.supervision?.safetyLevel && (
+                      <div>
+                        <span className="text-gray-500">Safety Level:</span>{' '}
+                        <Badge className={selectedMeetUp.supervision.safetyLevel.color}>{selectedMeetUp.supervision.safetyLevel.label}</Badge>
+                      </div>
+                    )}
+                    {selectedMeetUp.supervision?.priority && (
+                      <div>
+                        <span className="text-gray-500">Supervision Priority:</span>{' '}
+                        <Badge className={selectedMeetUp.supervision.priority.color}>{selectedMeetUp.supervision.priority.label}</Badge>
+                      </div>
+                    )}
                     <div><span className="text-gray-500">Verified Only:</span> {selectedMeetUp.safety?.verifiedOnly ? 'Yes' : 'No'}</div>
                     <div><span className="text-gray-500">Public Location:</span> {selectedMeetUp.safety?.publicLocation ? 'Yes' : 'No'}</div>
                     <div><span className="text-gray-500">Staff Present:</span> {selectedMeetUp.safety?.hotelStaffPresent ? 'Yes' : 'No'}</div>
+                    {selectedMeetUp.supervision?.riskFactors && selectedMeetUp.supervision.riskFactors.length > 0 && (
+                      <div>
+                        <span className="text-gray-500">Risk Factors:</span>
+                        <ul className="mt-1 list-disc list-inside text-red-700">
+                          {selectedMeetUp.supervision.riskFactors.map((f, i) => <li key={i}>{f}</li>)}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -716,40 +818,85 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                 </div>
               </div>
 
-              {selectedMeetUp.activity && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Activity Information</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-500">Activity Type:</span> {meetUpRequestService.getActivityTypeInfo(selectedMeetUp.activity?.type || 'other').label}</div>
-                    <div><span className="text-gray-500">Duration:</span> {selectedMeetUp.activity?.duration ?? 0} minutes</div>
-                    <div><span className="text-gray-500">Cost:</span> ${selectedMeetUp.activity?.cost ?? 0}</div>
-                    <div><span className="text-gray-500">Cost Sharing:</span> {selectedMeetUp.activity.costSharing ? 'Yes' : 'No'}</div>
+              {/* Supervision assignment section */}
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="font-medium text-gray-900 mb-3">Supervision Management</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Assigned Staff
+                    </label>
+                    <p className="text-sm text-gray-600">
+                      {selectedMeetUp.assignedStaff
+                        ? `${selectedMeetUp.assignedStaff.name} (${selectedMeetUp.assignedStaff.email})`
+                        : 'Not assigned'}
+                    </p>
                   </div>
-                </div>
-              )}
 
-              {selectedMeetUp.response && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Response</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-500">Status:</span> {selectedMeetUp.response.status}</div>
-                    {selectedMeetUp.response.message && (
-                      <div><span className="text-gray-500">Message:</span> {selectedMeetUp.response.message}</div>
-                    )}
-                    {selectedMeetUp.response.respondedAt && (
-                      <div><span className="text-gray-500">Responded:</span> {new Date(selectedMeetUp.response.respondedAt).toLocaleString()}</div>
-                    )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Update Supervision Status
+                    </label>
+                    <select
+                      value={supervisionStatusInput}
+                      onChange={(e) => setSupervisionStatusInput(e.target.value as UpdateSupervisionStatusRequest['supervisionStatus'])}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="not_required">Not Required</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                    </select>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Supervision Notes
+                    </label>
+                    <textarea
+                      value={supervisionNotesInput}
+                      onChange={(e) => setSupervisionNotesInput(e.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      placeholder="Add supervision notes (optional)..."
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">{supervisionNotesInput.length}/500</p>
+                  </div>
+
+                  {actionError && (
+                    <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      {actionError}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex justify-end">
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <Button
+                variant="outline"
                 onClick={() => setShowDetailsModal(false)}
-                className="bg-blue-600 hover:bg-blue-700"
               >
-                Close
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpdateSupervisionStatus}
+                disabled={updateStatusMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+              >
+                {updateStatusMutation.isPending ? (
+                  <>
+                    <LoadingSpinner size="sm" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Update Status
+                  </>
+                )}
               </Button>
             </div>
           </div>

@@ -5,10 +5,8 @@ import {
   FileText,
   Upload,
   Search,
-  Filter,
   Download,
   Eye,
-  Calendar,
   CheckCircle,
   Clock,
   AlertTriangle,
@@ -17,7 +15,6 @@ import {
   Award,
   Heart,
   Shield,
-  Users,
   Phone,
   CreditCard,
   PiggyBank,
@@ -40,16 +37,23 @@ interface Document {
   category: string;
   documentType: string;
   status: 'pending' | 'verified' | 'rejected' | 'expired' | 'renewal_required';
-  uploadedAt: string;
-  verifiedAt?: string;
-  verifiedBy?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
+  // Backend uses createdAt from Mongoose timestamps; uploadedAt is an alias
+  createdAt: string;
+  uploadedAt?: string;
+  // Backend stores verification info under verificationDetails
+  verificationDetails?: {
+    verifiedBy?: {
+      _id: string;
+      name: string;
+    };
+    verifiedAt?: string;
+    rejectionReason?: string;
+    comments?: string;
   };
-  expiresAt?: string;
-  notes?: string;
-  rejectionReason?: string;
+  // Backend field is expiryDate
+  expiryDate?: string;
+  // Notes are stored as description in the backend
+  description?: string;
   fileUrl: string;
   filePath: string;
   userType: string;
@@ -58,11 +62,9 @@ interface Document {
     name: string;
   };
   viewableByRoles: string[];
-  metadata: {
-    size: number;
-    mimeType: string;
-  };
-  fileSize?: number;
+  // Backend stores size directly as fileSize (not nested under metadata)
+  fileSize: number;
+  fileType: string;
 }
 
 interface DocumentStats {
@@ -74,7 +76,7 @@ interface DocumentStats {
   renewalRequired: number;
 }
 
-const staffDocumentCategories = {
+const staffDocumentCategories: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
   employment_verification: { icon: Briefcase, label: 'Employment Verification' },
   id_proof: { icon: Shield, label: 'Identity Proof' },
   training_certificate: { icon: Award, label: 'Training & Certification' },
@@ -87,7 +89,7 @@ const staffDocumentCategories = {
 };
 
 export default function StaffDocuments() {
-  const { user } = useAuth();
+  useAuth(); // Ensures authenticated context is present
   const [activeTab, setActiveTab] = useState<'overview' | 'upload' | 'documents'>('overview');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<DocumentStats>({
@@ -99,6 +101,7 @@ export default function StaffDocuments() {
     renewalRequired: 0
   });
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -107,30 +110,34 @@ export default function StaffDocuments() {
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Fetch stats once on mount (independent of list filters)
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
   useEffect(() => {
     fetchDocuments();
-  }, [currentPage, statusFilter, categoryFilter]);
+  }, [currentPage, statusFilter, categoryFilter, searchTerm]);
 
   const fetchDocuments = async () => {
     try {
       setLoading(true);
-      const skip = (currentPage - 1) * pageLimit;
       const params: Record<string, string | number> = {
         userType: 'staff',
-        limit: pageLimit,
-        skip
+        page: currentPage,
+        limit: pageLimit
       };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (categoryFilter !== 'all') params.category = categoryFilter;
+      if (searchTerm.trim()) params.search = searchTerm.trim();
 
       const { data } = await api.get('/documents', { params });
-      const fetchedDocs = data?.data?.documents || [];
+      const fetchedDocs: Document[] = data?.data?.documents || [];
       const count = data?.totalCount || 0;
       const pages = data?.totalPages || 1;
       setDocuments(fetchedDocs);
       setTotalCount(count);
       setTotalPages(pages);
-      calculateStats(fetchedDocs);
     } catch (error) {
       toast.error('Error loading documents');
     } finally {
@@ -138,16 +145,31 @@ export default function StaffDocuments() {
     }
   };
 
-  const calculateStats = (docs: Document[]) => {
-    const newStats = {
-      total: docs.length,
-      pending: docs.filter(d => d.status === 'pending').length,
-      verified: docs.filter(d => d.status === 'verified').length,
-      rejected: docs.filter(d => d.status === 'rejected').length,
-      expired: docs.filter(d => d.status === 'expired').length,
-      renewalRequired: docs.filter(d => d.status === 'renewal_required').length
-    };
-    setStats(newStats);
+  // Fetch aggregate stats independently of current filter/page so the
+  // overview cards always reflect the complete picture.
+  // Uses the /documents/analytics endpoint to get all counts in a single round-trip.
+  const fetchStats = async () => {
+    try {
+      setStatsLoading(true);
+      const { data } = await api.get('/documents/analytics', {
+        params: { userType: 'staff', period: '3650d' }
+      });
+      const overview = data?.analytics?.overview;
+      if (overview) {
+        setStats({
+          total: overview.totalDocuments || 0,
+          pending: overview.pendingVerification || 0,
+          verified: overview.verifiedDocuments || 0,
+          rejected: overview.rejectedDocuments || 0,
+          expired: overview.expiredDocuments || 0,
+          renewalRequired: overview.renewalRequests || 0
+        });
+      }
+    } catch {
+      // Non-critical: stats failure does not block the main list
+    } finally {
+      setStatsLoading(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -189,7 +211,13 @@ export default function StaffDocuments() {
       const response = await api.get(`/documents/${doc._id}/download`, { responseType: 'blob' });
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      const newTab = window.open(url, '_blank');
+      // Revoke after a short delay to give the browser time to load the resource
+      if (newTab) {
+        setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+      } else {
+        window.URL.revokeObjectURL(url);
+      }
     } catch (error) {
       toast.error('Error opening document');
     }
@@ -212,14 +240,8 @@ export default function StaffDocuments() {
     }
   };
 
-  const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.originalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         staffDocumentCategories[doc.category]?.label.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = true;
-    const matchesCategory = true;
-
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  // All filtering is done server-side; documents already contains the filtered page.
+  const filteredDocuments = documents;
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -239,7 +261,7 @@ export default function StaffDocuments() {
 
   const TabButton = ({ tab, label, icon: Icon }: { tab: string; label: string; icon: React.ComponentType<{ className?: string }> }) => (
     <button aria-label={label}
-      onClick={() => setActiveTab(tab as unknown)}
+      onClick={() => setActiveTab(tab as typeof activeTab)}
       className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeTab === tab
           ? 'bg-blue-100 text-blue-700 border border-blue-200'
@@ -250,14 +272,6 @@ export default function StaffDocuments() {
       {label}
     </button>
   );
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <LoadingSpinner />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -284,7 +298,13 @@ export default function StaffDocuments() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && statsLoading && (
+        <div className="flex justify-center items-center h-64">
+          <LoadingSpinner />
+        </div>
+      )}
+
+      {activeTab === 'overview' && !statsLoading && (
         <div className="space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -386,13 +406,13 @@ export default function StaffDocuments() {
                         <div>
                           <p className="font-medium text-sm">{doc.originalName}</p>
                           <p className="text-xs text-gray-500">
-                            {category?.label} • {formatDate(doc.uploadedAt)} • {formatFileSize(doc.metadata?.size || doc.fileSize || 0)}
+                            {category?.label} • {formatDate(doc.uploadedAt || doc.createdAt)} • {formatFileSize(doc.fileSize || 0)}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={`text-xs ${getStatusColor(doc.status)}`}>
-                          {doc.status.replace('_', ' ')}
+                          {doc.status.replace(/_/g, ' ')}
                         </Badge>
                         {getStatusIcon(doc.status)}
                       </div>
@@ -406,7 +426,7 @@ export default function StaffDocuments() {
       )}
 
       {activeTab === 'upload' && (
-        <StaffDocumentUpload />
+        <StaffDocumentUpload onUploadSuccess={() => { fetchDocuments(); fetchStats(); }} />
       )}
 
       {activeTab === 'documents' && (
@@ -487,7 +507,11 @@ export default function StaffDocuments() {
               </Button>
             </div>
 
-            {filteredDocuments.length === 0 ? (
+            {loading ? (
+              <div className="flex justify-center items-center py-12">
+                <LoadingSpinner />
+              </div>
+            ) : filteredDocuments.length === 0 ? (
               <div className="text-center py-8">
                 <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">
@@ -512,7 +536,7 @@ export default function StaffDocuments() {
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-medium">{doc.originalName}</h4>
                               <Badge className={`text-xs ${getStatusColor(doc.status)}`}>
-                                {doc.status.replace('_', ' ')}
+                                {doc.status.replace(/_/g, ' ')}
                               </Badge>
                             </div>
                             <p className="text-sm text-gray-600 mb-2">
@@ -520,30 +544,30 @@ export default function StaffDocuments() {
                               {doc.departmentId && ` • ${doc.departmentId.name}`}
                             </p>
                             <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                              <span>Uploaded: {formatDate(doc.uploadedAt)}</span>
+                              <span>Uploaded: {formatDate(doc.uploadedAt || doc.createdAt)}</span>
                               <span>•</span>
-                              <span>Size: {formatFileSize(doc.metadata?.size || doc.fileSize || 0)}</span>
-                              {doc.verifiedAt && (
+                              <span>Size: {formatFileSize(doc.fileSize || 0)}</span>
+                              {doc.verificationDetails?.verifiedAt && (
                                 <>
                                   <span>•</span>
-                                  <span>Verified: {formatDate(doc.verifiedAt)}</span>
+                                  <span>Verified: {formatDate(doc.verificationDetails.verifiedAt)}</span>
                                 </>
                               )}
-                              {doc.expiresAt && (
+                              {doc.expiryDate && (
                                 <>
                                   <span>•</span>
-                                  <span>Expires: {formatDate(doc.expiresAt)}</span>
+                                  <span>Expires: {formatDate(doc.expiryDate)}</span>
                                 </>
                               )}
                             </div>
-                            {doc.notes && (
+                            {doc.description && (
                               <p className="text-sm text-gray-600 mt-2 italic">
-                                Note: {doc.notes}
+                                Note: {doc.description}
                               </p>
                             )}
-                            {doc.rejectionReason && (
+                            {doc.verificationDetails?.rejectionReason && (
                               <p className="text-sm text-red-600 mt-2">
-                                Rejection reason: {doc.rejectionReason}
+                                Rejection reason: {doc.verificationDetails.rejectionReason}
                               </p>
                             )}
                           </div>

@@ -111,7 +111,7 @@ class StaffAlertService {
       const limit = Math.min(100, Math.max(1, Number(filters.limit) || 20));
       const skip = filters.skip != null ? Number(filters.skip) : (page - 1) * limit;
 
-      const params: Record<string, string | number> = {
+      const params: Record<string, string | number | boolean> = {
         limit,
         skip,
         status: filters.status || 'all',
@@ -120,6 +120,14 @@ class StaffAlertService {
         sortBy: filters.sortBy || 'createdAt',
         sortOrder: filters.sortOrder || 'desc'
       };
+
+      // Pass optional filters only when set
+      if (filters.type) params.type = filters.type;
+      if (filters.search) params.search = filters.search;
+      if (filters.assignedTo) params.assignedTo = filters.assignedTo;
+      if (filters.department) params.department = filters.department;
+      if (filters.activeOnly) params.activeOnly = 'true';
+      if (filters.unreadOnly) params.unreadOnly = 'true';
 
       const [response, summaryResponse] = await Promise.all([
         api.get('/staff/alerts', { params }),
@@ -224,20 +232,20 @@ class StaffAlertService {
     }
   }
 
-  // Escalate alert
+  // Escalate alert (sets escalate:true so the backend bumps priority to critical and increments escalationLevel)
   async escalateAlert(id: string, reason: string, escalateTo?: string): Promise<StaffAlert> {
     try {
-      const response = await api.put(`/staff/alerts/${id}`, { priority: 'critical', reason, escalateTo });
+      const response = await api.put(`/staff/alerts/${id}`, { escalate: true, reason, escalateTo });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
-  // Assign alert to staff member
+  // Assign alert to staff member (uses PUT /:id with assignedTo field)
   async assignAlert(id: string, assignToId: string, notes?: string): Promise<StaffAlert> {
     try {
-      const response = await api.patch(`/staff/alerts/${id}/assign`, { assignToId, notes });
+      const response = await api.put(`/staff/alerts/${id}`, { assignedTo: assignToId, notes });
       return response.data.data.alert;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -254,14 +262,19 @@ class StaffAlertService {
     }
   }
 
-  // Mark multiple alerts as acknowledged
+  // Mark multiple alerts as acknowledged — run all in parallel and count only successes
   async acknowledgeMultiple(alertIds: string[]): Promise<{ modifiedCount: number }> {
-    try {
-      await Promise.all(alertIds.map((id) => this.acknowledgeAlert(id)));
-      return { modifiedCount: alertIds.length };
-    } catch (error: unknown) {
-      throw error instanceof Error ? error : new Error('Request failed');
+    const results = await Promise.allSettled(alertIds.map((id) => this.acknowledgeAlert(id)));
+    const modifiedCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failedCount = results.length - modifiedCount;
+    if (modifiedCount === 0) {
+      throw new Error('Failed to acknowledge any alerts');
     }
+    if (failedCount > 0) {
+      // Partial success — still return count so UI can report correctly
+      console.warn(`acknowledgeMultiple: ${failedCount} alert(s) failed to acknowledge`);
+    }
+    return { modifiedCount };
   }
 
   // Utility functions

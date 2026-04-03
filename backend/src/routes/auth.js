@@ -142,7 +142,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
  *                 format: email
  *               password:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *               phone:
  *                 type: string
  *               role:
@@ -159,8 +159,6 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
  *                 status:
  *                   type: string
  *                   example: success
- *                 token:
- *                   type: string
  *                 user:
  *                   $ref: '#/components/schemas/User'
  */
@@ -203,7 +201,6 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
 
   res.status(201).json({
     status: 'success',
-    token: accessToken,
     user
   });
 }));
@@ -240,8 +237,6 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
  *                 status:
  *                   type: string
  *                   example: success
- *                 token:
- *                   type: string
  *                 user:
  *                   $ref: '#/components/schemas/User'
  */
@@ -290,7 +285,6 @@ router.post('/login', authLimiter, strictAuthLimiter, validate(schemas.login), c
 
   res.json({
     status: 'success',
-    token: accessToken,
     user: populatedUser
   });
 }));
@@ -367,7 +361,6 @@ router.post(
 
     res.json({
       status: 'success',
-      token: accessToken,
       user
     });
   })
@@ -450,7 +443,7 @@ router.patch('/profile', authenticate, authorizePolicy('auth', 'baseAccess'), va
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password changed successfully
@@ -472,6 +465,9 @@ router.patch('/change-password', authenticate, passwordChangeLimiter, authorizeP
   // user-specific and serialized by the authentication check above.
   user.password = newPassword;
   await user.save();
+
+  // Invalidate all refresh tokens for this user (force re-login on all devices)
+  await RefreshToken.deleteMany({ userId: user._id });
 
   res.json({
     status: 'success',

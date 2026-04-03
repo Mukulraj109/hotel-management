@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceRequestService } from '../../services/guestServiceRequestService';
-import { 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Clock,
+  CheckCircle,
+  XCircle,
   AlertCircle,
   Calendar,
   Users,
@@ -15,7 +15,9 @@ import {
   Package,
   FileText,
   Wifi,
-  WifiOff
+  WifiOff,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -65,12 +67,7 @@ interface ServiceRequest {
   updatedAt: string;
 }
 
-interface GuestServiceFilters {
-  status?: string;
-  serviceType?: string;
-  assignedTo?: string;
-  limit?: number;
-}
+const PAGE_SIZE = 20;
 
 export default function StaffServiceRequests() {
   const { user } = useAuth();
@@ -81,84 +78,91 @@ export default function StaffServiceRequests() {
   const [statusFilter, setStatusFilter] = useState<string>('assigned');
   const [serviceTypeFilter, setServiceTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Real-time connection
   const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
-  const fetchMyServiceRequests = async () => {
+  const fetchMyServiceRequests = useCallback(async () => {
+    if (!user || user.role !== 'staff' || !currentUserId) return;
     try {
       setLoading(true);
-      const filters = {
-        serviceType: serviceTypeFilter === 'all' ? undefined : serviceTypeFilter,
+      const params: Record<string, unknown> = {
         assignedTo: currentUserId,
-        status: statusFilter === 'all' ? undefined : statusFilter,
-        limit: 100,
-        page: 1
+        page,
+        limit: PAGE_SIZE,
       };
 
-      const response = await guestServiceRequestService.getServiceRequests(filters);
-      
-      // Filter for general service requests assigned to current user
+      if (serviceTypeFilter !== 'all') params.serviceType = serviceTypeFilter;
+      if (statusFilter !== 'all') params.status = statusFilter;
+
+      // Exclude inventory requests at the API level via excludeServiceVariation
+      params.excludeServiceVariation = 'inventory_request';
+
+      const response = await guestServiceRequestService.getServiceRequests(params as Parameters<typeof guestServiceRequestService.getServiceRequests>[0]);
+
+      // The backend already scopes to assignedTo for staff role; apply a lightweight
+      // client-side guard to exclude any remaining inventory/supply records.
+      const EXCLUDED_VARIATIONS = ['inventory_request', 'inventory'];
       const myServiceRequests = (response.serviceRequests || []).filter(service => {
-        // Must be assigned to current user
-        const isAssignedToMe = service.assignedTo?._id === currentUserId;
-        
-        // Exclude inventory requests
-        const isNotInventory = !(service.serviceType === 'other' && 
-          (service.serviceVariation === 'inventory_request' || 
-           service.serviceVariations?.includes('inventory_request') ||
-           service.title?.toLowerCase().includes('inventory')));
-        
-        // Exclude supply requests
-        const isNotSupply = !service.title?.toLowerCase().includes('supply');
-        
-        // Include general service types
-        const isGeneralService = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry'].includes(service.serviceType) ||
-          (service.serviceType === 'other' && service.serviceVariation === 'multiple_services');
-        
-        return isAssignedToMe && isGeneralService && isNotInventory && isNotSupply;
+        const variation = (service.serviceVariation || '').toLowerCase();
+        const variations = (service.serviceVariations || []).map((v: string) => v.toLowerCase());
+        const isInventory =
+          service.serviceType === 'other' &&
+          (EXCLUDED_VARIATIONS.some(v => variation.includes(v)) ||
+            variations.some(v => EXCLUDED_VARIATIONS.some(iv => v.includes(iv))));
+        return !isInventory;
       });
-      
+
       setRequests(myServiceRequests);
+      if (response.pagination) {
+        setTotalCount(response.pagination.total);
+        setTotalPages(response.pagination.pages || Math.ceil(response.pagination.total / PAGE_SIZE) || 1);
+      }
     } catch (error) {
       toast.error('Failed to load service requests');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, currentUserId, statusFilter, serviceTypeFilter, page]);
 
   useEffect(() => {
-    if (user && user.role === 'staff' && currentUserId) {
-      fetchMyServiceRequests();
-    }
-  }, [user, currentUserId, statusFilter, serviceTypeFilter]);
+    fetchMyServiceRequests();
+  }, [fetchMyServiceRequests]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, serviceTypeFilter]);
 
   // Real-time updates
   useEffect(() => {
-    if (isConnected) {
-      const handleServiceUpdate = (data: Record<string, unknown>) => {
-        const payloadRequest = data.serviceRequest as { assignedTo?: { _id?: string } } | undefined;
-        const payloadAssignedTo = (data.assignedTo as string | undefined) || payloadRequest?.assignedTo?._id;
-        if (payloadAssignedTo === currentUserId) {
-          fetchMyServiceRequests();
-        }
-      };
+    if (!isConnected) return;
 
-      on('guest-services:created', handleServiceUpdate);
-      on('guest-services:updated', handleServiceUpdate);
-      on('guest-services:completed', handleServiceUpdate);
-      on('guest-services:cancelled', handleServiceUpdate);
-      on('guest-services:assigned', handleServiceUpdate);
+    const handleServiceUpdate = (data: Record<string, unknown>) => {
+      const payloadRequest = data.serviceRequest as { assignedTo?: { _id?: string } } | undefined;
+      const payloadAssignedTo = (data.assignedTo as string | undefined) || payloadRequest?.assignedTo?._id;
+      if (!payloadAssignedTo || payloadAssignedTo === currentUserId) {
+        fetchMyServiceRequests();
+      }
+    };
 
-      return () => {
-        off('guest-services:created', handleServiceUpdate);
-        off('guest-services:updated', handleServiceUpdate);
-        off('guest-services:completed', handleServiceUpdate);
-        off('guest-services:cancelled', handleServiceUpdate);
-        off('guest-services:assigned', handleServiceUpdate);
-      };
-    }
-  }, [isConnected, on, off, currentUserId]);
+    on('guest-services:created', handleServiceUpdate);
+    on('guest-services:updated', handleServiceUpdate);
+    on('guest-services:completed', handleServiceUpdate);
+    on('guest-services:cancelled', handleServiceUpdate);
+    on('guest-services:assigned', handleServiceUpdate);
+
+    return () => {
+      off('guest-services:created', handleServiceUpdate);
+      off('guest-services:updated', handleServiceUpdate);
+      off('guest-services:completed', handleServiceUpdate);
+      off('guest-services:cancelled', handleServiceUpdate);
+      off('guest-services:assigned', handleServiceUpdate);
+    };
+  }, [isConnected, on, off, currentUserId, fetchMyServiceRequests]);
 
   const handleUpdateStatus = async (requestId: string, status: string, notes?: string) => {
     try {
@@ -238,11 +242,15 @@ export default function StaffServiceRequests() {
     request.serviceType.replace('_', ' ').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Stats are derived from server-side counts, not just the current page.
+  // For status-specific counts we rely on the pagination total when a filter is active,
+  // and count the current page as a lower-bound indicator when showing "all".
   const statsData = {
-    total: requests.length,
-    assigned: requests.filter(r => r.status === 'assigned').length,
-    inProgress: requests.filter(r => r.status === 'in_progress').length,
-    completed: requests.filter(r => r.status === 'completed').length,
+    total: totalCount,
+    // When filtered to a single status the totalCount is the accurate count for that status.
+    assigned: statusFilter === 'assigned' ? totalCount : requests.filter(r => r.status === 'assigned').length,
+    inProgress: statusFilter === 'in_progress' ? totalCount : requests.filter(r => r.status === 'in_progress').length,
+    completed: statusFilter === 'completed' ? totalCount : requests.filter(r => r.status === 'completed').length,
     urgent: requests.filter(r => ['now', 'urgent'].includes(r.priority)).length
   };
 
@@ -357,6 +365,7 @@ export default function StaffServiceRequests() {
           </p>
         </Card>
       ) : (
+        <>
         <div className="space-y-4">
           {filteredRequests.map((request) => (
             <Card key={request._id} className="p-4 sm:p-6">
@@ -456,7 +465,7 @@ export default function StaffServiceRequests() {
                       Start Working
                     </Button>
                   )}
-                  
+
                   {request.status === 'in_progress' && (
                     <Button
                       variant="success"
@@ -503,6 +512,41 @@ export default function StaffServiceRequests() {
             </Card>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-sm text-gray-600">
+              Showing {filteredRequests.length} of {totalCount} requests
+            </p>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+                className="flex items-center"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Previous
+              </Button>
+              <span className="text-sm text-gray-700 px-2">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || loading}
+                className="flex items-center"
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

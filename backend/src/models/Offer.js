@@ -184,7 +184,7 @@ const offerSchema = new mongoose.Schema({
   },
   minTier: {
     type: String,
-    enum: ['bronze', 'silver', 'gold', 'platinum'],
+    enum: ['bronze', 'silver', 'gold', 'platinum', 'diamond'],
     default: 'bronze'
   },
   imageUrl: {
@@ -258,7 +258,7 @@ offerSchema.statics.getAvailableOffers = async function(userId, userTier, hotelI
     // FIX: Use $in with eligible tiers instead of broken $lte string comparison
     // String $lte compares alphabetically ("silver" <= "gold" is false), not by tier rank
     const tierValue = getTierValue(userTier);
-    const eligibleTiers = Object.entries({ bronze: 0, silver: 1, gold: 2, platinum: 3 })
+    const eligibleTiers = Object.entries({ bronze: 0, silver: 1, gold: 2, platinum: 3, diamond: 4 })
       .filter(([, v]) => v <= tierValue)
       .map(([k]) => k);
 
@@ -340,7 +340,8 @@ const getTierValue = (tier) => {
     bronze: 0,
     silver: 1,
     gold: 2,
-    platinum: 3
+    platinum: 3,
+    diamond: 4
   };
   return tierValues[tier] || 0;
 };

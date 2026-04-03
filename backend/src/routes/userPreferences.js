@@ -165,6 +165,25 @@ router.get('/:section', catchAsync(async (req, res, next) => {
   });
 }));
 
+// Helper: flatten an object into dot-notation keys under a given prefix
+// This prevents partial PUT requests from wiping fields not included in the body.
+function flattenToDotNotation(obj, prefix) {
+  const result = {};
+  const recurse = (current, path) => {
+    Object.keys(current).forEach(key => {
+      const val = current[key];
+      const fullPath = `${path}.${key}`;
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        recurse(val, fullPath);
+      } else {
+        result[fullPath] = val;
+      }
+    });
+  };
+  recurse(obj, prefix);
+  return result;
+}
+
 // PUT /api/v1/user-preferences/profile - Update profile preferences
 router.put('/profile', catchAsync(async (req, res, next) => {
   const { error } = preferenceSchemas.profile.validate(req.body);
@@ -173,7 +192,7 @@ router.put('/profile', catchAsync(async (req, res, next) => {
   }
 
   const userId = req.user._id;
-  const updates = { 'profile': req.body };
+  const updates = flattenToDotNotation(req.body, 'profile');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
@@ -192,7 +211,8 @@ router.put('/notifications', catchAsync(async (req, res, next) => {
   }
 
   const userId = req.user._id;
-  const updates = { 'notifications': { ...req.body } };
+  // Use dot-notation to avoid wiping existing channels, quietHours, etc.
+  const updates = flattenToDotNotation(req.body, 'notifications');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
@@ -211,7 +231,8 @@ router.put('/display', catchAsync(async (req, res, next) => {
   }
 
   const userId = req.user._id;
-  const updates = { 'display': req.body };
+  // Use dot-notation to avoid wiping existing display fields not sent in this request
+  const updates = flattenToDotNotation(req.body, 'display');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
@@ -230,7 +251,8 @@ router.put('/staff', authorizePolicy('userPreferences', 'staffAccess'), catchAsy
   }
 
   const userId = req.user._id;
-  const updates = { 'staff': req.body };
+  // Use dot-notation to merge into existing staff preferences without wiping
+  const updates = flattenToDotNotation(req.body, 'staff');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
@@ -249,7 +271,8 @@ router.put('/guest', authorizePolicy('userPreferences', 'guestAccess'), catchAsy
   }
 
   const userId = req.user._id;
-  const updates = { 'guest': req.body };
+  // Use dot-notation to merge into existing guest preferences without wiping
+  const updates = flattenToDotNotation(req.body, 'guest');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
@@ -268,7 +291,8 @@ router.put('/system', authorizePolicy('userPreferences', 'adminAccess'), catchAs
   }
 
   const userId = req.user._id;
-  const updates = { 'system': req.body };
+  // Use dot-notation to merge into existing system preferences without wiping
+  const updates = flattenToDotNotation(req.body, 'system');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
 

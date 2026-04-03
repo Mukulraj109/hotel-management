@@ -47,11 +47,15 @@ export default function DailyRoutineCheck() {
   const [showCart, setShowCart] = useState(false);
   const [addedItems, setAddedItems] = useState<Set<string>>(new Set());
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track per-item flash timers so clearing one doesn't cancel another item's animation
+  const timerMapRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
+    const timerMap = timerMapRef.current;
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      // Clear all pending flash timers on unmount
+      timerMap.forEach((timerId) => clearTimeout(timerId));
+      timerMap.clear();
     };
   }, []);
 
@@ -64,8 +68,10 @@ export default function DailyRoutineCheck() {
       setLoading(true);
       const response = await dailyRoutineCheckService.getRoomsForDailyCheck({ filter, assignedToMe: true });
       setRooms(response.data.rooms || []);
-    } catch (error) {
-      toast.error('Failed to load rooms for daily check');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to load rooms for daily check';
+      toast.error(message);
+      setRooms([]);
     } finally {
       setLoading(false);
     }
@@ -77,6 +83,14 @@ export default function DailyRoutineCheck() {
   };
 
   const handleCompleteCheck = async (roomId: string) => {
+    // Confirm when no items were actioned so staff don't accidentally submit empty checks
+    if (cart.length === 0) {
+      const confirmed = window.confirm(
+        'No inventory actions recorded. Complete check with no changes?'
+      );
+      if (!confirmed) return;
+    }
+
     try {
       await dailyRoutineCheckService.completeDailyCheck(roomId, { cart });
       toast.success('Daily check completed successfully!');
@@ -84,8 +98,9 @@ export default function DailyRoutineCheck() {
       setSelectedRoom(null);
       setCart([]);
       fetchRooms(); // Refresh the list
-    } catch (error) {
-      toast.error('Failed to complete daily check');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to complete daily check';
+      toast.error(message);
     }
   };
 
@@ -127,19 +142,21 @@ export default function DailyRoutineCheck() {
       toast.success(`${action} action added to cart for ${item.name}`);
     }
 
-    // Add visual feedback
+    // Add visual feedback — use a per-item timer so multiple items can animate independently
     const itemKey = `${item._id}-${action}`;
     setAddedItems(prev => new Set([...prev, itemKey]));
 
-    // Remove visual feedback after 2 seconds
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
+    const existingTimer = timerMapRef.current.get(itemKey);
+    if (existingTimer) clearTimeout(existingTimer);
+    const newTimer = setTimeout(() => {
       setAddedItems(prev => {
         const newSet = new Set(prev);
         newSet.delete(itemKey);
         return newSet;
       });
+      timerMapRef.current.delete(itemKey);
     }, 2000);
+    timerMapRef.current.set(itemKey, newTimer);
 
   };
 
@@ -147,8 +164,9 @@ export default function DailyRoutineCheck() {
     setCart(cart.filter(item => !(item.itemId === itemId && item.action === action)));
   };
 
-  const updateCartQuantity = (itemId: string, action: string, quantity: number) => {
-    setCart(cart.map(item => 
+  const updateCartQuantity = (itemId: string, action: string, rawQuantity: number) => {
+    const quantity = Number.isFinite(rawQuantity) && rawQuantity >= 1 ? Math.floor(rawQuantity) : 1;
+    setCart(cart.map(item =>
       item.itemId === itemId && item.action === action
         ? { ...item, quantity, totalPrice: item.unitPrice * quantity }
         : item
@@ -189,6 +207,7 @@ export default function DailyRoutineCheck() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'overdue': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -199,9 +218,12 @@ export default function DailyRoutineCheck() {
     if (!lastChecked) return 'Never checked';
     const date = new Date(lastChecked);
     const today = new Date();
-    const diffTime = Math.abs(today.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+    // Compare calendar dates (not raw ms difference) to avoid timezone edge cases
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const checkStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffMs = todayStart.getTime() - checkStart.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays > 1) return `${diffDays} days ago`;
@@ -249,6 +271,7 @@ export default function DailyRoutineCheck() {
               >
                 <option value="all">All Rooms</option>
                 <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
                 <option value="overdue">Overdue</option>
               </select>
@@ -314,7 +337,10 @@ export default function DailyRoutineCheck() {
                         type="number"
                         min="1"
                         value={item.quantity}
-                        onChange={(e) => updateCartQuantity(item.itemId, item.action, parseInt(e.target.value))}
+                        onChange={(e) => {
+                          const parsed = parseInt(e.target.value, 10);
+                          updateCartQuantity(item.itemId, item.action, parsed);
+                        }}
                         className="w-20"
                       />
                       <span className="text-sm font-medium">₹{item.totalPrice}</span>
@@ -387,12 +413,12 @@ export default function DailyRoutineCheck() {
                   </div>
                 </div>
 
-                {(room.checkStatus === 'pending' || room.checkStatus === 'overdue') && (
+                {(room.checkStatus === 'pending' || room.checkStatus === 'overdue' || room.checkStatus === 'in_progress') && (
                   <Button
                     onClick={() => handleStartCheck(room)}
                     className="w-full"
                   >
-                    Start Check
+                    {room.checkStatus === 'in_progress' ? 'Continue Check' : 'Start Check'}
                   </Button>
                 )}
 
@@ -628,7 +654,6 @@ export default function DailyRoutineCheck() {
                 </Button>
                 <Button
                   onClick={() => handleCompleteCheck(selectedRoom._id)}
-                  disabled={cart.length === 0}
                 >
                   Complete Check
                 </Button>

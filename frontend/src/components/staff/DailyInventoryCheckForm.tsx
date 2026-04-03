@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
+import toast from 'react-hot-toast';
 import {
   ClipboardCheck,
   AlertTriangle,
@@ -68,10 +69,42 @@ export function DailyInventoryCheckForm({
   const fetchTemplate = async () => {
     try {
       setLoadingTemplate(true);
-      const { data } = await api.get(`/daily-inventory-checks/template/${roomId}`);
-      setItems(data.data.template);
-    } catch {
-      // Error handled silently
+      // Use the correct daily-routine-check endpoint for room inventory templates
+      const { data } = await api.get(`/daily-routine-check/rooms/${roomId}/inventory`);
+      const roomData = data.data;
+      // Map template items to the InventoryItem format expected by this form
+      const allItems = [
+        ...(roomData.fixedInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
+          itemId: item._id,
+          itemName: item.name,
+          category: item.category,
+          expectedQuantity: item.quantity || 1,
+          actualQuantity: item.quantity || 1,
+          condition: 'good' as const,
+          needsReplacement: false,
+          chargeGuest: false,
+          replacementCost: item.unitPrice || 0,
+          notes: '',
+          photos: []
+        })),
+        ...(roomData.dailyInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
+          itemId: item._id,
+          itemName: item.name,
+          category: item.category,
+          expectedQuantity: item.quantity || 1,
+          actualQuantity: item.quantity || 1,
+          condition: 'good' as const,
+          needsReplacement: false,
+          chargeGuest: false,
+          replacementCost: item.unitPrice || 0,
+          notes: '',
+          photos: []
+        }))
+      ];
+      setItems(allItems);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load inventory template';
+      toast.error(message);
     } finally {
       setLoadingTemplate(false);
     }
@@ -80,15 +113,16 @@ export function DailyInventoryCheckForm({
   const updateItem = (index: number, field: keyof InventoryItem, value: unknown) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
-    
+
     // Auto-set needsReplacement based on condition
     if (field === 'condition') {
-      newItems[index].needsReplacement = ['damaged', 'missing', 'worn'].includes(value);
-      
+      const conditionValue = value as string;
+      newItems[index].needsReplacement = ['damaged', 'missing', 'worn'].includes(conditionValue);
+
       // Auto-set charge guest for damage/missing items
-      if (['damaged', 'missing'].includes(value)) {
+      if (['damaged', 'missing'].includes(conditionValue)) {
         newItems[index].chargeGuest = true;
-        newItems[index].replacementReason = value === 'damaged' ? 'guest_damage' : 'missing';
+        newItems[index].replacementReason = conditionValue === 'damaged' ? 'guest_damage' : 'missing';
       } else {
         newItems[index].chargeGuest = false;
         newItems[index].replacementReason = '';
@@ -128,7 +162,17 @@ export function DailyInventoryCheckForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    // Validate that items requiring guest charges have documentation photos
+    const missingPhotos = items.filter(
+      (item) => item.chargeGuest && (!item.photos || item.photos.length === 0)
+    );
+    if (missingPhotos.length > 0) {
+      const names = missingPhotos.map((i) => i.itemName).join(', ');
+      toast.error(`Please add documentation photos for: ${names}`);
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -183,8 +227,9 @@ export function DailyInventoryCheckForm({
       };
 
       await onSubmit(checkData);
-    } catch {
-      // Error handled silently
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to complete inventory check';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -229,7 +274,7 @@ export function DailyInventoryCheckForm({
           <label className="block text-sm font-medium text-gray-700 mb-2">Check Type</label>
           <select
             value={checkType}
-            onChange={(e) => setCheckType(e.target.value as unknown)}
+            onChange={(e) => setCheckType(e.target.value as 'daily_maintenance' | 'post_checkout' | 'pre_checkin')}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="daily_maintenance">Daily Maintenance</option>
@@ -288,7 +333,7 @@ export function DailyInventoryCheckForm({
                 <div className="flex items-center space-x-2">
                   <label className="text-sm text-gray-600">Qty:</label>
                   <div className="flex items-center space-x-1">
-                    <button aria-label="Close"
+                    <button aria-label="Decrease quantity"
                       type="button"
                       onClick={() => updateItem(index, 'actualQuantity', Math.max(0, item.actualQuantity - 1))}
                       className="p-1 text-gray-600 hover:text-gray-800"
@@ -347,7 +392,7 @@ export function DailyInventoryCheckForm({
                     className="h-4 w-4 text-red-600 focus:ring-red-500"
                   />
                   <label className="ml-2 text-sm text-gray-700">
-                    Charge ${item.replacementCost}
+                    Charge {formatCurrency(item.replacementCost)}
                   </label>
                 </div>
 

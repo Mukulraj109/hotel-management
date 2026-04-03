@@ -278,6 +278,8 @@ dailyRoutineCheckSchema.methods.calculateQualityScore = function() {
 };
 
 // NOTIFICATION AUTOMATION HOOKS
+// NOTE: In post('save'), `this` is the document (same as `doc`). isNew and isModified
+// are available on the document object within the hook via `this`.
 dailyRoutineCheckSchema.post('save', async function(doc) {
   try {
     // Get room data for notifications
@@ -285,7 +287,7 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
     const roomNumber = room ? room.roomNumber : 'Unknown';
 
     // 1. New daily check assigned
-    if (this.isNew && doc.status === 'pending') {
+    if (doc.isNew && doc.status === 'pending') {
       await NotificationAutomationService.triggerNotification(
         'daily_check_assigned',
         {
@@ -300,8 +302,8 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
       );
     }
 
-    // 2. Daily check started
-    if (doc.isModified('status') && doc.status === 'in_progress' && doc.startedAt) {
+    // 2. Daily check started — status is in_progress and startedAt was just set
+    if (doc.status === 'in_progress' && doc.startedAt) {
       await NotificationAutomationService.triggerNotification(
         'daily_check_started',
         {
@@ -316,7 +318,7 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
     }
 
     // 3. Daily check completed
-    if (doc.isModified('status') && doc.status === 'completed') {
+    if (doc.status === 'completed') {
       await NotificationAutomationService.triggerNotification(
         'daily_check_completed',
         {
@@ -348,7 +350,7 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
     }
 
     // 4. Issues found during check
-    if (doc.issues && doc.issues.length > 0 && doc.isModified('issues')) {
+    if (doc.issues && doc.issues.length > 0) {
       const issueDescriptions = doc.issues.map(issue => `${issue.type}: ${issue.description}`).join(', ');
 
       await NotificationAutomationService.triggerNotification(
@@ -366,8 +368,8 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
       );
     }
 
-    // 5. Inventory tracking notifications
-    if (doc.isModified('items') && doc.items && doc.items.length > 0) {
+    // 5. Inventory tracking notifications (only when check is completed to avoid firing on every update)
+    if (doc.status === 'completed' && doc.items && doc.items.length > 0) {
       for (const item of doc.items) {
         // Check for damaged inventory
         if (item.condition && item.condition === 'damaged') {

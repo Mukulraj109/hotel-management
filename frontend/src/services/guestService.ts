@@ -14,6 +14,12 @@ export interface GuestServiceRequest {
   bookingId: {
     _id: string;
     bookingNumber: string;
+    rooms?: Array<{
+      roomId?: {
+        _id: string;
+        roomNumber: string;
+      };
+    }>;
   };
   serviceType: 'room_service' | 'housekeeping' | 'maintenance' | 'concierge' | 'transport' | 'spa' | 'laundry' | 'other';
   serviceVariation: string;
@@ -70,6 +76,12 @@ interface ServiceRequestFilters {
   assignedTo?: string;
   page?: number;
   limit?: number;
+  fromDate?: string;
+  toDate?: string;
+  completedFrom?: string;
+  completedTo?: string;
+  bookingId?: string;
+  userId?: string;
 }
 
 interface PaginationMeta {
@@ -122,9 +134,28 @@ class GuestServiceService {
     }
   }
 
-  async updateServiceRequest(id: string, updates: Partial<GuestServiceRequest>): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
+  async updateServiceRequest(
+    id: string,
+    updates: {
+      status?: GuestServiceRequest['status'];
+      assignedTo?: { _id: string; name: string } | string | null;
+      notes?: string;
+      actualCost?: number;
+      scheduledTime?: string;
+      priority?: GuestServiceRequest['priority'];
+      completedServiceVariations?: string[];
+      cancellationReason?: string;
+      rating?: number;
+      feedback?: string;
+    }
+  ): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
     try {
-      const response = await api.patch(`/guest-services/${normalizeEntityId(id)}`, updates);
+      // Normalize assignedTo to string ID for the API
+      const payload: Record<string, unknown> = { ...updates };
+      if (updates.assignedTo && typeof updates.assignedTo === 'object' && '_id' in updates.assignedTo) {
+        payload.assignedTo = updates.assignedTo._id;
+      }
+      const response = await api.patch(`/guest-services/${normalizeEntityId(id)}`, payload);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

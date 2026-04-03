@@ -2,6 +2,7 @@ import express from 'express';
 import measurementUnitController from '../controllers/measurementUnitController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -123,6 +124,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('measurementUnits', 'baseAccess'));
 

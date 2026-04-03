@@ -165,7 +165,7 @@ const reviewSchema = new mongoose.Schema({
   },
   isPublished: {
     type: Boolean,
-    default: true
+    default: false
   },
   response: {
     content: {
@@ -183,11 +183,17 @@ const reviewSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  helpfulVotedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   reportedCount: {
     type: Number,
     default: 0,
     min: 0
   },
+  reportedBy: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String },
+    reportedAt: { type: Date, default: Date.now }
+  }],
   images: [{
     type: String,
     match: [/^https?:\/\//, 'Image URL must be valid']
@@ -226,7 +232,7 @@ const reviewSchema = new mongoose.Schema({
   moderationStatus: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'approved'
+    default: 'pending'
   },
   moderationNotes: String
 }, {
@@ -371,6 +377,9 @@ reviewSchema.methods.addResponse = function(content, respondedBy) {
 reviewSchema.methods.moderate = function(status, notes = '') {
   this.moderationStatus = status;
   if (notes) this.moderationNotes = notes;
+  if (status === 'approved') {
+    this.isPublished = true;
+  }
   if (status === 'rejected') this.isPublished = false;
   return this.save();
 };

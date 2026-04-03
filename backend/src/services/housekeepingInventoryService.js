@@ -236,8 +236,8 @@ class HousekeepingInventoryService {
    */
   async getRoomTypeAllocation(hotelId, roomTypeId) {
     try {
-      // Get rooms of this type
-      const rooms = await Room.find({ hotelId, roomType: roomTypeId }).lean().limit(1000);
+      // Get rooms of this type — bounded to prevent memory issues on large properties
+      const rooms = await Room.find({ hotelId, roomType: roomTypeId }).lean().limit(500);
       const roomIds = rooms.map(r => r._id);
 
       // Get consumption patterns for this room type
@@ -482,7 +482,7 @@ class HousekeepingInventoryService {
           hotelId,
           category: itemCategory,
           isActive: true
-        }).select('_id').lean().limit(1000);
+        }).select('_id').lean().limit(500);
         matchQuery.inventoryItemId = { $in: items.map(i => i._id) };
       }
 
@@ -569,11 +569,14 @@ class HousekeepingInventoryService {
         throw new Error('Task must be completed before auto-consumption');
       }
 
-      // Get predicted consumption for this task
+      // Get predicted consumption for this task.
+      // HousekeepingTask stores task types in the `tasks` array field.
+      // Fall back to wrapping a single string if `tasks` is not an array (e.g. legacy data).
+      const taskTypes = Array.isArray(task.tasks) ? task.tasks : (task.taskType ? [task.taskType] : []);
       const predictions = await this.predictConsumption(
         task.hotelId,
         task.roomId._id,
-        task.tasks
+        taskTypes
       );
 
       const autoConsumptions = [];

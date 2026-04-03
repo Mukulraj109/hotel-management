@@ -2,28 +2,75 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Loyalty from '../models/Loyalty.js';
 import Notification from '../models/Notification.js';
+import LoyaltyRuleVersion from '../models/LoyaltyRuleVersion.js';
 import logger from '../utils/logger.js';
 
 export const STAY_COMPLETION_AWARD = 'stay_completion';
 
-function readAwardConfig() {
+let cachedRuleVersion = null;
+let cacheExpiry = 0;
+
+async function readAwardConfig(hotelId) {
+  // Check cache first (5 minute TTL)
+  const now = Date.now();
+  if (cachedRuleVersion && cacheExpiry > now) {
+    return cachedRuleVersion;
+  }
+
+  try {
+    // Try to read active rule version from database
+    const query = { isActive: true };
+    if (hotelId) query.hotelId = hotelId;
+    const activeRule = await LoyaltyRuleVersion.findOne(query).sort({ version: -1 }).lean();
+
+    if (activeRule && activeRule.rules) {
+      const enabled = process.env.LOYALTY_AWARD_ON_CHECKOUT !== 'false';
+      const perUnit = activeRule.rules.pointsPerCurrencyUnit ?? 0.1;
+      const perNight = activeRule.rules.pointsPerNight ?? 0;
+      const maxPerStay = activeRule.rules.maxPointsPerStay ?? 50000;
+      const config = {
+        enabled: Number.isFinite(perUnit) && perUnit >= 0 ? enabled : false,
+        pointsPerCurrencyUnit: Number.isFinite(perUnit) && perUnit >= 0 ? perUnit : 0.1,
+        pointsPerNight: Number.isFinite(perNight) && perNight >= 0 ? perNight : 0,
+        maxPointsPerStay: Number.isFinite(maxPerStay) && maxPerStay > 0 ? maxPerStay : 50000,
+        tierMultipliers: activeRule.rules.tierMultipliers || {
+          bronze: 1, silver: 1.25, gold: 1.5, platinum: 2, diamond: 2.5
+        }
+      };
+      cachedRuleVersion = config;
+      cacheExpiry = now + 5 * 60 * 1000; // 5 min cache
+      return config;
+    }
+  } catch (err) {
+    console.warn('Failed to load loyalty rules from DB, falling back to env vars:', err.message);
+  }
+
+  // Fallback to environment variables
+  const enabled = process.env.LOYALTY_AWARD_ON_CHECKOUT !== 'false';
   const perUnit = Number.parseFloat(process.env.LOYALTY_POINTS_PER_CURRENCY_UNIT ?? '0.1');
   const perNight = Number.parseFloat(process.env.LOYALTY_POINTS_PER_NIGHT ?? '0');
   const maxPerStay = Number.parseInt(process.env.LOYALTY_MAX_POINTS_PER_STAY ?? '50000', 10);
-  const enabled = process.env.LOYALTY_AWARD_ON_CHECKOUT !== 'false';
-
-  return {
+  const config = {
     enabled: Number.isFinite(perUnit) && perUnit >= 0 ? enabled : false,
     pointsPerCurrencyUnit: Number.isFinite(perUnit) && perUnit >= 0 ? perUnit : 0.1,
     pointsPerNight: Number.isFinite(perNight) && perNight >= 0 ? perNight : 0,
-    maxPointsPerStay: Number.isFinite(maxPerStay) && maxPerStay > 0 ? maxPerStay : 50000
+    maxPointsPerStay: Number.isFinite(maxPerStay) && maxPerStay > 0 ? maxPerStay : 50000,
+    tierMultipliers: {
+      bronze: 1, silver: 1.25, gold: 1.5, platinum: 2, diamond: 2.5
+    }
   };
+  cachedRuleVersion = config;
+  cacheExpiry = now + 5 * 60 * 1000;
+  return config;
 }
 
 /**
  * Calculate points for a completed stay (checkout). Uses booking total and nights.
  */
-export function calculateStayPoints(booking, cfg = readAwardConfig()) {
+export function calculateStayPoints(booking, cfg) {
+  if (!cfg) {
+    throw new Error('cfg parameter is required — readAwardConfig() is now async, caller must await and pass the result');
+  }
   const totalAmount = Math.max(0, Number(booking.totalAmount) || 0);
   const nights = Math.max(1, Number(booking.nights) || 1);
 
@@ -42,7 +89,7 @@ export function calculateStayPoints(booking, cfg = readAwardConfig()) {
  * @returns {Promise<{ awarded: boolean, points?: number, reason?: string, loyaltyTransactionId?: import('mongoose').Types.ObjectId }>}
  */
 export async function awardStayCompletionPoints(bookingDoc) {
-  const cfg = readAwardConfig();
+  const cfg = await readAwardConfig();
   if (!cfg.enabled) {
     return { awarded: false, reason: 'disabled' };
   }

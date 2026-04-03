@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { useRealTime } from '../../services/realTimeService';
 import {
   meetUpRequestService,
   MeetUpRequest,
@@ -62,6 +63,23 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
   const exportDropdownRef = useRef<HTMLDivElement>(null);
 
   const queryClient = useQueryClient();
+  const { on, off } = useRealTime();
+
+  // Real-time: listen for meetup events to refresh data immediately
+  useEffect(() => {
+    const handleMeetUpEvent = () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-meetups'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-meetup-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-meetup-insights'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-guest-meetup-reports'] });
+    };
+    on('meetup:updated', handleMeetUpEvent);
+    on('meetup:supervision-updated', handleMeetUpEvent);
+    return () => {
+      off('meetup:updated', handleMeetUpEvent);
+      off('meetup:supervision-updated', handleMeetUpEvent);
+    };
+  }, [on, off, queryClient]);
 
   // Fetch all meet-up requests (admin view)
   const { data: meetUpsData, isLoading: meetUpsLoading, isError: meetUpsError } = useQuery({
@@ -270,7 +288,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       link.click();
       document.body.removeChild(link);
 
-      toast.success(`Exported ${meetUpsData.meetUps.length} meet-up requests to CSV`);
+      toast.success(`Exported ${meetUpsData.meetUps.length} meet-up requests (current page only)`);
     } catch (error) {
       toast.error('Failed to export meet-up data');
     } finally {
@@ -324,7 +342,7 @@ function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       link.click();
       document.body.removeChild(link);
 
-      toast.success(`Exported ${meetUpsData.meetUps.length} meet-up requests to JSON`);
+      toast.success(`Exported ${meetUpsData.meetUps.length} meet-up requests (current page only)`);
     } catch (error) {
       toast.error('Failed to export meet-up data');
     } finally {

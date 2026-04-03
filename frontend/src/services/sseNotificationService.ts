@@ -1,4 +1,10 @@
 /**
+ * @deprecated This SSE notification service is not used in production.
+ * All real-time notifications use Socket.IO via realTimeService.ts.
+ * This file is kept for potential future use but should not be imported.
+ */
+
+/**
  * PLAN 1: Phase 1.3 - Real-time Implementation - Server-Sent Events (SSE)
  * Enhanced SSE implementation for real-time notifications with proper reconnection and heartbeat
  */
@@ -46,7 +52,8 @@ class SSENotificationService {
     };
 
     // Start heartbeat checker
-    this.startHeartbeatChecker();
+    // DISABLED: SSE layer is dead code; no production page consumes it.
+    // this.startHeartbeatChecker();
   }
 
   private log(message: string, ...args: unknown[]) {

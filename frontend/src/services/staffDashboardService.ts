@@ -130,10 +130,12 @@ class StaffDashboardService {
     }
   }
 
-  // Room status update
+  // Room status update — uses the staff-accessible PATCH /staff-dashboard/rooms/:id/status endpoint.
+  // This does NOT require the admin-level 'rooms.createUpdateAccess' RBAC policy,
+  // so housekeeping staff can mark rooms clean without needing elevated permissions.
   async updateRoomStatus(roomId: string, status: string): Promise<ApiResponse<unknown>> {
     try {
-      const response = await api.patch(`/rooms/${roomId}/status`, { status });
+      const response = await api.patch(`${this.baseURL}/rooms/${roomId}/status`, { status });
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

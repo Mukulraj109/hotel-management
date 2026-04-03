@@ -15,6 +15,7 @@ const FavoritesPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
   const [editingFavorite, setEditingFavorite] = useState<FavoriteOffer | null>(null);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const { data: favoritesData, isLoading } = useQuery({
     queryKey: ['favorites', { page, category: selectedCategory, type: selectedType, sortBy, sortOrder }],
@@ -64,10 +65,12 @@ const FavoritesPage: React.FC = () => {
     }
   });
 
-  const handleRemove = (favoriteId: string) => {
-    if (window.confirm('Are you sure you want to remove this offer from favorites?')) {
-      removeFromFavoritesMutation.mutate(favoriteId);
-    }
+  const handleRemove = (favoriteId: string) => setConfirmRemoveId(favoriteId);
+
+  const confirmRemove = () => {
+    if (!confirmRemoveId) return;
+    removeFromFavoritesMutation.mutate(confirmRemoveId);
+    setConfirmRemoveId(null);
   };
 
   const handleUpdateSettings = (data: {
@@ -341,6 +344,34 @@ const FavoritesPage: React.FC = () => {
           onSave={handleUpdateSettings}
           isLoading={updateFavoriteMutation.isPending}
         />
+      )}
+
+      {/* Remove Confirmation Dialog */}
+      {confirmRemoveId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-sm w-full p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Remove Favorite</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to remove this offer from favorites?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmRemoveId(null)}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemove}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -71,9 +71,17 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
                   req.user?.hotelId;
   const hotelId = normalizeHotelId(rawHotelId);
 
-  // If no hotelId specified, allow (will be filtered in controller)
+  // If no hotelId specified, deny by default for operational roles
   if (!hotelId) {
-    return next();
+    // Allow guests and travel agents without hotelId (they access their own data filtered by userId)
+    if (req.user && ['guest', 'travel_agent'].includes(req.user.role)) {
+      return next();
+    }
+    // For operational roles, require hotelId
+    return res.status(400).json({
+      status: 'error',
+      message: 'Property context (hotelId) is required for this operation'
+    });
   }
 
   // Admin users can view (GET) all properties for multi-property management

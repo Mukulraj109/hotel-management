@@ -260,7 +260,7 @@ function FrontDeskRooms() {
     realTimeService.connect().catch(() => { /* WebSocket unavailable -- page still works via polling */ });
   }, []);
 
-  // Socket.io: listen for room_status_changed and booking events to refetch rooms immediately
+  // Socket.io: listen for room:status_changed and booking events to refetch rooms immediately
   useEffect(() => {
     const handleRoomStatusChanged = () => {
       // Immediately refetch rooms when a guest checks in/out or room status changes
@@ -274,16 +274,16 @@ function FrontDeskRooms() {
       setLastUpdateTime(new Date());
     };
 
-    realTimeService.on('room_status_changed', handleRoomStatusChanged);
+    realTimeService.on('room:status_changed', handleRoomStatusChanged);
     realTimeService.on('booking:created', handleBookingEvent);
     realTimeService.on('booking:updated', handleBookingEvent);
-    realTimeService.on('booking_cancelled', handleBookingEvent);
+    realTimeService.on('booking:cancelled', handleBookingEvent);
 
     return () => {
-      realTimeService.off('room_status_changed', handleRoomStatusChanged);
+      realTimeService.off('room:status_changed', handleRoomStatusChanged);
       realTimeService.off('booking:created', handleBookingEvent);
       realTimeService.off('booking:updated', handleBookingEvent);
-      realTimeService.off('booking_cancelled', handleBookingEvent);
+      realTimeService.off('booking:cancelled', handleBookingEvent);
     };
   }, [hotelId]);
 

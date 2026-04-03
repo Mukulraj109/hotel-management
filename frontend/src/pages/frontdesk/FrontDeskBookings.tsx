@@ -254,14 +254,14 @@ function FrontDeskBookings() {
 
     realTimeService.on('booking:created', handleRealtimeRefresh);
     realTimeService.on('booking:updated', handleRealtimeRefresh);
-    realTimeService.on('booking_cancelled', handleRealtimeRefresh);
+    realTimeService.on('booking:cancelled', handleRealtimeRefresh);
     realTimeService.on('booking:modification_requested', handleRealtimeRefresh);
     realTimeService.on('booking:payment_updated', handleRealtimeRefresh);
 
     return () => {
       realTimeService.off('booking:created', handleRealtimeRefresh);
       realTimeService.off('booking:updated', handleRealtimeRefresh);
-      realTimeService.off('booking_cancelled', handleRealtimeRefresh);
+      realTimeService.off('booking:cancelled', handleRealtimeRefresh);
       realTimeService.off('booking:modification_requested', handleRealtimeRefresh);
       realTimeService.off('booking:payment_updated', handleRealtimeRefresh);
     };

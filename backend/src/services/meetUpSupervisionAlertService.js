@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import StaffAlert from '../models/StaffAlert.js';
 import MeetUpRequest from '../models/MeetUpRequest.js';
 import logger from '../utils/logger.js';
@@ -87,11 +88,13 @@ class MeetUpSupervisionAlertService {
           }
         };
 
-        // Send to specific user if assigned, otherwise to all staff
+        // Emit staff-alert:new so all frontend listeners (useStaffAlerts, StaffAlertDropdown) receive it
+        const hotelIdStr = (meetUp.hotelId._id || meetUp.hotelId).toString();
         if (alert.assignedTo) {
-          websocketService.sendToUser(alert.assignedTo._id, 'staff_notification', notificationData);
+          websocketService.sendToUser(alert.assignedTo._id, 'staff-alert:new', { alert });
+          websocketService.sendToUser(alert.assignedTo._id, 'staff-alert:assigned', { alert, assignedToMe: true });
         } else {
-          websocketService.sendToHotel(meetUp.hotelId._id || meetUp.hotelId, 'staff_notification', notificationData);
+          websocketService.broadcastToHotel(hotelIdStr, 'staff-alert:new', { alert });
         }
       }
 
@@ -145,12 +148,13 @@ class MeetUpSupervisionAlertService {
     }
 
     // Group size risks
-    if (meetUp.participants.maxParticipants > 4) {
+    const maxParticipants = meetUp.participants?.maxParticipants ?? 0;
+    if (maxParticipants > 4) {
       riskFactors.push('Large group size');
       priorityScore += 1;
     }
 
-    if (meetUp.participants.maxParticipants > 8) {
+    if (maxParticipants > 8) {
       riskFactors.push('Very large group');
       priorityScore += 2;
     }
@@ -175,13 +179,6 @@ class MeetUpSupervisionAlertService {
     if (meetUp.activity?.type === 'other') {
       riskFactors.push('Unspecified activity');
       priorityScore += 1;
-    }
-
-    // User history risks (could be enhanced with actual data)
-    // For now, we'll simulate this
-    if (Math.random() > 0.9) { // 10% chance for demonstration
-      riskFactors.push('Previous safety incidents');
-      priorityScore += 2;
     }
 
     // Determine overall priority
@@ -299,7 +296,9 @@ class MeetUpSupervisionAlertService {
       const upcomingMeetUps = await MeetUpRequest.find(query)
         .populate('requesterId', 'name email')
         .populate('targetUserId', 'name email')
-        .populate('hotelId', 'name').lean().limit(1000);
+        .populate('hotelId', 'name')
+        .limit(1000)
+        .lean();
 
       const alertsCreated = [];
 
@@ -352,7 +351,13 @@ class MeetUpSupervisionAlertService {
   }
 
   /**
-   * Update alert when meet-up supervision status changes
+   * Update alert when meet-up supervision status changes (or when the meet-up
+   * itself is cancelled after supervision was already assigned).
+   *
+   * @param {string} meetUpId
+   * @param {string} newStatus  - supervision status ('assigned'|'in_progress'|'completed')
+   *                              OR meet-up status ('cancelled') when called from cancellation flow
+   * @param {string|null} staffId
    */
   async updateAlertOnSupervisionChange(meetUpId, newStatus, staffId) {
     try {
@@ -362,40 +367,51 @@ class MeetUpSupervisionAlertService {
         status: { $in: ['active', 'acknowledged', 'in_progress'] }
       });
 
-      if (alert) {
-        let newAlertStatus = alert.status;
+      if (!alert) return null;
 
-        switch (newStatus) {
-          case 'assigned':
-            newAlertStatus = 'acknowledged';
-            alert.acknowledgedBy = staffId;
-            alert.assignedTo = staffId;
-            break;
-          case 'in_progress':
-            newAlertStatus = 'in_progress';
-            break;
-          case 'completed':
-            newAlertStatus = 'resolved';
-            alert.resolvedBy = staffId;
-            break;
-        }
+      let newAlertStatus = alert.status;
 
-        alert.status = newAlertStatus;
-        alert.lastUpdatedBy = staffId;
-
-        await alert.save();
-
-        logger.info('Updated supervision alert status', {
-          alertId: alert._id,
-          meetUpId,
-          oldStatus: alert.status,
-          newStatus: newAlertStatus
-        });
-
-        return alert;
+      switch (newStatus) {
+        case 'assigned':
+          newAlertStatus = 'acknowledged';
+          alert.acknowledgedBy = staffId;
+          alert.assignedTo = staffId;
+          break;
+        case 'in_progress':
+          newAlertStatus = 'in_progress';
+          break;
+        case 'completed':
+          newAlertStatus = 'resolved';
+          if (staffId) alert.resolvedBy = staffId;
+          break;
+        case 'cancelled':
+          // Meet-up was cancelled after supervision was assigned — auto-resolve the alert
+          newAlertStatus = 'resolved';
+          if (staffId) alert.resolvedBy = staffId;
+          alert.metadata = {
+            ...(alert.metadata || {}),
+            cancelledAt: new Date().toISOString()
+          };
+          break;
+        default:
+          // Unknown status — leave alert unchanged
+          return alert;
       }
 
-      return null;
+      const oldStatus = alert.status;
+      alert.status = newAlertStatus;
+      if (staffId) alert.lastUpdatedBy = staffId;
+
+      await alert.save();
+
+      logger.info('Updated supervision alert status', {
+        alertId: alert._id,
+        meetUpId,
+        oldStatus,
+        newAlertStatus
+      });
+
+      return alert;
     } catch (error) {
       logger.error('Error updating supervision alert', {
         meetUpId,
@@ -411,10 +427,13 @@ class MeetUpSupervisionAlertService {
    */
   async getSupervisionAlertStats(hotelId) {
     try {
+      const hotelObjectId = mongoose.Types.ObjectId.isValid(hotelId)
+        ? new mongoose.Types.ObjectId(hotelId)
+        : hotelId;
       const stats = await StaffAlert.aggregate([
         {
           $match: {
-            hotelId,
+            hotelId: hotelObjectId,
             type: {
               $in: [
                 'meetup_supervision_required',

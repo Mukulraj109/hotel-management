@@ -5,6 +5,7 @@ import BookingConversation from '../models/BookingConversation.js';
 import Booking from '../models/Booking.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -16,6 +17,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('bookingConversations', 'baseAccess'));
 

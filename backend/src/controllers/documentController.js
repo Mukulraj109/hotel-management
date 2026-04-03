@@ -218,23 +218,51 @@ class DocumentController {
         status,
         category,
         userType,
-        limit = 50,
+        page,
+        limit = 20,
         skip = 0,
         sortBy = '-createdAt'
       } = req.query;
 
-      const documents = await Document.getDocumentsByUser(req.user._id, {
-        status,
-        category,
-        userType,
-        limit: parseInt(limit),
-        skip: parseInt(skip),
-        sortBy
-      });
+      const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+      const parsedPage = Math.max(parseInt(page) || 1, 1);
+      const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
+
+      const hotelId = req.user.hotelId;
+
+      // Build filter for count query
+      const countQuery = {
+        userId: req.user._id,
+        hotelId,
+        isActive: true,
+        isDeleted: false
+      };
+      if (status) countQuery.status = status;
+      if (category) countQuery.category = category;
+      if (userType) countQuery.userType = userType;
+
+      const [documents, totalCount] = await Promise.all([
+        Document.getDocumentsByUser(req.user._id, {
+          hotelId,
+          status,
+          category,
+          userType,
+          limit: parsedLimit,
+          skip: parsedSkip,
+          sortBy
+        }),
+        Document.countDocuments(countQuery)
+      ]);
+
+      const totalPages = Math.ceil(totalCount / parsedLimit);
 
       return {
         status: 'success',
         results: documents.length,
+        totalCount,
+        totalPages,
+        page: parsedPage,
+        limit: parsedLimit,
         data: { documents }
       };
   
@@ -254,7 +282,7 @@ class DocumentController {
         .populate('uploadedBy', 'name email')
         .populate('verificationDetails.verifiedBy', 'name email')
         .populate('departmentId', 'name code')
-        .populate('bookingId', 'bookingNumber checkIn checkOut').lean();
+        .populate('bookingId', 'bookingNumber checkIn checkOut');
 
       if (!document) {
         throw new ApplicationError('Document not found', 404);
@@ -286,7 +314,7 @@ class DocumentController {
    */
   async downloadDocument(req, res) {
     try {
-      const document = await Document.findById(req.params.id).select('+filePath').lean();
+      const document = await Document.findById(req.params.id).select('+filePath');
 
       if (!document) {
         throw new ApplicationError('Document not found', 404);
@@ -299,8 +327,15 @@ class DocumentController {
 
       const filePath = document.filePath;
 
+      // Path traversal protection: ensure file is within the uploads directory
+      const uploadsBase = path.resolve(process.cwd(), 'uploads');
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(uploadsBase + path.sep) && resolvedPath !== uploadsBase) {
+        throw new ApplicationError('Invalid file path', 400);
+      }
+
       // Check if file exists
-      if (!fs.existsSync(filePath)) {
+      if (!fs.existsSync(resolvedPath)) {
         throw new ApplicationError('Document file not found', 404);
       }
 
@@ -322,11 +357,11 @@ class DocumentController {
       };
 
       return {
-        filePath,
+        filePath: resolvedPath,
         contentType: contentTypeMap[ext] || 'application/octet-stream',
         originalName: document.originalName
       };
-  
+
     } catch (error) {
       console.error('Operation failed:', error.message);
       throw error;
@@ -340,7 +375,7 @@ class DocumentController {
     try {
       const { comments, confidenceLevel = 5 } = req.body;
 
-      const document = await Document.findById(req.params.id).lean();
+      const document = await Document.findById(req.params.id);
       if (!document) {
         throw new ApplicationError('Document not found', 404);
       }
@@ -379,7 +414,7 @@ class DocumentController {
         throw new ApplicationError('Rejection reason is required', 400);
       }
 
-      const document = await Document.findById(req.params.id).lean();
+      const document = await Document.findById(req.params.id);
       if (!document) {
         throw new ApplicationError('Document not found', 404);
       }
@@ -414,7 +449,7 @@ class DocumentController {
     try {
       const { description, tags, category, documentType, expiryDate } = req.body;
 
-      const document = await Document.findById(req.params.id).lean();
+      const document = await Document.findById(req.params.id);
       if (!document) {
         throw new ApplicationError('Document not found', 404);
       }
@@ -493,13 +528,13 @@ class DocumentController {
             isActive: false
           },
           $push: {
-            auditTrail: {
+            auditLog: {
               action: 'delete',
               performedBy: req.user._id,
               details: { deletedBy: req.user.name },
               ipAddress: req.ip,
               userAgent: req.get('user-agent'),
-              timestamp: new Date()
+              performedAt: new Date()
             }
           }
         },
@@ -532,7 +567,7 @@ class DocumentController {
   async getStaffDocuments(req, res) {
     try {
       const { staffId } = req.params;
-      const { status, category, limit = 50, skip = 0 } = req.query;
+      const { status, category, page, limit = 20, skip = 0 } = req.query;
 
       // Verify the user is actually a staff member
       const staffUser = await User.findById(staffId).lean();
@@ -540,17 +575,32 @@ class DocumentController {
         throw new ApplicationError('Staff member not found', 404);
       }
 
-      const documents = await Document.getDocumentsByUser(staffId, {
-        userType: 'staff',
-        status,
-        category,
-        limit: parseInt(limit),
-        skip: parseInt(skip)
-      });
+      const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+      const parsedPage = Math.max(parseInt(page) || 1, 1);
+      const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
+
+      const countQuery = { userId: staffId, userType: 'staff', isActive: true, isDeleted: false };
+      if (status) countQuery.status = status;
+      if (category) countQuery.category = category;
+
+      const [documents, totalCount] = await Promise.all([
+        Document.getDocumentsByUser(staffId, {
+          userType: 'staff',
+          status,
+          category,
+          limit: parsedLimit,
+          skip: parsedSkip
+        }),
+        Document.countDocuments(countQuery)
+      ]);
 
       return {
         status: 'success',
         results: documents.length,
+        totalCount,
+        totalPages: Math.ceil(totalCount / parsedLimit),
+        page: parsedPage,
+        limit: parsedLimit,
         data: {
           documents,
           staffMember: {
@@ -624,21 +674,38 @@ class DocumentController {
         userType,
         departmentId,
         priority,
-        limit = 100,
+        page,
+        limit = 20,
         skip = 0
       } = req.query;
 
-      const documents = await Document.getPendingVerifications(req.user.hotelId, {
-        userType,
-        departmentId,
-        priority,
-        limit: parseInt(limit),
-        skip: parseInt(skip)
-      });
+      const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+      const parsedPage = Math.max(parseInt(page) || 1, 1);
+      const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
+
+      const countQuery = { hotelId: req.user.hotelId, status: 'pending', isActive: true, isDeleted: false };
+      if (userType) countQuery.userType = userType;
+      if (departmentId) countQuery.departmentId = departmentId;
+      if (priority) countQuery.priority = priority;
+
+      const [documents, totalCount] = await Promise.all([
+        Document.getPendingVerifications(req.user.hotelId, {
+          userType,
+          departmentId,
+          priority,
+          limit: parsedLimit,
+          skip: parsedSkip
+        }),
+        Document.countDocuments(countQuery)
+      ]);
 
       return {
         status: 'success',
         results: documents.length,
+        totalCount,
+        totalPages: Math.ceil(totalCount / parsedLimit),
+        page: parsedPage,
+        limit: parsedLimit,
         data: { documents }
       };
   
@@ -673,15 +740,16 @@ class DocumentController {
         additionalContext
       );
 
-      // Filter applicable requirements
-      requirements = requirements.filter(req => req.isApplicableForUser(
-        { role: userType, departmentId, ...req.user },
+      // Filter applicable requirements (use distinct variable name to avoid shadowing Express req)
+      const currentUser = req.user;
+      requirements = requirements.filter(requirement => requirement.isApplicableForUser(
+        { role: userType, departmentId, ...currentUser },
         additionalContext
       ));
 
       // Filter by mandatory if requested
       if (mandatory === 'true') {
-        requirements = requirements.filter(req => req.isMandatory);
+        requirements = requirements.filter(requirement => requirement.isMandatory);
       }
 
       return {
@@ -718,23 +786,47 @@ class DocumentController {
       // Get expiring documents
       const expiringDocuments = await Document.getExpiringDocuments(req.user.hotelId, 30);
 
-      // Get department-wise statistics if no specific department requested
+      // Get department-wise statistics if no specific department requested (single aggregation, no N+1)
       let departmentStats = [];
       if (!departmentId && userType === 'staff') {
-        const departments = await Department.find({ hotelId: req.user.hotelId, status: 'active' }).lean().limit(1000);
+        const departments = await Department.find({ hotelId: req.user.hotelId, status: 'active' }).lean().limit(100);
 
-        for (const dept of departments) {
-          const deptStats = await Document.getComplianceStats(req.user.hotelId, {
+        if (departments.length > 0) {
+          const deptIds = departments.map(d => d._id);
+          const matchStage = {
+            hotelId: req.user.hotelId,
             userType: 'staff',
-            departmentId: dept._id,
-            startDate,
-            endDate
-          });
+            departmentId: { $in: deptIds },
+            isActive: true,
+            isDeleted: false
+          };
+          if (startDate && endDate) {
+            matchStage.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+          }
 
-          departmentStats.push({
+          const allDeptStats = await Document.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id: '$departmentId',
+                totalDocuments: { $sum: 1 },
+                verifiedDocuments: { $sum: { $cond: [{ $eq: ['$status', 'verified'] }, 1, 0] } },
+                pendingDocuments: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+                rejectedDocuments: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+                expiredDocuments: { $sum: { $cond: [{ $eq: ['$status', 'expired'] }, 1, 0] } }
+              }
+            }
+          ]);
+
+          const deptStatsMap = allDeptStats.reduce((acc, s) => {
+            acc[s._id.toString()] = s;
+            return acc;
+          }, {});
+
+          departmentStats = departments.map(dept => ({
             department: dept,
-            stats: deptStats[0] || {}
-          });
+            stats: deptStatsMap[dept._id.toString()] || {}
+          }));
         }
       }
 
@@ -788,7 +880,7 @@ class DocumentController {
         userType,
         category,
         isActive: true
-      }).lean().limit(1000);
+      }).lean().limit(100);
 
       for (const requirement of requirements) {
         if (requirement.documentType === documentType ||

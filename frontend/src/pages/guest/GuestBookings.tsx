@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
@@ -33,6 +33,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { toEntityIdString } from '../../utils/entityId';
 import EmptyState from '../../components/ui/EmptyState';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 
 // Extended interface for bookings with populated hotel data
@@ -386,6 +387,7 @@ export default function GuestBookings() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { on, off } = useRealTime();
   const [filter, setFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const PAGE_LIMIT = 20;
@@ -447,6 +449,27 @@ export default function GuestBookings() {
   // Bookings are already server-side filtered; use them directly
   const filteredBookings = bookings;
 
+  // Real-time WebSocket updates for bookings
+  useEffect(() => {
+    const handleBookingUpdate = () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    };
+
+    on('booking:created', handleBookingUpdate);
+    on('booking:updated', handleBookingUpdate);
+    on('booking:cancelled', handleBookingUpdate);
+    on('booking:payment_updated', handleBookingUpdate);
+    on('booking:modification_reviewed', handleBookingUpdate);
+
+    return () => {
+      off('booking:created', handleBookingUpdate);
+      off('booking:updated', handleBookingUpdate);
+      off('booking:cancelled', handleBookingUpdate);
+      off('booking:payment_updated', handleBookingUpdate);
+      off('booking:modification_reviewed', handleBookingUpdate);
+    };
+  }, [on, off, queryClient]);
+
   const handleCancelBooking = async (bookingId: string) => {
     setConfirmCancelId(bookingId);
   };
@@ -457,14 +480,19 @@ export default function GuestBookings() {
     setConfirmCancelId(null);
 
     try {
-      await bookingService.cancelBooking(bookingId);
+      const result = await bookingService.cancelBooking(bookingId);
 
       // Invalidate queries to refresh data immediately
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
 
-      toast.success('Booking cancelled successfully');
+      const refundInfo = result?.data?.refund || result?.refund;
+      if (refundInfo && refundInfo.amount > 0) {
+        toast.success(`Booking cancelled. Refund of ${formatCurrency(refundInfo.amount)} will be processed.`);
+      } else {
+        toast.success('Booking cancelled successfully');
+      }
     } catch (error: unknown) {
       const axiosErr = error as { response?: { data?: { message?: string } } };
       toast.error(axiosErr?.response?.data?.message || 'Failed to cancel booking');
@@ -578,7 +606,7 @@ export default function GuestBookings() {
             ? "You haven't made any bookings yet. Browse rooms to get started."
             : `No ${filter} bookings found. Try a different filter.`}
           icon={<Calendar className="w-16 h-16" />}
-          action={{ label: 'Browse Rooms', onClick: () => { window.location.href = '/rooms'; } }}
+          action={{ label: 'Browse Rooms', onClick: () => { navigate('/rooms'); } }}
         />
       ) : (
         <div className="space-y-6">
@@ -705,20 +733,30 @@ export default function GuestBookings() {
       )}
 
       {/* Cancel Booking Confirmation Dialog */}
-      {confirmCancelId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
-          <Card className="max-w-md w-full p-6">
-            <h3 id="cancel-booking-title" className="text-lg font-semibold text-gray-900 mb-2">Cancel Booking</h3>
-            <p className="text-gray-600 mb-6">Are you sure you want to cancel this booking? This action cannot be undone.</p>
-            <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setConfirmCancelId(null)}>Keep Booking</Button>
-              <Button variant="ghost" className="text-red-600 hover:bg-red-50" onClick={confirmCancelBooking}>
-                <XCircle className="w-4 h-4 mr-1" /> Cancel Booking
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+      {confirmCancelId && (() => {
+        const bookingToCancel = bookings?.find(b => toEntityIdString(b._id) === confirmCancelId);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+            <Card className="max-w-md w-full p-6">
+              <h3 id="cancel-booking-title" className="text-lg font-semibold text-gray-900 mb-2">Cancel Booking</h3>
+              <p className="text-gray-600">Are you sure you want to cancel this booking? This action cannot be undone.</p>
+              {bookingToCancel && (
+                <div className="mt-2 mb-4 p-2 bg-gray-50 rounded text-sm">
+                  <p><strong>{hotelNameFromBooking(bookingToCancel)}</strong></p>
+                  <p>{formatDate(bookingToCancel.checkIn)} - {formatDate(bookingToCancel.checkOut)}</p>
+                </div>
+              )}
+              {!bookingToCancel && <div className="mb-4" />}
+              <div className="flex justify-end gap-3">
+                <Button variant="ghost" onClick={() => setConfirmCancelId(null)}>Keep Booking</Button>
+                <Button variant="ghost" className="text-red-600 hover:bg-red-50" onClick={confirmCancelBooking}>
+                  <XCircle className="w-4 h-4 mr-1" /> Cancel Booking
+                </Button>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,22 +26,25 @@ export default function TodayArrivalsWidget() {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchUpcomingBookings();
-  }, []);
-
-  const fetchUpcomingBookings = async () => {
+  const fetchUpcomingBookings = useCallback(async () => {
     try {
       setLoading(true);
       const response = await staffBookingService.getUpcomingBookings({ days: 3, limit: 10 });
       setBookings(response.data || []);
       setStats(response.stats || { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 });
     } catch {
-      // Error handled silently
+      // Error handled silently — widget is non-critical
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchUpcomingBookings();
+    // Keep widget in sync with backend every 60 seconds
+    const interval = setInterval(fetchUpcomingBookings, 60000);
+    return () => clearInterval(interval);
+  }, [fetchUpcomingBookings]);
 
   const parseBookingDate = (value: unknown): Date | null => {
     if (!value) return null;
@@ -235,11 +238,10 @@ export default function TodayArrivalsWidget() {
                 <Calendar className="h-4 w-4 text-red-500" />
                 Today's Priority
               </h4>
-              {todayBookings.length > 0 && (
-                <Badge className="bg-red-100 text-red-700 text-xs">
-                  {todayBookings.length} arrivals
-                </Badge>
-              )}
+              {/* Badge always rendered here since todayBookings.length > 0 is guaranteed */}
+              <Badge className="bg-red-100 text-red-700 text-xs">
+                {todayBookings.length} arrivals
+              </Badge>
             </div>
             <div className="space-y-2">
               {todayBookings.map(booking => renderBookingCard(booking, true))}

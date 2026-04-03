@@ -123,8 +123,18 @@ export default function GuestSettings() {
           analyticsTracking: data.analyticsTracking,
         },
       };
-      const { data: result } = await api.put('/user-preferences/guest', guestPreferences);
-      return result;
+
+      // Save both profile and preferences
+      const profileFields = { name: data.name?.trim(), phone: data.phone?.trim() };
+      const hasProfileChanges = profileFields.name || profileFields.phone;
+
+      const [prefsResult] = await Promise.all([
+        // Save preferences
+        api.put('/user-preferences/guest', guestPreferences),
+        // Save profile fields (name, phone) if present
+        ...(hasProfileChanges ? [api.patch('/auth/profile', profileFields)] : [])
+      ]);
+      return prefsResult.data;
     },
     onSuccess: () => {
       toast.success('Settings updated successfully');

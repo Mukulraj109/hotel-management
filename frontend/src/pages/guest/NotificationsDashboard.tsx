@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Bell,
   Filter,
@@ -32,7 +33,7 @@ import {
   MessageCircle,
   Smartphone
 } from 'lucide-react';
-import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
+import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference, UpdatePreferencesRequest } from '../../services/notificationService';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -49,6 +50,7 @@ function NotificationsDashboard() {
     unreadOnly: false
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
@@ -60,7 +62,7 @@ function NotificationsDashboard() {
 
   // Mutations - Define these before useEffect that references them
   const markAsReadMutation = useMutation({
-    mutationFn: notificationService.markAsRead,
+    mutationFn: (id: string) => notificationService.markAsRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
@@ -72,7 +74,7 @@ function NotificationsDashboard() {
   });
 
   const markMultipleAsReadMutation = useMutation({
-    mutationFn: notificationService.markMultipleAsRead,
+    mutationFn: (ids: string[]) => notificationService.markMultipleAsRead(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
@@ -85,7 +87,7 @@ function NotificationsDashboard() {
   });
 
   const markAllAsReadMutation = useMutation({
-    mutationFn: notificationService.markAllAsRead,
+    mutationFn: () => notificationService.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
@@ -97,7 +99,7 @@ function NotificationsDashboard() {
   });
 
   const deleteNotificationMutation = useMutation({
-    mutationFn: notificationService.deleteNotification,
+    mutationFn: (id: string) => notificationService.deleteNotification(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
@@ -109,7 +111,7 @@ function NotificationsDashboard() {
   });
 
   const updatePreferencesMutation = useMutation({
-    mutationFn: notificationService.updatePreferences,
+    mutationFn: (prefs: UpdatePreferencesRequest) => notificationService.updatePreferences(prefs),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notificationPreferences'] });
       toast.success('Preferences updated successfully');
@@ -318,12 +320,12 @@ function NotificationsDashboard() {
     isLoading: isLoadingNotifications,
     error: notificationsError
   } = useQuery({
-    queryKey: ['notifications', currentPage, filters, searchTerm],
+    queryKey: ['notifications', currentPage, filters, debouncedSearchTerm],
     queryFn: () => notificationService.getNotifications({
       page: currentPage,
       limit: 20,
       ...filters,
-      ...(searchTerm && { search: searchTerm })
+      ...(debouncedSearchTerm && { search: debouncedSearchTerm })
     }),
     placeholderData: (prev) => prev
   });
@@ -363,10 +365,14 @@ function NotificationsDashboard() {
     setCurrentPage(1);
   };
 
+  // Reset page when debounced search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm]);
+
   // Handle search
   const handleSearch = (value: string) => {
     setSearchTerm(value);
-    setCurrentPage(1);
   };
 
   // Handle notification selection

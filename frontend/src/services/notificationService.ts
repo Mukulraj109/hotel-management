@@ -10,7 +10,8 @@ export interface Notification {
   type: NotificationTypeValue;
   title: string;
   message: string;
-  channels: NotificationChannel[];
+  /** Array of delivery channel identifiers as stored in the database (string enum values). */
+  channels: NotificationChannelValue[];
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'sent' | 'delivered' | 'failed' | 'read';
   readAt?: string;
@@ -76,12 +77,50 @@ export interface NotificationChannel {
   supportsFrequency: boolean;
 }
 
-export type NotificationTypeValue = 
+export type NotificationTypeValue =
+  // Guest / booking types
   | 'booking_confirmation' | 'booking_reminder' | 'booking_cancellation'
   | 'payment_success' | 'payment_failed' | 'loyalty_points'
   | 'service_booking' | 'service_reminder' | 'promotional'
   | 'system_alert' | 'welcome' | 'check_in' | 'check_out'
-  | 'review_request' | 'special_offer';
+  | 'review_request' | 'special_offer'
+  // Admin dashboard types
+  | 'booking_created' | 'payment_update' | 'booking_cancelled' | 'user_registration'
+  | 'service_request' | 'review_created' | 'user_activity' | 'data_refresh'
+  // Inventory types
+  | 'inventory_damage' | 'inventory_missing' | 'inventory_replacement_needed'
+  | 'inventory_guest_charged' | 'inventory_low_stock' | 'checkout_inspection_failed'
+  | 'inventory_theft' | 'inventory_audit_alert' | 'inventory_weekly_report'
+  | 'inventory_reorder' | 'inventory_impact_summary' | 'inventory_integration_errors'
+  // Daily operations
+  | 'daily_check_assigned' | 'daily_check_started' | 'daily_check_overdue'
+  | 'daily_check_completed' | 'daily_check_issues' | 'daily_check_quality_low'
+  // Maintenance
+  | 'maintenance_request_created' | 'maintenance_urgent' | 'maintenance_assigned'
+  | 'maintenance_started' | 'maintenance_completed' | 'maintenance_overdue' | 'maintenance_high_cost'
+  // Housekeeping & room status
+  | 'room_needs_cleaning' | 'housekeeping_assigned' | 'cleaning_started'
+  | 'cleaning_completed' | 'deep_cleaning_due' | 'cleaning_quality_issue'
+  | 'room_out_of_order' | 'room_back_in_service' | 'room_occupied'
+  | 'room_checkout_dirty' | 'room_ready'
+  // Guest service workflow
+  | 'guest_service_created' | 'guest_service_urgent' | 'guest_service_assigned'
+  | 'guest_service_started' | 'guest_service_completed' | 'guest_service_overdue' | 'guest_service_vip'
+  // Inventory management
+  | 'inventory_out_of_stock' | 'inventory_damaged' | 'inventory_high_value_used' | 'inventory_theft_suspected'
+  // Operational intelligence
+  | 'daily_operations_summary' | 'staff_performance_alert' | 'revenue_impact_alert'
+  | 'guest_satisfaction_low' | 'equipment_failure_pattern'
+  // Staff management
+  | 'task_assignment' | 'task_overdue' | 'shift_reminder' | 'performance_review_due'
+  // Emergency & security
+  | 'emergency_alert' | 'security_incident' | 'evacuation_notice' | 'safety_inspection_required'
+  // Service management
+  | 'service_assignment' | 'service_escalation' | 'service_feedback'
+  | 'service_update' | 'service_cancellation' | 'service_overdue' | 'daily_summary'
+  // Misc
+  | 'overbooking_resolved'
+  | 'meetup_invite' | 'meetup_accepted' | 'meetup_declined' | 'meetup_cancelled' | 'meetup_completed';
 
 export type NotificationChannelValue = 'email' | 'sms' | 'push' | 'in_app';
 
@@ -514,14 +553,107 @@ class NotificationService {
         color: 'bg-pink-100 text-pink-800',
         icon: 'tag',
         description: 'Exclusive offer for you'
-      }
+      },
+      // Admin dashboard types
+      booking_created: { label: 'Booking Created', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'New booking created' },
+      payment_update: { label: 'Payment Update', color: 'bg-blue-100 text-blue-800', icon: 'credit-card', description: 'Payment status update' },
+      booking_cancelled: { label: 'Booking Cancelled', color: 'bg-red-100 text-red-800', icon: 'x-circle', description: 'Booking cancelled' },
+      user_registration: { label: 'New User', color: 'bg-green-100 text-green-800', icon: 'heart', description: 'New user registered' },
+      service_request: { label: 'Service Request', color: 'bg-blue-100 text-blue-800', icon: 'bell', description: 'Guest service request' },
+      review_created: { label: 'New Review', color: 'bg-purple-100 text-purple-800', icon: 'message-square', description: 'New review submitted' },
+      user_activity: { label: 'User Activity', color: 'bg-gray-100 text-gray-800', icon: 'help-circle', description: 'User activity event' },
+      data_refresh: { label: 'Data Refresh', color: 'bg-gray-100 text-gray-800', icon: 'help-circle', description: 'Data refreshed' },
+      // Inventory types
+      inventory_damage: { label: 'Inventory Damage', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Inventory damaged' },
+      inventory_missing: { label: 'Inventory Missing', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Inventory missing' },
+      inventory_replacement_needed: { label: 'Replacement Needed', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Item needs replacement' },
+      inventory_guest_charged: { label: 'Guest Charged', color: 'bg-yellow-100 text-yellow-800', icon: 'credit-card', description: 'Guest charged for inventory' },
+      inventory_low_stock: { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800', icon: 'alert-triangle', description: 'Inventory running low' },
+      checkout_inspection_failed: { label: 'Inspection Failed', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Checkout inspection failed' },
+      inventory_theft: { label: 'Theft Alert', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Possible theft detected' },
+      inventory_audit_alert: { label: 'Audit Alert', color: 'bg-orange-100 text-orange-800', icon: 'alert-circle', description: 'Inventory audit required' },
+      inventory_weekly_report: { label: 'Weekly Report', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Inventory weekly report' },
+      inventory_reorder: { label: 'Reorder Required', color: 'bg-yellow-100 text-yellow-800', icon: 'alert-triangle', description: 'Items need reorder' },
+      inventory_impact_summary: { label: 'Impact Summary', color: 'bg-blue-100 text-blue-800', icon: 'bell', description: 'Inventory impact summary' },
+      inventory_integration_errors: { label: 'Integration Error', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Inventory integration error' },
+      // Daily operations
+      daily_check_assigned: { label: 'Daily Check Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Daily room check assigned' },
+      daily_check_started: { label: 'Daily Check Started', color: 'bg-blue-100 text-blue-800', icon: 'clock', description: 'Daily check in progress' },
+      daily_check_overdue: { label: 'Daily Check Overdue', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Daily check overdue' },
+      daily_check_completed: { label: 'Daily Check Completed', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Daily check complete' },
+      daily_check_issues: { label: 'Check Issues Found', color: 'bg-orange-100 text-orange-800', icon: 'alert-circle', description: 'Issues found during daily check' },
+      daily_check_quality_low: { label: 'Low Quality Score', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Quality score below threshold' },
+      // Maintenance
+      maintenance_request_created: { label: 'Maintenance Request', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'New maintenance request' },
+      maintenance_urgent: { label: 'Urgent Maintenance', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Urgent maintenance needed' },
+      maintenance_assigned: { label: 'Maintenance Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Maintenance task assigned to you' },
+      maintenance_started: { label: 'Maintenance Started', color: 'bg-blue-100 text-blue-800', icon: 'clock', description: 'Maintenance in progress' },
+      maintenance_completed: { label: 'Maintenance Done', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Maintenance completed' },
+      maintenance_overdue: { label: 'Maintenance Overdue', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Maintenance task overdue' },
+      maintenance_high_cost: { label: 'High-Cost Maintenance', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'High-cost maintenance alert' },
+      // Housekeeping & room status
+      room_needs_cleaning: { label: 'Cleaning Needed', color: 'bg-yellow-100 text-yellow-800', icon: 'bell', description: 'Room requires cleaning' },
+      housekeeping_assigned: { label: 'Housekeeping Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Housekeeping task assigned' },
+      cleaning_started: { label: 'Cleaning Started', color: 'bg-blue-100 text-blue-800', icon: 'clock', description: 'Cleaning in progress' },
+      cleaning_completed: { label: 'Cleaning Done', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Room cleaned' },
+      deep_cleaning_due: { label: 'Deep Clean Due', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Deep cleaning required' },
+      cleaning_quality_issue: { label: 'Quality Issue', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Cleaning quality issue' },
+      room_out_of_order: { label: 'Room OOO', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Room is out of order' },
+      room_back_in_service: { label: 'Room Back In Service', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Room is available again' },
+      room_occupied: { label: 'Room Occupied', color: 'bg-blue-100 text-blue-800', icon: 'log-in', description: 'Room now occupied' },
+      room_checkout_dirty: { label: 'Checkout - Needs Cleaning', color: 'bg-yellow-100 text-yellow-800', icon: 'bell', description: 'Guest checked out, cleaning needed' },
+      room_ready: { label: 'Room Ready', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Room ready for guest' },
+      // Guest service workflow
+      guest_service_created: { label: 'Guest Request', color: 'bg-blue-100 text-blue-800', icon: 'bell', description: 'New guest service request' },
+      guest_service_urgent: { label: 'Urgent Guest Request', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Urgent guest request' },
+      guest_service_assigned: { label: 'Request Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Guest request assigned to you' },
+      guest_service_started: { label: 'Request In Progress', color: 'bg-blue-100 text-blue-800', icon: 'clock', description: 'Service request in progress' },
+      guest_service_completed: { label: 'Request Completed', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Guest request fulfilled' },
+      guest_service_overdue: { label: 'Request Overdue', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Guest request is overdue' },
+      guest_service_vip: { label: 'VIP Guest Request', color: 'bg-purple-100 text-purple-800', icon: 'star', description: 'VIP guest service request' },
+      // More inventory
+      inventory_out_of_stock: { label: 'Out of Stock', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Item out of stock' },
+      inventory_damaged: { label: 'Inventory Damaged', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Inventory item damaged' },
+      inventory_high_value_used: { label: 'High-Value Item Used', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'High-value inventory consumed' },
+      inventory_theft_suspected: { label: 'Theft Suspected', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Possible inventory theft' },
+      // Operational intelligence
+      daily_operations_summary: { label: 'Daily Summary', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Daily operations summary' },
+      staff_performance_alert: { label: 'Performance Alert', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Staff performance alert' },
+      revenue_impact_alert: { label: 'Revenue Alert', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Revenue impact alert' },
+      guest_satisfaction_low: { label: 'Low Satisfaction', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Guest satisfaction below threshold' },
+      equipment_failure_pattern: { label: 'Equipment Pattern', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Equipment failure pattern detected' },
+      // Staff management
+      task_assignment: { label: 'Task Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'New task assigned to you' },
+      task_overdue: { label: 'Task Overdue', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Task is overdue' },
+      shift_reminder: { label: 'Shift Reminder', color: 'bg-blue-100 text-blue-800', icon: 'clock', description: 'Upcoming shift reminder' },
+      performance_review_due: { label: 'Performance Review', color: 'bg-purple-100 text-purple-800', icon: 'calendar', description: 'Performance review due' },
+      // Emergency & security
+      emergency_alert: { label: 'Emergency Alert', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Emergency situation' },
+      security_incident: { label: 'Security Incident', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Security incident reported' },
+      evacuation_notice: { label: 'Evacuation Notice', color: 'bg-red-100 text-red-800', icon: 'alert-circle', description: 'Evacuation required' },
+      safety_inspection_required: { label: 'Safety Inspection', color: 'bg-orange-100 text-orange-800', icon: 'alert-triangle', description: 'Safety inspection required' },
+      // Service management
+      service_assignment: { label: 'Service Assigned', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Service task assigned' },
+      service_escalation: { label: 'Service Escalated', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Service escalated' },
+      service_feedback: { label: 'Service Feedback', color: 'bg-purple-100 text-purple-800', icon: 'message-square', description: 'Service feedback received' },
+      service_update: { label: 'Service Update', color: 'bg-blue-100 text-blue-800', icon: 'bell', description: 'Service status updated' },
+      service_cancellation: { label: 'Service Cancelled', color: 'bg-red-100 text-red-800', icon: 'x-circle', description: 'Service cancelled' },
+      service_overdue: { label: 'Service Overdue', color: 'bg-red-100 text-red-800', icon: 'alert-triangle', description: 'Service is overdue' },
+      daily_summary: { label: 'Daily Summary', color: 'bg-blue-100 text-blue-800', icon: 'calendar', description: 'Daily operations summary' },
+      // Misc
+      overbooking_resolved: { label: 'Overbooking Resolved', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Overbooking situation resolved' },
+      meetup_invite: { label: 'Meetup Invite', color: 'bg-purple-100 text-purple-800', icon: 'heart', description: 'Guest meetup invitation' },
+      meetup_accepted: { label: 'Meetup Accepted', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Meetup invitation accepted' },
+      meetup_declined: { label: 'Meetup Declined', color: 'bg-gray-100 text-gray-800', icon: 'x-circle', description: 'Meetup invitation declined' },
+      meetup_cancelled: { label: 'Meetup Cancelled', color: 'bg-red-100 text-red-800', icon: 'x-circle', description: 'Meetup cancelled' },
+      meetup_completed: { label: 'Meetup Completed', color: 'bg-green-100 text-green-800', icon: 'check-circle', description: 'Meetup completed' }
     };
 
-    return typeInfo[type] || {
-      label: 'Unknown',
+    return typeInfo[type] ?? {
+      label: 'Notification',
       color: 'bg-gray-100 text-gray-800',
       icon: 'help-circle',
-      description: 'Unknown notification type'
+      description: 'Hotel notification'
     };
   }
 

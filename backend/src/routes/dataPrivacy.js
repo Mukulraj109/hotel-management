@@ -2,10 +2,12 @@ import express from 'express';
 import dataPrivacyController from '../controllers/dataPrivacyController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { requirePermission, requireRoleLevel } from '../middleware/permissionCheck.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -91,6 +93,7 @@ const validateProcessingSchema = Joi.object({
 
 // Authentication required for most routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('dataPrivacy', 'baseAccess'));
 
@@ -703,6 +706,81 @@ router.post('/validate-processing',
   requirePermission('user:read'),
   validate(validateProcessingSchema),
   dataPrivacyController.validateDataProcessing
+);
+
+// Data Erasure Request (self-service, GDPR Right to be Forgotten)
+
+const erasureRequestSchema = Joi.object({
+  reason: Joi.string().max(500).optional(),
+  confirmation: Joi.boolean().required()
+});
+
+/**
+ * @swagger
+ * /data-privacy/erasure-request:
+ *   post:
+ *     summary: Request data erasure
+ *     description: Submit a request to erase personal data (30-day grace period)
+ *     tags: [Data Privacy - Self Service]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - confirmation
+ *             properties:
+ *               reason:
+ *                 type: string
+ *               confirmation:
+ *                 type: boolean
+ *                 description: Must be true to confirm erasure request
+ *     responses:
+ *       200:
+ *         description: Erasure request submitted
+ *       400:
+ *         description: Confirmation required
+ */
+router.post('/erasure-request',
+  validate(erasureRequestSchema),
+  async (req, res) => {
+    try {
+      const { reason, confirmation } = req.body;
+      if (!confirmation) {
+        return res.status(400).json({ status: 'error', message: 'Confirmation required' });
+      }
+
+      const user = await User.findById(req.user._id);
+      if (!user) {
+        return res.status(404).json({ status: 'error', message: 'User not found' });
+      }
+
+      if (user.accountDeletionRequested) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'An erasure request has already been submitted for this account'
+        });
+      }
+
+      user.accountDeletionRequested = true;
+      user.accountDeletionRequestedAt = new Date();
+      await user.save();
+
+      res.json({
+        status: 'success',
+        message: 'Erasure request submitted. Your data will be removed within 30 days.',
+        data: {
+          requestedAt: user.accountDeletionRequestedAt,
+          reason: reason || 'User requested deletion'
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ status: 'error', message: 'Failed to process erasure request' });
+    }
+  }
 );
 
 export default router;

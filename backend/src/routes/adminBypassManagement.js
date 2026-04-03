@@ -29,6 +29,7 @@ import {
     handleBypassErrors
 } from '../middleware/bypassSecurityMiddleware.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import logger from '../utils/logger.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
@@ -49,6 +50,7 @@ function getRiskLevel(riskScore) {
 
 // Apply authentication to all routes (same as other admin routes)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(authorizePolicy('adminBypassManagement', 'baseAccess'));
 router.use(ensurePropertyAccess);
 

@@ -21,7 +21,7 @@ interface StaffNotificationFormData {
   scheduleChanges: boolean;
   emergencyAlerts: boolean;
   maintenanceAlerts: boolean;
-  inventoryUpdates: boolean;
+  inventoryAlerts: boolean;
   sound: boolean;
   vibration: boolean;
 }
@@ -35,6 +35,7 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
     register,
     handleSubmit,
     setValue,
+    reset,
     formState: { isDirty }
   } = useForm<StaffNotificationFormData>({
     defaultValues: {
@@ -43,29 +44,32 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
       scheduleChanges: true,
       emergencyAlerts: true,
       maintenanceAlerts: true,
-      inventoryUpdates: false,
+      inventoryAlerts: false,
       sound: true,
       vibration: true
     }
   });
 
   // Load saved notification preferences from backend
+  // Uses /user-preferences/notifications which stores staff-specific category flags
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const { data } = await api.get('/notifications/preferences');
-        const prefs = data?.data?.preferences;
-        if (prefs) {
-          const inAppTypes = prefs.inApp?.types || {};
-          setValue('workAssignments', inAppTypes.booking_confirmation ?? true, { shouldDirty: false });
-          setValue('guestRequests', inAppTypes.service_booking ?? true, { shouldDirty: false });
-          setValue('scheduleChanges', inAppTypes.booking_reminder ?? true, { shouldDirty: false });
-          setValue('emergencyAlerts', inAppTypes.system_alert ?? true, { shouldDirty: false });
-          setValue('maintenanceAlerts', inAppTypes.service_reminder ?? true, { shouldDirty: false });
-          setValue('inventoryUpdates', inAppTypes.special_offer ?? false, { shouldDirty: false });
-          setValue('sound', prefs.inApp?.sound ?? true, { shouldDirty: false });
-          setValue('vibration', prefs.inApp?.vibration ?? true, { shouldDirty: false });
-        }
+        const [{ data: notifData }] = await Promise.all([
+          api.get('/user-preferences/notifications')
+        ]);
+
+        const cats = notifData?.data?.notifications?.categories || {};
+        const notifPrefs = notifData?.data?.notifications || {};
+
+        setValue('workAssignments', cats.workAssignments ?? true, { shouldDirty: false });
+        setValue('guestRequests', cats.guestRequests ?? true, { shouldDirty: false });
+        setValue('scheduleChanges', cats.scheduleChanges ?? true, { shouldDirty: false });
+        setValue('emergencyAlerts', cats.emergencyAlerts ?? true, { shouldDirty: false });
+        setValue('maintenanceAlerts', cats.maintenanceAlerts ?? true, { shouldDirty: false });
+        setValue('inventoryAlerts', cats.inventoryAlerts ?? false, { shouldDirty: false });
+        setValue('sound', notifPrefs.sound ?? true, { shouldDirty: false });
+        setValue('vibration', notifPrefs.vibration ?? true, { shouldDirty: false });
       } catch {
         // Use defaults if preferences not yet saved
       }
@@ -81,29 +85,25 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
   }, [isDirty, onSettingsChange]);
 
   // Save notification settings mutation
+  // Persists to /user-preferences/notifications using the categories object
   const saveNotificationMutation = useMutation({
     mutationFn: async (data: StaffNotificationFormData) => {
-      const channelSettings = {
-        enabled: true,
+      const { data: result } = await api.put('/user-preferences/notifications', {
+        categories: {
+          workAssignments: data.workAssignments,
+          guestRequests: data.guestRequests,
+          scheduleChanges: data.scheduleChanges,
+          emergencyAlerts: data.emergencyAlerts,
+          maintenanceAlerts: data.maintenanceAlerts,
+          inventoryAlerts: data.inventoryAlerts
+        },
         sound: data.sound,
-        vibration: data.vibration,
-        showBadge: true,
-        types: {
-          booking_confirmation: data.workAssignments,
-          service_booking: data.guestRequests,
-          booking_reminder: data.scheduleChanges,
-          system_alert: data.emergencyAlerts,
-          service_reminder: data.maintenanceAlerts,
-          special_offer: data.inventoryUpdates
-        }
-      };
-      const { data: result } = await api.patch('/notifications/preferences', {
-        channel: 'inApp',
-        settings: channelSettings
+        vibration: data.vibration
       });
-      return result;
+      return { result, formData: data };
     },
-    onSuccess: () => {
+    onSuccess: ({ formData }) => {
+      reset(formData);
       toast.success('Notification settings updated successfully');
       if (onSettingsChange) {
         onSettingsChange(false);
@@ -204,7 +204,7 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
 
               <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                 <input
-                  {...register('inventoryUpdates')}
+                  {...register('inventoryAlerts')}
                   type="checkbox"
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />

@@ -182,8 +182,9 @@ const GuestDetailModal: React.FC<GuestDetailModalProps> = ({ item, isOpen, onClo
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch {
-      // Receipt download failed silently - user can retry
+    } catch (error) {
+      console.error('Receipt download failed:', error);
+      alert('Failed to download receipt. Please try again.');
     }
   };
 

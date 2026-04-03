@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../../services/api';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
   Camera,
@@ -31,6 +31,7 @@ interface StaffProfileSettingsProps {
 
 export default function StaffProfileSettings({ onSettingsChange }: StaffProfileSettingsProps = {}) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const {
@@ -38,6 +39,7 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors, isDirty }
   } = useForm<StaffProfileFormData>({
     defaultValues: {
@@ -109,9 +111,15 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
       await api.put('/user-preferences/profile', {
         avatar: data.avatar || ''
       });
-      return profileResponse.data;
+      return { profileData: profileResponse.data, formData: data };
     },
-    onSuccess: () => {
+    onSuccess: ({ formData }) => {
+      // Reset form with saved values so isDirty returns to false
+      reset(formData);
+      // Clear avatar preview now that the value is persisted in form state
+      setAvatarPreview(null);
+      // Invalidate the auth query so the header/context reflects updated name/avatar
+      queryClient.invalidateQueries({ queryKey: ['authMe'] });
       toast.success('Profile updated successfully');
       if (onSettingsChange) {
         onSettingsChange(false);
@@ -190,15 +198,17 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
           <div className="flex items-center space-x-6">
             <div className="relative">
               <div className="h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                {avatarPreview || user?.avatar ? (
-                  <img
-                    src={avatarPreview || (user?.avatar?.startsWith('/') ? `${window.location.origin}${user.avatar}` : user?.avatar)}
-                    alt="Avatar"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <User className="h-8 w-8 text-gray-400" />
-                )}
+                {(() => {
+                  const savedAvatar = watch('avatar');
+                  const displaySrc = avatarPreview || savedAvatar || user?.avatar;
+                  if (displaySrc) {
+                    const src = displaySrc.startsWith('/')
+                      ? `${window.location.origin}${displaySrc}`
+                      : displaySrc;
+                    return <img src={src} alt="Avatar" className="h-full w-full object-cover" />;
+                  }
+                  return <User className="h-8 w-8 text-gray-400" />;
+                })()}
               </div>
               <label
                 htmlFor="avatar-upload"
@@ -268,10 +278,18 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
                 Phone Number
               </label>
               <input
-                {...register('phone')}
+                {...register('phone', {
+                  pattern: {
+                    value: /^\+?[\d\s\-()]{7,20}$/,
+                    message: 'Please enter a valid phone number'
+                  }
+                })}
                 type="tel"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              {errors.phone && (
+                <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>
+              )}
             </div>
 
             <div>

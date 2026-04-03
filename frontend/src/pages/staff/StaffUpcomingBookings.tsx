@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { staffBookingService, StaffUpcomingBooking, StaffUpcomingStats } from '../../services/staffBookingService';
+import { staffBookingService, StaffUpcomingBooking, StaffUpcomingStats, ExtraPersonCharge } from '../../services/staffBookingService';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { useRealTime } from '../../services/realTimeService';
 import {
   Calendar,
   Users,
@@ -29,46 +31,75 @@ import {
 
 function StaffUpcomingBookings() {
   useAuth();
+  const { on, off } = useRealTime();
   const [bookings, setBookings] = useState<StaffUpcomingBooking[]>([]);
   const [stats, setStats] = useState<StaffUpcomingStats>({
     todayArrivals: 0,
     tomorrowArrivals: 0,
     totalUpcoming: 0
   });
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     days: 3, // Staff typically focuses on next 3 days
     page: 1,
-    limit: 50,
+    limit: 20,
     search: ''
   });
   const [selectedBooking, setSelectedBooking] = useState<StaffUpcomingBooking | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedBookingForEdit, setSelectedBookingForEdit] = useState<StaffUpcomingBooking | null>(null);
+  // Track whether the component is mounted to avoid state updates after unmount
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Fetch upcoming bookings
-  const fetchUpcomingBookings = async () => {
+  const fetchUpcomingBookings = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await staffBookingService.getUpcomingBookings({
         days: filters.days,
         page: filters.page,
         limit: filters.limit
       });
 
+      if (!mountedRef.current) return;
       setBookings(response.data || []);
       setStats(response.stats || { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 });
-    } catch (error) {
+      setTotalPages(response.pagination?.pages ?? 1);
+    } catch (_err) {
+      if (!mountedRef.current) return;
+      setError('Failed to load upcoming bookings. Please try again.');
       toast.error('Failed to load upcoming bookings');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  };
+  }, [filters.days, filters.page, filters.limit]);
 
   useEffect(() => {
     fetchUpcomingBookings();
-  }, [filters.days, filters.page]);
+  }, [fetchUpcomingBookings]);
+
+  // Real-time WebSocket listeners for booking events
+  useEffect(() => {
+    const handleBookingEvent = () => {
+      fetchUpcomingBookings();
+    };
+    on('booking:created', handleBookingEvent);
+    on('booking:updated', handleBookingEvent);
+    on('booking:cancelled', handleBookingEvent);
+    return () => {
+      off('booking:created', handleBookingEvent);
+      off('booking:updated', handleBookingEvent);
+      off('booking:cancelled', handleBookingEvent);
+    };
+  }, [on, off, fetchUpcomingBookings]);
 
   const parseBookingDate = (value: unknown): Date | null => {
     if (!value) return null;
@@ -123,7 +154,7 @@ function StaffUpcomingBookings() {
   };
 
   // Get status color for staff view
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'success' | 'warning' | 'info' | 'secondary' => {
     switch (status) {
       case 'confirmed': return 'success';
       case 'pending': return 'warning';
@@ -132,7 +163,8 @@ function StaffUpcomingBookings() {
     }
   };
 
-  // Separate bookings by priority
+  // Separate bookings by priority.
+  // Bookings with unparseable dates fall into "later" so they are still visible.
   const todayBookings = filteredBookings.filter((booking) => {
     const checkInDate = parseBookingDate(booking.checkIn);
     return checkInDate ? isToday(checkInDate) : false;
@@ -143,7 +175,9 @@ function StaffUpcomingBookings() {
   });
   const laterBookings = filteredBookings.filter((booking) => {
     const checkInDate = parseBookingDate(booking.checkIn);
-    return checkInDate ? !isToday(checkInDate) && !isTomorrow(checkInDate) : false;
+    // null dates (unknown check-in) are included in "later" so they are visible
+    if (!checkInDate) return true;
+    return !isToday(checkInDate) && !isTomorrow(checkInDate);
   });
 
   // Render booking card
@@ -166,8 +200,8 @@ function StaffUpcomingBookings() {
                 </Badge>
               )}
             </div>
-            <Badge variant={getStatusColor(booking.status) as unknown}>
-              {booking.status.replace('_', ' ')}
+            <Badge variant={getStatusColor(booking.status)}>
+              {booking.status.replace(/_/g, ' ')}
             </Badge>
           </div>
 
@@ -182,8 +216,8 @@ function StaffUpcomingBookings() {
                 <div className="flex items-center gap-1 text-sm text-gray-600">
                   <Users className="h-4 w-4" />
                   <span>{booking.guestDetails?.adults || 1}</span>
-                  {booking.guestDetails?.children > 0 && (
-                    <span>+{booking.guestDetails.children}</span>
+                  {(booking.guestDetails?.children ?? 0) > 0 && (
+                    <span>+{booking.guestDetails!.children}</span>
                   )}
                 </div>
                 {booking.extraPersons && booking.extraPersons.length > 0 && (
@@ -276,9 +310,10 @@ function StaffUpcomingBookings() {
                       setSelectedBookingForEdit(booking);
                       setIsEditModalOpen(true);
                     }}
+                    aria-label="Edit booking"
                     title="Edit Booking (Add Extra Persons)"
                   >
-                    <Edit className="h-4 w-4" />
+                    <Edit className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 )}
               </div>
@@ -286,43 +321,33 @@ function StaffUpcomingBookings() {
 
             {/* Extra Person Payment Status */}
             {booking.extraPersons && booking.extraPersons.length > 0 && booking.extraPersonCharges && booking.extraPersonCharges.length > 0 && (
-              <div className="pt-2 mt-2 border-t border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm">
-                    {(() => {
-                      const extraPersonCharges = booking.extraPersonCharges || [];
-                      const unpaidCharges = extraPersonCharges.filter((charge: Record<string, unknown>) => !charge.isPaid);
-                      const totalUnpaidCharges = unpaidCharges.reduce((sum: number, charge: Record<string, unknown>) => sum + (charge.totalCharge - (charge.paidAmount || 0)), 0);
-                      const hasUnpaidCharges = unpaidCharges.length > 0 && totalUnpaidCharges > 0;
-
-                      if (!hasUnpaidCharges) {
-                        const totalPaidAmount = extraPersonCharges.reduce((sum: number, charge: Record<string, unknown>) => sum + (charge.paidAmount || 0), 0);
-                        return (
-                          <span className="text-green-600 font-medium flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
-                            ₹{totalPaidAmount.toLocaleString()} Paid ✓
-                          </span>
-                        );
-                      } else {
-                        return (
+              (() => {
+                const extraPersonCharges: ExtraPersonCharge[] = booking.extraPersonCharges ?? [];
+                const unpaidCharges = extraPersonCharges.filter((c) => !c.isPaid);
+                const totalUnpaid = unpaidCharges.reduce(
+                  (sum, c) => sum + ((c.totalCharge ?? 0) - (c.paidAmount ?? 0)),
+                  0
+                );
+                const hasUnpaid = unpaidCharges.length > 0 && totalUnpaid > 0;
+                const totalPaid = extraPersonCharges.reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+                return (
+                  <div className="pt-2 mt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        {hasUnpaid ? (
                           <span className="text-red-600 font-medium flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 bg-red-500 rounded-full"></span>
-                            ₹{totalUnpaidCharges.toLocaleString()} Due
+                            <span className="inline-block w-2 h-2 bg-red-500 rounded-full" aria-hidden="true"></span>
+                            ₹{totalUnpaid.toLocaleString()} Due
                           </span>
-                        );
-                      }
-                    })()}
-                  </div>
-
-                  {/* Proceed Payment Button - Only show if there are unpaid charges */}
-                  {(() => {
-                    const extraPersonCharges = booking.extraPersonCharges || [];
-                    const unpaidCharges = extraPersonCharges.filter((charge: Record<string, unknown>) => !charge.isPaid);
-                    const totalUnpaidCharges = unpaidCharges.reduce((sum: number, charge: Record<string, unknown>) => sum + (charge.totalCharge - (charge.paidAmount || 0)), 0);
-                    const hasUnpaidCharges = unpaidCharges.length > 0 && totalUnpaidCharges > 0;
-
-                    if (hasUnpaidCharges) {
-                      return (
+                        ) : (
+                          <span className="text-green-600 font-medium flex items-center gap-1">
+                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full" aria-hidden="true"></span>
+                            ₹{totalPaid.toLocaleString()} Paid ✓
+                          </span>
+                        )}
+                      </div>
+                      {/* Proceed Payment Button - Only show if there are unpaid charges */}
+                      {hasUnpaid && (
                         <Button
                           size="sm"
                           variant="default"
@@ -335,39 +360,39 @@ function StaffUpcomingBookings() {
                           <CreditCard className="h-3 w-3 mr-1" />
                           Proceed Payment
                         </Button>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             )}
 
             {/* Settlement Status */}
             {(() => {
               const settlement = booking.settlementTracking;
-              const hasSettlement = settlement && settlement.outstandingBalance > 0;
-              const isSettled = settlement && settlement.status === 'completed';
+              // Show outstanding balance if there is one, OR show settled state if completed
+              const hasOutstanding = settlement != null && (settlement.outstandingBalance ?? 0) > 0;
+              const isSettled = settlement != null && settlement.status === 'completed' && !hasOutstanding;
 
-              if (hasSettlement || isSettled) {
+              if (hasOutstanding || isSettled) {
                 return (
                   <div className="pt-2 mt-2 border-t border-gray-100">
                     <div className="flex items-center justify-between">
                       <div className="text-sm">
-                        {hasSettlement ? (
+                        {hasOutstanding ? (
                           <span className="text-yellow-600 font-medium flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full"></span>
-                            ₹{settlement.outstandingBalance.toLocaleString()} Outstanding
+                            <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full" aria-hidden="true"></span>
+                            ₹{(settlement!.outstandingBalance).toLocaleString()} Outstanding
                           </span>
                         ) : (
                           <span className="text-green-600 font-medium flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
-                            ₹{settlement?.finalAmount?.toLocaleString() || 0} Settled ✓
+                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full" aria-hidden="true"></span>
+                            ₹{(settlement?.finalAmount ?? 0).toLocaleString()} Settled ✓
                           </span>
                         )}
                       </div>
 
-                      {hasSettlement && (
+                      {hasOutstanding && (
                         <Button
                           size="sm"
                           variant="default"
@@ -401,8 +426,32 @@ function StaffUpcomingBookings() {
     toast.success('Booking updated successfully');
   };
 
+  if (loading && bookings.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Error Banner */}
+      {error && (
+        <div role="alert" className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+          <button
+            onClick={() => { setError(null); fetchUpcomingBookings(); }}
+            className="text-sm text-red-600 font-medium hover:text-red-800 underline ml-4"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -556,6 +605,36 @@ function StaffUpcomingBookings() {
         </Card>
       )}
 
+      {/* Pagination Controls */}
+      {totalPages > 1 && !filters.search && (
+        <div className="flex items-center justify-between pt-4">
+          <p className="text-sm text-gray-600">
+            Page {filters.page} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filters.page <= 1 || loading}
+              onClick={() => setFilters(prev => ({ ...prev, page: prev.page - 1 }))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600">
+              {filters.page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filters.page >= totalPages || loading}
+              onClick={() => setFilters(prev => ({ ...prev, page: prev.page + 1 }))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Booking Details Modal */}
       {showDetailsModal && selectedBooking && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -577,8 +656,8 @@ function StaffUpcomingBookings() {
                 <Badge className={`${getArrivalPriority(selectedBooking.checkIn).color} border`}>
                   {getArrivalPriority(selectedBooking.checkIn).label}
                 </Badge>
-                <Badge variant={getStatusColor(selectedBooking.status) as unknown}>
-                  {selectedBooking.status.replace('_', ' ')}
+                <Badge variant={getStatusColor(selectedBooking.status)}>
+                  {selectedBooking.status.replace(/_/g, ' ')}
                 </Badge>
               </div>
 
@@ -635,7 +714,7 @@ function StaffUpcomingBookings() {
                     <span className="text-gray-600">Guests:</span>
                     <p className="font-medium">
                       {selectedBooking.guestDetails?.adults || 1} adults
-                      {selectedBooking.guestDetails?.children > 0 && `, ${selectedBooking.guestDetails.children} children`}
+                      {(selectedBooking.guestDetails?.children ?? 0) > 0 && `, ${selectedBooking.guestDetails!.children} children`}
                     </p>
                   </div>
                 </div>

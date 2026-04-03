@@ -114,19 +114,30 @@ class ServiceNotificationService {
 
   /**
    * Send notification for overdue service requests
+   * @param {string} [hotelId] - Optional hotel ID to scope the query. When called from a
+   *   scheduled job, pass each hotel's ID separately to avoid cross-tenant data leakage.
    */
-  async notifyOverdueRequests() {
+  async notifyOverdueRequests(hotelId) {
     try {
       const GuestService = mongoose.model('GuestService');
       const User = mongoose.model('User');
       const Notification = mongoose.model('Notification');
 
-      // Find overdue requests (scheduled time passed and still not completed)
-      const overdueRequests = await GuestService.find({
+      // Build filter — always scope by hotelId when provided to prevent cross-hotel data access
+      const overdueFilter = {
         scheduledTime: { $lt: new Date() },
         status: { $in: ['assigned', 'in_progress'] }
-      }).populate('assignedTo', 'name email')
-        .populate('hotelId', 'name').lean().limit(1000);
+      };
+      if (hotelId) {
+        overdueFilter.hotelId = mongoose.Types.ObjectId.isValid(hotelId)
+          ? new mongoose.Types.ObjectId(hotelId)
+          : hotelId;
+      }
+
+      // Find overdue requests (scheduled time passed and still not completed)
+      const overdueRequests = await GuestService.find(overdueFilter)
+        .populate('assignedTo', 'name email')
+        .populate('hotelId', 'name').lean().limit(500);
 
       // Batch: check recent overdue notifications for all requests in a single query
       const assignedRequestIds = overdueRequests.filter(r => r.assignedTo).map(r => r._id);
