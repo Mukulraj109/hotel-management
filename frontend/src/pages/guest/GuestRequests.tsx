@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { bookingService } from '../../services/bookingService';
@@ -93,16 +94,13 @@ const PAGE_SIZE = 20;
 
 function GuestRequests() {
   const { user } = useAuth();
-  const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
+  const queryClient = useQueryClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [feedbackRequestId, setFeedbackRequestId] = useState<string | null>(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
@@ -121,34 +119,27 @@ function GuestRequests() {
     specialInstructions: ''
   });
 
-  const fetchRequests = useCallback(async (targetPage = page) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await guestServiceService.getServiceRequests({
-        status: filter === 'all' ? undefined : filter,
-        page: targetPage,
-        limit: PAGE_SIZE
-      });
-      setRequests(response.data.serviceRequests || []);
-      if (response.data.pagination) {
-        setPagination(response.data.pagination);
-      } else if (response.pagination) {
-        setPagination(response.pagination);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load service requests';
-      setError(message);
-      toast.error('Failed to load service requests');
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, page]);
+  const { data: requestsData, isLoading: loading, refetch } = useQuery({
+    queryKey: ['guest-requests', filter, page],
+    queryFn: async () => {
+      const params: Record<string, unknown> = { page, limit: PAGE_SIZE };
+      if (filter !== 'all') params.status = filter;
+      const response = await guestServiceService.getServiceRequests(params);
+      return response;
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: (prev: unknown) => prev,
+    enabled: !!user,
+  });
+
+  const requests = requestsData?.data?.serviceRequests || requestsData?.serviceRequests || [];
+  const pagination: PaginationMeta = requestsData?.data?.pagination || requestsData?.pagination || { page: 1, limit: PAGE_SIZE, total: 0, pages: 1 };
+  const error = requestsData === undefined && !loading ? 'Failed to load service requests' : null;
 
   const fetchBookings = useCallback(async () => {
     try {
       setBookingsError(null);
-      const response = await bookingService.getUserBookings({ limit: 100 });
+      const response = await bookingService.getUserBookings({ status: 'confirmed,checked_in', limit: 20, page: 1 });
       const bookingsData = Array.isArray(response.data?.bookings)
         ? response.data.bookings
         : Array.isArray(response.data)
@@ -168,13 +159,6 @@ function GuestRequests() {
     }
   }, [user, connect, fetchBookings]);
 
-  // Fetch when page changes (but not on initial render, which is handled above)
-  useEffect(() => {
-    if (user && page > 0) {
-      fetchRequests(page);
-    }
-  }, [page, user, fetchRequests]);
-
   // Real-time event listeners for guest service request updates
   useEffect(() => {
     if (connectionState !== 'connected' || !user) return;
@@ -186,11 +170,9 @@ function GuestRequests() {
       }
       const updatedRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
-      // Only update if this request belongs to the current user
+      // Only process if this request belongs to the current user
       if (isSameUserId(user?._id, updatedRequest.userId)) {
-        setRequests(prev => prev.map(request =>
-          request._id === updatedRequest._id ? updatedRequest : request
-        ));
+        queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
 
         // Show toast notification for status changes
         if (wrappedData.previousStatus && wrappedData.previousStatus !== updatedRequest.status) {
@@ -221,14 +203,9 @@ function GuestRequests() {
       }
       const newRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
-      // Only add if this request belongs to the current user
+      // Only process if this request belongs to the current user
       if (isSameUserId(user?._id, newRequest.userId)) {
-        const matchesFilter = filter === 'all' || newRequest.status === filter;
-        if (page === 1 && matchesFilter) {
-          setRequests(prev => [newRequest, ...prev]);
-        } else {
-          fetchRequests(page);
-        }
+        queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
         toast.success('Your service request has been created successfully', { duration: 4000 });
       }
     };
@@ -237,11 +214,9 @@ function GuestRequests() {
       const wrappedData = (data.data && typeof data.data === 'object') ? data.data as Record<string, unknown> : data;
       const cancelledRequest = wrappedData.serviceRequest as GuestServiceRequest;
 
-      // Only update if this request belongs to the current user
+      // Only process if this request belongs to the current user
       if (isSameUserId(user?._id, cancelledRequest.userId)) {
-        setRequests(prev => prev.map(request =>
-          request._id === cancelledRequest._id ? cancelledRequest : request
-        ));
+        queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
       }
     };
 
@@ -263,7 +238,7 @@ function GuestRequests() {
       off('guest-services:status_changed', handleGuestServiceUpdated);
       off('guest-services:*', handleGuestServiceUpdated);
     };
-  }, [connectionState, on, off, user, filter, page, fetchRequests]);
+  }, [connectionState, on, off, user, queryClient]);
 
   const handleCreateRequest = async () => {
     if (creating) return; // Prevent double-submit
@@ -321,7 +296,7 @@ function GuestRequests() {
         specialInstructions: ''
       });
       setPage(1);
-      fetchRequests(1);
+      queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       toast.error(err.response?.data?.message || 'Failed to create service request');
@@ -342,7 +317,7 @@ function GuestRequests() {
     try {
       await guestServiceService.cancelServiceRequest(requestId, 'Cancelled by guest');
       toast.success('Request cancelled successfully');
-      fetchRequests(page);
+      queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       toast.error(err.response?.data?.message || 'Failed to cancel request');
@@ -365,7 +340,7 @@ function GuestRequests() {
       setFeedbackRequestId(null);
       setFeedbackRating(0);
       setFeedbackText('');
-      fetchRequests(page);
+      queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       toast.error(err.response?.data?.message || 'Failed to submit feedback');
@@ -405,7 +380,7 @@ function GuestRequests() {
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load service requests</h2>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => fetchRequests(1)} variant="primary">
+          <Button onClick={() => refetch()} variant="primary">
             Try Again
           </Button>
         </div>

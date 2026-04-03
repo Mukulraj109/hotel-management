@@ -272,6 +272,7 @@ class RealTimeService extends EventEmitter {
   }
 
   private handleConnect(): void {
+    const wasReconnect = this.reconnectAttempts > 0;
     this.isConnected = true;
     this.isConnecting = false;
     this.reconnectAttempts = 0;
@@ -291,6 +292,11 @@ class RealTimeService extends EventEmitter {
     while (this.messageQueue.length > 0) {
       const message = this.messageQueue.shift();
       this.sendMessage(message);
+    }
+
+    // On reconnect, notify all listeners to refresh their data
+    if (wasReconnect) {
+      this.emit('connection:reconnected', { timestamp: new Date().toISOString() });
     }
   }
 

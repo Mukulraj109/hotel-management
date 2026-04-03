@@ -2444,27 +2444,118 @@ router.get('/staff-performance', authorize('admin'), catchAsync(async (req, res,
   const activeStaff = staffAvailability.filter(staff => staff.isActive).length;
   const totalStaff = staffAvailability.length;
 
+  // Map backend staffPerformance shape to the frontend StaffPerformanceData shape.
+  // Backend shape: { _id, name, email, department, role, totalTasksCompleted,
+  //   totalTasksPending, overallEfficiency, housekeepingCompleted, maintenanceCompleted, ... }
+  // Frontend shape: topPerformers[].{ staff: { _id, name, email, department, role },
+  //   performanceScore, tasks: { completedTasks, pendingTasks, totalTasks,
+  //   onTimeCompletion, averageCompletionTime } }
+  const mappedTopPerformers = topPerformers.map((s) => ({
+    staff: {
+      _id: s._id,
+      name: s.name,
+      email: s.email || '',
+      department: s.department || 'general',
+      role: s.role
+    },
+    performanceScore: Math.round(s.overallEfficiency || 0),
+    tasks: {
+      completedTasks: s.totalTasksCompleted || 0,
+      pendingTasks: s.totalTasksPending || 0,
+      totalTasks: (s.totalTasksCompleted || 0) + (s.totalTasksPending || 0),
+      onTimeCompletion: Math.round(s.overallEfficiency || 0),
+      averageCompletionTime: Math.round(
+        ((s.avgHousekeepingTime || 0) + (s.avgMaintenanceTime || 0)) / 2
+      )
+    }
+  }));
+
+  // Map departmentPerformance to frontend byDepartment shape.
+  // Backend shape: { department, staffCount, totalTasks, totalCompleted, overallEfficiency }
+  // Frontend shape: { department, staffCount, performanceScore,
+  //   tasks: { completedTasks, pendingTasks, totalTasks, averageCompletionTime } }
+  const mappedByDepartment = departmentPerformance.map((d) => ({
+    department: d.department || 'general',
+    staffCount: d.staffCount || 0,
+    performanceScore: Math.round(d.overallEfficiency || 0),
+    tasks: {
+      completedTasks: d.totalCompleted || 0,
+      pendingTasks: (d.totalTasks || 0) - (d.totalCompleted || 0),
+      totalTasks: d.totalTasks || 0,
+      averageCompletionTime: 0
+    }
+  }));
+
+  // Build taskDistribution from department aggregates.
+  const taskTypes = ['housekeeping', 'maintenance', 'guestServices'];
+  const taskDistribution = taskTypes.map((type) => {
+    const total = staffPerformance.reduce((sum, s) => {
+      const completed = s[`${type === 'housekeeping' ? 'housekeepingCompleted' : type === 'maintenance' ? 'maintenanceCompleted' : 'guestServicesCompleted'}`] || 0;
+      const pending = s[`${type === 'housekeeping' ? 'housekeepingPending' : type === 'maintenance' ? 'maintenancePending' : 'guestServicesPending'}`] || 0;
+      return sum + completed + pending;
+    }, 0);
+    const completed = staffPerformance.reduce((sum, s) => {
+      return sum + (s[`${type === 'housekeeping' ? 'housekeepingCompleted' : type === 'maintenance' ? 'maintenanceCompleted' : 'guestServicesCompleted'}`] || 0);
+    }, 0);
+    return {
+      taskType: type,
+      total,
+      completed,
+      pending: total - completed,
+      averageTime: 0
+    };
+  }).filter((t) => t.total > 0);
+
+  // Build taskTrends from dailyProductivity.
+  const taskTrends = dailyProductivity.map((day) => ({
+    date: day.date,
+    total: day.totalTasks || 0,
+    completed: day.completedTasks || 0,
+    pending: (day.totalTasks || 0) - (day.completedTasks || 0)
+  }));
+
+  const totalTasksCompleted = staffPerformance.reduce((sum, s) => sum + (s.totalTasksCompleted || 0), 0);
+  const avgPerformanceScore = staffPerformance.length > 0
+    ? Math.round(staffPerformance.reduce((sum, s) => sum + (s.overallEfficiency || 0), 0) / staffPerformance.length)
+    : 0;
+
   res.status(200).json({
     status: 'success',
     data: {
       overview: {
         totalStaff,
+        // activeToday: staff who have been active in the last 24 hours
+        activeToday: activeStaff,
         activeStaff,
         availabilityRate: totalStaff > 0 ? Math.round((activeStaff / totalStaff) * 100) : 0,
-        avgOverallEfficiency: staffPerformance.length > 0 
-          ? Math.round(staffPerformance.reduce((sum, staff) => sum + staff.overallEfficiency, 0) / staffPerformance.length) 
-          : 0,
-        totalTasksCompleted: staffPerformance.reduce((sum, staff) => sum + staff.totalTasksCompleted, 0),
-        totalTasksPending: staffPerformance.reduce((sum, staff) => sum + staff.totalTasksPending, 0),
+        // Frontend expects these field names for KPI cards
+        completedTasksToday: totalTasksCompleted,
+        totalTasksToday: staffPerformance.reduce((sum, s) => sum + (s.totalTasksCompleted || 0) + (s.totalTasksPending || 0), 0),
+        averagePerformanceScore: avgPerformanceScore,
+        avgOverallEfficiency: avgPerformanceScore,
+        // Trend fields (not tracked across periods here, return 0 as neutral)
+        newHires: 0,
+        taskCompletionTrend: 0,
+        performanceTrend: 0,
+        totalTasksCompleted,
+        totalTasksPending: staffPerformance.reduce((sum, s) => sum + (s.totalTasksPending || 0), 0),
         period: {
           start: periodStartDate,
           end: periodEndDate,
           type: period
         }
       },
-      staffPerformance: staffPerformance.slice(0, 20), // Limit to top 20 performers
+      // Frontend uses topPerformers for the table and cards
+      topPerformers: mappedTopPerformers,
+      // Frontend uses byDepartment for department chart and cards
+      byDepartment: mappedByDepartment,
+      // Frontend uses taskDistribution for donut chart
+      taskDistribution,
+      // Frontend uses taskTrends for line chart
+      taskTrends,
+      // Legacy fields kept for backward compatibility
+      staffPerformance: staffPerformance.slice(0, 20),
       departmentPerformance,
-      topPerformers,
       charts: {
         dailyProductivity: dailyProductivity.map(day => ({
           date: day.date,

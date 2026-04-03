@@ -72,10 +72,15 @@ const restockInventorySchema = Joi.object({
 
 // Get inventory stats (aggregated across ALL items, not just current page)
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  if (!req.user.hotelId) {
+  // Admin/manager can pass hotelId query param to view a specific property's stats.
+  const supervisorRoles = ['admin', 'manager'];
+  const effectiveHotelId = (supervisorRoles.includes(req.user.role) && req.query.hotelId)
+    ? req.query.hotelId
+    : req.user.hotelId;
+  if (!effectiveHotelId) {
     throw new ApplicationError('Hotel context is required', 400);
   }
-  const hotelObjectId = new mongoose.Types.ObjectId(req.user.hotelId);
+  const hotelObjectId = new mongoose.Types.ObjectId(effectiveHotelId);
   const query = { isActive: true, hotelId: hotelObjectId };
 
   const [statsResult] = await Inventory.aggregate([
@@ -138,10 +143,17 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 
   const limit = Math.min(Math.max(parseInt(rawLimit) || 10, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
 
-  if (!req.user.hotelId) {
+  // Admin/manager can pass hotelId query param to view a specific property's inventory.
+  // Operational staff are always scoped to their own hotel.
+  const supervisorRoles = ['admin', 'manager'];
+  const effectiveHotelId = (supervisorRoles.includes(req.user.role) && req.query.hotelId)
+    ? req.query.hotelId
+    : req.user.hotelId;
+
+  if (!effectiveHotelId) {
     throw new ApplicationError('Hotel context is required', 400);
   }
-  const query = { isActive: true, hotelId: req.user.hotelId };
+  const query = { isActive: true, hotelId: effectiveHotelId };
 
   if (category) query.category = category;
 

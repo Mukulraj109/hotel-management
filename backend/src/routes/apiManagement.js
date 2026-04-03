@@ -1,6 +1,7 @@
 import express from 'express';
 import apiManagementController from '../controllers/apiManagementController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { validate, schemas } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Rate limiting for API management operations

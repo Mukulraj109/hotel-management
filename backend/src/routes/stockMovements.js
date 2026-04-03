@@ -4,6 +4,7 @@ import StockMovement from '../models/StockMovement.js';
 import TransactionService from '../services/transactionService.js';
 import StockInventoryService from '../services/stockInventoryService.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -14,6 +15,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('stockMovements', 'baseAccess'));
 

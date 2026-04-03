@@ -35,32 +35,38 @@ function FrontDeskRooms() {
   const [changedRooms, setChangedRooms] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('grid');
 
+  // Server-side pagination state (limit capped at 100 per the mandatory pagination policy)
+  const [roomPage, setRoomPage] = useState(1);
+  const ROOMS_PER_PAGE = 100;
+
   // Room status modal states
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedRoomForStatus, setSelectedRoomForStatus] = useState<Room | null>(null);
-  
+
   // Workflow modal states
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [workflowType, setWorkflowType] = useState<'checkin' | 'checkout' | 'housekeeping' | 'maintenance' | 'status_update'>('checkin');
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
-  
+
   // Analytics view states
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [analyticsView, setAnalyticsView] = useState<'predictive' | 'benchmarking'>('predictive');
-  
+
   // Use PropertyContext's selectedPropertyId
   const hotelId = selectedPropertyId || user?.hotelId || '';
-  
+
   // Helper function to get room status (computed or fallback to static)
   const getRoomStatus = (room: Room) => {
     const status = room.computedStatus || room.status;
     return status;
   };
-  
-  // Fetch rooms data and metrics with real-time configuration
-  const roomsQuery = useAdminRooms({ 
+
+  // Fetch rooms data and metrics with real-time configuration.
+  // Uses server-side pagination (page + limit) per the mandatory pagination policy.
+  const roomsQuery = useAdminRooms({
     hotelId,
-    limit: 100, // Get more rooms for accurate metrics
+    page: roomPage,
+    limit: ROOMS_PER_PAGE,
     enabled: !!hotelId,
     refetchInterval: realTimeEnabled ? autoRefreshInterval : false,
     staleTime: 0, // Force fresh data on every request
@@ -516,12 +522,13 @@ function FrontDeskRooms() {
     }
   };
 
-  // Reset filters
+  // Reset filters (also resets to first page)
   const handleResetFilters = () => {
     setStatusFilter('all');
     setTypeFilter('all');
     setFloorFilter('all');
     setSelectedFloor(null);
+    setRoomPage(1);
     handleClearSelection();
   };
 
@@ -1900,6 +1907,37 @@ function FrontDeskRooms() {
           </div>
         </div>
       )}
+
+      {/* Server-side Pagination Controls */}
+      {(() => {
+        const totalRooms = roomsQuery.data?.pagination?.total ?? 0;
+        const totalPages = roomsQuery.data?.pagination?.pages ?? 1;
+        if (totalPages <= 1) return null;
+        return (
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+            <span className="text-sm text-gray-600">
+              Showing {((roomPage - 1) * ROOMS_PER_PAGE) + 1}–{Math.min(roomPage * ROOMS_PER_PAGE, totalRooms)} of {totalRooms} rooms
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRoomPage(p => Math.max(1, p - 1))}
+                disabled={roomPage === 1}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-700">Page {roomPage} of {totalPages}</span>
+              <button
+                onClick={() => setRoomPage(p => Math.min(totalPages, p + 1))}
+                disabled={roomPage === totalPages}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Workflow Modal */}
       <WorkflowModal

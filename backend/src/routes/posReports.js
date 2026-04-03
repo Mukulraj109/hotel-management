@@ -4,6 +4,7 @@ import BillingSession from '../models/BillingSession.js';
 import POSOutlet from '../models/POSOutlet.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -14,6 +15,7 @@ const router = express.Router();
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Sales Summary Report - Daily/Weekly/Monthly aggregated sales

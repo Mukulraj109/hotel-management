@@ -61,6 +61,30 @@ export default function StaffPerformance() {
 
   const data = staffQuery.data?.data;
 
+  // Guard: require a hotel to be selected before fetching
+  if (!activeHotelId) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-gray-400 text-lg font-semibold mb-2">No Property Selected</div>
+          <p className="text-gray-500">Please select a property to view staff performance data.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (staffQuery.isError) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-red-600 text-lg font-semibold mb-2">Failed to load staff performance</div>
+          <p className="text-gray-500 mb-4">There was an error fetching the data.</p>
+          <Button onClick={() => staffQuery.refetch()} variant="secondary">Retry</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}

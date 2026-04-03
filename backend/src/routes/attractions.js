@@ -1,6 +1,7 @@
 import express from 'express';
 import LocalAttraction from '../models/LocalAttraction.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
@@ -280,7 +281,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *         description: Attraction created successfully
  */
 router.post('/',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
@@ -349,7 +350,7 @@ router.post('/',
  *         description: Attraction updated successfully
  */
 router.patch('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
@@ -392,7 +393,7 @@ router.patch('/:id',
  *         description: Attraction deleted successfully
  */
 router.delete('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),

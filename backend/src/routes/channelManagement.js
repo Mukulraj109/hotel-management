@@ -7,6 +7,7 @@ import RoomAvailability from '../models/RoomAvailability.js';
 import BookingComService from '../services/channels/bookingComService.js';
 // import { syncMiddleware } from '../middleware/channelSyncMiddleware.js'; // Temporarily disabled to debug server hang
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -17,6 +18,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply auth middleware to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('channelManagement', 'baseAccess'));
 

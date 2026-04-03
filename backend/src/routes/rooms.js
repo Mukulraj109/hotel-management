@@ -92,8 +92,12 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     if (maxPrice) query.currentRate.$lte = parseFloat(maxPrice);
   }
 
+  // Sanitize and cap pagination params (max 200 for room grids; default 20)
+  const parsedPage = Math.max(1, parseInt(page) || 1);
+  const parsedLimit = Math.min(200, Math.max(1, parseInt(limit) || 20));
+
   // Calculate pagination
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const skip = (parsedPage - 1) * parsedLimit;
 
   let rooms;
   let total;
@@ -173,12 +177,12 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
 
       logger.debug('Rooms processed', { total: rooms.length, available: rooms.filter(r => r.isAvailable).length });
       total = rooms.length;
-      
+
       // Apply pagination
       const startIndex = skip;
-      const endIndex = skip + parseInt(limit);
+      const endIndex = skip + parsedLimit;
       rooms = rooms.slice(startIndex, endIndex);
-      
+
       // Populate hotel info if rooms exist
       if (rooms.length > 0) {
         rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
@@ -186,34 +190,34 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     } else {
       // For regular users, use strict availability filtering
       const availableRooms = await Room.findAvailable(targetHotelId, checkInDate, checkOutDate, type);
-      
+
       logger.debug('Available rooms found', { count: availableRooms.length, hotelId: targetHotelId });
-      
+
       // Apply pagination manually since findAvailable returns results, not a query
       const startIndex = skip;
-      const endIndex = skip + parseInt(limit);
+      const endIndex = skip + parsedLimit;
       rooms = availableRooms.slice(startIndex, endIndex);
-      
+
       // Set total count
       total = availableRooms.length;
-      
+
       // Populate hotel info if rooms exist
       if (rooms.length > 0) {
         rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
       }
     }
   } else {
-    // For admin requests without dates, use real-time status
-    if (hotelId && (req.headers['x-admin-request'] || req.user?.role === 'admin')) {
+    // For admin/frontdesk/manager requests without dates, use real-time status
+    if (hotelId && (req.headers['x-admin-request'] || req.user?.role === 'admin' || req.user?.role === 'frontdesk' || req.user?.role === 'manager')) {
       const result = await Room.getRoomsWithRealTimeStatus(hotelId, {
         type,
-        page: parseInt(page),
-        limit: parseInt(limit)
+        page: parsedPage,
+        limit: parsedLimit
       });
-      
+
       rooms = result.rooms;
       total = result.total;
-      
+
       // Populate hotel info
       if (rooms.length > 0) {
         rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
@@ -222,10 +226,10 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
       // Regular query for non-admin requests
       rooms = await Room.find(query)
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(parsedLimit)
         .populate('hotelId', 'name address')
         .sort({ roomNumber: 1 }).lean();
-        
+
       total = await Room.countDocuments(query);
     }
   }
@@ -236,10 +240,10 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     data: {
       rooms,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: parsedLimit > 0 ? Math.ceil(total / parsedLimit) : 1
       }
     }
   });

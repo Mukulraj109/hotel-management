@@ -12,6 +12,7 @@ import {
   getAmendmentMetrics
 } from '../controllers/otaAmendmentController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, validateBookingId } from '../middleware/validation.js';
@@ -114,6 +115,7 @@ router.post('/webhook', validate(mutationBaselineSchema), handleOTAAmendmentWebh
 
 // Protected routes - require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('otaAmendments', 'baseAccess'));
 

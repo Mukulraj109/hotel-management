@@ -1,6 +1,7 @@
 import express from 'express';
 import rateManagementController from '../controllers/rateManagementController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -136,7 +137,7 @@ router.get('/all-rates', rateManagementController.getAllRates);
  *       201:
  *         description: Rate plan created successfully
  */
-router.post('/plans', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createRatePlan);
+router.post('/plans', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createRatePlan);
 
 /**
  * @swagger
@@ -160,7 +161,7 @@ router.post('/plans', authenticate, ensurePropertyAccess, authorizePolicy('rateM
  *       200:
  *         description: List of rate plans
  */
-router.get('/plans', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRatePlans);
+router.get('/plans', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRatePlans);
 
 /**
  * @swagger
@@ -186,7 +187,7 @@ router.get('/plans', authenticate, ensurePropertyAccess, authorizePolicy('rateMa
  *       200:
  *         description: Rate plan updated successfully
  */
-router.put('/plans/:id', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateRatePlan);
+router.put('/plans/:id', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateRatePlan);
 
 /**
  * @swagger
@@ -206,7 +207,7 @@ router.put('/plans/:id', authenticate, ensurePropertyAccess, authorizePolicy('ra
  *       200:
  *         description: Rate plan deactivated successfully
  */
-router.delete('/plans/:id', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.deleteRatePlan);
+router.delete('/plans/:id', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.deleteRatePlan);
 
 // Seasonal Rates
 /**
@@ -256,7 +257,7 @@ router.delete('/plans/:id', authenticate, ensurePropertyAccess, authorizePolicy(
  *       201:
  *         description: Seasonal rate created successfully
  */
-router.post('/seasonal', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createSeasonalRate);
+router.post('/seasonal', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createSeasonalRate);
 
 /**
  * @swagger
@@ -279,7 +280,7 @@ router.post('/seasonal', authenticate, ensurePropertyAccess, authorizePolicy('ra
  *       200:
  *         description: List of seasonal rates
  */
-router.get('/seasonal', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getSeasonalRates);
+router.get('/seasonal', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getSeasonalRates);
 
 /**
  * @swagger
@@ -299,7 +300,7 @@ router.get('/seasonal', authenticate, ensurePropertyAccess, authorizePolicy('rat
  *       200:
  *         description: Seasonal rate updated successfully
  */
-router.put('/seasonal/:id', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateSeasonalRate);
+router.put('/seasonal/:id', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateSeasonalRate);
 
 // Rate Overrides
 /**
@@ -341,7 +342,7 @@ router.put('/seasonal/:id', authenticate, ensurePropertyAccess, authorizePolicy(
  *       201:
  *         description: Rate override created successfully
  */
-router.post('/override', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.overrideRate);
+router.post('/override', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.overrideRate);
 
 /**
  * @swagger
@@ -375,7 +376,7 @@ router.post('/override', authenticate, ensurePropertyAccess, authorizePolicy('ra
  *       200:
  *         description: List of rate overrides
  */
-router.get('/override', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRateOverrides);
+router.get('/override', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRateOverrides);
 
 /**
  * @swagger
@@ -395,7 +396,7 @@ router.get('/override', authenticate, ensurePropertyAccess, authorizePolicy('rat
  *       200:
  *         description: Rate override removed successfully
  */
-router.delete('/override/:id', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.deleteRateOverride);
+router.delete('/override/:id', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.deleteRateOverride);
 
 // Dynamic Pricing
 /**
@@ -410,7 +411,7 @@ router.delete('/override/:id', authenticate, ensurePropertyAccess, authorizePoli
  *       201:
  *         description: Dynamic pricing rule created successfully
  */
-router.post('/dynamic-pricing', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createDynamicPricingRule);
+router.post('/dynamic-pricing', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createDynamicPricingRule);
 
 /**
  * @swagger
@@ -434,7 +435,7 @@ router.post('/dynamic-pricing', authenticate, ensurePropertyAccess, authorizePol
  *       200:
  *         description: List of dynamic pricing rules
  */
-router.get('/dynamic-pricing', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getDynamicPricingRules);
+router.get('/dynamic-pricing', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getDynamicPricingRules);
 
 // Yield Management
 /**
@@ -465,7 +466,7 @@ router.get('/dynamic-pricing', authenticate, ensurePropertyAccess, authorizePoli
  *       200:
  *         description: Yield metrics updated successfully
  */
-router.post('/yield/update', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateYieldMetrics);
+router.post('/yield/update', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updateYieldMetrics);
 
 /**
  * @swagger
@@ -497,7 +498,7 @@ router.post('/yield/update', authenticate, ensurePropertyAccess, authorizePolicy
  *       200:
  *         description: Yield management data
  */
-router.get('/yield', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getYieldData);
+router.get('/yield', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getYieldData);
 
 /**
  * @swagger
@@ -529,7 +530,7 @@ router.get('/yield', authenticate, ensurePropertyAccess, authorizePolicy('rateMa
  *       200:
  *         description: Revenue forecast data
  */
-router.get('/forecast', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRevenueForecast);
+router.get('/forecast', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), rateManagementController.getRevenueForecast);
 
 // Packages
 /**
@@ -544,7 +545,7 @@ router.get('/forecast', authenticate, ensurePropertyAccess, authorizePolicy('rat
  *       201:
  *         description: Package created successfully
  */
-router.post('/packages', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createPackage);
+router.post('/packages', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.createPackage);
 
 /**
  * @swagger
@@ -586,7 +587,7 @@ router.get('/packages', rateManagementController.getPackages);
  *       200:
  *         description: Package updated successfully
  */
-router.put('/packages/:id', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updatePackage);
+router.put('/packages/:id', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.updatePackage);
 
 // Utility endpoints
 /**
@@ -619,7 +620,7 @@ router.put('/packages/:id', authenticate, ensurePropertyAccess, authorizePolicy(
  *       200:
  *         description: Rate comparison data
  */
-router.post('/comparison', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), validate(mutationBaselineSchema), rateManagementController.getRateComparison);
+router.post('/comparison', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'readAccess'), validate(mutationBaselineSchema), rateManagementController.getRateComparison);
 
 /**
  * @swagger
@@ -658,6 +659,6 @@ router.post('/comparison', authenticate, ensurePropertyAccess, authorizePolicy('
  *       200:
  *         description: Bulk rate update results
  */
-router.post('/bulk-update', authenticate, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.bulkUpdateRates);
+router.post('/bulk-update', authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('rateManagement', 'manageAccess'), validate(mutationBaselineSchema), rateManagementController.bulkUpdateRates);
 
 export default router;

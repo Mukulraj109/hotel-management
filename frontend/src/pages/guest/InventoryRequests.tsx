@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { bookingService } from '../../services/bookingService';
 import { useRealTime } from '../../services/realTimeService';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Plus,
   Package,
@@ -55,19 +57,16 @@ const getPriorityColor = (priority: string) => {
 export default function InventoryRequests() {
   const { user } = useAuth();
   const { on, off } = useRealTime();
-  const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
+  const queryClient = useQueryClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<GuestServiceRequest | null>(null);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   // Form state
@@ -80,31 +79,34 @@ export default function InventoryRequests() {
     specialInstructions: ''
   });
 
-  const fetchRequests = useCallback(async (requestedPage = page) => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data: requestsData, isLoading: loading, refetch } = useQuery({
+    queryKey: ['inventory-requests', filter, page, debouncedSearchTerm],
+    queryFn: async () => {
       const response = await guestServiceService.getServiceRequests({
         serviceType: 'other',
-        status: filter === 'all' ? undefined : filter,
-        page: requestedPage,
+        serviceVariation: 'inventory_request',
+        status: filter !== 'all' ? filter : undefined,
+        search: debouncedSearchTerm?.trim() || undefined,
+        page,
         limit: PAGE_SIZE
       });
-      setRequests(response.data.serviceRequests || []);
-      const pagination = response.pagination ?? response.data?.pagination;
-      setTotalPages(pagination?.pages || 1);
-      setTotalCount(pagination?.total || 0);
-    } catch {
-      setError('Failed to load inventory requests. Please try again.');
-      toast.error('Failed to load inventory requests');
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, page]);
+      return response;
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: (prev: unknown) => prev,
+    enabled: !!user,
+  });
+
+  const requests = requestsData?.data?.serviceRequests || requestsData?.serviceRequests || [];
+  const pagination = requestsData?.data?.pagination || requestsData?.pagination || {};
+  const totalPages = pagination?.pages || 1;
+  const totalCount = pagination?.total || 0;
+  const error = requestsData === undefined && !loading ? 'Failed to load inventory requests. Please try again.' : null;
 
   const fetchBookings = useCallback(async () => {
     try {
-      const response = await bookingService.getUserBookings({ page: 1, limit: 50 });
+      // Use server-side status filter to avoid fetching all bookings client-side
+      const response = await bookingService.getUserBookings({ status: 'confirmed,checked_in', page: 1, limit: 20 });
       const bookingsData = Array.isArray(response.data?.bookings)
         ? response.data.bookings
         : Array.isArray(response.data)
@@ -118,15 +120,14 @@ export default function InventoryRequests() {
 
   useEffect(() => {
     if (user) {
-      fetchRequests();
       fetchBookings();
     }
-  }, [user, fetchRequests, fetchBookings]);
+  }, [user, fetchBookings]);
 
   // Real-time updates for guest service events
   useEffect(() => {
     const handleServiceUpdate = () => {
-      fetchRequests();
+      queryClient.invalidateQueries({ queryKey: ['inventory-requests'] });
     };
 
     on('guest-services:updated', handleServiceUpdate);
@@ -140,7 +141,7 @@ export default function InventoryRequests() {
       off('guest-services:assigned', handleServiceUpdate);
       off('guest-services:completed', handleServiceUpdate);
     };
-  }, [on, off, fetchRequests]);
+  }, [on, off, queryClient]);
 
   // Reset page when filter changes
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function InventoryRequests() {
       setShowCreateForm(false);
       resetForm();
       setPage(1);
-      fetchRequests(1);
+      queryClient.invalidateQueries({ queryKey: ['inventory-requests'] });
     } catch {
       toast.error('Failed to create inventory request');
     } finally {
@@ -201,7 +202,7 @@ export default function InventoryRequests() {
       setCancelling(requestId);
       await guestServiceService.cancelServiceRequest(requestId, 'Cancelled by guest');
       toast.success('Request cancelled successfully');
-      fetchRequests();
+      queryClient.invalidateQueries({ queryKey: ['inventory-requests'] });
     } catch {
       toast.error('Failed to cancel request');
     } finally {
@@ -248,13 +249,10 @@ export default function InventoryRequests() {
     }));
   };
 
-  const filteredRequests = requests.filter(request => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = (request.title || '').toLowerCase().includes(term) ||
-                         (request.description || '').toLowerCase().includes(term);
-    return matchesSearch;
-  });
+  // Reset page when search term changes
+  useEffect(() => {
+    setPage((prevPage) => (prevPage === 1 ? prevPage : 1));
+  }, [debouncedSearchTerm]);
 
   // Error state
   if (error && !loading && requests.length === 0) {
@@ -264,7 +262,7 @@ export default function InventoryRequests() {
           <AlertTriangle className="mx-auto h-12 w-12 text-red-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load requests</h3>
           <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={() => fetchRequests()}>
+          <Button onClick={() => refetch()}>
             Retry
           </Button>
         </div>
@@ -548,9 +546,9 @@ export default function InventoryRequests() {
       {/* Requests List */}
       {!loading && (
         <div className="space-y-4">
-          {filteredRequests.length > 0 ? (
+          {requests.length > 0 ? (
             <>
-              {filteredRequests.map((request) => (
+              {requests.map((request) => (
                 <Card key={request._id} className="p-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">

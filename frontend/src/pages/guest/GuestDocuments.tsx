@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { useDebounce } from '../../hooks/useDebounce';
 import {
@@ -80,10 +81,8 @@ const CATEGORY_LABELS: { [key: string]: string } = {
 };
 
 export default function GuestDocuments() {
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const queryClient = useQueryClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedBooking, setSelectedBooking] = useState('all');
@@ -97,47 +96,35 @@ export default function GuestDocuments() {
 
   // Pagination state
   const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 20;
+
+  const { data: docsData, isLoading: loading, refetch } = useQuery({
+    queryKey: ['guest-documents', page, selectedCategory, selectedStatus, selectedBooking, debouncedSearchTerm],
+    queryFn: async () => {
+      const params: Record<string, unknown> = {
+        userType: 'guest',
+        page,
+        limit: PAGE_SIZE
+      };
+      if (selectedCategory !== 'all') params.category = selectedCategory;
+      if (selectedStatus !== 'all') params.status = selectedStatus;
+      if (selectedBooking !== 'all' && selectedBooking !== 'no_booking') params.bookingId = selectedBooking;
+      if (debouncedSearchTerm.trim()) params.search = debouncedSearchTerm.trim();
+      const response = await api.get('/documents', { params });
+      return response.data;
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: (prev: unknown) => prev,
+  });
+
+  const documents: Document[] = docsData?.data?.documents || [];
+  const totalCount = docsData?.totalCount ?? documents.length;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const error = docsData === undefined && !loading ? 'Failed to fetch documents. Please try again.' : null;
 
   useEffect(() => {
     fetchBookings();
   }, []);
-
-  // Re-fetch when page or server-side filters change (uses debounced search)
-  useEffect(() => {
-    fetchDocuments();
-  }, [page, selectedCategory, selectedStatus, selectedBooking, debouncedSearchTerm]);
-
-  const fetchDocuments = async () => {
-    try {
-      setError(null);
-      const { data } = await api.get('/documents', {
-        params: {
-          userType: 'guest',
-          category: selectedCategory !== 'all' ? selectedCategory : undefined,
-          status: selectedStatus !== 'all' ? selectedStatus : undefined,
-          bookingId: selectedBooking !== 'all' && selectedBooking !== 'no_booking' ? selectedBooking : undefined,
-          search: debouncedSearchTerm.trim() || undefined,
-          page,
-          limit: PAGE_SIZE,
-          skip: page ? undefined : (page - 1) * PAGE_SIZE
-        }
-      });
-      setDocuments(data.data.documents || []);
-      if (data.totalCount !== undefined) {
-        setTotalCount(data.totalCount);
-      } else {
-        setTotalCount(data.data.documents?.length || 0);
-      }
-    } catch (err) {
-      setError('Failed to fetch documents. Please try again.');
-      toast.error('Failed to fetch documents');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchBookings = async () => {
     try {
@@ -150,8 +137,8 @@ export default function GuestDocuments() {
     }
   };
 
-  const handleDocumentUploaded = (newDocument: Document) => {
-    setDocuments(prev => [newDocument, ...prev]);
+  const handleDocumentUploaded = (_newDocument: Document) => {
+    queryClient.invalidateQueries({ queryKey: ['guest-documents'] });
     setActiveTab('documents');
   };
 
@@ -237,8 +224,7 @@ export default function GuestDocuments() {
     setDeleting(doc._id);
     try {
       await api.delete(`/documents/${doc._id}`);
-      setDocuments(prev => prev.filter(d => d._id !== doc._id));
-      setTotalCount(prev => Math.max(0, prev - 1));
+      queryClient.invalidateQueries({ queryKey: ['guest-documents'] });
       toast.success('Document deleted successfully');
     } catch (err) {
       toast.error('Failed to delete document');
@@ -305,7 +291,7 @@ export default function GuestDocuments() {
         <ExclamationTriangleIcon className="w-16 h-16 text-red-400 mb-4" />
         <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
         <p className="text-gray-600 mb-4">{error}</p>
-        <Button onClick={() => { setLoading(true); fetchDocuments(); }}>
+        <Button onClick={() => refetch()}>
           Try Again
         </Button>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
   Wrench,
@@ -125,6 +125,15 @@ export default function AdminMaintenance() {
       setAvailableRooms(response.data);
     } catch (error) {
       toast.error('Failed to load available rooms');
+    }
+  }, [selectedPropertyId]);
+
+  // Reset pagination to page 1 when the selected property changes.
+  const prevMaintenancePropertyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedPropertyId && selectedPropertyId !== prevMaintenancePropertyRef.current) {
+      prevMaintenancePropertyRef.current = selectedPropertyId;
+      setFilters(prev => ({ ...prev, page: 1 }));
     }
   }, [selectedPropertyId]);
 

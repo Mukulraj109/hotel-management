@@ -700,13 +700,26 @@ router.get('/', catchAsync(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
+  // Resolve the scoped hotel for the requesting user.
+  // Guests often don't have hotelId on their user record; fall back to their active booking.
+  const scopedHotelId = await resolveMeetUpScopedHotelIdForPartners(req);
+  if (!scopedHotelId) {
+    return res.json({
+      success: true,
+      data: {
+        meetUps: [],
+        pagination: { currentPage: 1, totalPages: 0, totalItems: 0, hasNext: false, hasPrev: false }
+      }
+    });
+  }
+
   let query = {
     $or: [
       { requesterId: req.user._id },
       { targetUserId: req.user._id },
       { 'participants.confirmedParticipants.userId': req.user._id }
     ],
-    hotelId: req.user.hotelId
+    hotelId: scopedHotelId
   };
 
   if (status) query.status = status;
@@ -714,15 +727,15 @@ router.get('/', catchAsync(async (req, res) => {
 
   // Filter by role (sent vs received)
   if (filter === 'sent') {
-    query = { requesterId: req.user._id, hotelId: req.user.hotelId };
+    query = { requesterId: req.user._id, hotelId: scopedHotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   } else if (filter === 'received') {
-    query = { targetUserId: req.user._id, hotelId: req.user.hotelId };
+    query = { targetUserId: req.user._id, hotelId: scopedHotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   } else if (filter === 'participating') {
-    query = { 'participants.confirmedParticipants.userId': req.user._id, hotelId: req.user.hotelId };
+    query = { 'participants.confirmedParticipants.userId': req.user._id, hotelId: scopedHotelId };
     if (status) query.status = status;
     if (type) query.type = type;
   }
@@ -771,10 +784,21 @@ router.get('/pending', catchAsync(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
+  // Resolve hotel — guests may not have hotelId on their profile
+  const pendingScopedHotelId = await resolveMeetUpScopedHotelIdForPartners(req);
+  if (!pendingScopedHotelId) {
+    return res.json({
+      success: true,
+      data: {
+        pendingRequests: [],
+        pagination: { currentPage: 1, totalPages: 0, totalItems: 0, hasNext: false, hasPrev: false }
+      }
+    });
+  }
   const pendingQuery = {
     targetUserId: req.user._id,
     status: 'pending',
-    hotelId: req.user.hotelId
+    hotelId: pendingScopedHotelId
   };
 
   const pendingRequests = attachVirtualsToList(
@@ -810,6 +834,17 @@ router.get('/upcoming', catchAsync(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
+  // Resolve hotel — guests may not have hotelId on their profile
+  const upcomingScopedHotelId = await resolveMeetUpScopedHotelIdForPartners(req);
+  if (!upcomingScopedHotelId) {
+    return res.json({
+      success: true,
+      data: {
+        upcomingMeetUps: [],
+        pagination: { currentPage: 1, totalPages: 0, totalItems: 0, hasNext: false, hasPrev: false }
+      }
+    });
+  }
   const upcomingQuery = {
     $or: [
       { requesterId: req.user._id },
@@ -818,7 +853,7 @@ router.get('/upcoming', catchAsync(async (req, res) => {
     ],
     status: 'accepted',
     proposedDate: { $gt: new Date() },
-    hotelId: req.user.hotelId
+    hotelId: upcomingScopedHotelId
   };
 
   const upcomingMeetUps = attachVirtualsToList(
@@ -933,7 +968,8 @@ router.get('/search/partners', meetUpPartnerSearchLimiter, catchAsync(async (req
 }));
 
 router.get('/stats/overview', catchAsync(async (req, res) => {
-  const userHotelId = req.user.hotelId;
+  // Guests may not have hotelId on their profile; resolve from active booking
+  const userHotelId = req.user.hotelId || (await resolveMeetUpScopedHotelIdForPartners(req));
   const stats = await MeetUpRequest.getMeetUpStats(req.user._id, userHotelId);
 
   const [

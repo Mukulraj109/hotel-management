@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -53,7 +54,7 @@ router.use(financialRateLimiter);
  *         description: Billing session not found
  */
 router.post('/create-from-session',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -121,7 +122,7 @@ router.post('/create-from-session',
  *         description: Checkout inventory not found
  */
 router.post('/add-checkout-to-settlement',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -208,7 +209,7 @@ router.post('/add-checkout-to-settlement',
  *         description: Settlement not found
  */
 router.post('/:settlementId/unified-payment',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -266,7 +267,7 @@ router.post('/:settlementId/unified-payment',
  *         description: Booking not found
  */
 router.get('/preview/:bookingId',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   catchAsync(async (req, res) => {
@@ -308,7 +309,7 @@ router.get('/preview/:bookingId',
  *         description: Booking not found
  */
 router.post('/sync-guest-data/:bookingId',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -354,7 +355,7 @@ router.post('/sync-guest-data/:bookingId',
  *         description: Access denied - admin/staff only
  */
 router.get('/ready-for-integration',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   catchAsync(async (req, res) => {
@@ -422,7 +423,7 @@ router.get('/ready-for-integration',
  *         description: Access denied - admin/staff only
  */
 router.get('/integration-stats',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminStaffAccess'),
   catchAsync(async (req, res) => {
@@ -497,7 +498,7 @@ router.get('/integration-stats',
  *         description: Access denied - admin only
  */
 router.post('/bulk-integrate',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('posSettlementIntegration', 'adminAccess'),
   validate(mutationBaselineSchema),

@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import bookingFormController from '../controllers/bookingFormController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -313,7 +314,7 @@ router.use('/public', publicRouter);
 // =============================================
 // ADMIN routes — require authentication + admin role
 // =============================================
-adminRouter.use(authenticate, ensurePropertyAccess, authorizePolicy('bookingForm', 'adminAccess'));
+adminRouter.use(authenticate, ensureTenantContext, ensurePropertyAccess, authorizePolicy('bookingForm', 'adminAccess'));
 
 // Template CRUD operations
 adminRouter.post('/templates', validate(mutationBaselineSchema), createTemplateValidation, bookingFormController.createTemplate);

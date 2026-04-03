@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -31,6 +32,7 @@ const externalApiLimiter = rateLimit({
 // Apply rate limiting to all external booking routes
 router.use(externalApiLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('externalBookings', 'baseAccess'));
 

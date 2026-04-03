@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -15,7 +16,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Quick setup endpoint for testing - enable Booking.com integration
 router.post('/setup/:hotelId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
@@ -72,7 +73,7 @@ router.post('/setup/:hotelId',
 
 // Manual sync trigger for Booking.com
 router.post('/bookingcom/sync',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
@@ -103,7 +104,7 @@ router.post('/bookingcom/sync',
 
 // Get Booking.com sync status
 router.get('/bookingcom/status/:hotelId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -125,7 +126,7 @@ router.get('/bookingcom/status/:hotelId',
 
 // Get OTA sync history
 router.get('/sync-history',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -195,7 +196,7 @@ router.get('/sync-history',
 
 // Get OTA configuration for a hotel
 router.get('/config/:hotelId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -268,7 +269,7 @@ router.get('/config/:hotelId',
 
 // Update OTA configuration
 router.patch('/config/:hotelId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
@@ -321,7 +322,7 @@ router.patch('/config/:hotelId',
 
 // Get OTA statistics
 router.get('/stats/:hotelId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {

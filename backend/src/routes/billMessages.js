@@ -1,6 +1,7 @@
 import express from 'express';
 import billMessageController from '../controllers/billMessageController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -493,6 +494,7 @@ const idParamValidation = [
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('billMessages', 'baseAccess'));
 

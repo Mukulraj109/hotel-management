@@ -8,6 +8,7 @@ import CheckoutInventory from '../models/CheckoutInventory.js';
 import KPI from '../models/KPI.js';
 import KPICalculationService from '../services/kpiCalculationService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -33,7 +34,7 @@ const getValidatedHotelObjectId = (req) => {
 };
 
 // Checkout Inventory Analytics Report
-router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/checkout-inventory', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -140,7 +141,7 @@ router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ens
 }));
 
 // Revenue report
-router.get('/revenue', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/revenue', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -219,7 +220,7 @@ router.get('/revenue', authenticate, authorize('admin', 'staff'), ensureProperty
 }));
 
 // Occupancy report
-router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/occupancy', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -307,7 +308,7 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensureProper
 }));
 
 // Booking status report
-router.get('/bookings', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/bookings', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -361,7 +362,7 @@ router.get('/bookings', authenticate, authorize('admin', 'staff'), ensurePropert
 }));
 
 // Booking stats for admin dashboard
-router.get('/bookings/stats', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/bookings/stats', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -434,7 +435,7 @@ router.get('/bookings/stats', authenticate, authorize('admin', 'staff', 'frontde
 }));
 
 // Revenue breakdown - detailed breakdown of revenue sources
-router.get('/revenue-breakdown', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/revenue-breakdown', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     month,
     year,
@@ -640,7 +641,7 @@ router.get('/revenue-breakdown', authenticate, authorize('admin', 'staff'), ensu
 }));
 
 // Occupancy breakdown - detailed occupancy analysis
-router.get('/occupancy-breakdown', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/occupancy-breakdown', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     month,
     year,
@@ -793,7 +794,7 @@ router.get('/occupancy-breakdown', authenticate, authorize('admin', 'staff'), en
 }));
 
 // Bookings breakdown - detailed bookings analysis
-router.get('/bookings-breakdown', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/bookings-breakdown', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     month,
     year,
@@ -920,7 +921,7 @@ router.get('/bookings-breakdown', authenticate, authorize('admin', 'staff'), ens
 }));
 
 // Guest satisfaction breakdown - detailed satisfaction analysis
-router.get('/satisfaction-breakdown', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/satisfaction-breakdown', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     month,
     year,
@@ -1023,7 +1024,7 @@ router.get('/satisfaction-breakdown', authenticate, authorize('admin', 'staff'),
 }));
 
 // Enhanced KPI Reports - Calculate and retrieve comprehensive KPIs
-router.post('/kpi/calculate', authenticate, authorizePolicy('reports', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/kpi/calculate', authenticate, ensureTenantContext, authorizePolicy('reports', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { date, period = 'daily' } = req.body;
   
   if (!date) {
@@ -1048,7 +1049,7 @@ router.post('/kpi/calculate', authenticate, authorizePolicy('reports', 'staffAcc
 }));
 
 // Get KPI data for a specific period
-router.get('/kpi', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/kpi', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     startDate,
     endDate,
@@ -1089,7 +1090,7 @@ router.get('/kpi', authenticate, authorize('admin', 'staff'), ensurePropertyAcce
 }));
 
 // Get comprehensive business intelligence dashboard data
-router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/business-intelligence', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     month,
     year,
@@ -1263,7 +1264,7 @@ router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), 
 }));
 
 // Batch calculate KPIs for a date range
-router.post('/kpi/batch-calculate', authenticate, authorizePolicy('reports', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.post('/kpi/batch-calculate', authenticate, ensureTenantContext, authorizePolicy('reports', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { startDate, endDate, period = 'daily', hotelId } = req.body;
   
   if (!startDate || !endDate || !hotelId) {
@@ -1288,7 +1289,7 @@ router.post('/kpi/batch-calculate', authenticate, authorizePolicy('reports', 'ad
 }));
 
 // Get performance comparison between periods
-router.get('/kpi/compare', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/kpi/compare', authenticate, ensureTenantContext, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     currentStart,
     currentEnd,

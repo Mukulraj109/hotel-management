@@ -2,6 +2,7 @@ import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import propertyRoomService from '../services/propertyRoomService.js';
 import { authenticate as protect, authorize as restrictTo } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import User from '../models/User.js';
 import logger from '../utils/logger.js';
@@ -30,7 +31,7 @@ const router = express.Router();
  *         description: Unauthorized
  */
 router.get('/property-groups',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   async (req, res) => {
     try {
@@ -100,7 +101,7 @@ router.get('/property-groups',
  *         description: Unauthorized
  */
 router.post('/create-with-rooms',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [
@@ -227,7 +228,7 @@ router.post('/create-with-rooms',
  *         description: Property not found
  */
 router.post('/:propertyId/rooms/bulk',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [
@@ -338,7 +339,7 @@ router.post('/:propertyId/rooms/bulk',
  *         description: Property not found
  */
 router.get('/:propertyId/rooms',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   [
     param('propertyId')
@@ -419,7 +420,7 @@ router.get('/:propertyId/rooms',
  *         description: Property not found
  */
 router.get('/:propertyId/rooms/stats',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   [
     param('propertyId')
@@ -497,7 +498,7 @@ router.get('/:propertyId/rooms/stats',
  *         description: Property not found
  */
 router.patch('/:propertyId/rooms/bulk-update',
-  protect,
+  protect, ensureTenantContext,
   ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [

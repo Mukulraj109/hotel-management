@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import allotmentController from '../controllers/allotmentController.js';
 import allotmentSettingsController from '../controllers/allotmentSettingsController.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -473,6 +474,7 @@ const settingsValidation = [
 
 // Admin routes - require authentication, property access, and admin role
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('allotment', 'adminAccess'));
 

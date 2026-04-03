@@ -2,6 +2,7 @@ import express from 'express';
 import channelLocalizationController from '../controllers/channelLocalizationController.js';
 import otaMonitoringService from '../services/otaMonitoringService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -13,6 +14,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('channelLocalization', 'baseAccess'));
 

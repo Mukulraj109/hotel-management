@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import featureFlagService from '../services/featureFlagService.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -10,6 +11,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 
 // Get all feature flags
 router.get('/', catchAsync(async (req, res) => {

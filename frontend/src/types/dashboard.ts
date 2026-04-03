@@ -310,9 +310,13 @@ export interface StaffPerformanceData {
   overview: {
     totalStaff: number;
     activeToday: number;
+    activeStaff?: number;
     totalTasksToday: number;
     completedTasksToday: number;
     averagePerformanceScore: number;
+    newHires?: number;
+    taskCompletionTrend?: number;
+    performanceTrend?: number;
   };
   byDepartment: {
     department: string;
@@ -331,6 +335,12 @@ export interface StaffPerformanceData {
     completed: number;
     pending: number;
     averageTime: number;
+  }[];
+  taskTrends?: {
+    date: string;
+    total: number;
+    completed: number;
+    pending: number;
   }[];
 }
 

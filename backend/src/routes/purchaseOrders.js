@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import purchaseOrderService from '../services/purchaseOrderService.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, validateRequest } from '../middleware/validation.js';
@@ -14,6 +15,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Validation schemas

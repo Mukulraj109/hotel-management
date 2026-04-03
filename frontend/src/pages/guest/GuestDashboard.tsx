@@ -11,7 +11,8 @@ import {
   Clock,
   CheckCircle,
   Users,
-  Star
+  Star,
+  Sparkles
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -20,10 +21,13 @@ import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import toast from 'react-hot-toast';
 import { toEntityIdString } from '../../utils/entityId';
+import { guestServiceService } from '../../services/guestService';
+import { useQueryClient } from '@tanstack/react-query';
 
 function GuestDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: dashboardData, isLoading: loading, error, refetch } = useQuery({
     queryKey: ['guest-dashboard', user?._id],
@@ -56,6 +60,31 @@ function GuestDashboard() {
 
   const bookings = dashboardData?.bookings || [];
   const stats = dashboardData?.stats || { totalBookings: 0, totalSpent: 0, upcomingBookings: 0, loyaltyPoints: 0, loyaltyTier: 'bronze' };
+
+  // Find active checked-in booking for housekeeping requests
+  const activeBookingForService = bookings.find(b => b.status === 'checked_in');
+
+  const requestHousekeeping = async () => {
+    if (!activeBookingForService) {
+      toast.error('You need an active check-in to request housekeeping.');
+      return;
+    }
+    try {
+      await guestServiceService.createServiceRequest({
+        bookingId: toEntityIdString(activeBookingForService._id) ?? '',
+        serviceType: 'housekeeping',
+        serviceVariation: 'Room cleaning',
+        serviceVariations: ['Room cleaning'],
+        priority: 'now',
+        items: [{ name: 'Room Cleaning', quantity: 1, price: 0 }],
+        specialInstructions: ''
+      });
+      toast.success('Housekeeping request submitted! Staff will be with you shortly.');
+      queryClient.invalidateQueries({ queryKey: ['guest-requests'] });
+    } catch {
+      toast.error('Failed to submit housekeeping request. Please try again.');
+    }
+  };
 
   if (loading) {
     return (
@@ -366,7 +395,7 @@ function GuestDashboard() {
       <div className="mt-6 sm:mt-8">
         <Card className="p-6 shadow-lg hover:shadow-xl transition-shadow duration-300">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <button
               onClick={() => navigate('/rooms')}
               className="group flex items-center justify-center p-5 bg-gradient-to-br from-yellow-50 to-yellow-100 border-2 border-yellow-200 rounded-xl hover:from-yellow-100 hover:to-yellow-200 hover:border-yellow-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
@@ -380,6 +409,15 @@ function GuestDashboard() {
             >
               <CreditCard className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
               <span className="font-semibold text-blue-700 text-sm sm:text-base">My Bookings</span>
+            </button>
+            <button
+              onClick={requestHousekeeping}
+              disabled={!activeBookingForService}
+              title={activeBookingForService ? 'Request room cleaning now' : 'You need an active check-in to request housekeeping'}
+              className="group flex items-center justify-center p-5 bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-xl hover:from-purple-100 hover:to-purple-200 hover:border-purple-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              <Sparkles className="w-5 h-5 text-purple-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-purple-700 text-sm sm:text-base">Request Housekeeping</span>
             </button>
             <button
               onClick={() => navigate('/contact')}

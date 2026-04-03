@@ -12,7 +12,7 @@ interface User {
   name: string;
   email: string;
   phone?: string;
-  role: 'admin' | 'manager' | 'staff';
+  role: 'admin' | 'manager' | 'staff' | 'frontdesk' | 'housekeeping';
   department?: string;
   employeeId?: string;
   isActive: boolean;
@@ -315,7 +315,9 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as string })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="staff">Staff - Limited operational access</option>
+                <option value="staff">Staff - General operational access</option>
+                <option value="housekeeping">Housekeeping - Room cleaning tasks</option>
+                <option value="frontdesk">Front Desk - Guest check-in/out</option>
                 <option value="manager">Manager - Property management access</option>
                 <option value="admin">Admin - Full system access</option>
               </select>

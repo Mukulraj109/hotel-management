@@ -238,13 +238,12 @@ function HotelServicesDashboard() {
     staleTime: 5 * 60 * 1000
   });
 
-  // Filter services based on favorites if needed
+  // Services are already server-filtered (featured, type, search, price, etc.)
   const services = servicesData?.services || [];
   const servicesPagination = servicesData?.pagination;
 
-  const filteredServices = services.filter(service =>
-    !filterFeatured || service.featured
-  );
+  // No client-side re-filter needed — all filters are applied server-side via getServicesQuery()
+  const filteredServices = services;
 
   const handleServiceClick = (service: HotelService) => {
     navigate(`/app/services/${service._id}`);

@@ -12,6 +12,7 @@ import {
   testPersonalizationVariant
 } from '../controllers/personalizationController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { crmTrackingMiddleware } from '../middleware/crmTrackingMiddleware.js';
@@ -23,6 +24,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('personalization', 'baseAccess'));
 

@@ -2,6 +2,7 @@ import express from 'express';
 import RequestCategory from '../models/RequestCategory.js';
 import RequestTemplate from '../models/RequestTemplate.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -14,6 +15,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

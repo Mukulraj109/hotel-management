@@ -2,6 +2,7 @@ import express from 'express';
 import languageController from '../controllers/languageController.js';
 import contentController from '../controllers/contentController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -184,6 +185,7 @@ router.get('/content/stats/overview', contentController.getContentStats);
 
 // Protected routes (authentication required)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('language', 'baseAccess'));
 

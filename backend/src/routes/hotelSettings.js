@@ -2,6 +2,7 @@ import express from 'express';
 import HotelSettings from '../models/HotelSettings.js';
 import Hotel from '../models/Hotel.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { assertUserCanAccessHotel } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -45,6 +46,7 @@ const sanitizeIntegrationsForResponse = (integrations = {}) => {
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Only admin and manager can modify hotel settings

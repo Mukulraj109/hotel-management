@@ -6,6 +6,7 @@ import RoomInventory from '../models/RoomInventory.js';
 import InventoryTransaction from '../models/InventoryTransaction.js';
 import CheckoutInspection from '../models/CheckoutInspection.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -19,6 +20,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

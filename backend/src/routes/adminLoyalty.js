@@ -4,6 +4,7 @@ import Offer from '../models/Offer.js';
 import Loyalty from '../models/Loyalty.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -74,7 +75,7 @@ const bulkOperationSchema = Joi.object({
  *         description: Loyalty analytics data
  */
 // FIX: /analytics must be registered BEFORE /offers/:id to avoid being caught by the :id catch-all
-router.get('/analytics', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/analytics', authenticate, ensureTenantContext, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { dateFrom, dateTo } = req.query;
   const hotelId = req.user.hotelId;
 
@@ -215,7 +216,7 @@ router.get('/analytics', authenticate, authorizePolicy('adminLoyalty', 'managerA
  */
 // FIX: /offers/bulk must be registered BEFORE /offers/:id to avoid "bulk" being treated as an :id
 router.post('/offers/bulk',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(bulkOperationSchema),
@@ -302,7 +303,7 @@ router.post('/offers/bulk',
  *       200:
  *         description: List of offers with pagination
  */
-router.get('/offers', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers', authenticate, ensureTenantContext, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -381,7 +382,7 @@ router.get('/offers', authenticate, authorizePolicy('adminLoyalty', 'managerAcce
  *         description: Offer created successfully
  */
 router.post('/offers',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(createOfferSchema),
@@ -424,7 +425,7 @@ router.post('/offers',
  *         description: Detailed offer statistics
  */
 // FIX: /offers/:id/stats must be registered BEFORE /offers/:id to avoid being caught by the :id route
-router.get('/offers/:id/stats', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers/:id/stats', authenticate, ensureTenantContext, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offerId = req.params.id;
   const hotelId = req.user.hotelId;
 
@@ -512,7 +513,7 @@ router.get('/offers/:id/stats', authenticate, authorizePolicy('adminLoyalty', 'm
  *       200:
  *         description: Offer details
  */
-router.get('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers/:id', authenticate, ensureTenantContext, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   // FIX: Add hotelId filter for tenant isolation
@@ -571,7 +572,7 @@ router.get('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'manager
  *         description: Offer updated successfully
  */
 router.put('/offers/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(updateOfferSchema),
@@ -617,7 +618,7 @@ router.put('/offers/:id',
  *       204:
  *         description: Offer deleted successfully
  */
-router.delete('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+router.delete('/offers/:id', authenticate, ensureTenantContext, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
   logger.debug('Deleting offer', { offerId: req.params.id });
 

@@ -32,6 +32,7 @@ function safeParseInt(value, defaultVal, min = 1, max = 10000) {
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('bypassFinancialAnalytics', 'managerAccess'));
 

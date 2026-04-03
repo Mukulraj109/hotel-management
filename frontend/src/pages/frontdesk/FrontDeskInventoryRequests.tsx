@@ -93,12 +93,15 @@ export default function FrontDeskInventoryRequests() {
         serviceVariation: 'inventory_request'
       } as GuestServiceFilters & { hotelId?: string });
       const inventoryRequests = (response.data.serviceRequests || []) as InventoryRequest[];
-      setRequests(inventoryRequests);
       const responsePagination = response.data.pagination;
+      const serverTotal = responsePagination?.total || 0;
+      setRequests(inventoryRequests);
       setPagination({
-        total: responsePagination?.total || 0,
+        total: serverTotal,
         pages: responsePagination?.pages || 1
       });
+      // Pass server total so the "Total" stat card reflects the full dataset
+      computeStats(inventoryRequests, serverTotal);
     } catch {
       toast.error('Failed to load inventory requests');
     } finally {
@@ -106,9 +109,12 @@ export default function FrontDeskInventoryRequests() {
     }
   };
 
-  const computeStats = useCallback((reqs: InventoryRequest[]) => {
+  // Stats are computed from the current page slice for status breakdown,
+  // but the "total" counter uses the server-side pagination total so it
+  // reflects the full dataset (not just the current page).
+  const computeStats = useCallback((reqs: InventoryRequest[], serverTotal?: number) => {
     setStats({
-      total: reqs.length,
+      total: serverTotal ?? reqs.length,
       pending: reqs.filter(r => r.status === 'pending').length,
       assigned: reqs.filter(r => r.status === 'assigned').length,
       inProgress: reqs.filter(r => r.status === 'in_progress').length,
@@ -171,7 +177,26 @@ export default function FrontDeskInventoryRequests() {
     return () => { if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current); };
   }, [filters, selectedPropertyId]);
 
-  useEffect(() => { computeStats(requests); }, [requests, computeStats]);
+  // Stats are updated inside fetchRequests with the correct server total.
+  // This secondary effect is kept only to handle edge cases where requests
+  // state is mutated outside of fetchRequests (e.g., optimistic updates).
+  // It intentionally does NOT pass a serverTotal so the stored total is
+  // preserved by the nullish-coalescing fallback in computeStats.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (requests.length > 0) {
+      // Only recompute breakdown counts; total stays from last fetchRequests call
+      setStats(prev => prev ? {
+        ...prev,
+        pending: requests.filter(r => r.status === 'pending').length,
+        assigned: requests.filter(r => r.status === 'assigned').length,
+        inProgress: requests.filter(r => r.status === 'in_progress').length,
+        completed: requests.filter(r => r.status === 'completed').length,
+        cancelled: requests.filter(r => r.status === 'cancelled').length,
+        urgent: requests.filter(r => r.priority === 'urgent' || r.priority === 'high').length,
+      } : prev);
+    }
+  }, [requests]);
 
   // Real-time WebSocket listeners for guest service / inventory events
   useEffect(() => {

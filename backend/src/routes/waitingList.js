@@ -2,6 +2,7 @@ import express from 'express';
 import { body } from 'express-validator';
 import waitingListController from '../controllers/waitingListController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -126,6 +127,7 @@ const validateContactRecord = [
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Get all waiting list entries with filters

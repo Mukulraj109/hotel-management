@@ -4,6 +4,7 @@ import Communication from '../models/Communication.js';
 import MessageTemplate from '../models/MessageTemplate.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -29,6 +30,7 @@ function isAllowedRedirectUrl(url) {
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('communications', 'baseAccess'));
 

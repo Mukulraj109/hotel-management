@@ -2,6 +2,7 @@ import express from 'express';
 import availabilityController from '../controllers/availabilityController.js';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -140,7 +141,7 @@ router.get('/calendar', availabilityController.getAvailabilityCalendar);
  *       200:
  *         description: Room status information
  */
-router.get('/room-status', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getRoomStatus);
+router.get('/room-status', authenticate, ensureTenantContext, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getRoomStatus);
 
 /**
  * @swagger
@@ -178,7 +179,7 @@ router.get('/room-status', authenticate, authorizePolicy('availability', 'staffA
  *       201:
  *         description: Rooms blocked successfully
  */
-router.post('/block', authenticate, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.blockRooms);
+router.post('/block', authenticate, ensureTenantContext, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.blockRooms);
 
 /**
  * @swagger
@@ -213,7 +214,7 @@ router.post('/block', authenticate, authorizePolicy('availability', 'manageAcces
  *       200:
  *         description: Rooms unblocked successfully
  */
-router.post('/unblock', authenticate, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.unblockRooms);
+router.post('/unblock', authenticate, ensureTenantContext, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.unblockRooms);
 
 /**
  * @swagger
@@ -244,7 +245,7 @@ router.post('/unblock', authenticate, authorizePolicy('availability', 'manageAcc
  *       200:
  *         description: Occupancy rate data
  */
-router.get('/occupancy', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOccupancyRate);
+router.get('/occupancy', authenticate, ensureTenantContext, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOccupancyRate);
 
 /**
  * @swagger
@@ -306,7 +307,7 @@ router.get('/alternatives', availabilityController.findAlternatives);
  *       200:
  *         description: Overbooking status and suggestions
  */
-router.get('/overbooking', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.checkOverbooking);
+router.get('/overbooking', authenticate, ensureTenantContext, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.checkOverbooking);
 
 /**
  * @swagger
@@ -326,7 +327,7 @@ router.get('/overbooking', authenticate, authorizePolicy('availability', 'staffA
  *       200:
  *         description: Overbooking statistics
  */
-router.get('/overbooking/stats', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingStats);
+router.get('/overbooking/stats', authenticate, ensureTenantContext, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingStats);
 
 /**
  * @swagger
@@ -351,7 +352,7 @@ router.get('/overbooking/stats', authenticate, authorizePolicy('availability', '
  *       200:
  *         description: Overbooking alerts list
  */
-router.get('/overbooking/alerts', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingAlerts);
+router.get('/overbooking/alerts', authenticate, ensureTenantContext, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOverbookingAlerts);
 
 /**
  * @swagger

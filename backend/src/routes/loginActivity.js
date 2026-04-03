@@ -1,12 +1,14 @@
 import express from 'express';
 import * as loginActivityController from '../controllers/loginActivityController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 
 // Admin/Manager routes only
 router.use(authorize('admin', 'manager'));

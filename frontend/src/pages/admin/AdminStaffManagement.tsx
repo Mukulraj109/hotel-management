@@ -32,7 +32,7 @@ interface StaffMember {
   name: string;
   email: string;
   phone?: string;
-  role: 'staff' | 'admin' | 'manager' | 'frontdesk' | 'housekeeping';
+  role: 'admin' | 'manager' | 'frontdesk' | 'housekeeping' | 'staff';
   isActive: boolean;
   hotelId: {
     _id: string;
@@ -300,11 +300,14 @@ export default function AdminStaffManagement() {
             <select
               value={roleFilter}
               onChange={(e) => handleRoleFilterChange(e.target.value)}
-              className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              className="w-full sm:w-48 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="all">All Roles</option>
-              <option value="staff">Staff</option>
               <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="frontdesk">Front Desk</option>
+              <option value="housekeeping">Housekeeping</option>
+              <option value="staff">Staff</option>
             </select>
             <select
               value={statusFilter}
@@ -399,9 +402,13 @@ export default function AdminStaffManagement() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant={staff.role === 'admin' ? 'destructive' : 'secondary'}>
+                          <Badge variant={
+                            staff.role === 'admin' ? 'destructive' :
+                            staff.role === 'manager' ? 'default' :
+                            'secondary'
+                          }>
                             <Shield className="w-3 h-3 mr-1" />
-                            {staff.role}
+                            {staff.role === 'frontdesk' ? 'Front Desk' : staff.role.charAt(0).toUpperCase() + staff.role.slice(1)}
                           </Badge>
                         </td>
                         <td className="px-6 py-4">

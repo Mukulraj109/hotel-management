@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess, getUserPropertyIds } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -14,6 +15,7 @@ const router = express.Router();
 
 // All portfolio routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 
 /**
  * Get all accessible property IDs for the current user.

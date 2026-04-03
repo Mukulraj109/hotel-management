@@ -4,6 +4,7 @@ import InventoryTransaction from '../models/InventoryTransaction.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Vendor from '../models/Vendor.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validationResult, body, query, param } from 'express-validator';
 import mongoose from 'mongoose';

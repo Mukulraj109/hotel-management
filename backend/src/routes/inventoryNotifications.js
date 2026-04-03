@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require admin authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(authorize('admin'));
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('inventoryNotifications', 'baseAccess'));

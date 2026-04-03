@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { assertUserCanAccessHotel, getUserPropertyIds } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -68,7 +69,7 @@ const ensureGroupParamAccess = catchAsync(async (req, res, next) => {
  * }
  */
 router.put('/check-in-out',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('settings', 'baseAccess'),
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -167,7 +168,7 @@ router.put('/check-in-out',
  * Update currency settings
  */
 router.put('/currency',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('settings', 'baseAccess'),
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -253,7 +254,7 @@ router.put('/currency',
  * Update timezone settings
  */
 router.put('/timezone',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('settings', 'baseAccess'),
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -339,7 +340,7 @@ router.put('/timezone',
  * Update cancellation policy settings
  */
 router.put('/cancellation-policy',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('settings', 'baseAccess'),
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -428,7 +429,7 @@ router.put('/cancellation-policy',
  * }
  */
 router.put('/general',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('settings', 'baseAccess'),
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -513,7 +514,7 @@ router.put('/general',
  * Get inheritance status for a property
  */
 router.get('/inheritance-status/:propertyId',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyParamAccess,
   catchAsync(async (req, res) => {
     const { propertyId } = req.params;
@@ -542,7 +543,7 @@ router.get('/inheritance-status/:propertyId',
  * }
  */
 router.post('/apply-group-settings',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -620,7 +621,7 @@ router.post('/apply-group-settings',
  * }
  */
 router.put('/toggle-inheritance/:propertyId',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   ensurePropertyParamAccess,
   validate(anySettingsMutationSchema),
@@ -668,7 +669,7 @@ router.put('/toggle-inheritance/:propertyId',
  * Get property group settings
  */
 router.get('/group/:groupId',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensureGroupParamAccess,
   catchAsync(async (req, res) => {
     const { groupId } = req.params;
@@ -707,7 +708,7 @@ router.get('/group/:groupId',
  * }
  */
 router.post('/apply',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -759,7 +760,7 @@ router.post('/apply',
  * }
  */
 router.post('/affected-count',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -800,7 +801,7 @@ router.post('/affected-count',
  * }
  */
 router.put('/toggle-inheritance',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -841,7 +842,7 @@ router.put('/toggle-inheritance',
  * }
  */
 router.put('/override',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -883,7 +884,7 @@ router.put('/override',
  * }
  */
 router.delete('/override',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -916,7 +917,7 @@ router.delete('/override',
  * Get inheritance summary for a property group
  */
 router.get('/group-summary/:groupId',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensureGroupParamAccess,
   catchAsync(async (req, res) => {
     const { groupId } = req.params;
@@ -947,7 +948,7 @@ router.get('/group-summary/:groupId',
  * }
  */
 router.post('/preview-changes',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -996,7 +997,7 @@ router.post('/preview-changes',
  * - includeRolledBack: boolean (default: false)
  */
 router.get('/change-history/:propertyId/:settingType',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyParamAccess,
   catchAsync(async (req, res) => {
     const { propertyId, settingType } = req.params;
@@ -1028,7 +1029,7 @@ router.get('/change-history/:propertyId/:settingType',
  * }
  */
 router.post('/rollback',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
@@ -1066,7 +1067,7 @@ router.post('/rollback',
  * }
  */
 router.post('/bulk-rollback',
-  authenticate,
+  authenticate, ensureTenantContext,
   inheritanceManageAccess,
   validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {

@@ -169,34 +169,53 @@ function FrontDeskBookings() {
 
       const response = await adminService.getFrontDeskBookings(bookingFilters);
 
-      // Handle both possible response structures with better error checking
-      let bookingsData = [];
-      if (response.data) {
-        if (response.data.bookings) {
-          bookingsData = response.data.bookings;
-        } else if (Array.isArray(response.data)) {
-          bookingsData = response.data;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          bookingsData = response.data.data;
+      // Backend returns: { status, results, pagination, stats, data: bookings[] }
+      // After axios unwrapping, response === that object.
+      let bookingsData: AdminBooking[] = [];
+      if (Array.isArray(response.data)) {
+        // data field is the array directly
+        bookingsData = response.data as AdminBooking[];
+      } else if (response.data && typeof response.data === 'object') {
+        // Nested under data.bookings or data.data
+        const inner = response.data as Record<string, unknown>;
+        if (Array.isArray(inner.bookings)) {
+          bookingsData = inner.bookings as AdminBooking[];
+        } else if (Array.isArray(inner.data)) {
+          bookingsData = inner.data as AdminBooking[];
         }
       }
 
-
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
 
-      // Set pagination with fallback values
-      if (response.pagination) {
+      // Prefer server-side pagination metadata
+      const pag = (response as Record<string, unknown>).pagination as Record<string, number> | undefined;
+      if (pag) {
         setPagination({
-          current: response.pagination.page ?? response.pagination.current ?? (bookingFilters.page || 1),
-          pages: response.pagination.pages ?? 1,
-          total: response.pagination.total ?? bookingsData.length
+          current: pag.page ?? pag.current ?? (bookingFilters.page || 1),
+          pages: pag.pages ?? 1,
+          total: pag.total ?? bookingsData.length
         });
       } else {
-        // Calculate pagination if not provided
         setPagination({
           current: bookingFilters.page || 1,
           pages: Math.ceil(bookingsData.length / (bookingFilters.limit || 50)) || 1,
           total: bookingsData.length
+        });
+      }
+
+      // Extract inline stats from the bookings list response to avoid a
+      // separate /reports/bookings/stats round-trip.
+      const inlineStats = (response as Record<string, unknown>).stats as Record<string, unknown> | undefined;
+      if (inlineStats && typeof inlineStats === 'object') {
+        setStats({
+          total: (inlineStats.total as number) ?? (inlineStats.totalBookings as number) ?? 0,
+          totalRevenue: (inlineStats.totalRevenue as number) ?? 0,
+          averageBookingValue: (inlineStats.averageBookingValue as number) ?? 0,
+          pending: (inlineStats.pending as number) ?? (inlineStats.pendingBookings as number) ?? 0,
+          confirmed: (inlineStats.confirmed as number) ?? 0,
+          checkedIn: (inlineStats.checkedIn as number) ?? 0,
+          checkedOut: (inlineStats.checkedOut as number) ?? 0,
+          cancelled: (inlineStats.cancelled as number) ?? 0,
         });
       }
 
@@ -212,31 +231,31 @@ function FrontDeskBookings() {
     }
   }, [activeHotelId, filters]);
 
-  // Fetch stats
+  // Fetch stats as a fallback — used when the inline stats from fetchBookings
+  // are absent (e.g. older backend versions). Callers should always prefer
+  // fetchBookings() which now sets stats inline from the list response.
   const fetchStats = useCallback(async () => {
-    if (!activeHotelId) {
-      setStats(null);
-      return;
-    }
+    if (!activeHotelId) return;
     try {
-
-      // Pass hotelId filter to stats to match booking list
-      const statsFilters = {
-        hotelId: activeHotelId
-      };
-
-      const response = await adminService.getBookingStats(statsFilters);
-
-      setStats(response.data?.stats || response.data || null);
-    } catch (error) {
-      setStats(null);
+      const response = await adminService.getBookingStats({ hotelId: activeHotelId });
+      // Only update if inline stats from fetchBookings didn't already populate
+      setStats(prev => prev ?? (response.data?.stats || (response.data as BookingStats) || null));
+    } catch {
+      // non-fatal — list stats from fetchBookings are sufficient
     }
   }, [activeHotelId]);
 
   useEffect(() => {
     fetchBookings();
-    fetchStats();
-  }, [fetchBookings, fetchStats]);
+  }, [fetchBookings]);
+
+  // Run fetchStats as a fallback if fetchBookings didn't populate stats
+  // (inline stats are always preferred to avoid an extra round-trip).
+  useEffect(() => {
+    if (!stats && activeHotelId) {
+      fetchStats();
+    }
+  }, [stats, activeHotelId, fetchStats]);
 
   // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
@@ -443,6 +462,12 @@ function FrontDeskBookings() {
         const updatedBooking = response.data.booking;
         toast.success('Guest checked in successfully! Payment already completed.');
 
+        // Notify front-desk staff about the auto-generated digital key (if issued)
+        const digitalKey = response.data.digitalKey;
+        if (digitalKey?.keyCode) {
+          toast.success(`Digital key issued: ${digitalKey.keyCode}`, { duration: 6000 });
+        }
+
         // Update the selected booking in the modal if it's the same booking
         if (selectedBooking && selectedBooking._id === booking._id) {
           setSelectedBooking(updatedBooking);
@@ -505,6 +530,12 @@ function FrontDeskBookings() {
         } else {
           toast.success('Guest checked in successfully!');
         }
+      }
+
+      // Notify front-desk staff about the auto-generated digital key (if issued)
+      const digitalKey = response.data.digitalKey;
+      if (digitalKey?.keyCode) {
+        toast.success(`Digital key issued: ${digitalKey.keyCode}`, { duration: 6000 });
       }
 
       // Update the selected booking in the modal if it's the same booking

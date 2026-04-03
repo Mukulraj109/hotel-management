@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Joi from 'joi';
 import DepartmentBudget from '../models/DepartmentBudget.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -35,6 +36,7 @@ const router = express.Router();
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('departmentBudget', 'baseAccess'));
 

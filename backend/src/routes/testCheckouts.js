@@ -6,6 +6,7 @@ import Booking from '../models/Booking.js';
 import User from '../models/User.js';
 import Room from '../models/Room.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
@@ -15,6 +16,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All test routes require admin authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(authorizePolicy('testCheckouts', 'adminAccess'));
 
 // Test endpoint to compare checkout data sources

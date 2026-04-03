@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, param, query } from 'express-validator';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -124,7 +125,7 @@ const syncSettingsValidation = [
  *         description: Server error
  */
 router.post('/',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -175,7 +176,7 @@ router.post('/',
  *         description: Server error
  */
 router.get('/',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
@@ -212,7 +213,7 @@ router.get('/',
  *         description: Server error
  */
 router.get('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),
@@ -262,7 +263,7 @@ router.get('/:id',
  *         description: Server error
  */
 router.put('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -299,7 +300,7 @@ router.put('/:id',
  *         description: Server error
  */
 router.delete('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'adminAccess'),
   validate(mutationBaselineSchema),
@@ -350,7 +351,7 @@ router.delete('/:id',
  *         description: Server error
  */
 router.post('/:id/properties',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -401,7 +402,7 @@ router.post('/:id/properties',
  *         description: Server error
  */
 router.delete('/:id/properties',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -446,7 +447,7 @@ router.delete('/:id/properties',
  *         description: Server error
  */
 router.post('/:id/sync',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   validate(mutationBaselineSchema),
@@ -487,7 +488,7 @@ router.post('/:id/sync',
  *         description: Server error
  */
 router.get('/:id/dashboard',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),
@@ -534,7 +535,7 @@ router.get('/:id/dashboard',
  *         description: Server error
  */
 router.get('/:id/audit-log',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),

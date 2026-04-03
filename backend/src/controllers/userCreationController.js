@@ -39,10 +39,10 @@ export const createUser = catchAsync(async (req, res) => {
     throw new ApplicationError('Email already registered', 400);
   }
 
-  // Validate role - only allow creating admin, manager, staff
-  const validRoles = ['admin', 'manager', 'staff'];
+  // Validate role - allow all operational staff roles
+  const validRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
   if (!validRoles.includes(role)) {
-    throw new ApplicationError('Invalid role. Must be admin, manager, or staff', 400);
+    throw new ApplicationError('Invalid role. Must be one of: admin, manager, staff, frontdesk, housekeeping', 400);
   }
 
   if (req.user.role === 'manager' && role === 'admin') {
@@ -200,9 +200,9 @@ export const updateUser = catchAsync(async (req, res) => {
   }
   if (phone !== undefined) user.phone = phone;
   if (role) {
-    const validRoles = ['admin', 'manager', 'staff'];
+    const validRoles = ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'];
     if (!validRoles.includes(role)) {
-      throw new ApplicationError('Invalid role', 400);
+      throw new ApplicationError('Invalid role. Must be one of: admin, manager, staff, frontdesk, housekeeping', 400);
     }
     if (req.user.role === 'manager' && role === 'admin') {
       throw new ApplicationError('Managers cannot assign admin role', 403);

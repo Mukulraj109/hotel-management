@@ -1,6 +1,7 @@
 import express from 'express';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { operationalManagementController } from '../controllers/operationalManagementController.js';
@@ -11,6 +12,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication, authorization, and property access to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(authorizePolicy('operationalManagement', 'modifyAccess'));
 router.use(ensurePropertyAccess);
 

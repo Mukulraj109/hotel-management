@@ -4,6 +4,7 @@ import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import HotelServiceFavorite from '../models/HotelServiceFavorite.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -163,7 +164,7 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
  *         description: User's service bookings
  */
 router.get('/bookings',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -190,7 +191,7 @@ router.get('/bookings',
 );
 
 router.get('/favorites',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -207,7 +208,7 @@ router.get('/favorites',
 );
 
 router.post('/favorites/:serviceId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -225,7 +226,7 @@ router.post('/favorites/:serviceId',
 );
 
 router.delete('/favorites/:serviceId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -257,7 +258,7 @@ router.delete('/favorites/:serviceId',
  *         description: Booking not found
  */
 router.get('/bookings/:bookingId',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
@@ -473,7 +474,7 @@ router.get('/:serviceId/availability', optionalAuth, catchAsync(async (req, res)
  *         description: Invalid booking request
  */
 router.post('/:serviceId/bookings',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   validate(schemas.createServiceBooking),
@@ -649,7 +650,7 @@ router.post('/:serviceId/bookings',
  *         description: Cannot cancel booking
  */
 router.post('/bookings/:bookingId/cancel',
-  authenticate,
+  authenticate, ensureTenantContext,
   authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   validate(schemas.cancelServiceBooking),

@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import translationController from '../controllers/translationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -139,6 +140,7 @@ router.post('/batch',
 
 // Protected routes (authentication required)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('translations', 'baseAccess'));
 

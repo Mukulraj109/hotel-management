@@ -415,6 +415,28 @@ router.patch('/profile', authenticate, authorizePolicy('auth', 'baseAccess'), va
     { new: true, runValidators: true }
   );
 
+  // Sync preferences to UserPreference model if applicable
+  try {
+    const UserPreference = (await import('../models/UserPreference.js')).default;
+    if (req.body.preferences) {
+      await UserPreference.findOneAndUpdate(
+        { userId: user._id },
+        {
+          $set: {
+            'guest.stayPreferences.bedType': req.body.preferences?.bedType,
+            'guest.stayPreferences.floor': req.body.preferences?.floor,
+            'guest.stayPreferences.smoking': req.body.preferences?.smokingAllowed,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+    }
+  } catch (syncErr) {
+    // Non-blocking - log and continue
+    console.warn('Profile sync to UserPreference failed:', syncErr.message);
+  }
+
   res.json({
     status: 'success',
     user

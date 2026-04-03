@@ -3,6 +3,7 @@ import Joi from 'joi';
 import * as userManagementController from '../controllers/userManagementController.js';
 import * as userCreationController from '../controllers/userCreationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -13,6 +14,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(authorizePolicy('users', 'baseAccess'));
 
 // User creation and management routes (admin and manager only)

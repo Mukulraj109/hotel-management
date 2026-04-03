@@ -380,9 +380,19 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
   // Role-based filtering with mandatory tenant isolation
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
-    const guestHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+    let guestHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
+    // Guests may not have hotelId on their user record — resolve from active booking
     if (!guestHotelId) {
-      return res.status(400).json({ status: 'error', message: 'Hotel context required' });
+      const activeBooking = await Booking.findOne({
+        userId: req.user._id,
+        status: { $in: ['confirmed', 'checked_in', 'pending'] },
+        checkOut: { $gte: new Date() }
+      }).select('hotelId').sort({ checkIn: -1 }).lean();
+      guestHotelId = activeBooking?.hotelId ? refToHotelIdString(activeBooking.hotelId) : null;
+    }
+    if (!guestHotelId) {
+      // No active booking — return empty list rather than 400 (guest may have no current stay)
+      return res.json({ status: 'success', data: { serviceRequests: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } } });
     }
     query.hotelId = guestHotelId;
   } else {

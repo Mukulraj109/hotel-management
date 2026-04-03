@@ -2,6 +2,7 @@ import express from 'express';
 import ExtraPersonCharge from '../models/ExtraPersonCharge.js';
 import extraPersonPricingEngine from '../services/extraPersonPricingEngine.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -27,7 +28,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
  *         description: Access denied - admin/staff only
  */
 router.get('/rules',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'staffAccess'),
   catchAsync(async (req, res) => {
@@ -114,7 +115,7 @@ router.get('/rules',
  *         description: Access denied - admin only
  */
 router.post('/rules',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'adminAccess'),
   validate(mutationBaselineSchema),
@@ -180,7 +181,7 @@ router.post('/rules',
  *         description: Rule not found
  */
 router.put('/rules/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'adminAccess'),
   validate(mutationBaselineSchema),
@@ -281,7 +282,7 @@ router.put('/rules/:id',
  *         description: Access denied - admin/staff only
  */
 router.post('/calculate',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'staffAccess'),
   validate(mutationBaselineSchema),
@@ -391,7 +392,7 @@ router.post('/calculate',
  *         description: Access denied - admin/staff only
  */
 router.post('/preview',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'staffAccess'),
   validate(mutationBaselineSchema),
@@ -433,7 +434,7 @@ router.post('/preview',
  *         description: Access denied - admin only
  */
 router.get('/strategies',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('extraPersonPricing', 'adminAccess'),
   catchAsync(async (req, res) => {

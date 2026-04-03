@@ -254,23 +254,38 @@ function AdminHousekeeping() {
     }
   };
 
-  // Fetch staff members
+  // Fetch staff members eligible to be assigned housekeeping tasks.
+  // We fetch 'staff' and 'housekeeping' roles in parallel and merge the results.
   const fetchStaffMembers = async () => {
     if (!selectedPropertyId) return;
 
     try {
-      // Fetch only staff members (role: 'staff') from the API
-      const response = await adminService.getUsers({ role: 'staff', hotelId: selectedPropertyId });
-      const staffUsers = response.data.users || [];
-      
-      // Transform the data to match our StaffMember interface
-      const transformedStaff: StaffMember[] = staffUsers.map((user: Record<string, unknown>) => ({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+      const [staffRes, housekeepingRes] = await Promise.all([
+        adminService.getUsers({ role: 'staff', hotelId: selectedPropertyId }),
+        adminService.getUsers({ role: 'housekeeping', hotelId: selectedPropertyId }),
+      ]);
+
+      const allUsers = [
+        ...(staffRes.data.users || []),
+        ...(housekeepingRes.data.users || []),
+      ] as Record<string, unknown>[];
+
+      // De-duplicate by _id in case a user appears in both result sets
+      const seen = new Set<string>();
+      const uniqueUsers = allUsers.filter((user) => {
+        const id = user._id as string;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      const transformedStaff: StaffMember[] = uniqueUsers.map((user) => ({
+        _id: user._id as string,
+        name: user.name as string,
+        email: user.email as string,
+        role: user.role as string,
       }));
-      
+
       setStaffMembers(transformedStaff);
     } catch (error: unknown) {
       setStaffMembers([]);
@@ -302,6 +317,15 @@ function AdminHousekeeping() {
 
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
+
+  // Reset pagination to page 1 when the selected property changes to avoid stale page state.
+  const prevHousekeepingPropertyRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedPropertyId && selectedPropertyId !== prevHousekeepingPropertyRef.current) {
+      prevHousekeepingPropertyRef.current = selectedPropertyId;
+      setFilters(prev => ({ ...prev, page: 1 }));
+    }
+  }, [selectedPropertyId]);
 
   // Load tasks and stats on filter changes
   useEffect(() => {

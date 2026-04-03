@@ -1,6 +1,7 @@
 import express from 'express';
 import dayUseController from '../controllers/dayUseController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import adminAuth from '../middleware/adminAuth.js';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Public routes (authenticated users)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('dayUse', 'baseAccess'));
 

@@ -195,6 +195,15 @@ function AdminInventory() {
   const itemIsLowStock = (item: InventoryItem): boolean =>
     item.isLowStock ?? item.quantity <= item.minimumThreshold;
 
+  // Reset to page 1 when selected property changes to avoid stale pagination state
+  const prevPropertyIdRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedPropertyId && selectedPropertyId !== prevPropertyIdRef.current) {
+      prevPropertyIdRef.current = selectedPropertyId;
+      setFilters(prev => ({ ...prev, page: 1 }));
+    }
+  }, [selectedPropertyId]);
+
   // Load data on mount and filter changes
   useEffect(() => {
     if (selectedPropertyId) {

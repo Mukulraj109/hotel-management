@@ -8,6 +8,7 @@ import {
   analyzeCustomerJourney
 } from '../controllers/segmentationController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -19,6 +20,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 const segmentIdValidation = [

@@ -1,6 +1,7 @@
 import express from 'express';
 import currencyController from '../controllers/currencyController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
@@ -131,6 +132,7 @@ router.get('/:code', currencyParamValidation, currencyController.getCurrency);
 
 // Protected routes (authentication required)
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Currency management (admin only)

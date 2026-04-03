@@ -82,7 +82,16 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
     limit = 10
   } = req.query;
 
-  const hotelId = req.user.hotelId;
+  // Admin and manager roles can filter by a specific hotelId query param (multi-property support).
+  // Operational staff are always scoped to their own hotel via the JWT token.
+  const supervisorRoles = ['admin', 'manager', 'frontdesk'];
+  const requestedHotelId = req.query.hotelId;
+  let hotelId;
+  if (supervisorRoles.includes(req.user.role) && requestedHotelId) {
+    hotelId = requestedHotelId;
+  } else {
+    hotelId = req.user.hotelId;
+  }
   if (!hotelId) {
     throw new ApplicationError('Hotel context is required', 403);
   }
@@ -208,7 +217,12 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
 
 // Create housekeeping task
 router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(createTaskSchema), catchAsync(async (req, res) => {
-  const hotelId = req.user.hotelId;
+  // Admin/manager may pass an explicit hotelId in the body for multi-property support.
+  // Operational staff are always scoped to their own hotel from the JWT.
+  const supervisorRoles = ['admin', 'manager'];
+  const hotelId = (supervisorRoles.includes(req.user.role) && req.body.hotelId)
+    ? req.body.hotelId
+    : req.user.hotelId;
   if (!hotelId) {
     throw new ApplicationError('Hotel context is required', 403);
   }
@@ -256,7 +270,11 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeepin
 
 // Get task statistics
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
-  const hotelId = req.user.hotelId;
+  const supervisorRoles = ['admin', 'manager', 'frontdesk'];
+  const requestedHotelId = req.query.hotelId;
+  const hotelId = (supervisorRoles.includes(req.user.role) && requestedHotelId)
+    ? requestedHotelId
+    : req.user.hotelId;
   if (!hotelId) {
     throw new ApplicationError('Hotel context is required', 403);
   }

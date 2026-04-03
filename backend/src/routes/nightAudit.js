@@ -3,6 +3,7 @@ import NightAudit from '../models/NightAudit.js';
 import nightAuditService from '../services/nightAuditService.js';
 import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -13,6 +14,7 @@ const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Run night audit manually

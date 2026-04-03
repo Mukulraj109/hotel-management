@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import MessageTemplate from '../models/MessageTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -14,6 +15,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('messageTemplates', 'baseAccess'));
 

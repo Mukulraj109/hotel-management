@@ -417,7 +417,7 @@ class AdminService {
       reference?: string;
       notes?: string;
     }>;
-  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+  }): Promise<ApiResponse<{ booking: AdminBooking; digitalKey?: { keyCode: string; keyId: string } | null; balanceInfo?: { totalAmount: number; totalPaid: number; balanceRemaining: number; paymentCollected: boolean } }>> {
     try {
       const response = await api.patch(`/bookings/${id}/check-in`, { paymentDetails });
       return response.data;

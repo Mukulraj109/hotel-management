@@ -1,6 +1,7 @@
 import express from 'express';
 import assignmentRulesController from '../controllers/assignmentRulesController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Protect all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

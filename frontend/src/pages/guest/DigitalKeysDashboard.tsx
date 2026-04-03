@@ -997,11 +997,11 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
   const { data: bookingsData, isLoading: bookingsLoading, error: bookingsError } = useQuery({
     queryKey: ['eligible-bookings-for-keys'],
     queryFn: async () => {
-      const response = await bookingService.getUserBookings();
+      // Use server-side filter for confirmed/checked_in status to avoid unbounded fetch
+      const response = await bookingService.getUserBookings({ status: 'confirmed,checked_in', limit: 20, page: 1 });
       const bookingsData = response.data?.bookings || response.data || [];
-      // Filter for eligible bookings (confirmed/checked-in and not expired)
-      return Array.isArray(bookingsData) ? bookingsData.filter((booking: Booking) => 
-        ['confirmed', 'checked_in'].includes(booking.status) && 
+      // Filter out expired checkout dates (server returns status-matched only)
+      return Array.isArray(bookingsData) ? bookingsData.filter((booking: Booking) =>
         new Date(booking.checkOut) > new Date()
       ) : [];
     },

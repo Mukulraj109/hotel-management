@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import inventoryVendorIntegrationService from '../services/inventoryVendorIntegrationService.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate, validateRequest } from '../middleware/validation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -12,6 +13,7 @@ const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 /**

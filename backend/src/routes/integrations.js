@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import UserSettings from '../models/UserSettings.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -52,6 +53,7 @@ const integrationSettingsSchema = Joi.object({
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('integrations', 'baseAccess'));
 router.use(authorize('admin', 'manager'));

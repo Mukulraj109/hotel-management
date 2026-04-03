@@ -133,18 +133,17 @@ export default function GuestFeedback() {
     try {
       setLoading(true);
       setError(null);
+      // Use server-side status filter — avoids loading all bookings then client-side filtering
       const response = await bookingService.getUserBookings({
+        status: 'checked_out',
         page: bookingsPage,
         limit: BOOKINGS_PER_PAGE
       });
       const bookings = Array.isArray(response.data?.bookings) ? response.data.bookings :
                       Array.isArray(response.data) ? response.data : [];
 
-      // Filter for checked out bookings only
-      const checkedOut = bookings.filter((booking: Record<string, unknown>) =>
-        booking.status === 'checked_out' ||
-        (new Date(booking.checkOut as string) < new Date() && booking.status !== 'cancelled')
-      ) as CheckedOutBooking[];
+      // Server already returned only checked_out bookings; cast directly
+      const checkedOut = bookings as CheckedOutBooking[];
 
       setCheckedOutBookings(checkedOut);
       if (response.pagination) {

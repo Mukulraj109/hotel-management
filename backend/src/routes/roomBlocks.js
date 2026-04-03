@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import roomBlockController from '../controllers/roomBlockController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { body } from 'express-validator';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
@@ -50,7 +51,7 @@ const validateRoomBlock = [
 
 // Routes
 router.post('/',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -59,28 +60,28 @@ router.post('/',
 );
 
 router.get('/',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlocks
 );
 
 router.get('/stats',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlockStats
 );
 
 router.get('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlock
 );
 
 router.put('/:id',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -88,7 +89,7 @@ router.put('/:id',
 );
 
 router.post('/:id/rooms/:roomId/release',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -96,7 +97,7 @@ router.post('/:id/rooms/:roomId/release',
 );
 
 router.post('/:id/rooms/:roomId/book',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
@@ -104,7 +105,7 @@ router.post('/:id/rooms/:roomId/book',
 );
 
 router.post('/:id/notes',
-  authenticate,
+  authenticate, ensureTenantContext,
   ensurePropertyAccess,
   authorizePolicy('roomBlocks', 'adminStaffAccess'),
   validate(mutationBaselineSchema),
