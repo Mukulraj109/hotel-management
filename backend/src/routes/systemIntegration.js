@@ -3,6 +3,7 @@ import {
     authenticate
 } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import inventoryIntegrationService from '../services/inventoryIntegrationService.js';
 import workflowAutomationService from '../services/workflowAutomationService.js';
