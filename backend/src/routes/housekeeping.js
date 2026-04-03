@@ -108,7 +108,6 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
 
   // Staff/housekeeping roles only see their own assigned tasks unless a
   // supervisor (admin, manager, frontdesk) is requesting all tasks.
-  const supervisorRoles = ['admin', 'manager', 'frontdesk'];
   if (!supervisorRoles.includes(req.user.role) && !assignedToUserId) {
     andConditions.push({
       $or: [
