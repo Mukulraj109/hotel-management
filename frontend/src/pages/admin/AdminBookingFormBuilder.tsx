@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Plus, Search, Grid, List, FileText, Eye, Edit, Copy, Trash2, BarChart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -564,4 +565,4 @@ const AdminBookingFormBuilder: React.FC = () => {
   );
 };
 
-export default AdminBookingFormBuilder;
+export default withErrorBoundary(AdminBookingFormBuilder);

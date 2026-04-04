@@ -4,7 +4,9 @@ import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { PropertyProvider } from './context/PropertyContext';
+import { SocketProvider } from './context/SocketContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LocalizationProvider } from './context/LocalizationContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { KeyboardShortcutsProvider } from './components/KeyboardShortcutsProvider';
@@ -206,6 +208,12 @@ const FrontDeskInventory = React.lazy(() => import('./pages/frontdesk/FrontDeskI
 const FrontDeskCheckout = React.lazy(() => import('./pages/frontdesk/FrontDeskCheckout'));
 const FrontDeskInventoryAutomation = React.lazy(() => import('./pages/frontdesk/FrontDeskInventoryAutomation'));
 const MyApprovalRequests = React.lazy(() => import('./pages/frontdesk/MyApprovalRequests'));
+const FrontDeskAlertCenter = React.lazy(() => import('./pages/frontdesk/FrontDeskAlertCenter'));
+const FrontDeskSettings = React.lazy(() => import('./pages/frontdesk/FrontDeskSettings'));
+const FrontDeskReports = React.lazy(() => import('./pages/frontdesk/FrontDeskReports'));
+const FrontDeskNotifications = React.lazy(() => import('./pages/frontdesk/FrontDeskNotifications'));
+const FrontDeskNightAudit = React.lazy(() => import('./pages/frontdesk/FrontDeskNightAudit'));
+const FrontDeskLostFound = React.lazy(() => import('./pages/frontdesk/FrontDeskLostFound'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -221,9 +229,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
+          <SocketProvider>
           <PropertyProvider>
             <KeyboardShortcutsProvider>
               <ThemeProvider>
+                <LocalizationProvider>
                 <ErrorBoundary showErrorDetails>
               <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
               <Routes>
@@ -419,6 +429,12 @@ function App() {
                 <Route path="inventory-automation" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskInventoryAutomation /></Suspense>} />
                 <Route path="my-approvals" element={<Suspense fallback={<RouteLoadingFallback />}><MyApprovalRequests /></Suspense>} />
                 <Route path="digital-keys" element={<Suspense fallback={<RouteLoadingFallback />}><AdminDigitalKeyManagement /></Suspense>} />
+                <Route path="alerts" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskAlertCenter /></Suspense>} />
+                <Route path="night-audit" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskNightAudit /></Suspense>} />
+                <Route path="lost-found" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskLostFound /></Suspense>} />
+                <Route path="settings" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskSettings /></Suspense>} />
+                <Route path="reports" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskReports /></Suspense>} />
+                <Route path="notifications" element={<Suspense fallback={<RouteLoadingFallback />}><FrontDeskNotifications /></Suspense>} />
               </Route>
 
               {/* Travel Agent Routes */}
@@ -491,9 +507,11 @@ function App() {
           />
               </div>
               </ErrorBoundary>
+                </LocalizationProvider>
               </ThemeProvider>
             </KeyboardShortcutsProvider>
           </PropertyProvider>
+          </SocketProvider>
         </AuthProvider>
       </Router>
     </QueryClientProvider>

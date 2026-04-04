@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import LocalAttraction from '../models/LocalAttraction.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -224,6 +225,9 @@ router.get('/categories', catchAsync(async (req, res) => {
  *         description: Attraction not found
  */
 router.get('/:id', catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Attraction not found', 404);
+  }
   const attraction = await LocalAttraction.findById(req.params.id)
     .populate('hotelId', 'name address').lean();
 
@@ -355,6 +359,9 @@ router.patch('/:id',
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApplicationError('Attraction not found', 404);
+    }
     const attraction = await LocalAttraction.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -398,6 +405,9 @@ router.delete('/:id',
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApplicationError('Attraction not found', 404);
+    }
     const attraction = await LocalAttraction.findByIdAndDelete(req.params.id);
 
     if (!attraction) {

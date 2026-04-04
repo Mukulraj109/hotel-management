@@ -12,7 +12,7 @@ const router = express.Router();
  * @desc    Get audit logs with filtering and pagination
  * @access  Private (Admin, Manager)
  */
-router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const {
       userId,
@@ -73,7 +73,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, authori
  * @desc    Get usage statistics
  * @access  Private (Admin, Manager)
  */
-router.get('/statistics', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/statistics', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { startDate, endDate, groupBy } = req.query;
 
@@ -104,7 +104,7 @@ router.get('/statistics', authenticate, ensureTenantContext, ensurePropertyAcces
  * @desc    Get property activity heatmap
  * @access  Private (Admin, Manager)
  */
-router.get('/heatmap', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/heatmap', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -131,7 +131,7 @@ router.get('/heatmap', authenticate, ensureTenantContext, ensurePropertyAccess, 
  * @desc    Calculate time savings from bulk operations
  * @access  Private (Admin, Manager)
  */
-router.get('/time-savings', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/time-savings', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -158,7 +158,7 @@ router.get('/time-savings', authenticate, ensureTenantContext, ensurePropertyAcc
  * @desc    Get recent activity feed
  * @access  Private (Admin, Manager)
  */
-router.get('/recent', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/recent', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { limit } = req.query;
 
@@ -186,7 +186,7 @@ router.get('/recent', authenticate, ensureTenantContext, ensurePropertyAccess, a
  * @desc    Export audit log to CSV or JSON
  * @access  Private (Admin, Manager)
  */
-router.get('/export', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/export', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const {
       userId,
@@ -243,20 +243,12 @@ router.get('/export', authenticate, ensureTenantContext, ensurePropertyAccess, a
 /**
  * @route   GET /api/v1/audit-log/user/:userId
  * @desc    Get user activity
- * @access  Private (Admin, Manager, or own data)
+ * @access  Private (Admin only)
  */
-router.get('/user/:userId', authenticate, ensureTenantContext, ensurePropertyAccess, async (req, res) => {
+router.get('/user/:userId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit, skip } = req.query;
-
-    // Check permission - admins/managers can see all, users can only see their own
-    if (req.user.role !== 'admin' && req.user.role !== 'manager' && req.user._id.toString() !== userId) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to view this user activity'
-      });
-    }
 
     const options = {
       limit: limit ? parseInt(limit) : 100,
@@ -284,7 +276,7 @@ router.get('/user/:userId', authenticate, ensureTenantContext, ensurePropertyAcc
  * @desc    Get property activity
  * @access  Private (Admin, Manager)
  */
-router.get('/property/:propertyId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/property/:propertyId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { propertyId } = req.params;
     const { limit, skip } = req.query;
@@ -315,7 +307,7 @@ router.get('/property/:propertyId', authenticate, ensureTenantContext, ensurePro
  * @desc    Get specific audit log entry
  * @access  Private (Admin, Manager)
  */
-router.get('/:logId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin', 'manager'), async (req, res) => {
+router.get('/:logId', authenticate, ensureTenantContext, ensurePropertyAccess, authorize('admin'), async (req, res) => {
   try {
     const { logId } = req.params;
 

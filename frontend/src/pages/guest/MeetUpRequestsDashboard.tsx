@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
 import { useRealTime } from '../../services/realTimeService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 function meetUpErrorMessage(error: unknown, fallback: string) {
   const ax = error as { response?: { data?: { error?: { message?: string; code?: string } } } };
@@ -33,7 +34,7 @@ function meetUpErrorMessage(error: unknown, fallback: string) {
   return msg || (error instanceof Error ? error.message : fallback);
 }
 
-export default function MeetUpRequestsDashboard() {
+function MeetUpRequestsDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { connectionState, connect, on, off } = useRealTime();
@@ -1121,3 +1122,5 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }: {
     </div>
   );
 }
+
+export default withErrorBoundary(MeetUpRequestsDashboard);

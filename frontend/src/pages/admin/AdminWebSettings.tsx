@@ -31,8 +31,9 @@ import { useAuth } from '@/context/AuthContext';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
 import { useProperty } from '@/context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminWebSettings() {
+function AdminWebSettings() {
   const { user } = useAuth();
   const [settings, setSettings] = useState<WebSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -677,3 +678,5 @@ export default function AdminWebSettings() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminWebSettings);

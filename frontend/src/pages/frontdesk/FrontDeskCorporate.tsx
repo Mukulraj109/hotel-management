@@ -8,8 +8,9 @@ import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
 import CorporateCompanyManagement from '../../components/admin/CorporateCompanyManagement';
 import GroupBookingManagement from '../../components/admin/GroupBookingManagement';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function FrontDeskCorporate() {
+function FrontDeskCorporate() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('companies');
@@ -87,7 +88,7 @@ export default function FrontDeskCorporate() {
         <div className="mt-6">
           {/* Companies Tab */}
           {activeTab === 'companies' && (
-            <CorporateCompanyManagement key={`companies-${refreshKey}`} />
+            <CorporateCompanyManagement key={`companies-${refreshKey}`} readOnly />
           )}
 
           {/* Bookings Tab */}
@@ -99,3 +100,5 @@ export default function FrontDeskCorporate() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskCorporate);

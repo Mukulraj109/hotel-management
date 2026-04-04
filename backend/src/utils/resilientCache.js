@@ -49,7 +49,7 @@ class ResilientCache {
 
     // Try to cache the result (non-blocking)
     if (this.isAvailable && this.redis && result !== undefined && result !== null) {
-      this.redis.set(cacheKey, JSON.stringify(result), 'EX', ttl).catch(() => {});
+      this.redis.set(cacheKey, JSON.stringify(result), 'EX', ttl).catch(err => console.warn(`[ResilientCache] Redis set failed for ${cacheKey}: ${err.message}`));
     }
 
     return result;

@@ -20,8 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffAlertCenter() {
+function StaffAlertCenter() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState<StaffAlertFilters>({
     status: '',
@@ -615,3 +616,5 @@ function StaffAlertCard({
     </Card>
   );
 }
+
+export default withErrorBoundary(StaffAlertCenter);

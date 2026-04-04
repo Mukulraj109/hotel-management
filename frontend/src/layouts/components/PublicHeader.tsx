@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Hotel, Menu, X, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 
 export default function PublicHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);

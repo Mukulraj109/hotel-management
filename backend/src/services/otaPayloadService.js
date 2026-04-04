@@ -7,7 +7,9 @@ import crypto from 'crypto';
 class OTAPayloadService {
   constructor() {
     this.correlationMap = new Map(); // Track request/response pairs
+    this.maxCorrelationMapSize = 10000; // Cap to prevent unbounded memory growth
     this.processingQueue = [];
+    this._cleanupInterval = null;
   }
 
   /**
@@ -451,15 +453,26 @@ class OTAPayloadService {
   }
 
   /**
-   * Clean up old correlation mappings
+   * Clean up old correlation mappings and enforce size cap
    */
   cleanupCorrelations() {
-    const cutoff = new Date(Date.now() - (24 * 60 * 60 * 1000)); // 24 hours ago
-    
+    const cutoff = new Date(Date.now() - (4 * 60 * 60 * 1000)); // 4 hours (reduced from 24h)
+
     for (const [correlationId, data] of this.correlationMap.entries()) {
       if (data.timestamp < cutoff) {
         this.correlationMap.delete(correlationId);
       }
+    }
+
+    // Hard cap: if still over limit, evict oldest entries
+    if (this.correlationMap.size > this.maxCorrelationMapSize) {
+      const excess = this.correlationMap.size - this.maxCorrelationMapSize;
+      const iterator = this.correlationMap.keys();
+      for (let i = 0; i < excess; i++) {
+        const key = iterator.next().value;
+        if (key !== undefined) this.correlationMap.delete(key);
+      }
+      logger.warn(`OTA correlation map exceeded cap, evicted ${excess} oldest entries`);
     }
   }
 
@@ -467,10 +480,20 @@ class OTAPayloadService {
    * Initialize periodic cleanup
    */
   startCleanup() {
-    // Clean up correlation mappings every hour
-    setInterval(() => {
+    // Clean up correlation mappings every 15 minutes (reduced from 1 hour)
+    this._cleanupInterval = setInterval(() => {
       this.cleanupCorrelations();
-    }, 60 * 60 * 1000);
+    }, 15 * 60 * 1000);
+  }
+
+  /**
+   * Stop periodic cleanup for graceful shutdown
+   */
+  stopCleanup() {
+    if (this._cleanupInterval) {
+      clearInterval(this._cleanupInterval);
+      this._cleanupInterval = null;
+    }
   }
 
   /**

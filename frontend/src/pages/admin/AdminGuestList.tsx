@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   PlusIcon,
   PencilIcon,
@@ -647,4 +648,4 @@ const AdminGuestList: React.FC = () => {
   );
 };
 
-export default AdminGuestList;
+export default withErrorBoundary(AdminGuestList);

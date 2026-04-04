@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import Joi from 'joi';
 import MeetUpRequest from '../models/MeetUpRequest.js';
@@ -598,6 +599,9 @@ router.get('/admin/guest-meetup-reports', authorize('admin', 'staff', 'frontdesk
 router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   // Tenant isolation: resolve hotel context
   const resolvedCancelHotelId = req.body.hotelId || req.user?.hotelId;
   const existingRequest = await MeetUpRequest.findById(req.params.requestId).lean();
@@ -668,7 +672,7 @@ router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'front
       });
     }
   } catch (notifErr) {
-    console.warn('Failed to send force-cancel notifications:', notifErr.message);
+    logger.warn('Failed to send force-cancel notifications:', notifErr.message);
   }
 
   // Auto-resolve any open supervision alert for this meet-up
@@ -1322,6 +1326,9 @@ router.post('/', meetUpWriteLimiter, validate(schemas.createMeetUpRequest), catc
 
 // Get a specific meet-up request
 router.get('/:requestId', catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const meetUpRequest = await MeetUpRequest.findOne({
     _id: req.params.requestId,
     $or: [
@@ -1352,6 +1359,9 @@ router.get('/:requestId', catchAsync(async (req, res) => {
 router.post('/:requestId/accept', meetUpWriteLimiter, validate(schemas.respondToMeetUpRequest), catchAsync(async (req, res) => {
   const { message } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -1406,6 +1416,9 @@ router.post('/:requestId/accept', meetUpWriteLimiter, validate(schemas.respondTo
 router.post('/:requestId/decline', meetUpWriteLimiter, validate(schemas.respondToMeetUpRequest), catchAsync(async (req, res) => {
   const { message } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -1458,6 +1471,9 @@ router.post('/:requestId/decline', meetUpWriteLimiter, validate(schemas.respondT
 
 // Cancel a meet-up request
 router.post('/:requestId/cancel', meetUpWriteLimiter, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -1510,6 +1526,9 @@ router.post('/:requestId/cancel', meetUpWriteLimiter, validate(mutationBaselineS
 
 // Complete a meet-up request
 router.post('/:requestId/complete', meetUpWriteLimiter, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -1557,6 +1576,9 @@ router.post('/:requestId/complete', meetUpWriteLimiter, validate(mutationBaselin
 router.post('/:requestId/participants', meetUpWriteLimiter, validate(schemas.addParticipant), catchAsync(async (req, res) => {
   const { userId, name, email } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const prePart = await MeetUpRequest.findOne({
     _id: req.params.requestId,
     $or: [
@@ -1606,6 +1628,9 @@ router.post('/:requestId/participants', meetUpWriteLimiter, validate(schemas.add
 
 // Remove participant from a meet-up
 router.delete('/:requestId/participants/:userId', meetUpWriteLimiter, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const preRm = await MeetUpRequest.findOne({
     _id: req.params.requestId,
     $or: [
@@ -1651,6 +1676,9 @@ router.delete('/:requestId/participants/:userId', meetUpWriteLimiter, validate(m
 router.post('/:requestId/suggest-alternative', meetUpWriteLimiter, validate(schemas.suggestAlternative), catchAsync(async (req, res) => {
   const { date, time } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.requestId)) {
+    throw new ApplicationError('Meet-up request not found', 404);
+  }
   const preAlt = await MeetUpRequest.findOne({
     _id: req.params.requestId,
     targetUserId: req.user._id,

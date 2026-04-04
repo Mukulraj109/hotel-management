@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { AlertCircle, RefreshCw, ShieldCheck, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loyaltyService } from '../../services/loyaltyService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminLoyaltyManager() {
+function AdminLoyaltyManager() {
   const queryClient = useQueryClient();
   const [reconcileUserId, setReconcileUserId] = useState('');
   const [campaignUserId, setCampaignUserId] = useState('');
@@ -188,11 +189,11 @@ export default function AdminLoyaltyManager() {
       <div className="grid md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-sm text-gray-500">Ledger Liability</div>
-          <div className="text-xl font-semibold">{health.totalLedgerLiability.toLocaleString('en-IN')} pts</div>
+          <div className="text-xl font-semibold">{(health.totalLedgerLiability ?? 0).toLocaleString('en-IN')} pts</div>
         </Card>
         <Card className="p-4">
           <div className="text-sm text-gray-500">Mismatch Rate</div>
-          <div className="text-xl font-semibold">{health.mismatchRate.toFixed(2)}%</div>
+          <div className="text-xl font-semibold">{(health.mismatchRate ?? 0).toFixed(2)}%</div>
         </Card>
         <Card className="p-4">
           <div className="text-sm text-gray-500">Latest Run Users</div>
@@ -351,3 +352,5 @@ export default function AdminLoyaltyManager() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminLoyaltyManager);

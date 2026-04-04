@@ -15,8 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { useSystemHealth } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { formatRelativeTime } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function SystemHealth() {
+function SystemHealth() {
   const { selectedPropertyId } = useProperty();
 
   const [filters, setFilters] = useState({
@@ -491,3 +492,5 @@ export default function SystemHealth() {
     </div>
   );
 }
+
+export default withErrorBoundary(SystemHealth);

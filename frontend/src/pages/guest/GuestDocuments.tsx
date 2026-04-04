@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import DocumentUpload from '@/components/guest/DocumentUpload';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Document {
   _id: string;
@@ -80,7 +81,7 @@ const CATEGORY_LABELS: { [key: string]: string } = {
   payment_proof: 'Payment Proof'
 };
 
-export default function GuestDocuments() {
+function GuestDocuments() {
   const queryClient = useQueryClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -749,3 +750,5 @@ export default function GuestDocuments() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestDocuments);

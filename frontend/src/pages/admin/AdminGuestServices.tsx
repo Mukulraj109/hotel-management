@@ -175,27 +175,33 @@ export default function AdminGuestServices() {
     });
   }, [connect]);
   
+  // Keep refs to latest fetch functions so socket handlers never use stale closures
+  const fetchServicesRef = React.useRef(fetchServices);
+  fetchServicesRef.current = fetchServices;
+  const fetchStatsRef = React.useRef(fetchStats);
+  fetchStatsRef.current = fetchStats;
+
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
-    
+
     const handleGuestServiceUpdate = () => {
-      fetchServices();
-      fetchStats();
+      fetchServicesRef.current();
+      fetchStatsRef.current();
       toast.success('Guest service data updated in real-time');
     };
 
     const handleGuestServiceCreate = () => {
-      fetchServices();
-      fetchStats();
+      fetchServicesRef.current();
+      fetchStatsRef.current();
       toast.success('New guest service request created');
     };
-    
+
     // Subscribe to guest service events
     on('guest-services:created', handleGuestServiceCreate);
     on('guest-services:updated', handleGuestServiceUpdate);
     on('guest-services:status_changed', handleGuestServiceUpdate);
-    
+
     return () => {
       off('guest-services:created', handleGuestServiceCreate);
       off('guest-services:updated', handleGuestServiceUpdate);
@@ -1313,7 +1319,10 @@ export default function AdminGuestServices() {
       {/* Assign Service Modal */}
       <Modal
         isOpen={showAssignModal}
-        onClose={() => setShowAssignModal(false)}
+        onClose={() => {
+          setShowAssignModal(false);
+          setAssignData({ assignedTo: '', notes: '', scheduledTime: '' });
+        }}
         title={
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
@@ -1405,7 +1414,10 @@ export default function AdminGuestServices() {
       {/* Bulk Assign Modal */}
       <Modal
         isOpen={showBulkAssignModal}
-        onClose={() => setShowBulkAssignModal(false)}
+        onClose={() => {
+          setShowBulkAssignModal(false);
+          setAssignData({ assignedTo: '', notes: '', scheduledTime: '' });
+        }}
         title={
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
@@ -1509,7 +1521,7 @@ export default function AdminGuestServices() {
                   name="exportFormat"
                   value="csv"
                   checked={exportFormat === 'csv'}
-                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'excel')}
+                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
                   className="w-4 h-4 text-blue-600"
                 />
                 <div>

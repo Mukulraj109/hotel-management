@@ -18,6 +18,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../com
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
 import { useProperty } from '../../../context/PropertyContext';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface IntegrationFormData {
   payment: {
@@ -97,7 +98,7 @@ const DEFAULT_INTEGRATION_VALUES: IntegrationFormData = {
   }
 };
 
-export default function IntegrationSettings({ onSettingsChange }: IntegrationSettingsProps = {}) {
+function IntegrationSettings({ onSettingsChange }: IntegrationSettingsProps = {}) {
   const { selectedPropertyId } = useProperty();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -528,3 +529,5 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     </div>
   );
 }
+
+export default withErrorBoundary(IntegrationSettings);

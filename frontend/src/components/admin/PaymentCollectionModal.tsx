@@ -221,6 +221,8 @@ export default function PaymentCollectionModal({
   };
 
   const handleClose = () => {
+    // Clear draft before resetting state to prevent auto-save from persisting empty data
+    localStorage.removeItem(`payment-draft-${bookingNumber}`);
     setPaymentMethods([]);
     setSelectedMethod('cash');
     setCurrentAmount('');
@@ -359,10 +361,10 @@ export default function PaymentCollectionModal({
                         const Icon = config.icon;
                         const isSelected = selectedMethod === key;
                         return (
-                          <button aria-label="Close"
+                          <button aria-label={`Select ${config.label} payment method`}
                             key={key}
                             type="button"
-                            onClick={() => setSelectedMethod(key as unknown)}
+                            onClick={() => setSelectedMethod(key as 'cash' | 'card' | 'upi' | 'online_portal' | 'corporate')}
                             className={`relative p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer
                               ${isSelected
                                 ? `${config.borderColor} ${config.bgColor} shadow-lg scale-105`
@@ -399,7 +401,7 @@ export default function PaymentCollectionModal({
                         const Icon = template.icon;
                         const amount = (balanceAmount * template.percentage) / 100;
                         return (
-                          <button aria-label="Close"
+                          <button aria-label={`Quick amount ${template.label}`}
                             key={template.percentage}
                             type="button"
                             onClick={() => handleQuickAmount(template.percentage)}

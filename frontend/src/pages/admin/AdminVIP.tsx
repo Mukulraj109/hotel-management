@@ -19,6 +19,7 @@ import VIPBenefits from '../../components/admin/VIPBenefits';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface VIPGuest {
   _id: string;
@@ -598,4 +599,4 @@ const AdminVIP: React.FC = () => {
   );
 };
 
-export default AdminVIP;
+export default withErrorBoundary(AdminVIP);

@@ -10,6 +10,7 @@ import { formatIndianCurrency } from '../../utils/currency';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
 import contactService from '../../services/contactService';
 import { hotelLabel, persistPublicHotelId, resolvePublicHotelId } from '../../utils/publicBookingHotel';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Room types data - same as BookingPage (fallback when API has no rows)
 const ROOM_TYPES = {
@@ -75,7 +76,7 @@ type DisplayRow = {
   amenities: string[];
 };
 
-export default function RoomsPage() {
+function RoomsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const hotelId = resolvePublicHotelId(searchParams);
@@ -500,3 +501,5 @@ export default function RoomsPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(RoomsPage);

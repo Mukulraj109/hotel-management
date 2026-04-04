@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const getTransactionIcon = (type: string) => {
   switch (type) {
@@ -34,7 +35,7 @@ const getTransactionTypeInfo = (type: string) => {
   return typeInfo;
 };
 
-export default function LoyaltyTransactions() {
+function LoyaltyTransactions() {
   const navigate = useNavigate();
   const [selectedType, setSelectedType] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -297,3 +298,5 @@ export default function LoyaltyTransactions() {
     </div>
   );
 }
+
+export default withErrorBoundary(LoyaltyTransactions);

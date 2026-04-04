@@ -33,6 +33,7 @@ import GroupBookingManagement from '../../components/admin/GroupBookingManagemen
 import CorporateCreditManagement from '../../components/admin/CorporateCreditManagement';
 import GSTManagement from '../../components/admin/GSTManagement';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface CorporateOverviewData {
   companies: {
@@ -95,7 +96,7 @@ const fetchMonthlyTrends = async (months: number = 12, propertyId?: string): Pro
   }
 };
 
-export default function AdminCorporateDashboard() {
+function AdminCorporateDashboard() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<6 | 12>(12);
@@ -613,3 +614,5 @@ function OverviewContent({ overview, topCompanies, revenueChartData, companyDist
     </div>
   );
 }
+
+export default withErrorBoundary(AdminCorporateDashboard);

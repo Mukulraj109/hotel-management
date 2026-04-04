@@ -31,6 +31,13 @@ import mongoose from 'mongoose';
  */
 
 const rateMappingSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
+
   // Internal PMS Rate Plan identification
   pmsRatePlanId: {
     type: String,
@@ -243,10 +250,10 @@ const rateMappingSchema = new mongoose.Schema({
 });
 
 // Compound indexes for performance
-rateMappingSchema.index({ pmsRatePlanId: 1, roomMappingId: 1 });
-rateMappingSchema.index({ roomMappingId: 1, channelRatePlanId: 1 }, { unique: true });
-rateMappingSchema.index({ pmsRatePlanId: 1, isActive: 1 });
-rateMappingSchema.index({ roomMappingId: 1, isActive: 1 });
+rateMappingSchema.index({ hotelId: 1, pmsRatePlanId: 1, roomMappingId: 1 });
+rateMappingSchema.index({ hotelId: 1, roomMappingId: 1, channelRatePlanId: 1 }, { unique: true });
+rateMappingSchema.index({ hotelId: 1, pmsRatePlanId: 1, isActive: 1 });
+rateMappingSchema.index({ hotelId: 1, isActive: 1 });
 
 // Virtual for room mapping details
 rateMappingSchema.virtual('roomMappingDetails', {

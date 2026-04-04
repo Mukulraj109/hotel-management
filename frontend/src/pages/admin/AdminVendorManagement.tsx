@@ -3,6 +3,8 @@ import { Search, Plus, Filter, Download, BarChart3, Star, AlertTriangle, Eye, Ed
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
+import EmptyState from '../../components/ui/EmptyState';
 
 interface Vendor {
   _id: string;
@@ -120,7 +122,7 @@ const AdminVendorManagement: React.FC = () => {
 
   const handleStatusChange = async (vendorId: string, newStatus: string, reason?: string) => {
     try {
-      await api.patch(`/vendors/${vendorId}/status`, { status: newStatus, reason });
+      await api.put(`/vendors/${vendorId}`, { status: newStatus, notes: reason, hotelId: selectedPropertyId });
 
       fetchVendors(); // Refresh the list
     } catch (err) {
@@ -449,7 +451,16 @@ const AdminVendorManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {vendors.map((vendor) => (
+              {vendors.length === 0 ? (
+                <tr>
+                  <td colSpan={8}>
+                    <EmptyState
+                      title="No vendors found"
+                      description="There are no vendors matching your criteria. Add a new vendor to get started."
+                    />
+                  </td>
+                </tr>
+              ) : vendors.map((vendor) => (
                 <tr key={vendor._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -533,7 +544,7 @@ const AdminVendorManagement: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -592,4 +603,4 @@ const AdminVendorManagement: React.FC = () => {
   );
 };
 
-export default AdminVendorManagement;
+export default withErrorBoundary(AdminVendorManagement);

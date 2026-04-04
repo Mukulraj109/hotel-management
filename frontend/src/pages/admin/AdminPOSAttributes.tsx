@@ -153,13 +153,17 @@ const AdminPOSAttributes: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchAttributes();
-  }, []);
+    if (selectedPropertyId) {
+      fetchAttributes();
+    }
+  }, [selectedPropertyId]);
 
   const fetchAttributes = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/pos/attributes');
+      const response = await api.get('/pos/attributes', {
+        params: { page: 1, limit: 100 }
+      });
       if (response.data.status === 'success') {
         setAttributes(response.data.data.attributes);
       }
@@ -171,6 +175,10 @@ const AdminPOSAttributes: React.FC = () => {
   };
 
   const handleCreateAttribute = async () => {
+    if (!formData.name.trim() || !formData.attributeType) {
+      toast.error('Attribute name and type are required');
+      return;
+    }
     try {
       if (applyToScope !== 'single') {
         const result = await applySettings({
@@ -207,7 +215,10 @@ const AdminPOSAttributes: React.FC = () => {
 
   const handleUpdateAttribute = async () => {
     if (!selectedAttribute) return;
-
+    if (!formData.name.trim() || !formData.attributeType) {
+      toast.error('Attribute name and type are required');
+      return;
+    }
     try {
       if (applyToScope !== 'single') {
         const result = await applySettings({
@@ -386,6 +397,17 @@ const AdminPOSAttributes: React.FC = () => {
     };
     return colors[group as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
+
+  if (!selectedPropertyId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to manage POS attributes.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -747,7 +769,7 @@ const AttributeForm: React.FC<{
               type="number"
               min="0"
               value={formData.sortOrder}
-              onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) })}
+              onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
             />
           </div>
 

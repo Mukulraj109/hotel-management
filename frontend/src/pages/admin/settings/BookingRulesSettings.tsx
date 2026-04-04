@@ -18,6 +18,7 @@ import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hoo
 import { useProperty } from '../../../context/PropertyContext';
 import { Card, CardContent } from '../../../components/ui/card';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface BookingRulesFormData {
   minimumStay: {
@@ -55,7 +56,7 @@ interface BookingRulesSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function BookingRulesSettings({ onSettingsChange }: BookingRulesSettingsProps = {}) {
+function BookingRulesSettings({ onSettingsChange }: BookingRulesSettingsProps = {}) {
   const { selectedProperty, selectedPropertyId } = useProperty();
   const queryClient = useQueryClient();
 
@@ -561,3 +562,5 @@ export default function BookingRulesSettings({ onSettingsChange }: BookingRulesS
     </div>
   );
 }
+
+export default withErrorBoundary(BookingRulesSettings);

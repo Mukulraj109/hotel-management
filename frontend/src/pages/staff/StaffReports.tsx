@@ -10,8 +10,9 @@ import { reportsService, CheckoutInventoryData } from '../../services/reportsSer
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffReports() {
+function StaffReports() {
   const { user } = useAuth();
   const [todayData, setTodayData] = useState<StaffTodayData | null>(null);
   const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
@@ -470,3 +471,5 @@ export default function StaffReports() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffReports);

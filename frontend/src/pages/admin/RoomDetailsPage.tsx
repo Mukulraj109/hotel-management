@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 import { 
+import { withErrorBoundary } from '../../components/ErrorBoundary';
   ArrowLeft, 
   MapPin, 
   Users, 
@@ -95,7 +96,7 @@ const getStatusLabel = (status: string) => {
   }
 };
 
-export default function RoomDetailsPage() {
+function RoomDetailsPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -574,3 +575,5 @@ export default function RoomDetailsPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(RoomDetailsPage);

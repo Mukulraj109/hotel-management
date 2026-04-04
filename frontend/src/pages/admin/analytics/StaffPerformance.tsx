@@ -20,8 +20,9 @@ import { useStaffPerformance } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { useAuth } from '../../../context/AuthContext';
 import { formatPercentage, formatDuration } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function StaffPerformance() {
+function StaffPerformance() {
   const { selectedPropertyId, properties } = useProperty();
   const { user } = useAuth();
 
@@ -534,3 +535,5 @@ export default function StaffPerformance() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffPerformance);

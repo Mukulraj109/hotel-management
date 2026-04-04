@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import approvalService, { ApprovalRequest } from '../../services/approvalService';
 import ApprovalRequestCard from '../../components/approvals/ApprovalRequestCard';
 import { realTimeService } from '../../services/realTimeService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
@@ -300,4 +301,4 @@ const MyApprovalRequests: React.FC = () => {
   );
 };
 
-export default MyApprovalRequests;
+export default withErrorBoundary(MyApprovalRequests);

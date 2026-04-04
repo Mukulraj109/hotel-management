@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
 import { cn } from '../../utils/cn';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ReviewCardProps {
   review: Review;
@@ -187,7 +188,7 @@ function RatingSummary({ summary }: { summary: ReviewSummary }) {
   );
 }
 
-export default function ReviewsPage() {
+function ReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -414,3 +415,5 @@ export default function ReviewsPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(ReviewsPage);

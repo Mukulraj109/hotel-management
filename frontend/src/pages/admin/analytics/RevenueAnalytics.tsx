@@ -15,8 +15,9 @@ import { Button } from '@/components/ui/button';
 import { useRevenueData } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { formatCurrency, formatPercentage, getDateRange } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function RevenueAnalytics() {
+function RevenueAnalytics() {
   const { selectedPropertyId, properties } = useProperty();
 
   const [filters, setFilters] = useState({
@@ -501,3 +502,5 @@ export default function RevenueAnalytics() {
     </div>
   );
 }
+
+export default withErrorBoundary(RevenueAnalytics);

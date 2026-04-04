@@ -25,6 +25,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ServiceRequest {
   _id: string;
@@ -69,7 +70,7 @@ interface ServiceRequest {
 
 const PAGE_SIZE = 20;
 
-export default function StaffServiceRequests() {
+function StaffServiceRequests() {
   const { user } = useAuth();
   const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -408,7 +409,7 @@ export default function StaffServiceRequests() {
                         <p className="text-sm font-medium text-gray-700 mb-2">Services:</p>
                         <div className="flex flex-wrap gap-1">
                           {request.serviceVariations.slice(0, 3).map((variation, index) => (
-                            <span key={`-${index}-${variation}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <span key={`${request._id}-variation-${index}-${variation}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                               {variation}
                             </span>
                           ))}
@@ -551,3 +552,5 @@ export default function StaffServiceRequests() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffServiceRequests);

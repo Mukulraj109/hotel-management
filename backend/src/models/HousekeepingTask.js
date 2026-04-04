@@ -40,7 +40,7 @@ const housekeepingTaskSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+    enum: ['pending', 'assigned', 'in_progress', 'completed', 'inspected', 'cancelled'],
     default: 'pending'
   },
   assignedTo: {
@@ -390,6 +390,22 @@ housekeepingTaskSchema.post('save', async function(doc) {
 
   } catch (error) {
     console.error('Error in HousekeepingTask notification hook:', error);
+  }
+});
+
+// Update room status when housekeeping task is completed or inspected
+housekeepingTaskSchema.post('save', async function(doc) {
+  if (doc.status === 'completed' || doc.status === 'inspected') {
+    try {
+      const Room = mongoose.model('Room');
+      await Room.updateOne(
+        { _id: doc.roomId, status: { $in: ['dirty', 'cleaning'] } },
+        { $set: { status: 'vacant' } }
+      );
+    } catch (err) {
+      // Non-blocking — log but don't fail the task save
+      console.error('Failed to update room status after housekeeping completion:', err.message);
+    }
   }
 });
 

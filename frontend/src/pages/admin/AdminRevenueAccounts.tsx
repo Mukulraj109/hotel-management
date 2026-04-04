@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { Plus, Search, Edit, Trash2, Calculator, Filter, Download, TrendingUp, IndianRupee, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -16,6 +16,7 @@ import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useS
 import { useProperty } from '@/context/PropertyContext';
 import { api } from '../../services/api';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { formatCurrency } from '@/utils/currencyUtils';
 
 interface RevenueAccount {
   _id: string;
@@ -90,10 +91,10 @@ const AdminRevenueAccounts: React.FC = () => {
   const [itemsPerPage] = useState(15);
   const [viewMode, setViewMode] = useState<'flat' | 'hierarchical'>('flat');
 
-  const hotelId = selectedPropertyId || '';
-
   // Multi-property support
   const { selectedProperty, selectedPropertyId } = useProperty();
+
+  const hotelId = selectedPropertyId || '';
   const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -124,9 +125,11 @@ const AdminRevenueAccounts: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchAccounts();
-    fetchRevenueSummary();
-  }, [viewMode]);
+    if (hotelId) {
+      fetchAccounts();
+      fetchRevenueSummary();
+    }
+  }, [viewMode, hotelId]);
 
   useEffect(() => {
     applyFilters();
@@ -135,12 +138,12 @@ const AdminRevenueAccounts: React.FC = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const url = viewMode === 'hierarchical' 
-        ? `/api/v1/revenue-accounts/hotels/${hotelId}?hierarchical=true`
+      const url = viewMode === 'hierarchical'
+        ? `/api/v1/revenue-accounts/hotels/${hotelId}?hierarchical=true&limit=100`
         : `/api/v1/revenue-accounts/hotels/${hotelId}?limit=100&sortBy=accountLevel&sortOrder=asc`;
 
       const { data } = await api.get(url.replace('/api/v1', ''));
-      setAccounts(data.data.accounts);
+      setAccounts(data.data?.accounts || []);
     } catch (error) {
       toast({
         title: "Error",
@@ -155,9 +158,9 @@ const AdminRevenueAccounts: React.FC = () => {
   const fetchRevenueSummary = async () => {
     try {
       const { data } = await api.get(`/revenue-accounts/hotels/${hotelId}/summary`);
-      setRevenueSummary(data.data.summary);
-    } catch {
-      // Error handled silently
+      setRevenueSummary(data.data?.summary || null);
+    } catch (error) {
+      console.error('Failed to fetch revenue summary:', error);
     }
   };
 
@@ -190,10 +193,10 @@ const AdminRevenueAccounts: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const flattenHierarchy = (accounts: unknown[]): RevenueAccount[] => {
+  const flattenHierarchy = (accounts: Array<RevenueAccount & { children?: RevenueAccount[] }>): RevenueAccount[] => {
     const flattened: RevenueAccount[] = [];
-    
-    const flatten = (items: unknown[]) => {
+
+    const flatten = (items: Array<RevenueAccount & { children?: RevenueAccount[] }>) => {
       items.forEach(item => {
         if (item._id) {
           flattened.push(item);
@@ -394,15 +397,6 @@ const AdminRevenueAccounts: React.FC = () => {
     return colors[type] || 'bg-gray-100 text-gray-800';
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  };
-
   const getAccountHierarchyDisplay = (account: RevenueAccount) => {
     const indent = '  '.repeat(account.accountLevel - 1);
     return indent + account.accountName;
@@ -446,7 +440,7 @@ const AdminRevenueAccounts: React.FC = () => {
       </TableCell>
       <TableCell>
         <Badge className={getCategoryColor(account.revenueCategory)}>
-          {account.revenueCategory.replace('_', ' ')}
+          {account.revenueCategory.replace(/_/g, ' ')}
         </Badge>
       </TableCell>
       <TableCell>
@@ -507,6 +501,17 @@ const AdminRevenueAccounts: React.FC = () => {
 
   const totalPages = Math.ceil(filteredAccounts.length / itemsPerPage);
   const currentPageAccounts = getCurrentPageAccounts();
+
+  if (!hotelId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view revenue accounts.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

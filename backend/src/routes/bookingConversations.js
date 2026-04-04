@@ -318,6 +318,9 @@ router.get('/stats', authenticate, ensurePropertyAccess, authorizePolicy('bookin
  *         description: Conversation details
  */
 router.get('/:id', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Conversation not found', 404);
+  }
   const conversation = await BookingConversation.findById(req.params.id)
     .populate('bookingId', 'bookingNumber checkIn checkOut rooms totalAmount currency')
     .populate('participants.userId', 'name email role')
@@ -392,6 +395,9 @@ router.post('/:id/messages', authenticate, ensurePropertyAccess, validate(mutati
     relatedData = {}
   } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Conversation not found', 404);
+  }
   const conversation = await BookingConversation.findById(req.params.id)
     .populate('participants.userId', 'name email role').lean();
 
@@ -490,6 +496,9 @@ router.post('/:id/messages', authenticate, ensurePropertyAccess, validate(mutati
 router.patch('/:id/read', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { messageIds } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Conversation not found', 404);
+  }
   const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {
@@ -545,6 +554,9 @@ router.patch('/:id/read', authenticate, ensurePropertyAccess, validate(mutationB
 router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorizePolicy('bookingConversations', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { staffUserId } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Conversation not found', 404);
+  }
   const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {
@@ -627,6 +639,9 @@ router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorizePolicy(
 router.patch('/:id/status', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { status, reason } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Conversation not found', 404);
+  }
   const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {

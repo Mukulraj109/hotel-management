@@ -29,34 +29,34 @@ router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 router.use(authorizePolicy('guests', 'baseAccess'));
 
-// Guest self-service routes — guests can only view/update their own profile
+// Helper: admin/staff authorization
+const staffAuth = authorize('admin', 'manager', 'staff', 'frontdesk');
+
+// --- Named routes MUST come before /:id param catch-all ---
+// Admin/Staff list and management routes
+router.route('/')
+  .get(staffAuth, guestController.getAllGuests)
+  .post(staffAuth, guestController.createGuest);
+
+router.route('/analytics')
+  .get(staffAuth, guestController.getGuestAnalytics);
+
+router.route('/search')
+  .post(staffAuth, guestController.searchGuests);
+
+router.route('/export')
+  .get(staffAuth, guestController.exportGuests);
+
+router.route('/bulk-update')
+  .patch(staffAuth, requireTenantInBulkOps, guestController.bulkUpdateGuests);
+
+// --- /:id routes come AFTER named routes ---
+// Guest self-service: guests can only view/update their own profile
 router.get('/:id', enforceGuestOwnership, guestController.getGuest);
 router.get('/:id/bookings', enforceGuestOwnership, guestController.getGuest);
 router.patch('/:id', enforceGuestOwnership, validate(mutationBaselineSchema), guestController.updateGuest);
 
-// Admin/Staff routes (frontdesk also needs read access to manage guests on behalf of hotel)
-router.use(authorize('admin', 'manager', 'staff', 'frontdesk'));
-
-// Enhanced guest management routes
-router.route('/')
-  .get(guestController.getAllGuests)
-  .post(guestController.createGuest);
-
-router.route('/analytics')
-  .get(guestController.getGuestAnalytics);
-
-router.route('/search')
-  .post(guestController.searchGuests);
-
-router.route('/export')
-  .get(guestController.exportGuests);
-
-router.route('/bulk-update')
-  .patch(requireTenantInBulkOps, guestController.bulkUpdateGuests);
-
-router.route('/:id')
-  .get(guestController.getGuest)
-  .patch(guestController.updateGuest)
-  .delete(guestController.deleteGuest);
+// Admin/Staff delete (only staff+ can delete guests)
+router.delete('/:id', staffAuth, guestController.deleteGuest);
 
 export default router;

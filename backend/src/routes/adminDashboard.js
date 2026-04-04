@@ -120,7 +120,7 @@ router.get('/hotel', authorize('admin', 'staff', 'manager'), catchAsync(async (r
  *       200:
  *         description: Real-time dashboard data
  */
-router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
+router.get('/real-time', authorize('admin', 'manager'), catchAsync(async (req, res) => {
   const targetHotelId = req.query.hotelId || req.user.hotelId;
   if (!targetHotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -544,7 +544,7 @@ router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: Key performance indicators
  */
-router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/kpis', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
   const targetHotelId = req.query.hotelId || req.user.hotelId;
   const { period = 'month' } = req.query;
 
@@ -772,68 +772,165 @@ router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => 
   const maintenance = operationalKPIs[1][0] || {};
   const reviews = guestKPIs[0] || {};
 
+  // Calculate previous period for growth comparison
+  const periodDurationMs = endDate.getTime() - startDate.getTime();
+  const prevStartDate = new Date(startDate.getTime() - periodDurationMs);
+  const prevEndDate = new Date(startDate);
+
+  const buildPrevMatchQuery = (additionalFilters = {}) => {
+    const query = { ...additionalFilters };
+    query.hotelId = new mongoose.Types.ObjectId(targetHotelId);
+    return query;
+  };
+
+  const [prevRevenueData, prevBookingData, prevOccupancyData, prevReviewData] = await Promise.all([
+    Invoice.aggregate([
+      { $match: buildPrevMatchQuery({ issueDate: { $gte: prevStartDate, $lte: prevEndDate }, status: { $in: ['paid', 'partially_paid'] } }) },
+      { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
+    ]),
+    Booking.aggregate([
+      { $match: buildPrevMatchQuery({ checkIn: { $gte: prevStartDate, $lte: prevEndDate }, status: { $in: ['confirmed', 'checked_in', 'checked_out'] } }) },
+      { $group: { _id: null, totalBookings: { $sum: 1 } } }
+    ]),
+    Room.aggregate([
+      { $match: buildPrevMatchQuery({ isActive: true }) },
+      {
+        $lookup: {
+          from: 'bookings',
+          let: { roomId: '$_id' },
+          pipeline: [{
+            $match: {
+              $expr: {
+                $and: [
+                  { $in: ['$$roomId', '$rooms.roomId'] },
+                  { $gte: ['$checkOut', prevStartDate] },
+                  { $lte: ['$checkIn', prevEndDate] },
+                  { $in: ['$status', ['confirmed', 'checked_in', 'checked_out']] }
+                ]
+              }
+            }
+          }],
+          as: 'bookings'
+        }
+      },
+      {
+        $project: {
+          totalNights: {
+            $sum: {
+              $map: {
+                input: '$bookings',
+                as: 'booking',
+                in: { $divide: [{ $subtract: ['$$booking.checkOut', '$$booking.checkIn'] }, 86400000] }
+              }
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRooms: { $sum: 1 },
+          totalRoomNights: { $sum: '$totalNights' },
+          possibleRoomNights: { $sum: { $divide: [{ $subtract: [prevEndDate, prevStartDate] }, 86400000] } }
+        }
+      }
+    ]),
+    Review.aggregate([
+      { $match: buildPrevMatchQuery({ createdAt: { $gte: prevStartDate, $lte: prevEndDate }, isPublished: true }) },
+      { $group: { _id: null, avgRating: { $avg: '$rating' } } }
+    ])
+  ]);
+
+  const prevRevenue = prevRevenueData[0]?.totalRevenue || 0;
+  const prevBookings = prevBookingData[0]?.totalBookings || 0;
+  const prevOccupancyRaw = prevOccupancyData[0] || {};
+  const prevOccupancyRate = prevOccupancyRaw.possibleRoomNights > 0
+    ? Math.round((prevOccupancyRaw.totalRoomNights / prevOccupancyRaw.possibleRoomNights) * 100)
+    : 0;
+  const prevSatisfaction = Math.round((prevReviewData[0]?.avgRating || 0) * 10) / 10;
+
+  // Percentage growth helper (returns 0 when previous is 0 to avoid Infinity)
+  const pctGrowth = (current, previous) =>
+    previous > 0 ? Math.round(((current - previous) / previous) * 100 * 10) / 10 : 0;
+
+  const currentRevenue = revenue.totalRevenue || 0;
+  const currentBookings = bookings.totalBookings || 0;
+  const currentOccupancyRate = occupancy.possibleRoomNights > 0
+    ? Math.round((occupancy.totalRoomNights / occupancy.possibleRoomNights) * 100)
+    : 0;
+  const currentSatisfaction = Math.round((reviews.avgRating || 0) * 10) / 10;
+
+  // Today's check-in/check-out counts
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+
+  const [todayCheckInsCount, todayCheckOutsCount, activeIncidentsCount] = await Promise.all([
+    Booking.countDocuments(buildMatchQuery({ checkIn: { $gte: todayStart, $lt: todayEnd }, status: { $in: ['confirmed', 'checked_in'] } })),
+    Booking.countDocuments(buildMatchQuery({ checkOut: { $gte: todayStart, $lt: todayEnd }, status: 'checked_in' })),
+    IncidentReport.countDocuments(buildMatchQuery({ status: { $ne: 'closed' } }))
+  ]);
+
   const kpis = {
     occupancy: {
-      rate: occupancy.possibleRoomNights > 0 
-        ? Math.round((occupancy.totalRoomNights / occupancy.possibleRoomNights) * 100) 
-        : 0,
+      rate: currentOccupancyRate,
       roomNights: occupancy.totalRoomNights || 0,
       availableRooms: occupancy.totalRooms || 0
     },
-    
+
     revenue: {
       total: revenue.totalRevenue || 0,
-      averageDailyRate: bookings.totalNights > 0 
-        ? Math.round((revenue.totalRevenue / bookings.totalNights) * 100) / 100 
+      averageDailyRate: bookings.totalNights > 0
+        ? Math.round((revenue.totalRevenue / bookings.totalNights) * 100) / 100
         : 0,
-      revenuePerAvailableRoom: occupancy.possibleRoomNights > 0 
-        ? Math.round((revenue.totalRevenue / occupancy.possibleRoomNights) * 100) / 100 
+      revenuePerAvailableRoom: occupancy.possibleRoomNights > 0
+        ? Math.round((revenue.totalRevenue / occupancy.possibleRoomNights) * 100) / 100
         : 0,
       averageBookingValue: bookings.avgBookingValue || 0
     },
-    
+
     operations: {
-      serviceCompletionRate: services.totalRequests > 0 
-        ? Math.round((services.completedRequests / services.totalRequests) * 100) 
+      serviceCompletionRate: services.totalRequests > 0
+        ? Math.round((services.completedRequests / services.totalRequests) * 100)
         : 0,
-      avgServiceTime: services.avgCompletionTime 
+      avgServiceTime: services.avgCompletionTime
         ? Math.round(services.avgCompletionTime / (1000 * 60 * 60)) // Convert to hours
         : 0,
-      maintenanceCompletionRate: maintenance.totalTasks > 0 
-        ? Math.round((maintenance.completedTasks / maintenance.totalTasks) * 100) 
+      maintenanceCompletionRate: maintenance.totalTasks > 0
+        ? Math.round((maintenance.completedTasks / maintenance.totalTasks) * 100)
         : 0,
       avgMaintenanceCost: maintenance.avgCost || 0
     },
-    
+
     guest: {
-      averageRating: Math.round((reviews.avgRating || 0) * 10) / 10,
-      satisfactionRate: reviews.totalReviews > 0 
-        ? Math.round((reviews.positiveReviews / reviews.totalReviews) * 100) 
+      averageRating: currentSatisfaction,
+      satisfactionRate: reviews.totalReviews > 0
+        ? Math.round((reviews.positiveReviews / reviews.totalReviews) * 100)
         : 0,
       totalReviews: reviews.totalReviews || 0,
       responseRate: 85 // Placeholder - would calculate from actual response data
     },
-    
+
     // Current occupancy rate for dashboard display
-    averageOccupancy: currentOccupancy.totalRooms > 0 
-      ? Math.round((currentOccupancy.occupiedRooms / currentOccupancy.totalRooms) * 100) 
+    averageOccupancy: currentOccupancy.totalRooms > 0
+      ? Math.round((currentOccupancy.occupiedRooms / currentOccupancy.totalRooms) * 100)
       : 0,
-    
+
     // Additional KPI fields for dashboard
-    totalRevenue: revenue.totalRevenue || 0,
-    totalBookings: bookings.totalBookings || 0,
-    guestSatisfaction: Math.round((reviews.avgRating || 0) * 10) / 10,
+    totalRevenue: currentRevenue,
+    totalBookings: currentBookings,
+    guestSatisfaction: currentSatisfaction,
     totalRooms: currentOccupancy.totalRooms || 0,
     activeGuests: currentOccupancy.occupiedRooms || 0,
-    todayCheckIns: bookings.totalBookings || 0, // Simplified for now
-    todayCheckOuts: 0, // Would need separate calculation
-    pendingMaintenance: maintenance.totalTasks - maintenance.completedTasks || 0,
-    activeIncidents: 0, // Would need separate calculation
-    revenueGrowth: 0, // Would need previous period comparison
-    bookingGrowth: 0, // Would need previous period comparison
-    occupancyGrowth: 0, // Would need previous period comparison
-    satisfactionGrowth: 0, // Would need previous period comparison
-    
+    todayCheckIns: todayCheckInsCount,
+    todayCheckOuts: todayCheckOutsCount,
+    pendingMaintenance: Math.max(0, (maintenance.totalTasks || 0) - (maintenance.completedTasks || 0)),
+    activeIncidents: activeIncidentsCount,
+    revenueGrowth: pctGrowth(currentRevenue, prevRevenue),
+    bookingGrowth: pctGrowth(currentBookings, prevBookings),
+    occupancyGrowth: pctGrowth(currentOccupancyRate, prevOccupancyRate),
+    satisfactionGrowth: pctGrowth(currentSatisfaction, prevSatisfaction),
+
     period,
     dateRange: {
       start: startDate.toISOString(),
@@ -878,7 +975,7 @@ router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => 
  *       200:
  *         description: Occupancy dashboard data
  */
-router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/occupancy', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, floor, roomType } = req.query;
 
   logger.debug('Occupancy endpoint request received', { hotelId, hotelIdType: typeof hotelId });
@@ -1349,7 +1446,7 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
  *       200:
  *         description: Revenue dashboard data
  */
-router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/revenue', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate, groupBy = 'day' } = req.query;
   
   if (!hotelId) {
@@ -1804,7 +1901,7 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
 }));
 
 // Revenue data export endpoint
-router.get('/revenue/export', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/revenue/export', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, startDate, endDate, format = 'csv' } = req.query;
 
   if (!hotelId) {
@@ -1904,7 +2001,7 @@ router.get('/revenue/export', authorize('admin', 'staff'), catchAsync(async (req
  *       200:
  *         description: Staff performance dashboard data
  */
-router.get('/staff-performance', authorize('admin'), catchAsync(async (req, res, next) => {
+router.get('/staff-performance', authorize('admin', 'manager'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', department, staffId } = req.query;
   
   if (!hotelId) {
@@ -2627,7 +2724,7 @@ router.get('/staff-performance', authorize('admin'), catchAsync(async (req, res,
  *       200:
  *         description: Guest satisfaction dashboard data
  */
-router.get('/guest-satisfaction', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/guest-satisfaction', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate, source } = req.query;
   
   if (!hotelId) {
@@ -3078,6 +3175,29 @@ router.get('/guest-satisfaction', authorize('admin', 'staff'), catchAsync(async 
         hasResponse: !!review.response,
         responseDate: review.responseDate
       })),
+      // Frontend-compatible sentiment summary (derived from rating distribution)
+      sentiment: (() => {
+        const total = overview.totalReviews || 1;
+        const positive = Math.round(((overview.excellentReviews + overview.goodReviews) / total) * 100);
+        const negative = Math.round((overview.poorReviews / total) * 100);
+        const neutral = Math.max(0, 100 - positive - negative);
+        return { positive, neutral, negative, positiveTrend: 0, commonWords: [] };
+      })(),
+      // Frontend-compatible categories array (from category ratings in aggregate data)
+      categories: [
+        { category: 'Cleanliness', rating: Math.round((overview.avgCleanlinessRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 },
+        { category: 'Service', rating: Math.round((overview.avgServiceRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 },
+        { category: 'Location', rating: Math.round((overview.avgLocationRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 },
+        { category: 'Value', rating: Math.round((overview.avgValueRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 },
+        { category: 'Amenities', rating: Math.round((overview.avgAmenitiesRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 },
+        { category: 'Comfort', rating: Math.round((overview.avgComfortRating || 0) * 100) / 100, reviewCount: overview.totalReviews || 0, trend: 0 }
+      ],
+      // Frontend-compatible trends array (from daily satisfaction chart)
+      trends: dailySatisfaction.map(day => ({
+        date: day.date,
+        averageRating: Math.round((day.averageRating || 0) * 100) / 100,
+        totalReviews: day.totalReviews
+      })),
       lastUpdated: new Date()
     }
   });
@@ -3121,7 +3241,7 @@ router.get('/guest-satisfaction', authorize('admin', 'staff'), catchAsync(async 
  *       200:
  *         description: Operations dashboard data
  */
-router.get('/operations', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/operations', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'today', department = 'all', priority } = req.query;
   
   if (!hotelId) {
@@ -3757,7 +3877,7 @@ router.get('/operations', authorize('admin', 'staff'), catchAsync(async (req, re
  *       200:
  *         description: Marketing dashboard data
  */
-router.get('/marketing', authorize('admin'), catchAsync(async (req, res, next) => {
+router.get('/marketing', authorize('admin', 'manager'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate, channel = 'all' } = req.query;
   
   if (!hotelId) {
@@ -4416,7 +4536,7 @@ router.get('/marketing', authorize('admin'), catchAsync(async (req, res, next) =
  *       200:
  *         description: Alerts and notifications data
  */
-router.get('/alerts', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/alerts', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, severity = 'all', category = 'all', status = 'all', limit = 50 } = req.query;
   
   if (!hotelId) {
@@ -4992,7 +5112,7 @@ router.get('/alerts', authorize('admin', 'staff'), catchAsync(async (req, res, n
  *       200:
  *         description: System health monitoring data
  */
-router.get('/system-health', authorize('admin'), catchAsync(async (req, res, next) => {
+router.get('/system-health', authorize('admin', 'manager'), catchAsync(async (req, res, next) => {
   const { hotelId, timeframe = '24h', component = 'all' } = req.query;
   
   if (!hotelId) {
@@ -5620,7 +5740,7 @@ router.get('/system-health', authorize('admin'), catchAsync(async (req, res, nex
  *       200:
  *         description: Generated report data
  */
-router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
+router.get('/reports', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res, next) => {
   const { 
     hotelId, 
     reportType = 'comprehensive', 

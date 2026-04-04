@@ -389,7 +389,13 @@ router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (
 
   let query = { hotelId: req.user.hotelId };
 
-  if (assignedTo) query.assignedTo = assignedTo;
+  // SECURITY: Validate assignedTo as ObjectId to prevent NoSQL operator injection.
+  if (assignedTo) {
+    if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+      throw new ApplicationError('Invalid assignedTo filter value', 400);
+    }
+    query.assignedTo = assignedTo;
+  }
   if (status) query.status = status;
   if (taskType) query.taskType = taskType;
   if (priority) query.priority = priority;
@@ -459,6 +465,12 @@ router.post('/create-daily-inventory-checks', authorizePolicy('staffTasks', 'adm
 
   if (!assignedTo) {
     throw new ApplicationError('Staff member must be assigned', 400);
+  }
+
+  // SECURITY: Validate assignedTo as a valid ObjectId before using it in DB writes
+  // to prevent CastError leakage and potential injection via malformed IDs.
+  if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+    throw new ApplicationError('Invalid staff member ID', 400);
   }
 
   // Get all active rooms

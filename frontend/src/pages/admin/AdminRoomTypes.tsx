@@ -2,6 +2,7 @@ import React from 'react';
 import RoomTypeManagement from '../../components/admin/RoomTypeManagement';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const AdminRoomTypes: React.FC = () => {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -26,4 +27,4 @@ const AdminRoomTypes: React.FC = () => {
   );
 };
 
-export default AdminRoomTypes;
+export default withErrorBoundary(AdminRoomTypes);

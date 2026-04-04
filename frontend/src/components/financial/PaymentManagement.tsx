@@ -280,10 +280,10 @@ const PaymentManagementInner: React.FC<PaymentManagementProps> = ({ readOnly = f
 
   const handleUpdatePaymentStatus = async (paymentId: string, newStatus: string) => {
     try {
-      // TODO: Not implemented - needs API endpoint to update payment status
-      // e.g. await financialService.updatePaymentStatus(paymentId, newStatus);
-      toast.info(`Payment status update not yet implemented (${paymentId} -> ${newStatus})`);
+      await financialService.updatePaymentStatus(paymentId, { status: newStatus });
+      toast.success('Payment status updated');
       setShowUpdateDialog(false);
+      fetchPayments();
     } catch (error: unknown) {
       toast.error('Failed to update payment status: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
@@ -350,15 +350,37 @@ const PaymentManagementInner: React.FC<PaymentManagementProps> = ({ readOnly = f
   };
 
   const handleExportPayments = () => {
-    // TODO: Not implemented - needs API endpoint or client-side CSV/Excel export
-    toast.info('Payment export not yet implemented');
+    if (!payments || payments.length === 0) {
+      toast.error('No payments to export');
+      return;
+    }
+    const headers = ['Date', 'Type', 'Method', 'Amount', 'Currency', 'Status', 'Reference', 'Customer'];
+    const rows = payments.map((p: Record<string, unknown>) => [
+      p.date ? new Date(p.date as string).toLocaleDateString() : '',
+      p.type || '',
+      p.method || '',
+      p.amount || 0,
+      p.currency || 'INR',
+      p.status || '',
+      p.reference || '',
+      (p.customer as Record<string, unknown>)?.name || ''
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payments-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Payments exported');
   };
 
   const handleReconcilePayment = async (paymentId: string) => {
     try {
-      // TODO: Not implemented - needs API endpoint to reconcile payment
-      // e.g. await financialService.reconcilePayment(paymentId);
-      toast.info(`Payment reconciliation not yet implemented (${paymentId})`);
+      await financialService.reconcilePayment(paymentId);
+      toast.success('Payment reconciled successfully');
+      fetchPayments();
     } catch (error: unknown) {
       toast.error('Failed to reconcile payment: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }

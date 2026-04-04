@@ -75,7 +75,9 @@ const assignMaintenanceSchema = Joi.object({
 }).unknown(false);
 
 const MAINTENANCE_STATUS_TRANSITIONS = {
-  pending: ['assigned', 'cancelled', 'on_hold'],
+  // pending → in_progress is intentionally allowed so staff can self-start an
+  // unassigned task in one step (the model pre-save hook auto-assigns startedDate).
+  pending: ['assigned', 'in_progress', 'cancelled', 'on_hold'],
   assigned: ['in_progress', 'on_hold', 'cancelled'],
   in_progress: ['completed', 'on_hold', 'cancelled'],
   on_hold: ['assigned', 'in_progress', 'cancelled'],
@@ -178,6 +180,10 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createM
 
   // If roomId provided, verify it belongs to the hotel
   if (taskData.roomId) {
+    // SECURITY: Validate roomId as ObjectId before DB lookup to prevent CastError leakage.
+    if (!mongoose.Types.ObjectId.isValid(taskData.roomId)) {
+      throw new ApplicationError('Invalid room ID format', 400);
+    }
     const room = await Room.findById(taskData.roomId);
     if (!room || room.hotelId.toString() !== taskData.hotelId.toString()) {
       throw new ApplicationError('Invalid room for this hotel', 400);
@@ -200,10 +206,16 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createM
           409
         );
       }
-
-      await Room.findByIdAndUpdate(taskData.roomId, { status: 'maintenance' },
-        { new: true });
     }
+
+    // Always set room status to 'maintenance' when a maintenance task is created
+    // for a room, so the room is blocked from bookings and shows correctly on dashboards.
+    // Only update if room is not already occupied or out_of_order.
+    await Room.findOneAndUpdate(
+      { _id: taskData.roomId, status: { $nin: ['occupied', 'out_of_order'] } },
+      { $set: { status: 'maintenance' } },
+      { new: true }
+    );
   }
 
   const task = await MaintenanceTask.create(taskData);
@@ -216,7 +228,17 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createM
 
   // Broadcast before responding so the event carries the populated task
   try {
-    await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:created', { task });
+    const broadcastHotelId = task.hotelId?._id || task.hotelId;
+    await websocketService.broadcastToHotel(broadcastHotelId, 'maintenance:created', { task });
+    // Notify dashboards of room status change
+    if (taskData.roomId) {
+      await websocketService.broadcastToHotel(broadcastHotelId, 'room:status_changed', {
+        roomId: taskData.roomId.toString(),
+        status: 'maintenance',
+        taskId: task._id,
+        event: 'maintenance_created'
+      });
+    }
   } catch (wsError) {
     logger.warn('Failed to broadcast maintenance creation event', { error: wsError.message });
   }
@@ -270,6 +292,11 @@ router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(createM
  *       200:
  *         description: List of maintenance tasks
  */
+// Allowlists for maintenance query filter fields — prevent NoSQL operator injection.
+const ALLOWED_MAINTENANCE_STATUSES = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'on_hold'];
+const ALLOWED_MAINTENANCE_TYPES = ['plumbing', 'electrical', 'hvac', 'cleaning', 'carpentry', 'painting', 'appliance', 'safety', 'other'];
+const ALLOWED_MAINTENANCE_PRIORITIES = ['low', 'medium', 'high', 'urgent', 'emergency'];
+
 router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     status,
@@ -283,6 +310,24 @@ router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async 
   // Parse and clamp pagination params to prevent unbounded queries and division by zero
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+
+  // SECURITY: Validate enum filter params against allowlists to prevent NoSQL operator injection.
+  if (status && !ALLOWED_MAINTENANCE_STATUSES.includes(status)) {
+    throw new ApplicationError('Invalid status filter value', 400);
+  }
+  if (type && !ALLOWED_MAINTENANCE_TYPES.includes(type)) {
+    throw new ApplicationError('Invalid type filter value', 400);
+  }
+  if (priority && !ALLOWED_MAINTENANCE_PRIORITIES.includes(priority)) {
+    throw new ApplicationError('Invalid priority filter value', 400);
+  }
+  // SECURITY: Validate assignedTo and roomId as ObjectIds before use in query.
+  if (assignedTo && !mongoose.Types.ObjectId.isValid(assignedTo)) {
+    throw new ApplicationError('Invalid assignedTo filter value', 400);
+  }
+  if (roomId && !mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Invalid roomId filter value', 400);
+  }
 
   const query = {};
 
@@ -861,9 +906,11 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
     logger.debug('Maintenance task status changed', { from: existingTask.status, to: updates.status });
   }
 
-  // When completing a task that has a room out of order, wrap both writes in a transaction
+  // When completing a task linked to a room, wrap both writes in a transaction
+  // to atomically update the task and restore the room status.
   let task;
-  if (updates.status === 'completed' && existingTask.roomId && existingTask.roomOutOfOrder) {
+  let roomStatusAfterCompletion = null;
+  if (updates.status === 'completed' && existingTask.roomId) {
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
@@ -872,11 +919,16 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
           { $set: updates },
           { new: true, runValidators: true, session }
         );
-        await Room.findOneAndUpdate(
+        // Restore room to 'vacant' only if it is currently in 'maintenance' status.
+        // This covers both roomOutOfOrder tasks and regular maintenance tasks.
+        const updatedRoom = await Room.findOneAndUpdate(
           { _id: task.roomId, status: 'maintenance' },
           { $set: { status: 'vacant' } },
           { session, new: true }
         );
+        if (updatedRoom) {
+          roomStatusAfterCompletion = 'vacant';
+        }
       });
     } finally {
       session.endSession();
@@ -901,11 +953,21 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
 
   // Broadcast before responding so the event carries the populated task
   try {
-    await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:updated', { task });
+    const broadcastHotelId = task.hotelId?._id || task.hotelId;
+    await websocketService.broadcastToHotel(broadcastHotelId, 'maintenance:updated', { task });
     if (updates.status) {
-      await websocketService.broadcastToHotel(task.hotelId?._id || task.hotelId, 'maintenance:status_changed', {
+      await websocketService.broadcastToHotel(broadcastHotelId, 'maintenance:status_changed', {
         task,
         status: updates.status
+      });
+    }
+    // Broadcast room status change when maintenance completes and room is restored
+    if (roomStatusAfterCompletion && existingTask.roomId) {
+      await websocketService.broadcastToHotel(broadcastHotelId, 'room:status_changed', {
+        roomId: existingTask.roomId.toString(),
+        status: roomStatusAfterCompletion,
+        taskId: task._id,
+        event: 'maintenance_completed'
       });
     }
   } catch (wsError) {

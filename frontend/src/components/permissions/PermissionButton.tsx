@@ -1,5 +1,5 @@
 import React, { ButtonHTMLAttributes } from 'react';
-import { Button, buttonVariants } from '../ui/Button';
+import { Button, buttonVariants } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip';
 import { usePermissions } from '../../hooks/usePermissions';
 import { cn } from '../../utils/cn';

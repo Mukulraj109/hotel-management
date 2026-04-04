@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const dayUseSlotSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   slotId: {
     type: String,
     required: true,
@@ -439,9 +445,10 @@ dayUseSlotSchema.virtual('utilizationRate').get(function() {
 });
 
 // Indexes
+dayUseSlotSchema.index({ hotelId: 1, name: 1 });
 dayUseSlotSchema.index({ slotId: 1 });
-dayUseSlotSchema.index({ 'timeSlot.startTime': 1, 'timeSlot.endTime': 1 });
-dayUseSlotSchema.index({ roomTypes: 1, isActive: 1 });
+dayUseSlotSchema.index({ hotelId: 1, 'timeSlot.startTime': 1, 'timeSlot.endTime': 1 });
+dayUseSlotSchema.index({ hotelId: 1, roomTypes: 1, isActive: 1 });
 dayUseSlotSchema.index({ 'availability.isActive': 1 });
 dayUseSlotSchema.index({ 'analytics.averageRating': -1 });
 dayUseSlotSchema.index({ 'analytics.totalRevenue': -1 });

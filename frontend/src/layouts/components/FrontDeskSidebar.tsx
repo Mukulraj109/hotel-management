@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   Home,
+  Bell,
   Bed,
   Calendar,
   Users,
@@ -29,10 +30,15 @@ import {
   Layers,
   CheckCircle,
   Key,
+  Moon,
+  Search,
+  Settings,
+  BarChart3,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/frontdesk', icon: Home },
+  { name: 'Alert Center', href: '/frontdesk/alerts', icon: Bell },
   { name: 'Tape Chart', href: '/frontdesk/tape-chart', icon: Grid3X3 },
   { name: 'Rooms', href: '/frontdesk/rooms', icon: Bed },
   { name: 'Room Types', href: '/frontdesk/room-types', icon: Layers },
@@ -57,6 +63,11 @@ const navigation = [
   { name: 'Checkout', href: '/frontdesk/checkout', icon: Receipt },
   { name: 'Inventory Automation', href: '/frontdesk/inventory-automation', icon: Zap },
   { name: 'My Approval Requests', href: '/frontdesk/my-approvals', icon: CheckCircle },
+  { name: 'Night Audit', href: '/frontdesk/night-audit', icon: Moon },
+  { name: 'Lost & Found', href: '/frontdesk/lost-found', icon: Search },
+  { name: 'Hotel Settings', href: '/frontdesk/settings', icon: Settings },
+  { name: 'Reports', href: '/frontdesk/reports', icon: BarChart3 },
+  { name: 'Notifications', href: '/frontdesk/notifications', icon: Bell },
 ];
 
 interface FrontDeskSidebarProps {

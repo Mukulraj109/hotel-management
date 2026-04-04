@@ -252,7 +252,7 @@ const CompanyRowInfo = React.memo(({ company }: { company: CorporateCompany }) =
 ));
 CompanyRowInfo.displayName = 'CompanyRowInfo';
 
-function CorporateCompanyManagement() {
+function CorporateCompanyManagement({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [showForm, setShowForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CorporateCompany | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -503,10 +503,12 @@ function CorporateCompanyManagement() {
           <h2 className="text-2xl font-bold text-gray-900">Corporate Companies</h2>
           <p className="text-gray-600">Manage corporate clients and their information</p>
         </div>
-        <Button onClick={handleCreateCompany} className="flex items-center">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Company
-        </Button>
+        {!readOnly && (
+          <Button onClick={handleCreateCompany} className="flex items-center">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Company
+          </Button>
+        )}
       </div>
 
       {/* Overview Metrics */}
@@ -787,44 +789,48 @@ function CorporateCompanyManagement() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {!readOnly && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredCompanies.map((company) => (
                   <tr key={company._id} className="hover:bg-gray-50">
                     <CompanyRowInfo company={company} />
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditCompany(company)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleStatus(company)}
-                          className={cn(
-                            "flex items-center",
-                            company.isActive
-                              ? "text-orange-600 hover:text-orange-700"
-                              : "text-green-600 hover:text-green-700"
-                          )}
-                          disabled={toggleStatusMutation.isPending}
-                        >
-                          {company.isActive ? (
-                            <PowerOff className="w-4 h-4" />
-                          ) : (
-                            <Power className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditCompany(company)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleStatus(company)}
+                            className={cn(
+                              "flex items-center",
+                              company.isActive
+                                ? "text-orange-600 hover:text-orange-700"
+                                : "text-green-600 hover:text-green-700"
+                            )}
+                            disabled={toggleStatusMutation.isPending}
+                          >
+                            {company.isActive ? (
+                              <PowerOff className="w-4 h-4" />
+                            ) : (
+                              <Power className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

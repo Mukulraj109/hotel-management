@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
-import { Button } from '../ui/Button';
+import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/textarea';

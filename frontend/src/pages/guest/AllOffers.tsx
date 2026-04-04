@@ -23,6 +23,7 @@ import BackButton from '../../components/ui/BackButton';
 import ErrorAlert, { parseErrorToLoyaltyError } from '../../components/ui/ErrorAlert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const getOfferIcon = (type: string) => {
   switch (type) {
@@ -55,7 +56,7 @@ const getOfferTypeColor = (type: string) => {
   return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800';
 };
 
-export default function AllOffers() {
+function AllOffers() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
@@ -549,3 +550,5 @@ export default function AllOffers() {
     </div>
   );
 }
+
+export default withErrorBoundary(AllOffers);

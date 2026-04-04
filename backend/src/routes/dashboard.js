@@ -12,12 +12,12 @@ router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // Dashboard counts endpoint
-router.get('/counts', authorize(['admin', 'staff', 'frontdesk']), dashboardController.getDashboardCounts);
+router.get('/counts', authorize(['admin', 'manager', 'staff', 'frontdesk']), dashboardController.getDashboardCounts);
 
 // Room status summary
-router.get('/room-status', authorize(['admin', 'staff', 'frontdesk']), dashboardController.getRoomStatusSummary);
+router.get('/room-status', authorize(['admin', 'manager', 'staff', 'frontdesk']), dashboardController.getRoomStatusSummary);
 
 // Recent activities
-router.get('/activities', authorize(['admin', 'staff', 'frontdesk']), dashboardController.getRecentActivities);
+router.get('/activities', authorize(['admin', 'manager', 'staff', 'frontdesk']), dashboardController.getRecentActivities);
 
 export default router;

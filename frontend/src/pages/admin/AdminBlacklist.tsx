@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import {
@@ -633,4 +634,4 @@ const AdminBlacklist: React.FC = () => {
   );
 };
 
-export default AdminBlacklist;
+export default withErrorBoundary(AdminBlacklist);

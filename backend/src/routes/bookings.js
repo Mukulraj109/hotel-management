@@ -148,7 +148,10 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   // Role-based filtering - wrap $or query with additional conditions
   const finalQuery = { ...query };
 
-  const scopedHotelId = req.query.hotelId || req.user.hotelId;
+  // Use the user's own hotelId; only admin/manager may override via query param
+  const scopedHotelId = (req.user.role === 'admin' || req.user.role === 'manager')
+    ? (req.query.hotelId || req.user.hotelId)
+    : req.user.hotelId;
   if (req.user.role === 'guest') {
     finalQuery.userId = req.user._id;
   } else if (scopedHotelId) {
@@ -296,7 +299,10 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   // Build query based on user role
   const query = {};
 
-  const scopedHotelId = req.query.hotelId || req.user.hotelId;
+  // Use the user's own hotelId; only admin/manager may override via query param
+  const scopedHotelId = (req.user.role === 'admin' || req.user.role === 'manager')
+    ? (req.query.hotelId || req.user.hotelId)
+    : req.user.hotelId;
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
   } else if (scopedHotelId) {
@@ -775,6 +781,7 @@ router.post('/',
     const session = await mongoose.startSession();
 
     try {
+      // Use snapshot read concern for stronger isolation against double-booking
       await session.withTransaction(async () => {
         const {
           idempotencyKey,
@@ -1303,6 +1310,11 @@ router.patch('/:id',
             oldPaymentStatus,
             newPaymentStatus: updateData.paymentStatus
           });
+          await websocketService.broadcastToHotelRole(paymentHotelId, 'frontdesk', 'booking:payment_updated', {
+            booking: updatedBooking,
+            oldPaymentStatus,
+            newPaymentStatus: updateData.paymentStatus
+          });
         }
       }
     } catch (wsError) {
@@ -1523,6 +1535,22 @@ router.patch('/:id/cancel',
     booking.status = 'cancelled';
     booking.cancellationReason = req.body.reason || 'Cancelled by user';
     await booking.save();
+
+    // Update room status after cancellation — mark occupied/reserved rooms as vacant
+    if (booking.rooms && booking.rooms.length > 0) {
+      try {
+        const roomIds = booking.rooms.map(r => r.roomId?._id || r.roomId);
+        await Room.updateMany(
+          { _id: { $in: roomIds }, status: { $in: ['occupied', 'reserved'] } },
+          { $set: { status: 'vacant' }, $unset: { currentBookingId: '' } }
+        );
+      } catch (roomErr) {
+        logger.warn('Failed to update room status on cancellation', {
+          bookingId: booking._id,
+          error: roomErr.message
+        });
+      }
+    }
 
     try {
       await invoiceLifecycleSyncService.syncBookingCancellationInvoices({
@@ -1819,6 +1847,7 @@ router.post('/:id/modification-request',
           await websocketService.broadcastToHotel(hotelIdStr, 'booking:modification_requested', notificationData);
           await websocketService.broadcastToHotelRole(hotelIdStr, 'admin', 'booking:modification_requested', notificationData);
           await websocketService.broadcastToHotelRole(hotelIdStr, 'staff', 'booking:modification_requested', notificationData);
+          await websocketService.broadcastToHotelRole(hotelIdStr, 'frontdesk', 'booking:modification_requested', notificationData);
         }
       }
     } catch (wsError) {
@@ -2349,7 +2378,7 @@ router.patch('/:id/check-in',
       // Also emit booking:updated so booking dashboards refresh
       websocketService.broadcastToHotel(hotelId, 'booking:updated', {
         bookingId: booking._id,
-        status: booking.status,
+        status: 'checked_in',
         action: 'checked_in'
       });
       // Notify the guest
@@ -2513,7 +2542,10 @@ router.patch('/:id/check-out',
                 _id: { $in: roomIdsForDirty },
                 ...(scopedHotelId ? { hotelId: scopedHotelId } : {})
               },
-              { $set: { status: 'dirty', lastCheckout: new Date() } },
+              {
+                $set: { status: 'dirty', lastCheckout: new Date() },
+                $unset: { currentBookingId: '' }
+              },
               { session }
             );
           }
@@ -2522,20 +2554,31 @@ router.patch('/:id/check-out',
             roomCount: updatedBooking.rooms.length
           });
 
-          // AUTO-CREATE housekeeping tasks for dirty rooms
+          // AUTO-CREATE housekeeping tasks for dirty rooms.
+          // Guard against duplicates: skip rooms that already have an active
+          // checkout_clean task (e.g. created by checkoutInventory completion).
           const Housekeeping = mongoose.model('Housekeeping');
-          const housekeepingTasks = roomIdsForDirty.map(roomId => ({
+          const existingTaskRoomIds = await Housekeeping.distinct('roomId', {
             hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
-            roomId: roomId,
+            roomId: { $in: roomIdsForDirty },
             taskType: 'checkout_clean',
-            type: 'checkout_clean',
-            title: `Checkout Cleaning - Room ${updatedBooking.rooms.find(r => (r.roomId._id || r.roomId).toString() === roomId.toString())?.roomId?.roomNumber || 'Unknown'}`,
-            description: `Post-checkout cleaning for booking ${updatedBooking.bookingNumber}. Guest: ${updatedBooking.userId?.name || 'Unknown'}`,
-            priority: 'high',
-            status: 'pending',
-            estimatedDuration: 30,
-            notes: `Auto-created on checkout of booking ${updatedBooking.bookingNumber}`
-          }));
+            status: { $in: ['pending', 'assigned', 'in_progress'] }
+          }, { session });
+          const existingSet = new Set(existingTaskRoomIds.map(id => id.toString()));
+          const housekeepingTasks = roomIdsForDirty
+            .filter(roomId => !existingSet.has(roomId.toString()))
+            .map(roomId => ({
+              hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
+              roomId: roomId,
+              taskType: 'checkout_clean',
+              type: 'checkout_clean',
+              title: `Checkout Cleaning - Room ${updatedBooking.rooms.find(r => (r.roomId._id || r.roomId).toString() === roomId.toString())?.roomId?.roomNumber || 'Unknown'}`,
+              description: `Post-checkout cleaning for booking ${updatedBooking.bookingNumber}. Guest: ${updatedBooking.userId?.name || 'Unknown'}`,
+              priority: 'high',
+              status: 'pending',
+              estimatedDuration: 30,
+              notes: `Auto-created on checkout of booking ${updatedBooking.bookingNumber}`
+            }));
 
           if (housekeepingTasks.length > 0) {
             await Housekeeping.insertMany(housekeepingTasks, { session });
@@ -2544,7 +2587,9 @@ router.patch('/:id/check-out',
               taskCount: housekeepingTasks.length
             });
 
-            // Try to auto-assign to available housekeeping staff (non-blocking)
+            // Try to auto-assign to available housekeeping staff (non-blocking).
+            // Use atomic updateOne with assignedToUserId:null filter to prevent
+            // double-assignment if two checkouts race simultaneously.
             try {
               const User = mongoose.model('User');
               const availableStaff = await User.find({
@@ -2554,20 +2599,21 @@ router.patch('/:id/check-out',
               }).select('_id name').lean().limit(10);
 
               if (availableStaff.length > 0) {
-                // Round-robin assign staff to tasks
-                const createdTasks = await Housekeeping.find({
-                  hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
-                  status: 'pending',
-                  taskType: 'checkout_clean',
-                  assignedToUserId: null
-                }).sort({ createdAt: -1 }).limit(housekeepingTasks.length);
-
-                for (let i = 0; i < createdTasks.length; i++) {
-                  const staff = availableStaff[i % availableStaff.length];
-                  await Housekeeping.updateOne(
-                    { _id: createdTasks[i]._id },
+                let staffIndex = 0;
+                for (const hkTask of housekeepingTasks) {
+                  const staff = availableStaff[staffIndex % availableStaff.length];
+                  // Atomic: only assign if still unassigned (prevents double-assignment race)
+                  const result = await Housekeeping.updateOne(
+                    {
+                      hotelId: updatedBooking.hotelId._id || updatedBooking.hotelId,
+                      roomId: hkTask.roomId,
+                      taskType: 'checkout_clean',
+                      status: 'pending',
+                      $or: [{ assignedToUserId: null }, { assignedToUserId: { $exists: false } }]
+                    },
                     { $set: { assignedToUserId: staff._id, assignedTo: staff._id, status: 'assigned' } }
                   );
+                  if (result.modifiedCount > 0) staffIndex++;
                 }
                 logger.info('Auto-assigned housekeeping staff', { staffCount: availableStaff.length });
               }
@@ -2714,7 +2760,7 @@ router.patch('/:id/check-out',
       // Also emit booking:updated so booking dashboards refresh
       websocketService.broadcastToHotel(hotelId, 'booking:updated', {
         bookingId: booking._id,
-        status: booking.status,
+        status: 'checked_out',
         action: 'checked_out'
       });
       // Notify the guest

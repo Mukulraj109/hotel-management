@@ -148,6 +148,7 @@ export function registerApiRoutes(app, deps) {
     workflowRoutes,
     departmentBudgetRoutes,
     vendorRoutes,
+    purchaseOrderRoutes,
     enhancedAnalyticsRoutes,
     requestTemplatesRoutes,
     requestCategoriesRoutes,
@@ -313,6 +314,7 @@ export function registerApiRoutes(app, deps) {
   app.use('/api/v1/workflow', workflowRoutes);
   app.use('/api/v1/department-budget', departmentBudgetRoutes);
   app.use('/api/v1/vendors', vendorRoutes);
+  app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
   app.use('/api/v1/enhanced-analytics', enhancedAnalyticsRoutes);
   app.use('/api/v1/request-templates', requestTemplatesRoutes);
   app.use('/api/v1/request-categories', requestCategoriesRoutes);

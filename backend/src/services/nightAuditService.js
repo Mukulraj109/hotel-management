@@ -273,8 +273,25 @@ class NightAuditService {
           }
 
           await booking.save();
+
+          // Update room status after no-show — mark occupied/reserved rooms as vacant
+          if (booking.rooms && booking.rooms.length > 0) {
+            try {
+              const roomIds = booking.rooms.map(r => r.roomId?._id || r.roomId);
+              await Room.updateMany(
+                { _id: { $in: roomIds }, status: { $in: ['occupied', 'reserved'] } },
+                { $set: { status: 'vacant' }, $unset: { currentBookingId: '' } }
+              );
+            } catch (roomErr) {
+              logger.warn('Failed to update room status on no-show', {
+                bookingId: booking._id,
+                error: roomErr.message
+              });
+            }
+          }
+
           processed++;
-      
+
         } catch (error) {
           console.error('Operation failed:', error.message);
           throw error;

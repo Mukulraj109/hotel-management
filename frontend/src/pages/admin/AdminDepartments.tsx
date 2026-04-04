@@ -45,6 +45,7 @@ import {
   TrendingDown as TrendingDownIcon
 } from '@mui/icons-material';
 import { AlertCircle } from 'lucide-react';
+import EmptyState from '../../components/ui/EmptyState';
 import DepartmentTree from '../../components/departments/DepartmentTree';
 import DepartmentMetrics from '../../components/departments/DepartmentMetrics';
 import { departmentsApi } from '../../services/api';
@@ -477,82 +478,89 @@ const AdminDepartments: React.FC = () => {
 
         <TabPanel value={currentTab} index={0}>
           {/* Departments List */}
-          <Grid container spacing={2}>
-            {departments.map((department) => (
-              <Grid item xs={12} sm={6} md={4} key={department._id}>
-                <Card>
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                      <Box>
-                        <Typography variant="h6" gutterBottom>
-                          {department.name}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Code: {department.code}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {getDepartmentTypeLabel(department.departmentType)}
-                        </Typography>
+          {departments.length === 0 ? (
+            <EmptyState
+              title="No departments found"
+              description="There are no departments configured yet. Create your first department to get started."
+            />
+          ) : (
+            <Grid container spacing={2}>
+              {departments.map((department) => (
+                <Grid item xs={12} sm={6} md={4} key={department._id}>
+                  <Card>
+                    <CardContent>
+                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                        <Box>
+                          <Typography variant="h6" gutterBottom>
+                            {department.name}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Code: {department.code}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {getDepartmentTypeLabel(department.departmentType)}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Chip
+                            label={department.status}
+                            color={getStatusColor(department.status)}
+                            size="small"
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleMenuClick(e, department)}
+                          >
+                            <MoreVertIcon />
+                          </IconButton>
+                        </Box>
                       </Box>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Chip 
-                          label={department.status} 
-                          color={getStatusColor(department.status)} 
-                          size="small" 
-                        />
-                        <IconButton 
-                          size="small"
-                          onClick={(e) => handleMenuClick(e, department)}
-                        >
-                          <MoreVertIcon />
-                        </IconButton>
-                      </Box>
-                    </Box>
 
-                    <Typography variant="body2" paragraph>
-                      {department.description}
-                    </Typography>
-
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Box textAlign="center">
-                        <Typography variant="h6" color="primary">
-                          {department.staffing.currentStaff}
-                        </Typography>
-                        <Typography variant="caption">Staff</Typography>
-                      </Box>
-                      <Box textAlign="center">
-                        <Typography variant="h6" color="success.main">
-                          {department.analytics.efficiency.toFixed(1)}%
-                        </Typography>
-                        <Typography variant="caption">Efficiency</Typography>
-                      </Box>
-                      <Box textAlign="center">
-                        <Typography variant="h6" color="info.main">
-                          {department.level}
-                        </Typography>
-                        <Typography variant="caption">Level</Typography>
-                      </Box>
-                    </Box>
-
-                    {department.parentDepartment && (
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        Parent: {department.parentDepartment.name}
+                      <Typography variant="body2" paragraph>
+                        {department.description}
                       </Typography>
-                    )}
 
-                    <Box display="flex" gap={1} mt={2}>
-                      {department.isOperational && (
-                        <Chip label="Operational" color="success" size="small" />
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Box textAlign="center">
+                          <Typography variant="h6" color="primary">
+                            {department.staffing.currentStaff}
+                          </Typography>
+                          <Typography variant="caption">Staff</Typography>
+                        </Box>
+                        <Box textAlign="center">
+                          <Typography variant="h6" color="success.main">
+                            {department.analytics.efficiency.toFixed(1)}%
+                          </Typography>
+                          <Typography variant="caption">Efficiency</Typography>
+                        </Box>
+                        <Box textAlign="center">
+                          <Typography variant="h6" color="info.main">
+                            {department.level}
+                          </Typography>
+                          <Typography variant="caption">Level</Typography>
+                        </Box>
+                      </Box>
+
+                      {department.parentDepartment && (
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          Parent: {department.parentDepartment.name}
+                        </Typography>
                       )}
-                      {department.isRevenueCenter && (
-                        <Chip label="Revenue Center" color="info" size="small" />
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+
+                      <Box display="flex" gap={1} mt={2}>
+                        {department.isOperational && (
+                          <Chip label="Operational" color="success" size="small" />
+                        )}
+                        {department.isRevenueCenter && (
+                          <Chip label="Revenue Center" color="info" size="small" />
+                        )}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
         </TabPanel>
 
         <TabPanel value={currentTab} index={1}>

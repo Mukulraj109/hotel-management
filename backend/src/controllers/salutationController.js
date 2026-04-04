@@ -3,13 +3,13 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 
-// Get all salutations
+// Get all salutations (with server-side pagination)
 export const getAllSalutations = catchAsync(async (req, res) => {
-  const { hotelId, category, gender, language, region, isActive } = req.query;
-  
+  const { hotelId, category, gender, language, region, isActive, page = 1, limit = 100, search } = req.query;
+
   // Build query
   const query = {};
-  
+
   if (hotelId) {
     query.$or = [
       { hotelId: hotelId },
@@ -18,27 +18,59 @@ export const getAllSalutations = catchAsync(async (req, res) => {
   } else {
     query.hotelId = null; // Only global salutations
   }
-  
+
   if (category) query.category = category;
   if (gender) {
-    query.$or = [
-      { gender: gender },
-      { gender: 'any' }
-    ];
+    // Override $or if already set by hotelId — combine conditions
+    const genderConditions = [{ gender: gender }, { gender: 'any' }];
+    if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: genderConditions }];
+      delete query.$or;
+    } else {
+      query.$or = genderConditions;
+    }
   }
   if (language) query.language = language;
   if (region) query.region = region;
   if (isActive !== undefined) query.isActive = isActive === 'true';
+  if (search) {
+    const searchRegex = { $regex: search, $options: 'i' };
+    const searchConditions = [{ title: searchRegex }, { fullForm: searchRegex }];
+    if (query.$and) {
+      query.$and.push({ $or: searchConditions });
+    } else if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: searchConditions }];
+      delete query.$or;
+    } else {
+      query.$or = searchConditions;
+    }
+  }
 
-  const salutations = await Salutation.find(query)
-    .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email')
-    .sort({ sortOrder: 1, title: 1 }).lean().limit(1000);
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 100));
+  const skip = (pageNum - 1) * limitNum;
+
+  const [salutations, totalCount] = await Promise.all([
+    Salutation.find(query)
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .sort({ sortOrder: 1, title: 1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    Salutation.countDocuments(query)
+  ]);
 
   res.json({
     status: 'success',
     results: salutations.length,
-    data: { salutations }
+    data: { salutations },
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: totalCount,
+      pages: Math.ceil(totalCount / limitNum)
+    }
   });
 });
 

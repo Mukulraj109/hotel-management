@@ -13,7 +13,7 @@ export interface User {
   email: string;
   phone?: string;
   avatar?: string;
-  role: 'guest' | 'staff' | 'admin' | 'manager' | 'frontdesk' | 'housekeeping' | 'travel_agent';
+  role: 'guest' | 'staff' | 'admin' | 'manager' | 'frontdesk' | 'housekeeping' | 'supervisor' | 'travel_agent';
   hotelId?: string | UserPropertyRef;
   properties?: UserPropertyRef[];
   preferences?: {

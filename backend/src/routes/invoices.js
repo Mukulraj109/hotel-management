@@ -339,6 +339,9 @@ router.get('/overdue', authorizePolicy('invoices', 'getOverdue'), catchAsync(asy
  *         description: Invoice details
  */
 router.get('/:id', verifyHotelOwnership('Invoice'), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Invoice not found', 404);
+  }
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address contact')
     .populate('bookingId', 'bookingNumber checkIn checkOut rooms')
@@ -841,6 +844,9 @@ router.put('/:id/add-extra-charges', authorizePolicy('invoices', 'addExtraCharge
  *         description: Invoice not found
  */
 router.get('/:id/download', authenticate, catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Invoice not found', 404);
+  }
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address phone email')
     .populate('guestId', 'name email phone')
@@ -905,6 +911,9 @@ router.get('/:id/view', catchAsync(async (req, res) => {
     throw new ApplicationError('Authentication required', 401);
   }
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Invoice not found', 404);
+  }
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address phone email')
     .populate('guestId', 'name email phone')

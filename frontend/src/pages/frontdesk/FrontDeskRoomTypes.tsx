@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import RoomTypeManagement from '../../components/admin/RoomTypeManagement';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // FrontDesk version: View only, no "Add Room Type" button, no delete buttons
 const FrontDeskRoomTypes: React.FC = () => {
@@ -48,4 +49,4 @@ const FrontDeskRoomTypes: React.FC = () => {
   );
 };
 
-export default FrontDeskRoomTypes;
+export default withErrorBoundary(FrontDeskRoomTypes);

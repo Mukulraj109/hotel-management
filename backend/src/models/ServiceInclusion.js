@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const serviceInclusionSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   inclusionId: {
     type: String,
     required: true,
@@ -421,9 +427,10 @@ serviceInclusionSchema.virtual('profitability').get(function() {
 });
 
 // Indexes
+serviceInclusionSchema.index({ hotelId: 1, name: 1 });
 // Note: inclusionId already has unique: true, no need for separate index
-serviceInclusionSchema.index({ type: 1, category: 1 });
-serviceInclusionSchema.index({ 'availability.isActive': 1 });
+serviceInclusionSchema.index({ hotelId: 1, type: 1, category: 1 });
+serviceInclusionSchema.index({ hotelId: 1, 'availability.isActive': 1 });
 serviceInclusionSchema.index({ 'eligibility.roomTypes': 1 });
 serviceInclusionSchema.index({ 'marketing.displayPriority': -1 });
 serviceInclusionSchema.index({ tags: 1 });

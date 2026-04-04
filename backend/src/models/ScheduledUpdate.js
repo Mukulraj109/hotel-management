@@ -7,6 +7,13 @@ import mongoose from 'mongoose';
  * Supports single, group, and all-properties scopes.
  */
 const scheduledUpdateSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
+
   scheduledFor: {
     type: Date,
     required: [true, 'Scheduled time is required'],
@@ -161,7 +168,8 @@ const scheduledUpdateSchema = new mongoose.Schema({
 });
 
 // Compound indexes for performance
-scheduledUpdateSchema.index({ scheduledFor: 1, status: 1 });
+scheduledUpdateSchema.index({ hotelId: 1, status: 1 });
+scheduledUpdateSchema.index({ hotelId: 1, scheduledFor: 1, status: 1 });
 scheduledUpdateSchema.index({ createdBy: 1, status: 1 });
 scheduledUpdateSchema.index({ propertyId: 1, scheduledFor: 1 });
 scheduledUpdateSchema.index({ status: 1, scheduledFor: 1 });

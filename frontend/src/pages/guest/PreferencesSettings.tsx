@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface StayPreferences {
   roomType: string;
@@ -285,4 +286,4 @@ const PreferencesSettings: React.FC = () => {
   );
 };
 
-export default PreferencesSettings;
+export default withErrorBoundary(PreferencesSettings);

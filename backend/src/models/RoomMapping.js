@@ -38,6 +38,13 @@ import mongoose from 'mongoose';
  */
 
 const roomMappingSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
+
   // Internal PMS Room Type reference
   pmsRoomTypeId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -175,10 +182,11 @@ const roomMappingSchema = new mongoose.Schema({
 });
 
 // Compound indexes for performance
-roomMappingSchema.index({ pmsRoomTypeId: 1, channel: 1 });
-roomMappingSchema.index({ channel: 1, channelRoomId: 1 }, { unique: true });
-roomMappingSchema.index({ pmsRoomTypeId: 1, isActive: 1 });
-roomMappingSchema.index({ channel: 1, isActive: 1 });
+roomMappingSchema.index({ hotelId: 1, channel: 1 });
+roomMappingSchema.index({ hotelId: 1, pmsRoomTypeId: 1, channel: 1 });
+roomMappingSchema.index({ hotelId: 1, channel: 1, channelRoomId: 1 }, { unique: true });
+roomMappingSchema.index({ hotelId: 1, pmsRoomTypeId: 1, isActive: 1 });
+roomMappingSchema.index({ hotelId: 1, channel: 1, isActive: 1 });
 
 // Virtual for room type details
 roomMappingSchema.virtual('roomTypeDetails', {

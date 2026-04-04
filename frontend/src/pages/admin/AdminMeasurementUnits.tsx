@@ -207,13 +207,17 @@ const AdminMeasurementUnits: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchUnits();
-  }, []);
+    if (selectedPropertyId) {
+      fetchUnits();
+    }
+  }, [selectedPropertyId]);
 
   const fetchUnits = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/pos/measurement-units');
+      const response = await api.get('/pos/measurement-units', {
+        params: { page: 1, limit: 100 }
+      });
       if (response.data.status === 'success') {
         setUnits(response.data.data.units);
       }
@@ -225,6 +229,10 @@ const AdminMeasurementUnits: React.FC = () => {
   };
 
   const handleCreateUnit = async () => {
+    if (!formData.name.trim() || !formData.symbol.trim() || !formData.unitType) {
+      toast.error('Unit name, symbol, and type are required');
+      return;
+    }
     try {
       if (applyToScope !== 'single') {
         const result = await applySettings({
@@ -439,6 +447,17 @@ const AdminMeasurementUnits: React.FC = () => {
     };
     return colors[system as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
+
+  if (!selectedPropertyId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to manage measurement units.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

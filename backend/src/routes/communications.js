@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Joi from 'joi';
 import Communication from '../models/Communication.js';
 import MessageTemplate from '../models/MessageTemplate.js';
@@ -362,6 +363,9 @@ router.get('/', catchAsync(async (req, res) => {
  *         description: Communication details
  */
 router.get('/:id', catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Communication not found', 404);
+  }
   const communication = await Communication.findById(req.params.id)
     .populate('hotelId', 'name address contact')
     .populate('sentBy', 'name email')
@@ -414,8 +418,11 @@ router.get('/:id', catchAsync(async (req, res) => {
  *         description: Communication cancelled successfully
  */
 router.post('/:id/cancel', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Communication not found', 404);
+  }
   const communication = await Communication.findById(req.params.id).lean();
-  
+
   if (!communication) {
     throw new ApplicationError('Communication not found', 404);
   }
@@ -462,9 +469,12 @@ router.post('/:id/cancel', authorize('staff', 'admin'), validate(mutationBaselin
  */
 router.post('/:id/track/open', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { trackingId } = req.query;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ error: 'Communication not found' });
+  }
   const communication = await Communication.findById(req.params.id).lean();
-  
+
   if (!communication) {
     return res.status(404).json({ error: 'Communication not found' });
   }
@@ -516,9 +526,12 @@ router.post('/:id/track/open', validate(mutationBaselineSchema), catchAsync(asyn
  */
 router.get('/:id/track/click', catchAsync(async (req, res) => {
   const { trackingId, url } = req.query;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.redirect(isAllowedRedirectUrl(url) ? url : '/');
+  }
   const communication = await Communication.findById(req.params.id).lean();
-  
+
   if (!communication) {
     return res.redirect(isAllowedRedirectUrl(url) ? url : '/');
   }

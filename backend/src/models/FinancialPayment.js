@@ -56,7 +56,7 @@ const financialPaymentSchema = new mongoose.Schema({
     },
     corporateId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Corporate'
+      ref: 'CorporateCompany'
     },
     name: {
       type: String,

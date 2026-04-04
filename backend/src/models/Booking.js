@@ -307,7 +307,7 @@ const bookingSchema = new mongoose.Schema({
     settlementHistory: [{
       action: {
         type: String,
-        enum: ['balance_calculated', 'payment_received', 'refund_processed', 'adjustment_applied', 'settlement_completed'],
+        enum: ['balance_calculated', 'payment_received', 'refund_processed', 'adjustment_applied', 'settlement_completed', 'settlement_created'],
         required: true
       },
       amount: Number,
@@ -410,6 +410,7 @@ const bookingSchema = new mongoose.Schema({
     },
     specialRequests: String
   },
+  reminderSent: { type: Boolean, default: false },
   idVerification: {
     documentType: { type: String, enum: ['passport', 'national_id', 'driving_license', 'aadhaar', 'voter_id', 'other'] },
     documentNumber: String,
@@ -1113,6 +1114,8 @@ const bookingSchema = new mongoose.Schema({
 // Indexes for performance
 bookingSchema.index({ hotelId: 1, checkIn: 1, checkOut: 1 });
 bookingSchema.index({ hotelId: 1, status: 1, checkIn: 1 });
+// Compound index for overlap detection queries (double-booking prevention)
+bookingSchema.index({ 'rooms.roomId': 1, status: 1, checkIn: 1, checkOut: 1 });
 bookingSchema.index({ hotelId: 1, status: 1, createdAt: -1 }); // Compound index for revenue/dashboard aggregation pipelines
 bookingSchema.index({ hotelId: 1, paymentStatus: 1, checkOut: -1 }); // Index for overdue payment aggregation pipelines
 bookingSchema.index({ userId: 1, status: 1 });
@@ -2218,5 +2221,22 @@ bookingSchema.pre('save', checkoutAutomationMiddleware.bookingPreSaveMiddleware)
 
 // Add post-save middleware to trigger automation
 bookingSchema.post('save', checkoutAutomationMiddleware.bookingPostSaveMiddleware);
+
+// Prevent zero-night bookings and NaN totalAmount
+bookingSchema.pre('validate', function(next) {
+  // Ensure nights >= 1
+  if (this.isModified('checkIn') || this.isModified('checkOut')) {
+    const timeDiff = new Date(this.checkOut).getTime() - new Date(this.checkIn).getTime();
+    const nights = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    if (nights < 1) {
+      return next(new Error('Booking must be at least 1 night'));
+    }
+  }
+  // Prevent NaN or Infinity in totalAmount
+  if (this.totalAmount !== undefined && !Number.isFinite(this.totalAmount)) {
+    this.totalAmount = 0;
+  }
+  next();
+});
 
 export default mongoose.model('Booking', bookingSchema);

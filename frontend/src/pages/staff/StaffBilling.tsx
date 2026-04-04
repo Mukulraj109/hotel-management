@@ -1,5 +1,6 @@
 import React from 'react';
 import BillingHistory from '../admin/BillingHistory';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 /**
  * StaffBilling — Staff portal billing & payments page.
@@ -17,4 +18,4 @@ const StaffBilling: React.FC = () => {
   return <BillingHistory />;
 };
 
-export default StaffBilling;
+export default withErrorBoundary(StaffBilling);

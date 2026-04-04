@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { MobileAppInfrastructure } from '../../components/mobile/MobileAppInfrastructure';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';

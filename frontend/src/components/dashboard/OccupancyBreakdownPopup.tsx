@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsService, OccupancyBreakdown } from '../../services/reportsService';
 import { LoadingSpinner } from '../LoadingSpinner';
-import { 
-  TrendingUp, 
-  Building, 
+import {
+  Building,
   Calendar,
   Users,
   Bed,

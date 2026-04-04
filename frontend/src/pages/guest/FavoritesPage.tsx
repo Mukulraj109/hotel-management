@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import favoritesService, { FavoriteOffer } from '../../services/favoritesService';
 import BackButton from '../../components/ui/BackButton';
 import ErrorAlert, { parseErrorToLoyaltyError } from '../../components/ui/ErrorAlert';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const FavoritesPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -481,4 +482,4 @@ const EditFavoriteModal: React.FC<EditFavoriteModalProps> = ({
   );
 };
 
-export default FavoritesPage;
+export default withErrorBoundary(FavoritesPage);

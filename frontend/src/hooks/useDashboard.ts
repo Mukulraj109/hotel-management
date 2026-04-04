@@ -292,10 +292,12 @@ export const useExportData = () => {
 
 // Utility hook for combined dashboard data
 export const useDashboardOverview = (hotelId?: string) => {
-  const realTimeData = useRealTimeData(hotelId, { refetchInterval: 30000 });
-  const kpis = useKPIs(hotelId, 'today');
-  const alerts = useAlerts(hotelId, undefined, undefined, undefined, 10);
-  const systemHealth = useSystemHealth(hotelId);
+  // Only enable queries when hotelId is available to avoid 400 errors
+  const hasHotelId = !!hotelId;
+  const realTimeData = useRealTimeData(hotelId, { refetchInterval: 30000, enabled: hasHotelId });
+  const kpis = useKPIs(hotelId, 'today', { enabled: hasHotelId });
+  const alerts = useAlerts(hotelId, undefined, undefined, undefined, 10, { enabled: hasHotelId });
+  const systemHealth = useSystemHealth(hotelId, undefined, { enabled: hasHotelId });
 
   return {
     realTimeData,

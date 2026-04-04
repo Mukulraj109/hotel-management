@@ -63,6 +63,11 @@ const inspectTaskSchema = Joi.object({
   })).optional()
 }).unknown(true);
 
+// Allowlists for housekeeping query filter fields — prevent NoSQL operator injection.
+const ALLOWED_HK_STATUSES = ['pending', 'assigned', 'in_progress', 'completed', 'inspected', 'cancelled'];
+const ALLOWED_HK_TASK_TYPES = ['cleaning', 'maintenance', 'inspection', 'deep_clean', 'checkout_clean'];
+const ALLOWED_HK_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+
 // Get housekeeping tasks
 router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
@@ -81,6 +86,24 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
     page = 1,
     limit = 20
   } = req.query;
+
+  // SECURITY: Validate enum filter params against allowlists to prevent NoSQL operator injection.
+  if (status && !ALLOWED_HK_STATUSES.includes(status)) {
+    throw new ApplicationError('Invalid status filter value', 400);
+  }
+  if (taskType && !ALLOWED_HK_TASK_TYPES.includes(taskType)) {
+    throw new ApplicationError('Invalid taskType filter value', 400);
+  }
+  if (priority && !ALLOWED_HK_PRIORITIES.includes(priority)) {
+    throw new ApplicationError('Invalid priority filter value', 400);
+  }
+  // SECURITY: Validate roomId and assignedToUserId as ObjectIds.
+  if (roomId && !mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Invalid roomId filter value', 400);
+  }
+  if (assignedToUserId && assignedToUserId !== 'unassigned' && !mongoose.Types.ObjectId.isValid(assignedToUserId)) {
+    throw new ApplicationError('Invalid assignedToUserId filter value', 400);
+  }
 
   // Admin and manager roles can filter by a specific hotelId query param (multi-property support).
   // Operational staff are always scoped to their own hotel via the JWT token.
@@ -406,6 +429,13 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     }
   }
 
+  // If inspection failed and task is sent back to assigned, clear completedAt/actualDuration
+  // so that the next completion cycle computes a fresh duration.
+  if (updateData.status === 'assigned' && existingTask.status === 'completed') {
+    updateData.completedAt = null;
+    updateData.actualDuration = null;
+  }
+
   const task = await Housekeeping.findOneAndUpdate(
     { _id: id, hotelId },
     updateData,
@@ -471,8 +501,8 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
   });
 }));
 
-// Delete housekeeping task
-router.delete('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
+// Delete housekeeping task — restricted to supervisors (admin/manager/frontdesk)
+router.delete('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { id } = req.params;
   const hotelId = req.user.hotelId;
   if (!hotelId) {
@@ -502,6 +532,11 @@ router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     throw new ApplicationError('Hotel context is required', 403);
+  }
+
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   const task = await Housekeeping.findOne({ _id: req.params.id, hotelId });

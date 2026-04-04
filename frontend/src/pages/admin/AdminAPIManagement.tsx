@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import ComprehensiveAPIAccess from '../../components/api/ComprehensiveAPIAccess';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -30,4 +31,4 @@ const AdminAPIManagement: React.FC = () => {
   );
 };
 
-export default AdminAPIManagement;
+export default withErrorBoundary(AdminAPIManagement);

@@ -47,9 +47,9 @@ import {
     applyEventMiddleware
 } from './middleware/eventMiddleware.js';
 import queueService from './services/queueService.js';
-import bookingWorkflowEngine from './services/bookingWorkflowEngine.js'; // Temporarily disabled to debug hang
-import payloadRetentionService from './services/payloadRetentionService.js'; // Temporarily disabled to debug hang
-import otaPayloadService from './services/otaPayloadService.js'; // Temporarily disabled to debug hang
+import bookingWorkflowEngine from './services/bookingWorkflowEngine.js';
+import payloadRetentionService from './services/payloadRetentionService.js';
+import otaPayloadService from './services/otaPayloadService.js';
 import systemHealthMonitor from './services/systemHealthMonitor.js';
 import { registerApiRoutes } from './app/registerApiRoutes.js';
 import { setupGracefulShutdown } from './utils/gracefulShutdown.js';
@@ -61,39 +61,39 @@ const hasJestWorker = typeof process.env.JEST_WORKER_ID !== 'undefined';
 // Some hosts can leak JEST_WORKER_ID into runtime env; only honor it outside production.
 const isTestRuntime = isExplicitTestEnv || (hasJestWorker && process.env.NODE_ENV !== 'production');
 
-// Route imports - TEMPORARILY COMMENTED FOR DEVELOPMENT
+// Route imports
 import authRoutes from './routes/auth.js';
 import roomRoutes from './routes/rooms.js';
 import bookingModule from './modules/booking/index.js';
-import enhancedBookingRoutes from './routes/enhancedBookings.js'; // Temporarily disabled
+import enhancedBookingRoutes from './routes/enhancedBookings.js';
 import billingModule from './modules/billing/index.js';
-import housekeepingRoutes from './routes/housekeeping.js'; // Temporarily disabled
-import inventoryRoutes from './routes/inventory.js'; // Temporarily disabled
+import housekeepingRoutes from './routes/housekeeping.js';
+import inventoryRoutes from './routes/inventory.js';
 import guestRoutes from './routes/guests.js';
-import reportRoutes from './routes/reports.js'; // Temporarily disabled
-import otaRoutes from './routes/ota.js'; // Temporarily disabled
-import webhookRoutes from './routes/webhooks.js'; // Temporarily disabled
+import reportRoutes from './routes/reports.js';
+import otaRoutes from './routes/ota.js';
+import webhookRoutes from './routes/webhooks.js';
 import adminRoutes from './routes/admin.js';
-import adminDashboardRoutes from './routes/adminDashboard.js'; // Temporarily disabled
-import staffDashboardRoutes from './routes/staffDashboard.js'; // Temporarily disabled
-import dailyInventoryCheckRoutes from './routes/dailyInventoryCheck.js'; // Temporarily disabled
-import inventoryNotificationRoutes from './routes/inventoryNotifications.js'; // Temporarily disabled
-import guestServiceRoutes from './routes/guestServices.js'; // Temporarily disabled
-import reviewRoutes from './routes/reviews.js'; // Temporarily disabled
-import maintenanceRoutes from './routes/maintenance.js'; // Temporarily disabled
-import incidentRoutes from './routes/incidents.js'; // Temporarily disabled
-import supplyRequestRoutes from './routes/supplyRequests.js'; // Temporarily disabled
-import communicationRoutes from './routes/communications.js'; // Temporarily disabled
-import messageTemplateRoutes from './routes/messageTemplates.js'; // Temporarily disabled
-import contactRoutes from './routes/contact.js'; // Temporarily disabled
-import billingHistoryRoutes from './routes/billingHistory.js'; // Temporarily disabled
+import adminDashboardRoutes from './routes/adminDashboard.js';
+import staffDashboardRoutes from './routes/staffDashboard.js';
+import dailyInventoryCheckRoutes from './routes/dailyInventoryCheck.js';
+import inventoryNotificationRoutes from './routes/inventoryNotifications.js';
+import guestServiceRoutes from './routes/guestServices.js';
+import reviewRoutes from './routes/reviews.js';
+import maintenanceRoutes from './routes/maintenance.js';
+import incidentRoutes from './routes/incidents.js';
+import supplyRequestRoutes from './routes/supplyRequests.js';
+import communicationRoutes from './routes/communications.js';
+import messageTemplateRoutes from './routes/messageTemplates.js';
+import contactRoutes from './routes/contact.js';
+import billingHistoryRoutes from './routes/billingHistory.js';
 import loyaltyRoutes from './routes/loyalty.js';
 import adminLoyaltyRoutes from './routes/adminLoyalty.js';
-import offerFavoriteRoutes from './routes/offerFavorites.js'; // Temporarily disabled
-import hotelServicesRoutes from './routes/hotelServices.js'; // Temporarily disabled
+import offerFavoriteRoutes from './routes/offerFavorites.js';
+import hotelServicesRoutes from './routes/hotelServices.js';
 import adminHotelServicesRoutes from './routes/adminHotelServices.js';
 import staffServicesRoutes from './routes/staffServices.js';
-import notificationRoutes from './routes/notifications.js'; // Temporarily disabled
+import notificationRoutes from './routes/notifications.js';
 import settlementNotificationRoutes from './routes/settlementNotifications.js';
 import settlementNotificationService from './services/settlementNotificationService.js';
 import userPreferencesRoutes from './routes/userPreferences.js';
@@ -102,23 +102,23 @@ import settingsRoutes from './routes/settings.js';
 import scheduledUpdatesRoutes from './routes/scheduledUpdates.js';
 import integrationsRoutes from './routes/integrations.js';
 import uploadRoutes from './routes/upload.js';
-import digitalKeyRoutes from './routes/digitalKeys.js'; // Temporarily disabled
+import digitalKeyRoutes from './routes/digitalKeys.js';
 import staffAlertsRoutes from './routes/staffAlerts.js';
 import staffMeetUpRoutes from './routes/staffMeetUp.js';
-import meetUpRequestRoutes from './routes/meetUpRequests.js'; // Temporarily disabled
+import meetUpRequestRoutes from './routes/meetUpRequests.js';
 import meetUpResourceRoutes from './routes/meetUpResources.js';
 import travelAgentRoutes from './routes/travelAgents.js';
 import adminTravelDashboardRoutes from './routes/adminTravelDashboard.js';
-import dashboardUpdatesRoutes from './routes/dashboardUpdates.js'; // Temporarily disabled
-import corporateRoutes from './routes/corporate.js'; // Temporarily disabled
-import roomInventoryRoutes from './routes/roomInventory.js'; // Temporarily disabled
-import photoUploadRoutes from './routes/photoUpload.js'; // Temporarily disabled
+import dashboardUpdatesRoutes from './routes/dashboardUpdates.js';
+import corporateRoutes from './routes/corporate.js';
+import roomInventoryRoutes from './routes/roomInventory.js';
+import photoUploadRoutes from './routes/photoUpload.js';
 import documentUploadRoutes from './routes/documentUpload.js';
-import staffTaskRoutes from './routes/staffTasks.js'; // Temporarily disabled
-import checkoutInventoryRoutes from './routes/checkoutInventory.js'; // ENABLED - Route conflict fixed
-import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js'; // Temporarily disabled
-import testCheckoutsRoutes from './routes/testCheckouts.js'; // Temporarily disabled
-import attractionsRoutes from './routes/attractions.js'; // Temporarily disabled
+import staffTaskRoutes from './routes/staffTasks.js';
+import checkoutInventoryRoutes from './routes/checkoutInventory.js';
+import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js';
+import testCheckoutsRoutes from './routes/testCheckouts.js';
+import attractionsRoutes from './routes/attractions.js';
 import analyticsRoutes from './routes/analytics.js';
 import posRoutes from './routes/pos.js';
 import revenueManagementRoutes from './routes/revenueManagement.js';
@@ -140,7 +140,7 @@ import guestLookupRoutes from './routes/guestLookup.js';
 import availabilityRoutes from './routes/availability.js';
 import rateManagementRoutes from './routes/rateManagement.js';
 import roomTypesRoutes from './routes/roomTypes.js';
-import channelManagementRoutes from './routes/channelManagement.js'; // Temporarily disabled due to syntax errors
+import channelManagementRoutes from './routes/channelManagement.js';
 import otaWebhookRoutes from './routes/otaWebhooks.js';
 import externalBookingsRoutes from './routes/externalBookings.js';
 // import revenueOptimizationRoutes from './routes/revenueOptimization.js'; // Temporarily disabled - requires tensorflow
@@ -162,7 +162,7 @@ import phoneExtensionRoutes from './routes/phoneExtensions.js';
 import billMessageRoutes from './routes/billMessages.js';
 import hotelAreaRoutes from './routes/hotelAreas.js';
 import webSettingsRoutes from './routes/webSettings.js';
-import webOptimizationRoutes from './routes/webOptimization.js'; // error in this 
+import webOptimizationRoutes from './routes/webOptimization.js';
 import salutationRoutes from './routes/salutations.js';
 import guestImportRoutes from './routes/guestImport.js';
 import blacklistRoutes from './routes/blacklist.js';
@@ -191,7 +191,7 @@ import operationalManagementRoutes from './routes/operationalManagement.js';
 import apiManagementRoutes from './routes/apiManagement.js';
 import discountPricingRoutes from './routes/discountPricing.js';
 
-// Security & Compliance Routes - TEMPORARILY COMMENTED
+// Security & Compliance Routes
 import gdprRoutes from './routes/gdpr.js';
 import credentialRoutes from './routes/credentials.js';
 import rolePermissionRoutes from './routes/rolePermissions.js';
@@ -207,6 +207,7 @@ import waitlistRoutes from './routes/waitlist.js';
 import workflowRoutes from './routes/workflow.js';
 import departmentBudgetRoutes from './routes/departmentBudget.js';
 import vendorRoutes from './routes/vendors.js';
+import purchaseOrderRoutes from './routes/purchaseOrders.js';
 import enhancedAnalyticsRoutes from './routes/enhancedAnalytics.js';
 import reorderRoutes from './routes/reorder.js';
 import stockMovementsRoutes from './routes/stockMovements.js';
@@ -808,6 +809,7 @@ registerApiRoutes(app, {
     workflowRoutes,
     departmentBudgetRoutes,
     vendorRoutes,
+    purchaseOrderRoutes,
     enhancedAnalyticsRoutes,
     requestTemplatesRoutes,
     requestCategoriesRoutes,
@@ -907,7 +909,6 @@ server = app.listen(PORT, async () => {
         }
 
         if (mongoReady) {
-            // Start inventory scheduler - TEMPORARILY COMMENTED
             logger.info('🔄 Starting inventory scheduler...');
             inventoryScheduler.start();
             logger.info('✅ Inventory scheduler started');
@@ -985,7 +986,6 @@ server = app.listen(PORT, async () => {
             });
         }
 
-        // Start booking workflow engine - TEMPORARILY DISABLED
         try {
             logger.info('🔄 Starting booking workflow engine...');
             await bookingWorkflowEngine.start();
@@ -996,7 +996,6 @@ server = app.listen(PORT, async () => {
             });
         }
 
-        // Start payload retention service - TEMPORARILY DISABLED
         try {
             logger.info('🔄 Starting payload retention service...');
             payloadRetentionService.start();
@@ -1007,7 +1006,6 @@ server = app.listen(PORT, async () => {
             });
         }
 
-        // Start OTA payload service cleanup - TEMPORARILY DISABLED
         try {
             logger.info('🔄 Starting OTA payload service cleanup...');
             otaPayloadService.startCleanup();
@@ -1051,6 +1049,7 @@ if (server) {
             reorderJob.stop();
             stopScheduledUpdatesJob();
             bookingWorkflowEngine.stop();
+            otaPayloadService.stopCleanup();
             systemHealthMonitor.stop();
             await queueService.stopProcessing();
             logger.info('Background services stopped');

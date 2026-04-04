@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import NightAudit from '../models/NightAudit.js';
 import nightAuditService from '../services/nightAuditService.js';
 import Joi from 'joi';
@@ -78,6 +79,9 @@ router.get('/', catchAsync(async (req, res) => {
 
 // Lock an audit day
 router.post('/:id/lock', authorizePolicy('nightAudit', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Night audit not found', 404);
+  }
   const audit = await NightAudit.findOneAndUpdate(
     { _id: req.params.id, status: 'completed', hotelId: req.user.hotelId },
     {

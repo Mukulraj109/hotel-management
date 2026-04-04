@@ -604,37 +604,41 @@ class TapeChartService {
 
       let views = await TapeChartView.find(viewQuery).sort({ isSystemDefault: -1, viewName: 1 }).lean().limit(1000);
 
-      // Create default view if none exist
-      if (views.length === 0) {
-        const defaultView = new TapeChartView({
-          viewId: 'default-view',
-          viewName: 'Default View',
-          viewType: 'daily',
-          dateRange: {
-            defaultDays: 7
+      // Create default view if none exist (upsert to avoid duplicate key errors)
+      if (views.length === 0 && hotelId) {
+        const defaultView = await TapeChartView.findOneAndUpdate(
+          { hotelId, viewId: 'default-view' },
+          {
+            $setOnInsert: {
+              hotelId,
+              viewId: 'default-view',
+              viewName: 'Default View',
+              viewType: 'daily',
+              dateRange: { defaultDays: 7 },
+              displaySettings: {
+                showWeekends: true,
+                colorCoding: {
+                  available: '#10B981',
+                  occupied: '#EF4444',
+                  reserved: '#F59E0B',
+                  maintenance: '#8B5CF6',
+                  out_of_order: '#6B7280',
+                  dirty: '#F97316',
+                  clean: '#06B6D4'
+                },
+                roomSorting: 'floor',
+                showGuestNames: true,
+                showRoomTypes: true,
+                showRates: false,
+                compactView: false
+              },
+              filters: {},
+              isSystemDefault: true,
+              createdBy: userId
+            }
           },
-          displaySettings: {
-            showWeekends: true,
-            colorCoding: {
-              available: '#10B981',
-              occupied: '#EF4444', 
-              reserved: '#F59E0B',
-              maintenance: '#8B5CF6',
-              out_of_order: '#6B7280',
-              dirty: '#F97316',
-              clean: '#06B6D4'
-            },
-            roomSorting: 'floor',
-            showGuestNames: true,
-            showRoomTypes: true,
-            showRates: false,
-            compactView: false
-          },
-          filters: {},
-          isSystemDefault: true,
-          createdBy: userId
-        });
-        await defaultView.save();
+          { upsert: true, new: true, lean: true }
+        );
         views = [defaultView];
       }
 

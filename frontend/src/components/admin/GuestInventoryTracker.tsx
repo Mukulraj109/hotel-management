@@ -137,10 +137,7 @@ const GuestInventoryTracker: React.FC<GuestInventoryTrackerProps> = ({ hotelId: 
 
     try {
       // Fetch recommendations based on guest's current booking context
-      const guest = data?.guestAnalytics?.find(g => g.guestId === selectedGuest);
-      const roomId = guest?.roomNumber || '';
       const params = new URLSearchParams({ guestId: selectedGuest, serviceType: 'room_service' });
-      if (roomId) params.append('roomId', roomId);
       if (resolvedHotelId) params.append('hotelId', resolvedHotelId);
 
       const { data: result } = await api.get(`/inventory/consumption/guest/recommendations?${params}`);

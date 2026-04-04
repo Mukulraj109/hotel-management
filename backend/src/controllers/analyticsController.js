@@ -597,7 +597,8 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
             count: { $sum: 1 }
           }
         },
-        { $sort: { revenue: -1 } }
+        { $sort: { revenue: -1 } },
+        { $limit: 50 }
       ]);
       logger.debug('Revenue by channel aggregation completed', { channelCount: revenueByChannel.length });
     } catch (error) {
@@ -634,7 +635,8 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
             revenue: { $sum: '$totalAmount' }
           }
         },
-        { $sort: { count: -1 } }
+        { $sort: { count: -1 } },
+        { $limit: 50 }
       ]);
       logger.debug('Guest segmentation aggregation completed', { segmentCount: guestSegmentation.length });
     } catch (error) {

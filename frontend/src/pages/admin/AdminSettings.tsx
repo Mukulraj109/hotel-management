@@ -19,6 +19,7 @@ import NotificationSettings from './settings/NotificationSettings';
 import DisplaySettings from './settings/DisplaySettings';
 import SystemSettings from './settings/SystemSettings';
 import IntegrationSettings from './settings/IntegrationSettings';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabItem {
   id: string;
@@ -27,7 +28,7 @@ interface TabItem {
   component: React.ComponentType<{ onSettingsChange?: (hasChanges: boolean) => void }>;
 }
 
-export default function AdminSettings() {
+function AdminSettings() {
   const navigate = useNavigate();
   const location = useLocation();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -183,3 +184,5 @@ export default function AdminSettings() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminSettings);

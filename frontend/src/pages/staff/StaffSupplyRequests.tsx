@@ -83,7 +83,7 @@ interface CostOptimizations {
 
 export default function StaffSupplyRequests() {
   const { user } = useAuth();
-  const { on, off } = useRealTime();
+  const { on, off, isConnected } = useRealTime();
   const [requests, setRequests] = useState<SupplyRequest[]>([]);
   // Keep a ref to current requests so polling callback always sees latest values
   const requestsRef = useRef<SupplyRequest[]>([]);
@@ -506,8 +506,10 @@ export default function StaffSupplyRequests() {
     };
   }, [on, off, fetchMyRequests, fetchMyStats]);
 
-  // Fallback polling for environments where WebSocket may not be connected
+  // Fallback polling: only when WebSocket is not connected, to avoid redundant requests
   useEffect(() => {
+    if (isConnected) return; // Real-time updates handle this when WS is live
+
     const interval = setInterval(() => {
       if (!loading) {
         checkForStatusUpdates();
@@ -515,10 +517,10 @@ export default function StaffSupplyRequests() {
     }, 30000); // Check every 30 seconds as a fallback
 
     return () => clearInterval(interval);
-  }, [checkForStatusUpdates, loading]);
+  }, [checkForStatusUpdates, loading, isConnected]);
 
   // Helper functions using service utilities
-  const getDepartmentColor = (department: string) => {
+  const getDepartmentColor = useCallback((department: string) => {
     const colors: Record<string, string> = {
       housekeeping: 'bg-green-100 text-green-800',
       maintenance: 'bg-orange-100 text-orange-800',
@@ -528,16 +530,16 @@ export default function StaffSupplyRequests() {
       other: 'bg-gray-100 text-gray-800'
     };
     return colors[department] || 'bg-gray-100 text-gray-800';
-  };
+  }, []);
 
-  const getPriorityColor = (priority: string) =>
-    staffSupplyRequestsService.getPriorityColorClass(priority);
+  const getPriorityColor = useCallback((priority: string) =>
+    staffSupplyRequestsService.getPriorityColorClass(priority), []);
 
-  const isOverdue = (request: SupplyRequest) =>
-    staffSupplyRequestsService.isOverdue(request.neededBy, request.status);
+  const isOverdue = useCallback((request: SupplyRequest) =>
+    staffSupplyRequestsService.isOverdue(request.neededBy, request.status), []);
 
-  const canEdit = (request: SupplyRequest) =>
-    staffSupplyRequestsService.canEdit(request, user?._id || '');
+  const canEdit = useCallback((request: SupplyRequest) =>
+    staffSupplyRequestsService.canEdit(request, user?._id || ''), [user?._id]);
 
   // Memoized computed values for performance
   const columns = useMemo(() => [

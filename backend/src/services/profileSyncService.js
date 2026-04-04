@@ -1,8 +1,10 @@
 import User from '../models/User.js';
 import UserPreference from '../models/UserPreference.js';
+import GuestCRMProfile from '../models/GuestCRMProfile.js';
+import logger from '../utils/logger.js';
 
 /**
- * Syncs profile data between User and UserPreference models.
+ * Syncs profile data between User, UserPreference, and GuestCRMProfile models.
  * Called after profile updates from any source.
  */
 class ProfileSyncService {
@@ -29,8 +31,54 @@ class ProfileSyncService {
         );
       }
     } catch (err) {
-      console.warn('ProfileSync: User->Preferences sync failed:', err.message);
+      logger.warn('ProfileSync: User->Preferences sync failed:', err.message);
     }
+  }
+
+  /**
+   * Sync User profile data to GuestCRMProfile
+   */
+  static async syncUserToCRM(userId) {
+    try {
+      const user = await User.findById(userId).lean();
+      if (!user || user.role !== 'guest') return;
+
+      // Split name into first/last for CRM personalInfo fields
+      const nameParts = (user.name || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      const update = {
+        userId: userId,
+        'personalInfo.fullName': user.name,
+        'personalInfo.firstName': firstName,
+        'personalInfo.lastName': lastName,
+        'personalInfo.email': user.email,
+        'personalInfo.phone': user.phone,
+        lastUpdated: new Date()
+      };
+
+      // GuestCRMProfile requires hotelId — only sync if user has one
+      if (!user.hotelId) return;
+
+      await GuestCRMProfile.findOneAndUpdate(
+        { userId: userId, hotelId: user.hotelId },
+        { $set: update },
+        { upsert: true }
+      );
+    } catch (err) {
+      logger.warn('ProfileSync: User->CRM sync failed:', err.message);
+    }
+  }
+
+  /**
+   * Full sync — syncs User data to both UserPreference and GuestCRMProfile
+   */
+  static async syncAll(userId) {
+    await Promise.allSettled([
+      this.syncUserToPreferences(userId),
+      this.syncUserToCRM(userId)
+    ]);
   }
 
   /**
@@ -51,7 +99,7 @@ class ProfileSyncService {
         await User.findByIdAndUpdate(userId, { $set: update });
       }
     } catch (err) {
-      console.warn('ProfileSync: Preferences->User sync failed:', err.message);
+      logger.warn('ProfileSync: Preferences->User sync failed:', err.message);
     }
   }
 }

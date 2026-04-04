@@ -1,5 +1,13 @@
 import nodemailer from 'nodemailer';
 import logger from '../utils/logger.js';
+import { CircuitBreaker } from '../utils/circuitBreaker.js';
+
+const emailBreaker = new CircuitBreaker({
+  name: 'email_smtp',
+  failureThreshold: 3,
+  resetTimeout: 60000,
+  timeout: 15000
+});
 
 class EmailService {
   constructor() {
@@ -55,17 +63,24 @@ class EmailService {
       return { success: false, error: 'Email service not configured' };
     }
 
-    try {
-      const mailOptions = {
-        from: from || `"The Pentouz Hotels" <${process.env.SMTP_USER}>`,
-        to: Array.isArray(to) ? to.join(', ') : to,
-        subject,
-        text,
-        html
-      };
+    const mailOptions = {
+      from: from || `"The Pentouz Hotels" <${process.env.SMTP_USER}>`,
+      to: Array.isArray(to) ? to.join(', ') : to,
+      subject,
+      text,
+      html
+    };
 
-      const result = await this.transporter.sendMail(mailOptions);
-      
+    try {
+      const result = await emailBreaker.execute(
+        () => this.transporter.sendMail(mailOptions),
+        () => {
+          // Fallback when circuit is open — degrade gracefully
+          logger.warn(`Email circuit breaker OPEN — suppressing email to ${to} (subject: ${subject})`);
+          return { messageId: null, response: 'circuit_breaker_open' };
+        }
+      );
+
       logger.info(`Email sent successfully to ${to}`, {
         messageId: result.messageId,
         subject

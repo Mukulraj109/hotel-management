@@ -20,6 +20,7 @@ import CheckoutInventory from '../models/CheckoutInventory.js';
 import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 import websocketService from '../services/websocketService.js';
+import inventoryNotificationService from '../services/inventoryNotificationService.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -380,6 +381,19 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
       unit: item.unit
     }));
 
+    // Fire low-stock notifications for ops users whenever items are detected below threshold.
+    // This is the primary automatic detection mechanism — notifications are idempotent
+    // (existing unread ones will be duplicated at high poll rates, but that is acceptable
+    // for a dashboard poll; a dedup/cooldown scheduler can be added later).
+    if (formattedLowStockItems.length > 0) {
+      inventoryNotificationService.notifyLowStock(hotelId.toString(), formattedLowStockItems.map(i => ({
+        name: i.name,
+        currentStock: i.currentStock,
+        stockThreshold: i.threshold,
+        category: i.category
+      }))).catch(e => logger.warn('Failed to send low-stock notifications from inventory summary', { error: e.message }));
+    }
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -413,20 +427,20 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
 }));
 
 /**
- * Staff Dashboard - Order Inventory Item (Mark as Ordered)
+ * Staff Dashboard - Quick Order Inventory Item
+ * Creates a pending supply request for the low-stock item rather than directly
+ * mutating inventory quantities (which must only happen on confirmed receipt).
  */
 router.post('/inventory/:itemId/order', validate(orderInventorySchema), catchAsync(async (req, res) => {
   const { itemId } = req.params;
-  const { hotelId } = req.user;
-  const { quantity = 50 } = req.body; // Default order quantity
+  const { hotelId, _id: staffId, department } = req.user;
+  const { quantity = 50 } = req.body;
 
   // SECURITY: Validate ObjectId format before hitting MongoDB to prevent CastError leakage.
   if (!mongoose.Types.ObjectId.isValid(itemId)) {
     throw new ApplicationError('Inventory item not found', 404);
   }
 
-  // Atomic: find the inventory item, verify ownership, and compute new stock in one step
-  // First read to get threshold for calculation
   const existingItem = await Inventory.findOne({
     _id: itemId,
     hotelId: new mongoose.Types.ObjectId(hotelId),
@@ -437,28 +451,55 @@ router.post('/inventory/:itemId/order', validate(orderInventorySchema), catchAsy
     throw new ApplicationError('Inventory item not found', 404);
   }
 
-  // For this demo, we'll just increase the current stock to above threshold
-  // In a real system, this would create a purchase order
-  const newStock = existingItem.minimumThreshold + quantity;
+  // Create a supply request so the proper approval + receipt workflow is followed.
+  // Determine a reasonable "needed by" date: 3 days from now for low-stock items.
+  const neededBy = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 
-  const inventoryItem = await Inventory.findOneAndUpdate(
-    { _id: itemId, hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true },
-    { $set: { quantity: newStock } },
-    { new: true }
-  );
+  const supplyRequest = await SupplyRequest.create({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    requestedBy: staffId,
+    department: department || 'housekeeping',
+    title: `Restock: ${existingItem.name}`,
+    description: `Automatic restock request — current stock (${existingItem.quantity} ${existingItem.unit}) is at or below threshold (${existingItem.minimumThreshold} ${existingItem.unit}).`,
+    priority: existingItem.quantity === 0 ? 'urgent' : 'high',
+    items: [{
+      name: existingItem.name,
+      category: existingItem.category || 'other',
+      quantity,
+      unit: existingItem.unit || 'pieces',
+      estimatedCost: (existingItem.costPerUnit || 0) * quantity,
+      supplier: existingItem.supplier?.name || ''
+    }],
+    neededBy,
+    justification: `Low stock auto-detected via staff dashboard. Current: ${existingItem.quantity}, threshold: ${existingItem.minimumThreshold}.`
+  });
 
-  res.status(200).json({
+  // Broadcast so managers see the new pending request immediately
+  try {
+    websocketService.broadcastToHotel(hotelId.toString(), 'supply-requests:created', { supplyRequest });
+  } catch (wsErr) {
+    logger.warn('Failed to broadcast quick-order supply request creation', { error: wsErr.message });
+  }
+
+  res.status(201).json({
     status: 'success',
     data: {
+      supplyRequest: {
+        _id: supplyRequest._id,
+        requestNumber: supplyRequest.requestNumber,
+        title: supplyRequest.title,
+        status: supplyRequest.status,
+        priority: supplyRequest.priority
+      },
       item: {
-        _id: inventoryItem._id,
-        name: inventoryItem.name,
-        quantity: inventoryItem.quantity,
-        minimumThreshold: inventoryItem.minimumThreshold,
-        unit: inventoryItem.unit
+        _id: existingItem._id,
+        name: existingItem.name,
+        quantity: existingItem.quantity,
+        minimumThreshold: existingItem.minimumThreshold,
+        unit: existingItem.unit
       }
     },
-    message: `Order placed for ${inventoryItem.name}. Stock updated to ${newStock} ${inventoryItem.unit}.`
+    message: `Supply request created for ${existingItem.name} (${quantity} ${existingItem.unit}). Awaiting manager approval.`
   });
 }));
 

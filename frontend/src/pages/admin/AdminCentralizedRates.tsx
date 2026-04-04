@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Box,
   Container,
@@ -97,17 +98,6 @@ const AdminCentralizedRates: React.FC = () => {
   const [conflicts, setConflicts] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
 
-  // Early return if no property selected in single mode
-  if (!selectedPropertyId && viewMode === 'single') {
-    return <Container><Box p={6}>Please select a property</Box></Container>;
-  }
-
-  useEffect(() => {
-    if (selectedPropertyId) {
-      loadDashboardData();
-    }
-  }, [selectedPropertyId]);
-
   const loadDashboardData = async () => {
     try {
       setLoading(true);
@@ -117,11 +107,11 @@ const AdminCentralizedRates: React.FC = () => {
         centralizedRatesApi.getDashboardStats()
       ]);
 
-      setRates(ratesResponse.data.rates);
-      setConflicts(conflictsResponse.data.conflicts);
-      setStats(statsResponse.data);
-    } catch {
-      // Error handled silently
+      setRates(ratesResponse.data?.rates || []);
+      setConflicts(conflictsResponse.data?.conflicts || []);
+      setStats(statsResponse.data || null);
+    } catch (error) {
+      console.error('Failed to load centralized rates dashboard:', error);
     } finally {
       setLoading(false);
     }
@@ -137,14 +127,25 @@ const AdminCentralizedRates: React.FC = () => {
 
   const handleSyncRates = async () => {
     if (!selectedGroup) return;
-    
+
     try {
       await centralizedRatesApi.syncRates(selectedGroup);
       await loadDashboardData();
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to sync rates:', error);
     }
   };
+
+  useEffect(() => {
+    if (selectedPropertyId) {
+      loadDashboardData();
+    }
+  }, [selectedPropertyId]);
+
+  // Early return if no property selected in single mode - placed AFTER all hooks
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <Container><Box p={6}>Please select a property</Box></Container>;
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -408,4 +409,4 @@ const AdminCentralizedRates: React.FC = () => {
   );
 };
 
-export default AdminCentralizedRates;
+export default withErrorBoundary(AdminCentralizedRates);

@@ -76,7 +76,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   }
 
   return (
-    <div className="flex items-center justify-between px-2 py-4">
+    <nav aria-label="Pagination" className="flex items-center justify-between px-2 py-4">
       {/* Items per page selector */}
       {showPageSizeSelector && (
         <div className="flex items-center space-x-2">
@@ -147,6 +147,8 @@ export const Pagination: React.FC<PaginationProps> = ({
                     onClick={() => handlePageChange(page as number)}
                     disabled={isLoading}
                     className="h-8 w-8 p-0"
+                    aria-current={page === currentPage ? 'page' : undefined}
+                    aria-label={`Page ${page}`}
                   >
                     {page}
                   </Button>
@@ -180,6 +182,6 @@ export const Pagination: React.FC<PaginationProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </nav>
   );
 };

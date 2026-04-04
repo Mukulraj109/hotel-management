@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const addOnServiceSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   serviceId: {
     type: String,
     required: true,
@@ -357,8 +363,9 @@ addOnServiceSchema.virtual('averageDailyBookings').get(function() {
 });
 
 // Indexes
+addOnServiceSchema.index({ hotelId: 1, name: 1 });
 addOnServiceSchema.index({ serviceId: 1 });
-addOnServiceSchema.index({ category: 1, isActive: 1 });
+addOnServiceSchema.index({ hotelId: 1, category: 1, isActive: 1 });
 addOnServiceSchema.index({ 'pricing.basePrice': 1 });
 addOnServiceSchema.index({ displayOrder: 1, isFeatured: -1 });
 addOnServiceSchema.index({ tags: 1 });

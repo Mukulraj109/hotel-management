@@ -138,9 +138,17 @@ class RoomsService {
   }
 
   async bulkUpdateStatus(roomIds: string[], status: Room['status']): Promise<Room[]> {
-    // Since there's no bulk endpoint, update rooms one by one
-    const promises = roomIds.map(id => this.updateRoomStatus(id, status));
-    return Promise.all(promises);
+    // Since there's no bulk endpoint, update rooms in batches of 5 to avoid rate limits
+    const results: Room[] = [];
+    const batchSize = 5;
+    for (let i = 0; i < roomIds.length; i += batchSize) {
+      const batch = roomIds.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(id => this.updateRoomStatus(id, status))
+      );
+      results.push(...batchResults);
+    }
+    return results;
   }
 
   async getRoomMetrics(hotelId: string): Promise<RoomMetrics> {

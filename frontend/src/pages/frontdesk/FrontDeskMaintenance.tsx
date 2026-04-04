@@ -32,6 +32,7 @@ import {
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const PAGE_LIMIT = 20;
 
@@ -50,7 +51,7 @@ interface AvailableRoom {
   floor: string;
 }
 
-export default function FrontDeskMaintenance() {
+function FrontDeskMaintenance() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -577,3 +578,5 @@ export default function FrontDeskMaintenance() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskMaintenance);

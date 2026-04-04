@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../utils/cn';
 import {
@@ -31,8 +31,9 @@ import { InventoryDashboardWidget } from '../../components/admin/InventoryDashbo
 import { InventoryNotifications } from '../../components/admin/InventoryNotifications';
 import { SupplyRequestDashboardWidget } from '../../components/admin/SupplyRequestDashboardWidget';
 import UpcomingArrivalsWidget from '../../components/admin/UpcomingArrivalsWidget';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminDashboard() {
+function AdminDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
   // React Query will automatically refetch when selectedHotelId changes due to enabled condition
   // No manual refetch needed to avoid excessive API calls
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     realTimeData.refetch();
     kpis.refetch();
     alerts.refetch();
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
     occupancyQuery.refetch();
     revenueQuery.refetch();
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-  };
+  }, [realTimeData, kpis, alerts, systemHealth, occupancyQuery, revenueQuery, queryClient]);
 
   const handleFilterChange = (key: string, value: unknown) => {
     if (key === 'dateRange') {
@@ -129,7 +130,7 @@ export default function AdminDashboard() {
           <RefreshButton
             onRefresh={handleRefresh}
             loading={isLoading}
-            lastUpdated={realTimeData.data?.data.lastUpdated}
+            lastUpdated={realTimeData.data?.data?.lastUpdated}
             autoRefresh={true}
             showLastUpdated={true}
           />
@@ -291,7 +292,7 @@ export default function AdminDashboard() {
           height="350px"
         >
           <LineChart
-            data={(revenueQuery.data?.data?.timeSeries || []) as unknown}
+            data={(revenueQuery.data?.data?.timeSeries || []) as any}
             xDataKey="date"
             lines={[
               {
@@ -319,13 +320,19 @@ export default function AdminDashboard() {
           height="350px"
         >
           <DonutChart
-            data={occupancyQuery.data?.data?.roomTypeDistribution ? Object.entries(occupancyQuery.data.data.roomTypeDistribution).map(([roomType, data]: [string, unknown]) => ({
-              name: roomType.charAt(0).toUpperCase() + roomType.slice(1),
-              value: data.total || 0,
-              percentage: data.total > 0 ? ((data.occupied / data.total) * 100) : 0,
-              occupied: data.occupied || 0,
-              available: data.available || 0
-            })) : []}
+            data={occupancyQuery.data?.data?.roomTypeDistribution ? Object.entries(occupancyQuery.data.data.roomTypeDistribution).map(([roomType, rawData]: [string, unknown]) => {
+              const data = (rawData || {}) as Record<string, number>;
+              const total = Number(data.total) || 0;
+              const occupied = Number(data.occupied) || 0;
+              const available = Number(data.available) || 0;
+              return {
+                name: roomType.charAt(0).toUpperCase() + roomType.slice(1),
+                value: total,
+                percentage: total > 0 ? ((occupied / total) * 100) : 0,
+                occupied,
+                available,
+              };
+            }) : []}
             height={300}
             centerContent={
               <div>
@@ -352,10 +359,11 @@ export default function AdminDashboard() {
           <HeatmapChart
             data={(() => {
               const rooms = occupancyQuery.data?.data?.rooms || [];
-              const floors: { [key: number]: unknown[] } = {};
+              const floors: { [key: number]: { roomNumber: string; status: string; color: string }[] } = {};
 
               rooms.forEach(room => {
-                const floor = parseInt(room.roomNumber.charAt(0));
+                const roomNum = room.roomNumber || '';
+                const floor = parseInt(roomNum.charAt(0)) || 0;
                 if (!floors[floor]) {
                   floors[floor] = [];
                 }
@@ -506,7 +514,7 @@ export default function AdminDashboard() {
         <div className="lg:col-span-2">
           <DataTable
             title="Recent Bookings"
-            data={realTimeData.data?.data.recentActivity?.bookings || []}
+            data={realTimeData.data?.data?.recentActivity?.bookings || []}
             columns={[
               {
                 key: 'bookingNumber',
@@ -549,7 +557,7 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900">Active Alerts</h3>
             <Badge variant="default">
-              {alerts.data?.data.alerts.length || 0}
+              {alerts.data?.data?.alerts?.length || 0}
             </Badge>
           </div>
 
@@ -560,7 +568,7 @@ export default function AdminDashboard() {
                   <div className="h-20 bg-gray-200 rounded"></div>
                 </div>
               ))
-            ) : alerts.data?.data.alerts.length === 0 ? (
+            ) : (alerts.data?.data?.alerts?.length ?? 0) === 0 ? (
               <div className="text-center py-8">
                 <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -569,7 +577,7 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 text-sm">No active alerts</p>
               </div>
             ) : (
-              alerts.data?.data.alerts.slice(0, 5).map((alert) => (
+              (alerts.data?.data?.alerts ?? []).slice(0, 5).map((alert) => (
                 <AlertCard
                   key={alert.id}
                   alert={alert}
@@ -580,9 +588,9 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {(alerts.data?.data.alerts.length || 0) > 5 && (
+          {(alerts.data?.data?.alerts?.length || 0) > 5 && (
             <Button variant="secondary" size="sm" className="w-full" onClick={() => navigate('/admin/notifications')}>
-              View All Alerts ({alerts.data?.data.alerts.length})
+              View All Alerts ({alerts.data?.data?.alerts?.length ?? 0})
             </Button>
           )}
         </div>
@@ -613,3 +621,5 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminDashboard);

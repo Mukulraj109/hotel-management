@@ -15,8 +15,9 @@ import { useDashboardReports, useReportDateRanges, useExportReport } from '../..
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 import { Wifi, WifiOff, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminReports() {
+function AdminReports() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentView, setCurrentView] = useState<'executive' | 'business-intelligence' | 'overview' | 'builder'>('executive');
@@ -563,3 +564,5 @@ export default function AdminReports() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminReports);

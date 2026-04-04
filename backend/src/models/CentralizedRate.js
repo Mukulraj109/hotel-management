@@ -224,9 +224,9 @@ const centralizedRateSchema = new mongoose.Schema({
   },
   
   audit: {
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', required: true },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
-    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     approvalStatus: {
       type: String,
       enum: ['draft', 'pending_approval', 'approved', 'rejected', 'expired'],
@@ -238,7 +238,7 @@ const centralizedRateSchema = new mongoose.Schema({
       field: String,
       oldValue: mongoose.Schema.Types.Mixed,
       newValue: mongoose.Schema.Types.Mixed,
-      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
+      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       changedAt: { type: Date, default: Date.now },
       reason: String
     }]

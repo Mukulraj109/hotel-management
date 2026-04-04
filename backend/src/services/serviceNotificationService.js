@@ -84,9 +84,9 @@ class ServiceNotificationService {
         }
       }
 
-      // Notify staff about urgent status changes
+      // Notify staff about cancellation (when it was cancelled by someone other than the assignee)
       if (serviceRequest.assignedTo && newStatus === 'cancelled' && updatedBy.toString() !== serviceRequest.assignedTo.toString()) {
-        await Notification.create({
+        const staffCancellationNotif = await Notification.create({
           userId: serviceRequest.assignedTo,
           hotelId: serviceRequest.hotelId,
           title: 'Service Request Cancelled',
@@ -104,10 +104,47 @@ class ServiceNotificationService {
           sentAt: new Date()
         });
 
+        await deliverInAppNotificationToUser(staffCancellationNotif);
         logger.info(`Service cancellation notification sent to staff ${serviceRequest.assignedTo} for request ${serviceRequest._id}`);
       }
     } catch (error) {
       logger.error('Failed to send status change notification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send notification to the previously assigned staff member when a request is reassigned away
+   */
+  async notifyReassignedAway(serviceRequest, previousAssigneeId, reassignedBy) {
+    try {
+      const Notification = mongoose.model('Notification');
+
+      const notification = await Notification.create({
+        userId: previousAssigneeId,
+        hotelId: serviceRequest.hotelId,
+        title: 'Service Request Reassigned',
+        message: `A ${serviceRequest.serviceType.replace(/_/g, ' ')} request has been reassigned to another staff member: ${serviceRequest.title || serviceRequest.serviceVariation}`,
+        type: 'service_reassigned',
+        channels: ['in_app'],
+        priority: 'medium',
+        status: 'sent',
+        metadata: {
+          serviceRequestId: serviceRequest._id,
+          serviceType: serviceRequest.serviceType,
+          reassignedBy,
+          category: 'service_management'
+        },
+        expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        sentAt: new Date()
+      });
+
+      await deliverInAppNotificationToUser(notification);
+
+      logger.info(`Reassignment-away notification sent to staff ${previousAssigneeId} for request ${serviceRequest._id}`);
+      return notification;
+    } catch (error) {
+      logger.error('Failed to send reassignment-away notification:', error);
       throw error;
     }
   }

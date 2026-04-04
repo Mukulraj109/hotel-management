@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Joi from 'joi';
 import MessageTemplate from '../models/MessageTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -225,6 +226,9 @@ router.get('/', catchAsync(async (req, res) => {
  *         description: Template details
  */
 router.get('/:id', catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id)
     .populate('hotelId', 'name')
     .populate('createdBy', 'name email')
@@ -286,8 +290,11 @@ router.get('/:id', catchAsync(async (req, res) => {
  *         description: Template updated successfully
  */
 router.patch('/:id', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id);
-  
+
   if (!template) {
     throw new ApplicationError('Template not found', 404);
   }
@@ -345,8 +352,11 @@ router.patch('/:id', authorize('staff', 'admin'), validate(mutationBaselineSchem
  *         description: Template deleted successfully
  */
 router.delete('/:id', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id).lean();
-  
+
   if (!template) {
     throw new ApplicationError('Template not found', 404);
   }
@@ -401,9 +411,12 @@ router.delete('/:id', authorize('staff', 'admin'), validate(mutationBaselineSche
  */
 router.post('/:id/render', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { variables = {}, language = 'en' } = req.body;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id).lean();
-  
+
   if (!template) {
     throw new ApplicationError('Template not found', 404);
   }
@@ -460,9 +473,12 @@ router.post('/:id/render', validate(mutationBaselineSchema), catchAsync(async (r
  */
 router.post('/:id/clone', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name } = req.body;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id).lean();
-  
+
   if (!template) {
     throw new ApplicationError('Template not found', 404);
   }
@@ -528,9 +544,12 @@ router.post('/:id/clone', authorize('staff', 'admin'), validate(mutationBaseline
  */
 router.post('/:id/ab-test', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name, subject, content, htmlContent, weight = 50 } = req.body;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Template not found', 404);
+  }
   const template = await MessageTemplate.findById(req.params.id).lean();
-  
+
   if (!template) {
     throw new ApplicationError('Template not found', 404);
   }

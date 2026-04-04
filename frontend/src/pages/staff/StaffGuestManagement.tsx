@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface GuestStats {
   bookings: {
@@ -214,6 +215,13 @@ const StaffGuestManagement: React.FC = () => {
                 Retry
               </Button>
             </div>
+          ) : guests.length === 0 ? (
+            <div className="text-center py-8">
+              <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">
+                {searchTerm ? 'No guests found matching your search' : 'No guests found'}
+              </p>
+            </div>
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -359,15 +367,6 @@ const StaffGuestManagement: React.FC = () => {
                 </table>
               </div>
 
-              {guests.length === 0 && (
-                <div className="text-center py-8">
-                  <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">
-                    {searchTerm ? 'No guests found matching your search' : 'No guests found'}
-                  </p>
-                </div>
-              )}
-
               {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
@@ -423,4 +422,4 @@ const StaffGuestManagement: React.FC = () => {
   );
 };
 
-export default StaffGuestManagement;
+export default withErrorBoundary(StaffGuestManagement);

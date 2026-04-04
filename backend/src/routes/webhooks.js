@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
+import User from '../models/User.js';
 import StripeWebhookEvent from '../models/StripeWebhookEvent.js';
 import logger from '../utils/logger.js';
 import bookingAuditService from '../services/bookingAuditService.js';
@@ -10,6 +11,7 @@ import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService
 import { awardStayCompletionPoints } from '../services/loyaltyAwardService.js';
 import { dashboardUpdateService } from '../services/dashboardUpdateService.js';
 import websocketService from '../services/websocketService.js';
+import emailService from '../services/emailService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -236,7 +238,37 @@ async function handlePaymentSuccess(paymentIntent) {
           }
         }
       } catch (notifErr) {
-        console.warn('Failed to notify dashboard of payment webhook:', notifErr.message);
+        logger.warn('Failed to notify dashboard of payment webhook:', notifErr.message);
+      }
+
+      // Send booking confirmation email to guest
+      try {
+        if (booking?.userId) {
+          const guest = await User.findById(booking.userId).select('email name').lean();
+          if (guest?.email) {
+            const amount = (paymentIntent.amount / 100).toFixed(2);
+            const currency = (paymentIntent.currency || 'INR').toUpperCase();
+            await emailService.sendEmail({
+              to: guest.email,
+              subject: `Booking Confirmed — ${booking.bookingNumber || booking._id}`,
+              html: `
+                <h2>Your booking is confirmed!</h2>
+                <p>Dear ${guest.name || 'Guest'},</p>
+                <p>We're delighted to confirm your reservation.</p>
+                <table style="border-collapse:collapse;width:100%;max-width:500px;">
+                  <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Booking ID</strong></td><td style="padding:8px;border:1px solid #ddd;">${booking.bookingNumber || booking._id}</td></tr>
+                  <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Check-in</strong></td><td style="padding:8px;border:1px solid #ddd;">${new Date(booking.checkIn).toLocaleDateString()}</td></tr>
+                  <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Check-out</strong></td><td style="padding:8px;border:1px solid #ddd;">${new Date(booking.checkOut).toLocaleDateString()}</td></tr>
+                  <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Amount Paid</strong></td><td style="padding:8px;border:1px solid #ddd;">${currency} ${amount}</td></tr>
+                </table>
+                <p style="margin-top:16px;">If you have any questions, please don't hesitate to contact us.</p>
+              `
+            });
+            logger.info('Booking confirmation email sent', { bookingId: booking._id, email: guest.email });
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send booking confirmation email:', emailErr.message);
       }
 
       logger.info('Payment and booking updated successfully', {
@@ -268,11 +300,34 @@ async function handlePaymentFailed(paymentIntent) {
 
     if (payment) {
       // Update booking status
-      await Booking.findByIdAndUpdate(payment.bookingId, {
+      const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
         paymentStatus: 'failed'
       },
         { new: true }
       );
+
+      // Notify guest of payment failure
+      try {
+        if (booking?.userId) {
+          const guest = await User.findById(booking.userId).select('email name').lean();
+          if (guest?.email) {
+            const reason = paymentIntent.last_payment_error?.message || 'Your payment could not be processed.';
+            await emailService.sendEmail({
+              to: guest.email,
+              subject: `Payment Failed — Booking ${booking.bookingNumber || booking._id}`,
+              html: `
+                <h2>Payment Failed</h2>
+                <p>Dear ${guest.name || 'Guest'},</p>
+                <p>Unfortunately, the payment for your booking <strong>${booking.bookingNumber || booking._id}</strong> could not be processed.</p>
+                <p><strong>Reason:</strong> ${reason}</p>
+                <p>Please try again or use a different payment method to complete your reservation.</p>
+              `
+            });
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send payment failure email:', emailErr.message);
+      }
 
       logger.info('Payment failure processed', {
         paymentId: payment._id,
@@ -358,6 +413,29 @@ async function handleRefund(charge) {
             refundAmount: totalRefunded / 100
           }
         });
+      }
+
+      // Send refund confirmation email to guest
+      try {
+        if (booking?.userId) {
+          const guest = await User.findById(booking.userId).select('email name').lean();
+          if (guest?.email) {
+            const refundAmount = (totalRefunded / 100).toFixed(2);
+            const currency = (charge.currency || 'INR').toUpperCase();
+            await emailService.sendEmail({
+              to: guest.email,
+              subject: `Refund Processed — Booking ${booking.bookingNumber || booking._id}`,
+              html: `
+                <h2>Refund Confirmation</h2>
+                <p>Dear ${guest.name || 'Guest'},</p>
+                <p>A refund of <strong>${currency} ${refundAmount}</strong> has been processed for booking <strong>${booking.bookingNumber || booking._id}</strong>.</p>
+                <p>The refund should appear in your account within 5–10 business days depending on your payment provider.</p>
+              `
+            });
+          }
+        }
+      } catch (emailErr) {
+        logger.warn('Failed to send refund confirmation email:', emailErr.message);
       }
 
       // Notify dashboards of payment update

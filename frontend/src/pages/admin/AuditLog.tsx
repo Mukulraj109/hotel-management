@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import {
   Card,
   CardContent,
@@ -16,6 +17,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
 import { queryKeys } from '../../config/reactQuery';
 import {
+import { withErrorBoundary } from '../../components/ErrorBoundary';
   Download,
   RefreshCw,
   Search,
@@ -81,7 +83,7 @@ interface AuditLogFilters {
   limit: number;
 }
 
-export default function AuditLog() {
+function AuditLog() {
   const { selectedPropertyId } = useProperty();
 
   const [filters, setFilters] = useState<AuditLogFilters>({
@@ -175,7 +177,7 @@ export default function AuditLog() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      // Error handled silently
+      toast.error('Failed to export audit log. Please try again.');
     }
   };
 
@@ -673,3 +675,5 @@ export default function AuditLog() {
     </div>
   );
 }
+
+export default withErrorBoundary(AuditLog);

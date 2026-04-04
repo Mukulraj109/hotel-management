@@ -24,10 +24,11 @@ import { useAuth } from '../../context/AuthContext';
 import { housekeepingService, HousekeepingTask, HousekeepingTaskStatus } from '../../services/housekeepingService';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const PAGE_LIMIT = 20;
 
-export default function StaffHousekeeping() {
+function StaffHousekeeping() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -553,3 +554,5 @@ export default function StaffHousekeeping() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffHousekeeping);

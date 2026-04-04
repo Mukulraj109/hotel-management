@@ -15,6 +15,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface StaffProfileFormData {
   name: string;
@@ -29,7 +30,7 @@ interface StaffProfileSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffProfileSettings({ onSettingsChange }: StaffProfileSettingsProps = {}) {
+function StaffProfileSettings({ onSettingsChange }: StaffProfileSettingsProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -381,3 +382,5 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
     </div>
   );
 }
+
+export default withErrorBoundary(StaffProfileSettings);

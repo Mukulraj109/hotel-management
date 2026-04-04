@@ -28,7 +28,7 @@ async function emitHotelServiceEvent(eventName, serviceDoc, extra = {}) {
       service: serviceDoc,
       ...extra
     }
-  ).catch(() => {});
+  ).catch(err => logger.warn(`WebSocket broadcast failed for ${eventName}:`, err.message));
 }
 
 async function enforceFeaturedLimit(hotelId, currentServiceId = null) {
@@ -1000,7 +1000,7 @@ export const assignBookingStaff = catchAsync(async (req, res) => {
     booking.status = 'confirmed';
   }
   await booking.save();
-  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status, assignedStaffId: staffId }).catch(() => {});
+  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status, assignedStaffId: staffId }).catch(err => logger.warn('WebSocket broadcast failed for hotel-service-booking:updated:', err.message));
 
   res.json({ status: 'success', data: booking });
 });
@@ -1034,7 +1034,7 @@ export const updateBookingStatus = catchAsync(async (req, res) => {
     booking.cancelledBy = req.user._id;
   }
   await booking.save();
-  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status }).catch(() => {});
+  await websocketService.broadcastToHotel(String(actorHotelId), 'hotel-service-booking:updated', { bookingId: booking._id, status: booking.status }).catch(err => logger.warn('WebSocket broadcast failed for hotel-service-booking:updated:', err.message));
 
   res.json({ status: 'success', data: booking });
 });

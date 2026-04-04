@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/Card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Badge } from '../ui/Badge';
 import { Input } from '../ui/Input';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';

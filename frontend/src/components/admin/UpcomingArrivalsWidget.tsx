@@ -30,6 +30,7 @@ export default function UpcomingArrivalsWidget() {
     totalUpcoming: 0
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUpcomingBookings();
@@ -38,11 +39,12 @@ export default function UpcomingArrivalsWidget() {
   const fetchUpcomingBookings = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await adminService.getUpcomingBookings({ days: 7, limit: 5 });
       setBookings(response.data || []);
       setStats(response.stats || { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 });
     } catch {
-      // Error handled silently
+      setError('Failed to load upcoming arrivals');
     } finally {
       setLoading(false);
     }
@@ -73,6 +75,28 @@ export default function UpcomingArrivalsWidget() {
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
             <div className="h-4 bg-gray-200 rounded w-1/2"></div>
             <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            Upcoming Arrivals
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-6">
+            <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-red-400" />
+            <p className="text-sm text-red-600">{error}</p>
+            <Button onClick={fetchUpcomingBookings} variant="ghost" size="sm" className="mt-2">
+              Retry
+            </Button>
           </div>
         </CardContent>
       </Card>

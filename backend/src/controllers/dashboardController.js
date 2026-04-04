@@ -9,7 +9,9 @@ class DashboardController {
   // Get real-time dashboard counts
   async getDashboardCounts(req, res) {
     try {
-      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      const hotelId = (req.user.role === 'admin' || req.user.role === 'manager')
+        ? (req.query.hotelId || req.user.hotelId)
+        : req.user.hotelId;
       if (!hotelId) {
         return res.status(400).json({
           success: false,
@@ -166,7 +168,9 @@ class DashboardController {
   // Get room status summary
   async getRoomStatusSummary(req, res) {
     try {
-      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      const hotelId = (req.user.role === 'admin' || req.user.role === 'manager')
+        ? (req.query.hotelId || req.user.hotelId)
+        : req.user.hotelId;
       if (!hotelId) {
         return res.status(400).json({
           success: false,
@@ -224,7 +228,9 @@ class DashboardController {
   // Get recent activities for dashboard
   async getRecentActivities(req, res) {
     try {
-      const hotelId = req.query?.hotelId || req.user?.hotelId;
+      const hotelId = (req.user.role === 'admin' || req.user.role === 'manager')
+        ? (req.query.hotelId || req.user.hotelId)
+        : req.user.hotelId;
       if (!hotelId) {
         return res.status(400).json({
           success: false,

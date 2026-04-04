@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Clock, IndianRupee, Users, TrendingUp } from 'lucide-react';
 import { posService, POSStats, POSOrder } from '../../services/posService';
+import { useProperty } from '../../context/PropertyContext';
 
 interface Order {
   orderId: string;
@@ -21,6 +22,7 @@ interface POSDashboardProps {
 }
 
 const POSDashboard: React.FC<POSDashboardProps> = ({ onNewOrderClick }) => {
+  const { selectedPropertyId } = useProperty();
   const [stats, setStats] = useState<POSStats>({
     todaysSales: 0,
     todaysOrders: 0,
@@ -32,7 +34,7 @@ const POSDashboard: React.FC<POSDashboardProps> = ({ onNewOrderClick }) => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [selectedPropertyId]);
 
   const fetchDashboardData = async () => {
     try {
@@ -63,8 +65,8 @@ const POSDashboard: React.FC<POSDashboardProps> = ({ onNewOrderClick }) => {
         outlet: order.outlet?.name || 'Unknown Outlet',
         orderTime: order.orderTime.toString()
       })));
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      console.error('Failed to load POS dashboard data:', error);
     }
   };
 

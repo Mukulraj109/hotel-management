@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import approvalService, { ApprovalRequest } from '../../services/approvalService';
 import ApprovalBadge from '../../components/approvals/ApprovalBadge';
 import ApprovalReviewModal from '../../components/approvals/ApprovalReviewModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 type RequestTypeFilter = 'all' | 'price_change' | 'rate_adjustment' | 'room_type_add' | 'room_type_delete';
 
 const ApprovalManagement: React.FC = () => {
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>('all');
   const [selectedRequest, setSelectedRequest] = useState<ApprovalRequest | null>(null);
@@ -46,6 +48,9 @@ const ApprovalManagement: React.FC = () => {
   const handleReviewSuccess = () => {
     setSelectedRequest(null);
     setIsReviewModalOpen(false);
+    // Refresh both the approval requests list and stats after a review action
+    queryClient.invalidateQueries({ queryKey: ['approvalRequests'] });
+    queryClient.invalidateQueries({ queryKey: ['approvalStats'] });
   };
 
   const formatDate = (dateString: string) => {
@@ -380,4 +385,4 @@ const ApprovalManagement: React.FC = () => {
   );
 };
 
-export default ApprovalManagement;
+export default withErrorBoundary(ApprovalManagement);

@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import LocalAttractions from '../../components/LocalAttractions';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { DEFAULT_PUBLIC_HOTEL_ID } from '../../constants/publicHotel';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function HomePage() {
+function HomePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(true);
@@ -524,3 +525,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+export default withErrorBoundary(HomePage);

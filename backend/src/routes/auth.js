@@ -171,13 +171,20 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
     throw new ApplicationError('User with this email already exists', 400);
   }
 
-  // Create user
+  // Generate email verification token
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+
+  // Create user with verification token
   const user = await User.create({
     name,
     email,
     password,
     phone,
-    role: 'guest'
+    role: 'guest',
+    emailVerified: false,
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
   });
 
   // Generate access token
@@ -194,14 +201,74 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
   // Set httpOnly cookies
   setAuthCookies(res, accessToken, refreshToken, csrfToken);
 
-  // Send welcome email (don't wait for it to complete)
-  emailService.sendWelcomeEmail(user).catch(error => {
-    logger.error('Failed to send welcome email', { userId: user._id, error: error.message });
+  // Send verification email (don't block response)
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const verifyUrl = `${frontendUrl}/verify-email?token=${verificationToken}`;
+  emailService.sendEmail({
+    to: email,
+    subject: 'Verify Your Email',
+    html: `
+      <h2>Welcome to our hotel!</h2>
+      <p>Dear ${name},</p>
+      <p>Please verify your email address by clicking the link below:</p>
+      <p><a href="${verifyUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you did not create this account, you can safely ignore this email.</p>
+    `
+  }).catch(error => {
+    logger.error('Failed to send verification email', { userId: user._id, error: error.message });
   });
 
   res.status(201).json({
     status: 'success',
+    message: 'Registration successful. Please check your email to verify your account.',
     user
+  });
+}));
+
+/**
+ * @swagger
+ * /auth/verify-email:
+ *   get:
+ *     summary: Verify email address
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.get('/verify-email', catchAsync(async (req, res) => {
+  const { token } = req.query;
+  if (!token) {
+    throw new ApplicationError('Verification token is required', 400);
+  }
+
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+  const user = await User.findOne({
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: { $gt: Date.now() }
+  }).select('+emailVerificationToken +emailVerificationExpires');
+
+  if (!user) {
+    throw new ApplicationError('Invalid or expired verification token', 400);
+  }
+
+  user.emailVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  res.json({
+    status: 'success',
+    message: 'Email verified successfully'
   });
 }));
 
@@ -415,27 +482,9 @@ router.patch('/profile', authenticate, authorizePolicy('auth', 'baseAccess'), va
     { new: true, runValidators: true }
   );
 
-  // Sync preferences to UserPreference model if applicable
-  try {
-    const UserPreference = (await import('../models/UserPreference.js')).default;
-    if (req.body.preferences) {
-      await UserPreference.findOneAndUpdate(
-        { userId: user._id },
-        {
-          $set: {
-            'guest.stayPreferences.bedType': req.body.preferences?.bedType,
-            'guest.stayPreferences.floor': req.body.preferences?.floor,
-            'guest.stayPreferences.smoking': req.body.preferences?.smokingAllowed,
-            updatedAt: new Date()
-          }
-        },
-        { upsert: true }
-      );
-    }
-  } catch (syncErr) {
-    // Non-blocking - log and continue
-    console.warn('Profile sync to UserPreference failed:', syncErr.message);
-  }
+  // Sync profile data to UserPreference and GuestCRMProfile
+  const ProfileSyncService = (await import('../services/profileSyncService.js')).default;
+  await ProfileSyncService.syncAll(user._id).catch(err => logger.warn('ProfileSyncService.syncAll failed:', err.message));
 
   res.json({
     status: 'success',

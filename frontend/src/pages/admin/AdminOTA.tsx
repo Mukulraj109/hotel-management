@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import OTADashboard from '../../components/ota/OTADashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

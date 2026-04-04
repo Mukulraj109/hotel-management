@@ -396,7 +396,7 @@ export default function StaffInventoryRequests() {
                       <div className="flex items-center space-x-4 mb-3">
                         <div className="flex items-center">
                           {getStatusIcon(request.status)}
-                          <h3 className="text-lg font-semibold text-gray-900">{request.title}</h3>
+                          <h3 className="text-lg font-semibold text-gray-900">{request.title || 'Inventory Request'}</h3>
                         </div>
                         <Badge className={getStatusColor(request.status)} variant="outline">
                           {request.status.replace('_', ' ')}
@@ -406,7 +406,7 @@ export default function StaffInventoryRequests() {
                         </Badge>
                       </div>
                       
-                      <p className="text-gray-600 mb-3">{request.description}</p>
+                      {request.description && <p className="text-gray-600 mb-3">{request.description}</p>}
                       
                       <div className="text-sm text-gray-500 mb-3">
                         <strong>Items:</strong> {getItemsSummary(request.items)}
@@ -501,8 +501,8 @@ export default function StaffInventoryRequests() {
                   <Package className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{selectedRequest.title}</h3>
-                  <p className="text-gray-600 mt-1">{selectedRequest.description}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{selectedRequest.title || 'Inventory Request'}</h3>
+                  {selectedRequest.description && <p className="text-gray-600 mt-1">{selectedRequest.description}</p>}
                 </div>
               </div>
 

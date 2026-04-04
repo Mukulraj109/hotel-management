@@ -28,6 +28,7 @@ export const RBAC_POLICIES = {
     manageAccess: ['admin', 'manager']
   },
   hotelSettings: {
+    readAccess: ['admin', 'manager', 'frontdesk'],
     modifyAccess: ['admin', 'manager']
   },
   dataPrivacy: {
@@ -46,7 +47,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   hotelAreas: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   seasonalPricing: {
     baseAccess: OPERATIONAL_ROLES
@@ -67,7 +68,8 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   operationalManagement: {
-    modifyAccess: ['admin', 'manager', 'staff']
+    modifyAccess: ['admin', 'manager', 'staff', 'frontdesk'],
+    readAccess: ['admin', 'manager', 'staff', 'frontdesk']
   },
   reorder: {
     baseAccess: OPERATIONAL_ROLES
@@ -100,7 +102,7 @@ export const RBAC_POLICIES = {
   documentUpload: {
     baseAccess: AUTHENTICATED_ROLES,
     managerAccess: ['admin', 'manager'],
-    staffAccess: ['admin', 'staff']
+    staffAccess: ['admin', 'staff', 'frontdesk']
   },
   inventoryConsumption: {
     baseAccess: AUTHENTICATED_ROLES
@@ -125,10 +127,10 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   scheduledUpdates: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: ['admin', 'manager']
   },
   securityMonitoring: {
-    baseAccess: OPERATIONAL_ROLES
+    baseAccess: ['admin', 'manager']
   },
   stockMovements: {
     baseAccess: OPERATIONAL_ROLES,
@@ -203,7 +205,8 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   bookingEngine: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: AUTHENTICATED_ROLES,
+    readAccess: AUTHENTICATED_ROLES
   },
   cancellations: {
     baseAccess: AUTHENTICATED_ROLES
@@ -248,7 +251,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   reasons: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   requestTemplates: {
     baseAccess: AUTHENTICATED_ROLES
@@ -258,8 +261,8 @@ export const RBAC_POLICIES = {
   },
   reviews: {
     baseAccess: AUTHENTICATED_ROLES,
-    staffAccess: ['staff', 'admin'],
-    adminAccess: ['admin']
+    staffAccess: ['staff', 'admin', 'manager', 'frontdesk'],
+    adminAccess: ['admin', 'manager']
   },
   roomTax: {
     baseAccess: OPERATIONAL_ROLES
@@ -272,7 +275,7 @@ export const RBAC_POLICIES = {
   },
   tapeChart: {
     adminAccess: ['admin'],
-    staffAccess: ['admin', 'staff'],
+    staffAccess: ['admin', 'staff', 'frontdesk'],
     staffFrontdeskAccess: ['admin', 'staff', 'frontdesk']
   },
   rateManagement: {
@@ -281,7 +284,7 @@ export const RBAC_POLICIES = {
   },
   revenueManagement: {
     manageAccess: ['admin', 'revenue_manager'],
-    readAccess: ['admin', 'revenue_manager', 'manager', 'frontdesk']
+    readAccess: ['admin', 'revenue_manager', 'manager']
   },
   channelManager: {
     manageAccess: ['admin', 'channel_manager', 'frontdesk'],
@@ -304,7 +307,7 @@ export const RBAC_POLICIES = {
     supervisorAccess: ['admin', 'manager', 'supervisor']
   },
   billingSessions: {
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'frontdesk']
   },
   credentials: {
     managerAccess: ['admin', 'manager'],
@@ -327,7 +330,7 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   settlements: {
-    staffAccess: ['admin', 'staff'],
+    staffAccess: ['admin', 'staff', 'frontdesk'],
     adminAccess: ['admin']
   },
   financial: {
@@ -349,7 +352,7 @@ export const RBAC_POLICIES = {
     managerAccess: ['admin', 'manager']
   },
   roomInventory: {
-    staffAccess: ['admin', 'staff']
+    staffAccess: ['admin', 'staff', 'frontdesk']
   },
   roomTypes: {
     readAccess: ['admin', 'manager', 'frontdesk', 'staff'],
@@ -358,7 +361,7 @@ export const RBAC_POLICIES = {
     adminAccess: ['admin']
   },
   advancedReservations: {
-    staffAccess: ['admin', 'staff']
+    staffAccess: ['admin', 'staff', 'frontdesk']
   },
   currency: {
     manageAccess: ['admin', 'revenue_manager'],
@@ -418,7 +421,7 @@ export const RBAC_POLICIES = {
     memberAccess: ['guest', 'member', 'vip']
   },
   reports: {
-    staffAccess: ['admin', 'staff'],
+    staffAccess: ['admin', 'staff', 'frontdesk'],
     adminAccess: ['admin']
   },
   segmentation: {
@@ -433,14 +436,14 @@ export const RBAC_POLICIES = {
     managerFrontdeskAccess: ['admin', 'manager', 'frontdesk']
   },
   photoUpload: {
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'frontdesk']
   },
   posSettlementIntegration: {
-    adminStaffAccess: ['admin', 'staff'],
+    adminStaffAccess: ['admin', 'staff', 'frontdesk'],
     adminAccess: ['admin']
   },
   roomBlocks: {
-    adminStaffAccess: ['admin', 'staff']
+    adminStaffAccess: ['admin', 'staff', 'frontdesk']
   },
   rooms: {
     createUpdateAccess: ['admin', 'staff', 'frontdesk'],
@@ -450,7 +453,7 @@ export const RBAC_POLICIES = {
     bulkPricingAccess: ['admin', 'manager']
   },
   settlementNotifications: {
-    adminStaffAccess: ['admin', 'staff'],
+    adminStaffAccess: ['admin', 'staff', 'frontdesk'],
     adminAccess: ['admin']
   },
   adminLoyalty: {
@@ -458,10 +461,10 @@ export const RBAC_POLICIES = {
   },
   checkoutAutomation: {
     managerAccess: ['admin', 'manager'],
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'frontdesk']
   },
   checkoutInventory: {
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'frontdesk']
   },
   crm: {
     staffAccess: ['admin', 'manager', 'staff'],
@@ -473,7 +476,7 @@ export const RBAC_POLICIES = {
     requestAccess: ['staff', 'frontdesk']
   },
   incidents: {
-    staffAccess: ['staff', 'admin']
+    staffAccess: ['staff', 'admin', 'frontdesk']
   },
   extraPersonPricing: {
     staffAccess: ['admin', 'staff'],
@@ -484,7 +487,7 @@ export const RBAC_POLICIES = {
     manageAccess: ['admin', 'manager']
   },
   staffAlerts: {
-    staffAccess: ['staff', 'admin', 'manager'],
+    staffAccess: ['staff', 'admin', 'manager', 'frontdesk'],
     manageAccess: ['admin', 'manager']
   },
   inventoryVendorIntegration: {
@@ -503,7 +506,7 @@ export const RBAC_POLICIES = {
   },
   auditTrail: {
     adminAccess: ['admin'],
-    staffAccess: ['admin', 'staff']
+    staffAccess: ['admin']
   },
   housekeeping: {
     staffAccess: ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'],
@@ -518,9 +521,9 @@ export const RBAC_POLICIES = {
   },
   audit: {
     adminAccess: ['admin'],
-    staffAccess: ['admin', 'staff', 'audit', 'compliance'],
-    frontdeskAccess: ['admin', 'staff', 'audit', 'frontdesk'],
-    managementAccess: ['admin', 'staff', 'audit', 'management'],
+    staffAccess: ['admin', 'audit', 'compliance'],
+    frontdeskAccess: ['admin', 'audit'],
+    managementAccess: ['admin', 'audit', 'management'],
     complianceAccess: ['admin', 'compliance']
   },
   availability: {
@@ -528,15 +531,16 @@ export const RBAC_POLICIES = {
     manageAccess: ['admin', 'manager']
   },
   health: {
-    staffAccess: ['admin', 'staff'],
+    staffAccess: ['admin', 'manager', 'staff'],
     adminAccess: ['admin']
   },
   inventoryAutomation: {
-    staffAccess: ['admin', 'manager', 'staff'],
+    staffAccess: ['admin', 'manager', 'staff', 'frontdesk'],
     managerAccess: ['admin', 'manager']
   },
   nightAudit: {
-    adminAccess: ['admin']
+    adminAccess: ['admin'],
+    readAccess: ['admin', 'manager', 'frontdesk']
   },
   noShow: {
     staffAccess: ['admin', 'staff', 'manager'],
@@ -601,17 +605,17 @@ export const RBAC_POLICIES = {
     cashOnDelivery: AUTHENTICATED_ROLES
   },
   invoices: {
-    create: ['staff', 'admin'],
-    update: ['staff', 'admin'],
-    addPayment: ['staff', 'admin'],
-    addDiscount: ['staff', 'admin'],
-    setupSplitBilling: ['staff', 'admin'],
-    paySplit: ['staff', 'admin', 'guest'],
-    getStats: ['staff', 'admin'],
-    getOverdue: ['staff', 'admin'],
-    createSupplementaryExtraPerson: ['staff', 'admin'],
-    createSupplementarySettlement: ['staff', 'admin'],
-    addExtraCharges: ['staff', 'admin']
+    create: ['staff', 'admin', 'frontdesk'],
+    update: ['staff', 'admin', 'frontdesk'],
+    addPayment: ['staff', 'admin', 'frontdesk'],
+    addDiscount: ['staff', 'admin', 'frontdesk'],
+    setupSplitBilling: ['staff', 'admin', 'frontdesk'],
+    paySplit: ['staff', 'admin', 'frontdesk', 'guest'],
+    getStats: ['staff', 'admin', 'frontdesk'],
+    getOverdue: ['staff', 'admin', 'frontdesk'],
+    createSupplementaryExtraPerson: ['staff', 'admin', 'frontdesk'],
+    createSupplementarySettlement: ['staff', 'admin', 'frontdesk'],
+    addExtraCharges: ['staff', 'admin', 'frontdesk']
   }
 };
 

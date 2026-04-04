@@ -25,9 +25,10 @@ import toast from 'react-hot-toast';
 interface StaffAlertDropdownProps {
   isOpen: boolean;
   onToggle: () => void;
+  alertCenterPath?: string;
 }
 
-export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropdownProps) {
+export default function StaffAlertDropdown({ isOpen, onToggle, alertCenterPath = '/staff/alerts' }: StaffAlertDropdownProps) {
   const [showAll, setShowAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   // Keep a stable ref to onToggle so the outside-click useEffect doesn't
@@ -192,7 +193,7 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
   };
 
   const handleViewAllAlerts = () => {
-    navigate('/staff/alerts');
+    navigate(alertCenterPath);
     onToggle();
   };
 

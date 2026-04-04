@@ -25,6 +25,7 @@ import BulkPricingCalculator from '../../components/travel-agent/BulkPricingCalc
 import GroupReservationManager from '../../components/travel-agent/GroupReservationManager';
 import { travelAgentService } from '../../services/travelAgentService';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface RoomBooking {
   id: string;
@@ -594,4 +595,4 @@ const MultiBooking: React.FC = () => {
   );
 };
 
-export default MultiBooking;
+export default withErrorBoundary(MultiBooking);

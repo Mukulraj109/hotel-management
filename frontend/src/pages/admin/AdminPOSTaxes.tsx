@@ -16,7 +16,6 @@ import {
   FileText,
   Settings,
   TrendingUp,
-  AlertTriangle,
   CheckCircle,
   RefreshCw
 } from 'lucide-react';
@@ -26,6 +25,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components
 import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
 import { useProperty } from '@/context/PropertyContext';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { formatCurrency } from '@/utils/currencyUtils';
 
 interface TaxRule {
   name: string;
@@ -200,13 +200,17 @@ const AdminPOSTaxes: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchTaxes();
-  }, []);
+    if (selectedPropertyId) {
+      fetchTaxes();
+    }
+  }, [selectedPropertyId]);
 
   const fetchTaxes = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/pos/taxes');
+      const response = await api.get('/pos/taxes', {
+        params: { page: 1, limit: 100 }
+      });
       if (response.data.status === 'success') {
         setTaxes(response.data.data.taxes);
       }
@@ -218,6 +222,10 @@ const AdminPOSTaxes: React.FC = () => {
   };
 
   const handleCreateTax = async () => {
+    if (!formData.name.trim() || !formData.taxType || !formData.taxGroup) {
+      toast.error('Tax name, type, and group are required');
+      return;
+    }
     try {
       // If multi-property update, use applySettings
       if (applyToScope !== 'single') {
@@ -256,7 +264,10 @@ const AdminPOSTaxes: React.FC = () => {
 
   const handleUpdateTax = async () => {
     if (!selectedTax) return;
-
+    if (!formData.name.trim() || !formData.taxType || !formData.taxGroup) {
+      toast.error('Tax name, type, and group are required');
+      return;
+    }
     try {
       // If multi-property update, use applySettings
       if (applyToScope !== 'single') {
@@ -412,12 +423,16 @@ const AdminPOSTaxes: React.FC = () => {
     return colors[group as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount);
-  };
+  if (!selectedPropertyId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to manage POS taxes.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -958,8 +973,9 @@ const TaxForm: React.FC<{
                     <Input
                       type="number"
                       value={rule.value}
-                      onChange={(e) => updateRule(index, 'value', parseFloat(e.target.value))}
+                      onChange={(e) => updateRule(index, 'value', parseFloat(e.target.value) || 0)}
                       placeholder="Enter value"
+                      min="0"
                     />
                   </div>
 
@@ -1192,8 +1208,9 @@ const TaxCalculator: React.FC<{
             id="amount"
             type="number"
             value={calculationData.amount}
-            onChange={(e) => setCalculationData({ ...calculationData, amount: parseFloat(e.target.value) })}
+            onChange={(e) => setCalculationData({ ...calculationData, amount: parseFloat(e.target.value) || 0 })}
             placeholder="Enter amount"
+            min="0"
           />
         </div>
 
@@ -1259,15 +1276,15 @@ const TaxCalculator: React.FC<{
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>Taxable Amount:</span>
-                <span className="font-semibold">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(result.taxableAmount)}</span>
+                <span className="font-semibold">{formatCurrency(result.taxableAmount)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Exempted Amount:</span>
-                <span className="font-semibold">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(result.exemptedAmount)}</span>
+                <span className="font-semibold">{formatCurrency(result.exemptedAmount)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold">
                 <span>Total Tax:</span>
-                <span>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(result.totalTax)}</span>
+                <span>{formatCurrency(result.totalTax)}</span>
               </div>
             </div>
 
@@ -1278,7 +1295,7 @@ const TaxCalculator: React.FC<{
                   {result.taxBreakdown.map((tax, index) => (
                     <div key={`result-taxBreakdown-${index}`} className="flex justify-between text-sm">
                       <span>{tax.taxName} ({tax.taxType})</span>
-                      <span>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(tax.amount)}</span>
+                      <span>{formatCurrency(tax.amount)}</span>
                     </div>
                   ))}
                 </div>

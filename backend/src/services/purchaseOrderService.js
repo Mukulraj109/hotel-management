@@ -8,7 +8,7 @@ import logger from '../utils/logger.js';
 class PurchaseOrderService {
   constructor() {
     // Initialize email transporter
-    this.emailTransporter = nodemailer.createTransporter({
+    this.emailTransporter = nodemailer.createTransport({
       // Configure based on your email service
       service: 'gmail',
       auth: {

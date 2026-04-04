@@ -65,13 +65,24 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
     }
   };
 
-  const getStatusColor = (status: string) => {
+  // Color for item-level status (intact / used / damaged / missing / consumed)
+  const getItemStatusColor = (status: string) => {
     switch (status) {
       case 'intact': return 'bg-green-100 text-green-800';
       case 'used': return 'bg-blue-100 text-blue-800';
       case 'damaged': return 'bg-red-100 text-red-800';
       case 'missing': return 'bg-orange-100 text-orange-800';
       case 'consumed': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Color for checkout-level status (pending / completed / paid)
+  const getCheckoutStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-orange-100 text-orange-800';
+      case 'completed': return 'bg-blue-100 text-blue-800';
+      case 'paid': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -263,7 +274,7 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
                       </div>
                       <p className="text-sm font-semibold text-blue-700">Status</p>
                     </div>
-                    <Badge className={`${getStatusColor(inventory.status)} text-sm px-4 py-2 rounded-xl font-semibold`}>
+                    <Badge className={`${getCheckoutStatusColor(inventory.status)} text-sm px-4 py-2 rounded-xl font-semibold`}>
                       {inventory.status}
                     </Badge>
                   </div>
@@ -338,7 +349,7 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
                             </div>
                           </div>
                         </div>
-                        <Badge className={`${getStatusColor(item.status)} text-sm px-4 py-2 rounded-xl font-semibold flex items-center gap-2 w-fit`}>
+                        <Badge className={`${getItemStatusColor(item.status)} text-sm px-4 py-2 rounded-xl font-semibold flex items-center gap-2 w-fit`}>
                           {getStatusIcon(item.status)}
                           <span className="capitalize">{item.status}</span>
                         </Badge>

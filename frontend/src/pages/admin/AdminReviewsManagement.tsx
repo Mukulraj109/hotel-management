@@ -23,6 +23,7 @@ import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ReviewResponseModalProps {
   review: Review | null;
@@ -198,7 +199,7 @@ function ModerationModal({ review, isOpen, onClose, onSubmit }: ModerationModalP
 
 const ADMIN_PAGE_SIZE = 20;
 
-export default function AdminReviewsManagement() {
+function AdminReviewsManagement() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -663,3 +664,5 @@ export default function AdminReviewsManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminReviewsManagement);

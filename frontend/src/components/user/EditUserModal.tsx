@@ -365,12 +365,13 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
                   value={formData.primaryProperty || ''}
                   onChange={(e) => {
                     setFormData({ ...formData, primaryProperty: e.target.value });
-                    if (!selectedProperties.includes(e.target.value)) {
+                    if (e.target.value && !selectedProperties.includes(e.target.value)) {
                       setSelectedProperties([...selectedProperties, e.target.value]);
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="" disabled>Select a property</option>
                   {properties.map(p => (
                     <option key={p._id} value={p._id}>
                       {p.name}
@@ -498,7 +499,7 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
           >
             Cancel
           </button>
-          <button aria-label="Close"
+          <button aria-label="Update User"
             type="submit"
             disabled={loading}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"

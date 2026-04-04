@@ -575,7 +575,7 @@ router.post('/refund',
 );
 
 // Look up a payment by Stripe payment intent ID
-router.get('/intent/:paymentIntentId', authenticate, ensureTenantContext, catchAsync(async (req, res) => {
+router.get('/intent/:paymentIntentId', authenticate, ensureTenantContext, authorizePolicy('payments', 'confirmIntent'), catchAsync(async (req, res) => {
   const { paymentIntentId } = req.params;
 
   if (!paymentIntentId) {

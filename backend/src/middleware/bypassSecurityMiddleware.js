@@ -1,5 +1,6 @@
 import bypassSecurityService from '../services/bypassSecurityService.js';
 import AdminBypassAudit from '../models/AdminBypassAudit.js';
+import logger from '../utils/logger.js';
 
 /**
  * Comprehensive security middleware for admin bypass operations
@@ -124,7 +125,7 @@ export const validateAdminRole = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Admin role validation error:', error);
+    logger.error('Admin role validation error:', error);
     next(error);
   }
 };
@@ -212,7 +213,7 @@ export const validateBypassOperation = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Bypass operation validation error:', error);
+    logger.error('Bypass operation validation error:', error);
     next(error);
   }
 };
@@ -257,7 +258,7 @@ export const preventDuplicateBypass = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Duplicate bypass prevention error:', error);
+    logger.error('Duplicate bypass prevention error:', error);
     next(error);
   }
 };
@@ -296,7 +297,7 @@ export const auditBypassAttempt = async (req, res, next) => {
             }
           });
         } catch (error) {
-          console.error('Failed to log bypass attempt:', error);
+          logger.error('Failed to log bypass attempt:', error);
         }
       });
 
@@ -306,7 +307,7 @@ export const auditBypassAttempt = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Audit logging middleware error:', error);
+    logger.error('Audit logging middleware error:', error);
     next(error);
   }
 };
@@ -345,7 +346,7 @@ export const sanitizeBypassRequest = (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Request sanitization error:', error);
+    logger.error('Request sanitization error:', error);
     next(error);
   }
 };
@@ -354,7 +355,7 @@ export const sanitizeBypassRequest = (req, res, next) => {
  * Error handling middleware specific to bypass operations
  */
 export const handleBypassErrors = (error, req, res, next) => {
-  console.error('Bypass operation error:', error);
+  logger.error('Bypass operation error:', error);
 
   // Log the error
   setImmediate(async () => {
@@ -379,7 +380,7 @@ export const handleBypassErrors = (error, req, res, next) => {
         }
       });
     } catch (logError) {
-      console.error('Failed to log bypass error:', logError);
+      logger.error('Failed to log bypass error:', logError);
     }
   });
 

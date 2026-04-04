@@ -2,8 +2,9 @@ import React from 'react';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import AdminBypassCheckout from '../../components/admin/AdminBypassCheckout';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminBypassCheckoutPage() {
+function AdminBypassCheckoutPage() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
 
   if (!selectedPropertyId && viewMode === 'single') {
@@ -25,3 +26,5 @@ export default function AdminBypassCheckoutPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminBypassCheckoutPage);

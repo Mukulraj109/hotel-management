@@ -288,41 +288,48 @@ class BookingWorkflowEngine {
    * Schedule periodic checks for time-based workflows
    */
   schedulePeriodicChecks() {
+    // Helper: run an async task on an interval, skipping if the previous run is still active
+    const safeInterval = (name, fn, ms) => {
+      let running = false;
+      return setInterval(async () => {
+        if (running) {
+          logger.debug(`Skipping ${name} — previous run still in progress`);
+          return;
+        }
+        running = true;
+        try {
+          await fn();
+        } catch (error) {
+          logger.error(`${name} failed`, {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
+        } finally {
+          running = false;
+        }
+      }, ms);
+    };
+
     // Check for expired reservations every 5 minutes
-    const expiredReservationsCheck = setInterval(async () => {
-      try {
-        await this.checkExpiredReservations();
-      } catch (error) {
-        logger.error('Expired reservations check failed', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-      }
-    }, 5 * 60 * 1000);
+    const expiredReservationsCheck = safeInterval(
+      'Expired reservations check',
+      () => this.checkExpiredReservations(),
+      5 * 60 * 1000
+    );
 
     // Check for no-shows every 30 minutes
-    const noShowCheck = setInterval(async () => {
-      try {
-        await this.checkForNoShows();
-      } catch (error) {
-        logger.error('No-show check failed', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-      }
-    }, 30 * 60 * 1000);
+    const noShowCheck = safeInterval(
+      'No-show check',
+      () => this.checkForNoShows(),
+      30 * 60 * 1000
+    );
 
     // Check for overdue check-outs every hour
-    const checkoutCheck = setInterval(async () => {
-      try {
-        await this.checkOverdueCheckouts();
-      } catch (error) {
-        logger.error('Overdue checkout check failed', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-      }
-    }, 60 * 60 * 1000);
+    const checkoutCheck = safeInterval(
+      'Overdue checkout check',
+      () => this.checkOverdueCheckouts(),
+      60 * 60 * 1000
+    );
 
     this.scheduledTasks.set('expired_reservations', expiredReservationsCheck);
     this.scheduledTasks.set('no_show', noShowCheck);

@@ -5,6 +5,14 @@ import RoomType from '../../models/RoomType.js';
 import Booking from '../../models/Booking.js';
 import AuditLog from '../../models/AuditLog.js';
 import logger from '../../utils/logger.js';
+import { CircuitBreaker } from '../../utils/circuitBreaker.js';
+
+const bookingComBreaker = new CircuitBreaker({
+  name: 'booking_com_api',
+  failureThreshold: 5,
+  resetTimeout: 30000,
+  timeout: 15000
+});
 
 /**
  * Booking.com Channel Integration Service
@@ -124,13 +132,15 @@ class BookingComService {
    */
   async testConnection(channel) {
     try {
-      const response = await axios.get(`${channel.credentials.endpoint}/v1/hotels/${channel.credentials.hotelId}/info`, {
-        auth: {
-          username: channel.credentials.username,
-          password: channel.credentials.password
-        },
-        timeout: 10000
-      });
+      const response = await bookingComBreaker.execute(
+        () => axios.get(`${channel.credentials.endpoint}/v1/hotels/${channel.credentials.hotelId}/info`, {
+          auth: {
+            username: channel.credentials.username,
+            password: channel.credentials.password
+          },
+          timeout: 10000
+        })
+      );
 
       if (response.status === 200) {
         return {
@@ -368,8 +378,8 @@ class BookingComService {
   async sendToBookingCom(channel, syncData) {
     try {
       // This is a simulation - in production, you would call the actual Booking.com API
-      logger.debug(`📤 [SIMULATION] Sending ${syncData.length} records to Booking.com...`);
-      logger.debug('📊 Sample data:', syncData.slice(0, 2));
+      logger.debug(`Sending ${syncData.length} records to Booking.com (simulation)...`);
+      logger.debug('Sample data:', syncData.slice(0, 2));
 
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -381,23 +391,25 @@ class BookingComService {
         recordsProcessed: syncData.length
       };
 
-      /* 
+      /*
       // PRODUCTION CODE (uncomment when ready):
-      const response = await axios.post(
-        `${channel.credentials.endpoint}/v1/hotels/${channel.credentials.hotelId}/inventory`,
-        {
-          inventory_updates: syncData
-        },
-        {
-          auth: {
-            username: channel.credentials.username,
-            password: channel.credentials.password
+      const response = await bookingComBreaker.execute(
+        () => axios.post(
+          `${channel.credentials.endpoint}/v1/hotels/${channel.credentials.hotelId}/inventory`,
+          {
+            inventory_updates: syncData
           },
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+          {
+            auth: {
+              username: channel.credentials.username,
+              password: channel.credentials.password
+            },
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
           }
-        }
+        )
       );
 
       return {

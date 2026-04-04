@@ -45,7 +45,7 @@ const notificationSchema = new mongoose.Schema({
       'daily_operations_summary', 'staff_performance_alert', 'revenue_impact_alert', 'guest_satisfaction_low', 'equipment_failure_pattern',
 
       // Staff Management
-      'task_assignment', 'task_overdue', 'shift_reminder', 'performance_review_due',
+      'task_assignment', 'task_assigned', 'task_overdue', 'shift_reminder', 'performance_review_due',
 
       // Emergency & Security
       'emergency_alert', 'security_incident', 'evacuation_notice', 'safety_inspection_required',
@@ -56,6 +56,9 @@ const notificationSchema = new mongoose.Schema({
 
       // Overbooking / ops
       'overbooking_resolved',
+
+      // Supply request workflow
+      'supply_request_approved', 'supply_request_rejected',
 
       // Guest social (meet-ups)
       'meetup_invite', 'meetup_accepted', 'meetup_declined', 'meetup_cancelled', 'meetup_completed'
@@ -150,7 +153,7 @@ notificationSchema.index({ userId: 1, status: 1 });
 notificationSchema.index({ userId: 1, type: 1 });
 notificationSchema.index({ hotelId: 1, type: 1 });
 notificationSchema.index({ scheduledFor: 1, status: 'pending' });
-notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 2592000 });
 // NOTE: Removed destructive TTL index on createdAt that auto-deleted notifications after 90 days.
 // Notifications are audit data and must not be auto-deleted. Use the expiresAt TTL index above
 // for explicit expiration, or run a scheduled archival job for old notifications instead.

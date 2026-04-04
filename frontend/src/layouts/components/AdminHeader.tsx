@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 import { useNotifications, useNotificationStream } from '../../hooks/useNotifications';
 import NotificationDropdown from '../../components/notifications/NotificationDropdown';
 import SettingsDropdown from '../../components/settings/SettingsDropdown';

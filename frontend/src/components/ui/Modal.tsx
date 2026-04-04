@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
@@ -15,6 +15,8 @@ interface ModalProps {
 
 export function Modal({ isOpen, onClose, title, children, size = 'md', className, noPadding = false }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -22,8 +24,21 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
     };
 
     if (isOpen) {
+      // Save current focus and move into modal
+      previousActiveElement.current = document.activeElement as HTMLElement;
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
+
+      // Focus the first focusable element inside the modal
+      requestAnimationFrame(() => {
+        const focusable = modalRef.current?.querySelector<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable) focusable.focus();
+      });
+    } else {
+      // Restore focus to the element that opened the modal
+      previousActiveElement.current?.focus();
     }
 
     return () => {
@@ -52,7 +67,8 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
           ref={modalRef}
           role="dialog"
           aria-modal="true"
-          aria-label={title}
+          aria-labelledby={title ? titleId : undefined}
+          aria-label={title ? undefined : 'Dialog'}
           className={cn(
             'relative bg-white rounded-lg shadow-xl w-full animate-fade-in',
             sizeClasses[size]
@@ -60,9 +76,9 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
         >
           {title && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+              <h3 id={titleId} className="text-lg font-semibold text-gray-900">{title}</h3>
               {onClose && (
-                <button aria-label="Close"
+                <button aria-label="Close dialog"
                   onClick={onClose}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >

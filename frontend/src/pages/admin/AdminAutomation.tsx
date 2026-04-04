@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import SimpleAutomationDashboard from '../../components/automation/SimpleAutomationDashboard';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -30,4 +31,4 @@ const AdminAutomation: React.FC = () => {
   );
 };
 
-export default AdminAutomation;
+export default withErrorBoundary(AdminAutomation);

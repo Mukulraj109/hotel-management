@@ -20,7 +20,14 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
   onConfirm,
   loading = false
 }) => {
-  const [formData, setFormData] = useState<unknown>({});
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
+
+  // Reset form data when modal type changes or modal opens/closes
+  React.useEffect(() => {
+    if (isOpen) {
+      setFormData({});
+    }
+  }, [isOpen, type]);
 
   if (!isOpen) return null;
 
@@ -95,12 +102,23 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
 
   const config = getModalConfig();
 
+  // Static Tailwind class mappings (dynamic class construction is not supported by Tailwind purge)
+  const colorClasses: Record<string, { headerBg: string; submitBg: string; submitHover: string }> = {
+    green: { headerBg: 'bg-green-50', submitBg: 'bg-green-600', submitHover: 'hover:bg-green-700' },
+    red: { headerBg: 'bg-red-50', submitBg: 'bg-red-600', submitHover: 'hover:bg-red-700' },
+    blue: { headerBg: 'bg-blue-50', submitBg: 'bg-blue-600', submitHover: 'hover:bg-blue-700' },
+    orange: { headerBg: 'bg-orange-50', submitBg: 'bg-orange-600', submitHover: 'hover:bg-orange-700' },
+    purple: { headerBg: 'bg-purple-50', submitBg: 'bg-purple-600', submitHover: 'hover:bg-purple-700' },
+    gray: { headerBg: 'bg-gray-50', submitBg: 'bg-gray-600', submitHover: 'hover:bg-gray-700' },
+  };
+  const colors = colorClasses[config.color] || colorClasses.gray;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onConfirm(formData);
   };
 
-  const handleFieldChange = (fieldName: string, value: unknown) => {
+  const handleFieldChange = (fieldName: string, value: string | string[]) => {
     setFormData(prev => ({
       ...prev,
       [fieldName]: value
@@ -111,7 +129,7 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className={`flex items-center justify-between p-6 border-b bg-${config.color}-50`}>
+        <div className={`flex items-center justify-between p-6 border-b ${colors.headerBg}`}>
           <div className="flex items-center space-x-3">
             {config.icon}
             <h2 className="text-xl font-semibold text-gray-900">{config.title}</h2>
@@ -214,9 +232,9 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
               >
                 Cancel
               </button>
-              <button aria-label="Close"
+              <button aria-label="Confirm"
                 type="submit"
-                className={`flex-1 px-4 py-2 bg-${config.color}-600 text-white rounded-md hover:bg-${config.color}-700 transition-colors disabled:opacity-50`}
+                className={`flex-1 px-4 py-2 ${colors.submitBg} text-white rounded-md ${colors.submitHover} transition-colors disabled:opacity-50`}
                 disabled={loading}
               >
                 {loading ? 'Processing...' : 'Confirm'}

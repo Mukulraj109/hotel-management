@@ -5,8 +5,9 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminLogin() {
+function AdminLogin() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -167,3 +168,5 @@ export default function AdminLogin() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminLogin);

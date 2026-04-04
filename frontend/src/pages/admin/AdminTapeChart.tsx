@@ -25,6 +25,7 @@ import AdvancedReservations from '../../components/tapechart/AdvancedReservation
 import AssignmentRules from '../../components/tapechart/AssignmentRules';
 import TapeChartDashboard from '../../components/tapechart/TapeChartDashboard';
 import { WaitingListManager } from '../../components/reservations/WaitingListManager';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const AdminTapeChart: React.FC = () => {
   const [activeTab, setActiveTab] = useState('tapechart');
@@ -360,4 +361,4 @@ const AdminTapeChart: React.FC = () => {
   );
 };
 
-export default AdminTapeChart;
+export default withErrorBoundary(AdminTapeChart);

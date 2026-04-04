@@ -26,6 +26,7 @@ import {
 import { useRealTime } from '../../services/realTimeService';
 import { api } from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const PAGE_LIMIT = 50;
 
@@ -43,7 +44,7 @@ interface DailySummary {
   estimatedTimeRemaining: number;
 }
 
-export default function FrontDeskDailyCheck() {
+function FrontDeskDailyCheck() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState<DailyCheckData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -439,3 +440,5 @@ export default function FrontDeskDailyCheck() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskDailyCheck);

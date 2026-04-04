@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
 import { realTimeService } from '../../services/realTimeService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface QuickStat {
   label: string;
@@ -26,7 +27,7 @@ interface QuickStat {
   link?: string;
 }
 
-export default function FrontDeskDashboard() {
+function FrontDeskDashboard() {
   const { user } = useAuth();
   const { selectedProperty } = useProperty();
   const queryClient = useQueryClient();
@@ -564,3 +565,5 @@ export default function FrontDeskDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskDashboard);

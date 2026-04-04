@@ -58,6 +58,8 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
   const [priceHistory, setPriceHistory] = useState<PriceAdjustment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [reversingAdjustmentId, setReversingAdjustmentId] = useState<string | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
 
   const currentAmount = booking.totalAmount;
   const calculatedAdjustment = adjustmentType === 'percentage'
@@ -126,20 +128,31 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
   };
 
   const handleReverseAdjustment = async (adjustmentId: string) => {
-    const reverseReason = prompt('Please provide a reason for reversing this adjustment:');
-    if (!reverseReason) return;
+    if (reversingAdjustmentId === adjustmentId) {
+      // Already in reverse mode - submit the reversal
+      if (!reverseReason.trim()) {
+        toast.error('Please provide a reason for reversing this adjustment');
+        return;
+      }
 
-    try {
-      await api.post(`/bookings/enhanced/${booking._id}/adjustments/${adjustmentId}/reverse`, {
-        reason: reverseReason
-      });
+      try {
+        await api.post(`/bookings/enhanced/${booking._id}/adjustments/${adjustmentId}/reverse`, {
+          reason: reverseReason.trim()
+        });
 
-      toast.success('Price adjustment reversed successfully');
-      fetchPriceHistory();
-      onSuccess();
-    } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      toast.error(axiosErr?.response?.data?.message || 'Failed to reverse adjustment');
+        toast.success('Price adjustment reversed successfully');
+        setReversingAdjustmentId(null);
+        setReverseReason('');
+        fetchPriceHistory();
+        onSuccess();
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        toast.error(axiosErr?.response?.data?.message || 'Failed to reverse adjustment');
+      }
+    } else {
+      // Enter reverse mode for this adjustment
+      setReversingAdjustmentId(adjustmentId);
+      setReverseReason('');
     }
   };
 
@@ -341,7 +354,7 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
                   >
                     Cancel
                   </button>
-                  <button aria-label="Close"
+                  <button aria-label="Apply price adjustment"
                     type="submit"
                     disabled={loading || newAmount < 0 || !reason.trim() || adjustmentAmount === 0}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -405,12 +418,46 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
                               </div>
                             </div>
                             {!adjustment.isReversed && (
-                              <button
-                                onClick={() => handleReverseAdjustment(adjustment.adjustmentId)}
-                                className="text-xs text-red-600 hover:text-red-700 ml-2"
-                              >
-                                Reverse
-                              </button>
+                              <div className="flex flex-col items-end gap-1 ml-2">
+                                {reversingAdjustmentId === adjustment.adjustmentId ? (
+                                  <div className="flex flex-col gap-1">
+                                    <input
+                                      type="text"
+                                      value={reverseReason}
+                                      onChange={(e) => setReverseReason(e.target.value)}
+                                      placeholder="Reason for reversal..."
+                                      className="text-xs px-2 py-1 border border-gray-300 rounded w-48 focus:outline-none focus:ring-1 focus:ring-red-500"
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleReverseAdjustment(adjustment.adjustmentId);
+                                        if (e.key === 'Escape') { setReversingAdjustmentId(null); setReverseReason(''); }
+                                      }}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => handleReverseAdjustment(adjustment.adjustmentId)}
+                                        className="text-xs text-white bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded"
+                                        disabled={!reverseReason.trim()}
+                                      >
+                                        Confirm
+                                      </button>
+                                      <button
+                                        onClick={() => { setReversingAdjustmentId(null); setReverseReason(''); }}
+                                        className="text-xs text-gray-600 hover:text-gray-700 px-2 py-0.5 rounded border border-gray-300"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleReverseAdjustment(adjustment.adjustmentId)}
+                                    className="text-xs text-red-600 hover:text-red-700"
+                                  >
+                                    Reverse
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

@@ -84,7 +84,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({ className = '' }) =
       setDashboardData(data);
       setLastUpdate(new Date());
     } catch (err: unknown) {
-      setError(err.message || 'Failed to fetch laundry dashboard data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch laundry dashboard data');
       toast.error('Failed to load laundry dashboard');
     } finally {
       setLoading(false);

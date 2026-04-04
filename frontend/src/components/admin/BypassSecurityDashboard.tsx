@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,62 +77,67 @@ interface SecurityAlert {
 }
 
 const BypassSecurityDashboard: React.FC = () => {
-  const [metrics, setMetrics] = useState<SecurityMetrics | null>(null);
-  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
-  const [securityAlerts, setSecurityAlerts] = useState<SecurityAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [filterRiskLevel, setFilterRiskLevel] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    fetchSecurityData();
-  }, [timeRange]);
+  // Use useQuery for automatic caching, refetch, and unmount-safe data fetching
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    error: metricsError,
+  } = useQuery({
+    queryKey: ['bypass-security-metrics', timeRange],
+    queryFn: () => bypassSecurityService.getSecurityMetrics(timeRange),
+  });
 
-  const fetchSecurityData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    error: eventsError,
+  } = useQuery({
+    queryKey: ['bypass-security-events', timeRange],
+    queryFn: () => bypassSecurityService.getSecurityEvents({ timeRange, limit: 50 }),
+  });
 
-      const [metricsData, eventsData, alertsData] = await Promise.all([
-        bypassSecurityService.getSecurityMetrics(timeRange),
-        bypassSecurityService.getSecurityEvents({ timeRange, limit: 50 }),
-        bypassSecurityService.getActiveAlerts()
-      ]);
+  const {
+    data: alertsData,
+    isLoading: alertsLoading,
+    error: alertsError,
+  } = useQuery({
+    queryKey: ['bypass-security-alerts'],
+    queryFn: () => bypassSecurityService.getActiveAlerts(),
+  });
 
-      setMetrics(metricsData.data || null);
-      setSecurityEvents(eventsData.data || []);
-      setSecurityAlerts(alertsData.data || []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch security data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const metrics: SecurityMetrics | null = metricsData?.data || null;
+  const securityEvents: SecurityEvent[] = eventsData?.data || [];
+  const securityAlerts: SecurityAlert[] = alertsData?.data || [];
+
+  const loading = metricsLoading || eventsLoading || alertsLoading;
+  const error = metricsError || eventsError || alertsError
+    ? (metricsError instanceof Error ? metricsError.message
+      : eventsError instanceof Error ? eventsError.message
+      : alertsError instanceof Error ? alertsError.message
+      : 'Failed to fetch security data')
+    : null;
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
-    try {
-      setRefreshing(true);
-      setError(null);
-      const [metricsData, eventsData, alertsData] = await Promise.all([
-        bypassSecurityService.getSecurityMetrics(timeRange),
-        bypassSecurityService.getSecurityEvents({ timeRange, limit: 50 }),
-        bypassSecurityService.getActiveAlerts()
-      ]);
-      setMetrics(metricsData.data || null);
-      setSecurityEvents(eventsData.data || []);
-      setSecurityAlerts(alertsData.data || []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh data');
-    } finally {
-      setRefreshing(false);
-    }
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['bypass-security-metrics', timeRange] }),
+      queryClient.invalidateQueries({ queryKey: ['bypass-security-events', timeRange] }),
+      queryClient.invalidateQueries({ queryKey: ['bypass-security-alerts'] }),
+    ]);
+    setRefreshing(false);
   };
+
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExportReport = async () => {
     try {
+      setExportError(null);
       const report = await bypassSecurityService.exportSecurityReport(timeRange);
       const blob = new Blob([JSON.stringify(report.data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
@@ -143,7 +149,7 @@ const BypassSecurityDashboard: React.FC = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to export report');
+      setExportError(err instanceof Error ? err.message : 'Failed to export report');
     }
   };
 
@@ -229,10 +235,10 @@ const BypassSecurityDashboard: React.FC = () => {
       </div>
 
       {/* Error Message */}
-      {error && (
+      {(error || exportError) && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{error || exportError}</AlertDescription>
         </Alert>
       )}
 
@@ -275,7 +281,7 @@ const BypassSecurityDashboard: React.FC = () => {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">Total Bypasses</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.totalBypasses}</p>
+                  <p className="text-2xl font-bold text-gray-900">{metrics.totalBypasses ?? 0}</p>
                 </div>
                 <Activity className="h-8 w-8 text-blue-600" />
               </div>
@@ -288,12 +294,12 @@ const BypassSecurityDashboard: React.FC = () => {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">Avg Risk Score</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {Math.round(metrics.averageRiskScore)}
+                    {Math.round(metrics.averageRiskScore ?? 0)}
                   </p>
                 </div>
                 <TrendingUp className={`h-8 w-8 ${
-                  metrics.averageRiskScore > 60 ? 'text-red-600' :
-                  metrics.averageRiskScore > 40 ? 'text-yellow-600' :
+                  (metrics.averageRiskScore ?? 0) > 60 ? 'text-red-600' :
+                  (metrics.averageRiskScore ?? 0) > 40 ? 'text-yellow-600' :
                   'text-green-600'
                 }`} />
               </div>
@@ -306,7 +312,7 @@ const BypassSecurityDashboard: React.FC = () => {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">Financial Impact</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ₹{metrics.totalFinancialImpact.toLocaleString('en-IN')}
+                    ₹{(metrics.totalFinancialImpact ?? 0).toLocaleString('en-IN')}
                   </p>
                 </div>
                 <DollarSign className="h-8 w-8 text-green-600" />
@@ -319,7 +325,7 @@ const BypassSecurityDashboard: React.FC = () => {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">High Risk Events</p>
-                  <p className="text-2xl font-bold text-red-600">{metrics.highRiskCount}</p>
+                  <p className="text-2xl font-bold text-red-600">{metrics.highRiskCount ?? 0}</p>
                 </div>
                 <AlertTriangle className="h-8 w-8 text-red-600" />
               </div>

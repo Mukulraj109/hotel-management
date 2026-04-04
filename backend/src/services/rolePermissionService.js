@@ -601,6 +601,30 @@ class RolePermissionService {
   }
 
   /**
+   * Check permission by role key (e.g. 'ADMIN') without requiring
+   * the user to be registered in the in-memory roleAssignments map.
+   */
+  hasPermissionByRole(roleKey, permission) {
+    try {
+      const role = this.systemRoles[roleKey] || this.customRoles.get(roleKey);
+      if (!role) return false;
+
+      const effectivePermissions = this.getEffectivePermissions(role);
+
+      if (effectivePermissions.includes('*')) return true;
+      if (effectivePermissions.includes(permission)) return true;
+
+      const [category] = permission.split(':');
+      if (effectivePermissions.includes(`${category}:*`)) return true;
+
+      return false;
+    } catch (error) {
+      logger.error('Permission check by role failed', { error: error.message, roleKey, permission });
+      return false;
+    }
+  }
+
+  /**
    * Check multiple permissions (AND operation)
    */
   hasAllPermissions(userId, permissions) {

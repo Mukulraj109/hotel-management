@@ -16,6 +16,7 @@ import { Button } from '../../../components/ui/button';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface ProfileFormData {
   name: string;
@@ -30,7 +31,7 @@ interface ProfileSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function ProfileSettings({ onSettingsChange }: ProfileSettingsProps = {}) {
+function ProfileSettings({ onSettingsChange }: ProfileSettingsProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -255,19 +256,12 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
                 Email Address
               </label>
               <input
-                {...register('email', {
-                  required: 'Email is required',
-                  pattern: {
-                    value: /^\S+@\S+$/i,
-                    message: 'Invalid email format'
-                  }
-                })}
+                {...register('email')}
                 type="email"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                readOnly
+                className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
               />
-              {errors.email && (
-                <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
-              )}
+              <p className="text-gray-400 text-xs mt-1">Email cannot be changed from this form. Contact your administrator.</p>
             </div>
 
             <div>
@@ -337,3 +331,5 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
     </div>
   );
 }
+
+export default withErrorBoundary(ProfileSettings);

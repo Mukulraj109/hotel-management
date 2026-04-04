@@ -1,15 +1,19 @@
 import express from 'express';
 import webOptimizationController from '../controllers/webOptimizationController.js';
-import adminAuth from '../middleware/adminAuth.js';
+import { authenticate } from '../middleware/auth.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
-router.use(adminAuth);
+router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('webSettings', 'adminAccess'));
 
 router.post('/:hotelId/ab-tests', validate(mutationBaselineSchema), webOptimizationController.createABTest);
 router.get('/:hotelId/ab-tests', webOptimizationController.getABTests);

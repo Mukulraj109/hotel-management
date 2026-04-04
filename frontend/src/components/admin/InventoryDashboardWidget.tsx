@@ -47,13 +47,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (hotelId) {
-      fetchInventorySummary();
-    }
-  }, [hotelId]);
-
-  const fetchInventorySummary = async () => {
+  const fetchInventorySummary = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -109,7 +103,13 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (hotelId) {
+      fetchInventorySummary();
+    }
+  }, [hotelId, fetchInventorySummary]);
 
   const handleNavigate = (path: string) => {
     if (onNavigate) {

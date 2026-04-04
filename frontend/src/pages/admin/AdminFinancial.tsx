@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProperty } from '../../context/PropertyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,7 +16,7 @@ import AccountingIntegrationDashboard from '../../components/financial/Accountin
 const AdminFinancial: React.FC = () => {
   const { selectedPropertyId } = useProperty();
   const { user } = useAuth();
-  const readOnly = user?.role === 'frontdesk';
+  const readOnly = !['admin', 'manager'].includes(user?.role || '');
 
   if (!selectedPropertyId) {
     return (
@@ -83,4 +84,4 @@ const AdminFinancial: React.FC = () => {
   );
 };
 
-export default AdminFinancial;
+export default withErrorBoundary(AdminFinancial);

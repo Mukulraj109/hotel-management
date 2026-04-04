@@ -1,3 +1,4 @@
 import FrontDeskBookings from './FrontDeskBookings';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default FrontDeskBookings;
+export default withErrorBoundary(FrontDeskBookings);

@@ -16,6 +16,7 @@ import { useToast } from '../../hooks/useToast';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) return error.message;
@@ -633,4 +634,4 @@ const AdminSeasonalPricing: React.FC = () => {
   );
 };
 
-export default AdminSeasonalPricing;
+export default withErrorBoundary(AdminSeasonalPricing);

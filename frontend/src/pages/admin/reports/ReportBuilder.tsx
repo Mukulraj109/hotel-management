@@ -17,7 +17,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/Modal';
 import { useReports } from '../../../hooks/useDashboard';
+import { useProperty } from '../../../context/PropertyContext';
 import { formatCurrency, formatRelativeTime, generateExportFilename } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface ReportTemplate {
   id: string;
@@ -94,7 +96,8 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
   },
 ];
 
-export default function ReportBuilder() {
+function ReportBuilder() {
+  const { selectedPropertyId } = useProperty();
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [customReport, setCustomReport] = useState({
     name: '',
@@ -117,7 +120,7 @@ export default function ReportBuilder() {
   const [showCustomReportModal, setShowCustomReportModal] = useState(false);
 
   const reportsQuery = useReports(
-    reportFilters.hotelId || 'default',
+    reportFilters.hotelId || selectedPropertyId || '',
     selectedTemplate?.type || 'comprehensive',
     {
       startDate: reportFilters.startDate,
@@ -558,3 +561,5 @@ export default function ReportBuilder() {
     </div>
   );
 }
+
+export default withErrorBoundary(ReportBuilder);

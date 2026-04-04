@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/dashboardUtils';
 import { 
+import { withErrorBoundary } from '../../components/ErrorBoundary';
   ArrowLeft, 
   Calendar,
   User,
@@ -63,7 +64,7 @@ const formatBookingStatus = (status: string) => {
   return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
-export default function RoomBookingsPage() {
+function RoomBookingsPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   
@@ -154,7 +155,7 @@ export default function RoomBookingsPage() {
                 <select
                   value={timeFilter}
                   onChange={(e) => {
-                    setTimeFilter(e.target.value as unknown);
+                    setTimeFilter(e.target.value as 'all' | 'past' | 'future' | 'current');
                     setPage(1);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -373,3 +374,5 @@ export default function RoomBookingsPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(RoomBookingsPage);

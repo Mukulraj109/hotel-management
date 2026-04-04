@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const loyaltyBonusCampaignSchema = new mongoose.Schema(
   {
+    hotelId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hotel',
+      required: true,
+      index: true
+    },
     name: { type: String, required: true, trim: true },
     code: { type: String, required: true, trim: true, uppercase: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
@@ -17,7 +23,8 @@ const loyaltyBonusCampaignSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-loyaltyBonusCampaignSchema.index({ code: 1 }, { unique: true });
-loyaltyBonusCampaignSchema.index({ isActive: 1, startsAt: 1, endsAt: 1 });
+loyaltyBonusCampaignSchema.index({ hotelId: 1, code: 1 }, { unique: true });
+loyaltyBonusCampaignSchema.index({ hotelId: 1, isActive: 1, startsAt: 1, endsAt: 1 });
+loyaltyBonusCampaignSchema.index({ hotelId: 1, name: 1 });
 
 export default mongoose.model('LoyaltyBonusCampaign', loyaltyBonusCampaignSchema);

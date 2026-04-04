@@ -42,7 +42,7 @@ async function readAwardConfig(hotelId) {
       return config;
     }
   } catch (err) {
-    console.warn('Failed to load loyalty rules from DB, falling back to env vars:', err.message);
+    logger.warn('Failed to load loyalty rules from DB, falling back to env vars:', err.message);
   }
 
   // Fallback to environment variables

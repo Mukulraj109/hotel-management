@@ -240,7 +240,8 @@ class TapeChartController {
   // Tape Chart View Management
   async createTapeChartView(req, res) {
     try {
-      const view = await tapeChartService.createTapeChartView(req.body, req.user.id);
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
+      const view = await tapeChartService.createTapeChartView({ ...req.body, hotelId }, req.user.id);
       res.status(201).json({ success: true, data: view });
     } catch (error) {
       res.status(400).json({ success: false, message: error.message });

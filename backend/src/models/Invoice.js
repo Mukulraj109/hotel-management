@@ -510,6 +510,13 @@ const invoiceSchema = new mongoose.Schema({
   },
   lastReminderSent: Date,
 
+  // Reverse sync tracking — set when FinancialInvoice syncs status back
+  syncedFromFinancial: {
+    type: Boolean,
+    default: false
+  },
+  financialSyncedAt: Date,
+
   // Soft delete fields for financial record preservation
   isDeleted: {
     type: Boolean,
@@ -543,6 +550,14 @@ invoiceSchema.index({ guestId: 1, status: 1 });
 // Note: invoiceNumber already has unique: true, no need for separate index
 invoiceSchema.index({ dueDate: 1, status: 1 });
 invoiceSchema.index({ 'splitBilling.splits.guestId': 1 });
+
+// Require at least one item when invoice is issued or later
+invoiceSchema.pre('validate', function(next) {
+  if (['issued', 'partially_paid', 'paid', 'overdue'].includes(this.status) && (!this.items || this.items.length === 0)) {
+    return next(new Error('Invoice must have at least one item when issued'));
+  }
+  next();
+});
 
 // Generate invoice number before saving
 invoiceSchema.pre('save', function(next) {
@@ -955,8 +970,19 @@ invoiceSchema.methods.addExtraPersonCharges = function(extraPersonCharges) {
   return this;
 };
 
+// Validate totalAmount is not negative after discounts
+invoiceSchema.pre('save', function(next) {
+  if (this.isModified('totalAmount') && this.totalAmount < 0) {
+    this.totalAmount = 0;
+  }
+  next();
+});
+
 // Sync to FinancialInvoice for unified financial reporting
 invoiceSchema.post('save', async function(doc) {
+  // Prevent infinite loop: if this save was triggered by FinancialInvoice reverse sync, skip
+  if (doc.syncedFromFinancial) return;
+
   try {
     const FinancialInvoice = mongoose.model('FinancialInvoice');
 
@@ -1023,7 +1049,8 @@ invoiceSchema.post('save', async function(doc) {
           status: statusMap[doc.status] || doc.status,
           notes: doc.notes,
           internalNotes: doc.internalNotes,
-          syncedAt: new Date()
+          syncedAt: new Date(),
+          _skipReverseSync: true
         },
         $setOnInsert: {
           createdBy: doc.guestId

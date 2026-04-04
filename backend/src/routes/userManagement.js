@@ -11,8 +11,8 @@ router.use(authenticate);
 router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
-// Admin/Manager routes only
-router.use(authorize('admin', 'manager'));
+// Admin-only routes — user management is a sensitive operation
+router.use(authorize('admin'));
 
 // Analytics and reporting routes
 router.route('/analytics')

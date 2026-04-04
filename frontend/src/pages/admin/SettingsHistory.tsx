@@ -8,7 +8,7 @@ import {
   CardTitle,
   CardDescription
 } from '../../components/ui/card';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/Badge';
 import {
   Dialog,
@@ -180,7 +180,8 @@ function SettingsHistory() {
       refetch();
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to rollback changes');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to rollback changes');
     }
   });
 

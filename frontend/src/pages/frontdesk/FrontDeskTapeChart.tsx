@@ -4,6 +4,7 @@ import { Bed } from 'lucide-react';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import TapeChartView from '../../components/tapechart/TapeChartView';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const FrontDeskTapeChart: React.FC = () => {
   const { selectedPropertyId } = useProperty();
@@ -66,4 +67,4 @@ const FrontDeskTapeChart: React.FC = () => {
   );
 };
 
-export default FrontDeskTapeChart;
+export default withErrorBoundary(FrontDeskTapeChart);

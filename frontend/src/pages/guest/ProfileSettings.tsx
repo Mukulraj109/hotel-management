@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
 import { userService } from '../../services/userService';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ProfileFormData {
   name: string;
@@ -302,4 +303,4 @@ const ProfileSettings: React.FC = () => {
   );
 };
 
-export default ProfileSettings;
+export default withErrorBoundary(ProfileSettings);

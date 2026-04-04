@@ -12,6 +12,7 @@ import {
   BillingHistoryFilters
 } from '../../services/billingHistoryService';
 import { Download, Receipt, CreditCard, RefreshCw, Calendar, AlertCircle } from 'lucide-react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Quick Stats Component for Guest View
 interface QuickStatsProps {
@@ -301,7 +302,7 @@ const GuestDetailModal: React.FC<GuestDetailModalProps> = ({ item, isOpen, onClo
 };
 
 // Main Guest Billing History Component
-export default function GuestBillingHistory() {
+function GuestBillingHistory() {
   const [filters, setFilters] = useState<BillingHistoryFilters>({
     page: 1,
     limit: 10,
@@ -514,3 +515,5 @@ export default function GuestBillingHistory() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestBillingHistory);

@@ -24,6 +24,7 @@ import {
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { dailyRoutineCheckService, DailyCheckData, RoomInventoryItem } from '../../services/dailyRoutineCheckService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface CartItem {
   itemId: string;
@@ -37,7 +38,7 @@ interface CartItem {
   notes?: string;
 }
 
-export default function DailyRoutineCheck() {
+function DailyRoutineCheck() {
   const [rooms, setRooms] = useState<DailyCheckData[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -678,3 +679,5 @@ export default function DailyRoutineCheck() {
     </div>
   );
 }
+
+export default withErrorBoundary(DailyRoutineCheck);

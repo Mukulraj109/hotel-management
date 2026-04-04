@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { cn } from '../utils/cn';
 import { attractionsService, LocalAttraction } from '../services/attractionsService';
 import { LoadingSpinner } from './LoadingSpinner';
-import { Card } from './ui/Card';
+import { Card } from './ui/card';
 
 interface LocalAttractionsProps {
   hotelId: string;

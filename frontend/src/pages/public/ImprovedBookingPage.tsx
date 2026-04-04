@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../context/AuthContext';
 import { formatIndianCurrency } from '../../utils/currency';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Room types data
 const ROOM_TYPES = {
@@ -638,4 +639,4 @@ const ImprovedBookingPage: React.FC = () => {
   );
 };
 
-export default ImprovedBookingPage;
+export default withErrorBoundary(ImprovedBookingPage);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { Button } from '../ui/Button';
+import { Button } from '../ui/button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { api } from '../../services/api';

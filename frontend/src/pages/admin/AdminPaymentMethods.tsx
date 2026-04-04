@@ -54,6 +54,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import EmptyState from '../../components/ui/EmptyState';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -190,8 +191,10 @@ const AdminPaymentMethods: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (selectedPropertyId) {
+      loadData();
+    }
+  }, [selectedPropertyId]);
 
   useEffect(() => {
     filterPaymentMethods();
@@ -211,7 +214,8 @@ const AdminPaymentMethods: React.FC = () => {
       setPaymentMethodTypes(typesResponse.data || []);
       setGatewayProviders(providersResponse.data || []);
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to load payment methods');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to load payment methods');
     } finally {
       setLoading(false);
     }
@@ -265,7 +269,8 @@ const AdminPaymentMethods: React.FC = () => {
       resetForm();
       loadData();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to create payment method');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to create payment method');
     }
   };
 
@@ -296,7 +301,8 @@ const AdminPaymentMethods: React.FC = () => {
       resetForm();
       loadData();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to update payment method');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to update payment method');
     }
   };
 
@@ -323,7 +329,8 @@ const AdminPaymentMethods: React.FC = () => {
       setSelectedPaymentMethod(null);
       loadData();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to delete payment method');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to delete payment method');
     }
   };
 
@@ -336,7 +343,8 @@ const AdminPaymentMethods: React.FC = () => {
       resetForm();
       loadData();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to clone payment method');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to clone payment method');
     }
   };
 
@@ -345,7 +353,8 @@ const AdminPaymentMethods: React.FC = () => {
       await paymentMethodService.updatePaymentMethodStatus(paymentMethod._id, !paymentMethod.isActive);
       loadData();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to update status');
     }
   };
 
@@ -356,7 +365,8 @@ const AdminPaymentMethods: React.FC = () => {
       const result = await paymentMethodService.testGatewayConnection(selectedPaymentMethod._id);
       // Show test result in dialog or notification
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to test gateway');
+      const error = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(error.response?.data?.message || error.message || 'Failed to test gateway');
     }
   };
 
@@ -760,16 +770,23 @@ const AdminPaymentMethods: React.FC = () => {
       {/* Data Grid */}
       <Card>
         <CardContent>
-          <DataGrid
-            rows={filteredPaymentMethods}
-            columns={columns}
-            pageSize={25}
-            rowsPerPageOptions={[25, 50, 100]}
-            autoHeight
-            disableSelectionOnClick
-            getRowId={(row) => row._id}
-            loading={loading}
-          />
+          {filteredPaymentMethods.length === 0 ? (
+            <EmptyState
+              title="No payment methods found"
+              description="There are no payment methods matching your criteria. Add a new payment method to get started."
+            />
+          ) : (
+            <DataGrid
+              rows={filteredPaymentMethods}
+              columns={columns}
+              pageSize={25}
+              rowsPerPageOptions={[25, 50, 100]}
+              autoHeight
+              disableSelectionOnClick
+              getRowId={(row) => row._id}
+              loading={loading}
+            />
+          )}
         </CardContent>
       </Card>
 

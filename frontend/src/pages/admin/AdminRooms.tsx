@@ -278,19 +278,19 @@ export function AdminRooms() {
     return rooms;
   }, [roomsQuery.data?.rooms, statusFilter, typeFilter, floorFilter]);
 
-  // Real-time change detection
-  const previousRooms = useMemo(() => {
-    return roomsQuery.data?.rooms || [];
-  }, [roomsQuery.dataUpdatedAt]);
+  // Real-time change detection - use a ref to properly track previous state
+  const previousRoomsRef = useRef<Room[]>([]);
 
   // Detect room changes for visual feedback
   useEffect(() => {
-    if (previousRooms.length > 0 && roomsQuery.data?.rooms) {
-      const currentRooms = roomsQuery.data.rooms;
+    const currentRooms = roomsQuery.data?.rooms || [];
+    const prevRooms = previousRoomsRef.current;
+
+    if (prevRooms.length > 0 && currentRooms.length > 0) {
       const newChangedRooms = new Set<string>();
-      
+
       currentRooms.forEach(currentRoom => {
-        const previousRoom = previousRooms.find(r => r._id === currentRoom._id);
+        const previousRoom = prevRooms.find(r => r._id === currentRoom._id);
         if (previousRoom) {
           const currentStatus = getRoomStatus(currentRoom);
           const previousStatus = getRoomStatus(previousRoom);
@@ -299,11 +299,11 @@ export function AdminRooms() {
           }
         }
       });
-      
+
       if (newChangedRooms.size > 0) {
         setChangedRooms(newChangedRooms);
         setLastUpdateTime(new Date());
-        
+
         // Clear change indicators after 5 seconds
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
@@ -311,7 +311,10 @@ export function AdminRooms() {
         }, 5000);
       }
     }
-  }, [roomsQuery.data?.rooms, previousRooms]);
+
+    // Update ref to current rooms AFTER comparison
+    previousRoomsRef.current = currentRooms;
+  }, [roomsQuery.data?.rooms]);
 
   // Connection status monitoring
   useEffect(() => {
@@ -527,20 +530,20 @@ export function AdminRooms() {
 
   const handleStatusUpdate = async (newStatus: Room['status']) => {
     if (!selectedRoomForStatus) return;
-    
+
     setIsPerformingAction(true);
     try {
-      await updateRoomStatus.mutateAsync({ 
-        id: selectedRoomForStatus._id, 
-        status: newStatus 
+      await updateRoomStatus.mutateAsync({
+        id: selectedRoomForStatus._id,
+        status: newStatus
       });
-      
+
+      toast.success(`Room ${selectedRoomForStatus.roomNumber} updated to ${newStatus.replace('_', ' ')}`);
+
       // Close modal and clear selection
       handleCloseStatusModal();
-      
-      // Show success feedback
     } catch (error) {
-      alert(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -551,10 +554,9 @@ export function AdminRooms() {
     setIsPerformingAction(true);
     try {
       await updateRoomStatus.mutateAsync({ id: roomId, status: newStatus });
-      // Show success feedback (you can add a toast notification here)
+      toast.success(`Room status updated to ${newStatus.replace('_', ' ')}`);
     } catch (error) {
-      // Show error feedback (you can add a toast notification here)
-      alert(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to update room status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -562,16 +564,17 @@ export function AdminRooms() {
 
   const handleBulkStatusUpdate = async (newStatus: Room['status']) => {
     if (selectedRooms.size === 0) return;
-    
+
     setIsPerformingAction(true);
     try {
       await bulkUpdateStatus.mutateAsync({
         roomIds: Array.from(selectedRooms),
         status: newStatus
       });
+      toast.success(`${selectedRooms.size} room(s) updated to ${newStatus.replace('_', ' ')}`);
       handleClearSelection();
-    } catch {
-      // Error handled silently
+    } catch (error: unknown) {
+      toast.error(`Failed to update rooms: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsPerformingAction(false);
     }
@@ -622,11 +625,11 @@ export function AdminRooms() {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Analytics Toggle */}
-          <button aria-label="Close"
+          <button aria-label={showAnalytics ? 'Hide analytics panel' : 'Show analytics panel'}
             onClick={() => setShowAnalytics(!showAnalytics)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              showAnalytics 
-                ? 'bg-blue-600 text-white' 
+              showAnalytics
+                ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -816,7 +819,7 @@ export function AdminRooms() {
             <div className="space-y-4">
               {/* Selection Controls */}
               <div className="flex space-x-2">
-                <button aria-label="Filter"
+                <button aria-label={selectedRooms.size === filteredRooms.length ? 'Deselect all rooms' : 'Select all rooms'}
                   onClick={handleSelectAll}
                   className="flex-1 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
                 >

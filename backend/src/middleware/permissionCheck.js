@@ -13,11 +13,22 @@ export function requirePermission(permission, options = {}) {
         throw new UnauthorizedError('Authentication required');
       }
 
-      const hasPermission = rolePermissionService.hasPermission(
-        user.id, 
-        permission, 
+      // First try the in-memory role assignment lookup
+      let hasPermission = rolePermissionService.hasPermission(
+        user.id,
+        permission,
         options.resource || null
       );
+
+      // Fallback: if user not in the in-memory map, check their JWT role
+      // against system role definitions directly
+      if (!hasPermission && user.role) {
+        const roleKey = user.role.toUpperCase().replace(/[-\s]/g, '_');
+        hasPermission = rolePermissionService.hasPermissionByRole(
+          roleKey,
+          permission
+        );
+      }
 
       if (!hasPermission) {
         logger.warn('Permission denied', {
@@ -150,7 +161,17 @@ export function requireRoleLevel(minimumLevel) {
         throw new UnauthorizedError('Authentication required');
       }
 
-      const userRole = rolePermissionService.getUserRole(user.id);
+      let userRole = rolePermissionService.getUserRole(user.id);
+
+      // Fallback: resolve from JWT role if not in in-memory map
+      if (!userRole && user.role) {
+        const roleKey = user.role.toUpperCase().replace(/[-\s]/g, '_');
+        const systemRole = rolePermissionService.systemRoles[roleKey];
+        if (systemRole) {
+          userRole = { ...systemRole, effectivePermissions: rolePermissionService.getEffectivePermissions(systemRole) };
+        }
+      }
+
       if (!userRole) {
         throw new ForbiddenError('No role assigned');
       }

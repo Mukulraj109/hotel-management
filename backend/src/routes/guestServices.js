@@ -216,9 +216,33 @@ router.post('/', authorizePolicy('guestServices', 'baseAccess'), validate(create
       }))
     : rawItems;
 
+  // Duplicate request guard: prevent creating the same service type while one is already active
+  // Active = pending | assigned | in_progress for the same booking+serviceType
+  const existingActive = await GuestService.findOne({
+    bookingId,
+    serviceType,
+    status: { $in: ['pending', 'assigned', 'in_progress'] }
+  }).select('_id status').lean();
+
+  if (existingActive) {
+    throw new ApplicationError(
+      `An active ${serviceType.replace(/_/g, ' ')} request already exists for this booking (status: ${existingActive.status}). Please wait for it to complete or cancel it first.`,
+      409
+    );
+  }
+
   // Handle multiple service variations
   const finalServiceVariations = serviceVariations && serviceVariations.length > 0 ? serviceVariations : [];
   const primaryVariation = serviceVariation || (finalServiceVariations.length > 0 ? finalServiceVariations[0] : '');
+
+  // VIP priority escalation: auto-upgrade to 'high' for loyalty platinum/diamond guests
+  // who haven't explicitly requested urgent or high priority
+  let effectivePriority = priority || 'now';
+  const requestingUser = await (mongoose.model('User')).findById(booking.userId).select('loyalty').lean();
+  const isVipTier = requestingUser?.loyalty?.tier === 'platinum' || requestingUser?.loyalty?.tier === 'diamond';
+  if (isVipTier && !['urgent', 'high'].includes(effectivePriority)) {
+    effectivePriority = 'high';
+  }
 
   // Create initial service request
   let serviceRequest = new GuestService({
@@ -230,7 +254,7 @@ router.post('/', authorizePolicy('guestServices', 'baseAccess'), validate(create
     serviceVariations: finalServiceVariations,
     title: title || (finalServiceVariations.length > 1 ? `${finalServiceVariations.length} ${serviceType.replace('_', ' ')} services` : primaryVariation),
     description,
-    priority: priority || 'now',
+    priority: effectivePriority,
     scheduledTime,
     items: (items || []).filter(i => i.name && i.name.trim()),
     specialInstructions,
@@ -358,6 +382,11 @@ router.post('/', authorizePolicy('guestServices', 'baseAccess'), validate(create
  *       200:
  *         description: List of service requests
  */
+// Allowlists for guest service query filter fields — prevent NoSQL operator injection.
+const ALLOWED_GS_STATUSES = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'];
+const ALLOWED_GS_SERVICE_TYPES = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'transport', 'spa', 'laundry', 'other'];
+const ALLOWED_GS_PRIORITIES = ['now', 'later', 'low', 'medium', 'high', 'urgent'];
+
 router.get('/', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
@@ -376,6 +405,27 @@ router.get('/', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async
     completedFrom,
     completedTo
   } = req.query;
+
+  // SECURITY: Validate enum filter values against allowlists to prevent NoSQL operator injection.
+  if (status && !ALLOWED_GS_STATUSES.includes(status)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid status filter value' });
+  }
+  if (serviceType && !ALLOWED_GS_SERVICE_TYPES.includes(serviceType)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid serviceType filter value' });
+  }
+  if (priority && !ALLOWED_GS_PRIORITIES.includes(priority)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid priority filter value' });
+  }
+  // SECURITY: Validate ObjectId fields to prevent CastError leakage and injection.
+  if (assignedTo && !mongoose.Types.ObjectId.isValid(assignedTo)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid assignedTo filter value' });
+  }
+  if (bookingId && !mongoose.Types.ObjectId.isValid(bookingId)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid bookingId filter value' });
+  }
+  if (userId && !mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid userId filter value' });
+  }
 
   const query = {};
 
@@ -412,7 +462,9 @@ router.get('/', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async
     const types = String(serviceTypes)
       .split(',')
       .map((v) => v.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      // SECURITY: Allowlist each service type to prevent NoSQL operator injection via $in array.
+      .filter((v) => ALLOWED_GS_SERVICE_TYPES.includes(v));
     if (types.length > 0) {
       query.serviceType = { $in: types };
     }
@@ -439,6 +491,18 @@ router.get('/', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async
   if (assignedTo) query.assignedTo = assignedTo;
   if (bookingId) query.bookingId = bookingId;
   if (userId && req.user.role !== 'guest') query.userId = userId;
+
+  // Server-side text search
+  const { search } = req.query;
+  if (search && typeof search === 'string' && search.trim()) {
+    const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchConditions = [
+      { 'items.name': { $regex: escapedSearch, $options: 'i' } },
+      { specialInstructions: { $regex: escapedSearch, $options: 'i' } },
+      { serviceVariation: { $regex: escapedSearch, $options: 'i' } }
+    ];
+    query.$or = query.$or ? [...query.$or, ...searchConditions] : searchConditions;
+  }
 
   // Date range filtering — used by staff for "completed today" etc.
   if (fromDate || toDate) {
@@ -845,6 +909,10 @@ router.get('/export', authorizePolicy('guestServices', 'staffAccess'), catchAsyn
 
 // Delete a service request (only pending/cancelled)
 router.delete('/:id', authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Service request not found', 404);
+  }
   const service = await GuestService.findById(req.params.id).lean();
   if (!service) throw new ApplicationError('Service request not found', 404);
 
@@ -862,6 +930,10 @@ router.delete('/:id', authorizePolicy('guestServices', 'staffAccess'), catchAsyn
 }));
 
 router.get('/:id', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Service request not found', 404);
+  }
   const serviceRequest = await GuestService.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('userId', 'name email phone')
@@ -938,6 +1010,10 @@ router.get('/:id', authorizePolicy('guestServices', 'baseAccess'), catchAsync(as
  *         description: Service request updated successfully
  */
 router.patch('/:id', authorizePolicy('guestServices', 'baseAccess'), validate(updateGuestServiceSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Service request not found', 404);
+  }
   // First fetch current state to validate permissions and transitions
   const currentRequest = await GuestService.findById(req.params.id).lean();
 
@@ -1085,6 +1161,15 @@ router.patch('/:id', authorizePolicy('guestServices', 'baseAccess'), validate(up
     } catch (notifError) {
       logger.warn('Failed to send staff assignment notification', { error: notifError.message });
     }
+
+    // Notify previously assigned staff that the request was reassigned away from them
+    if (currentRequest.assignedTo && currentRequest.assignedTo.toString() !== setFields.assignedTo.toString()) {
+      try {
+        await serviceNotificationService.notifyReassignedAway(serviceRequest, currentRequest.assignedTo, req.user._id);
+      } catch (notifError) {
+        logger.warn('Failed to send reassignment-away notification', { error: notifError.message });
+      }
+    }
   }
 
   // Emit realtime update for status/assignment changes
@@ -1195,6 +1280,10 @@ router.patch('/:id', authorizePolicy('guestServices', 'baseAccess'), validate(up
  *         description: Feedback added successfully
  */
 router.post('/:id/feedback', authorizePolicy('guestServices', 'guestAccess'), validate(feedbackSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Service request not found', 404);
+  }
   const { rating, feedback } = req.body;
   const scopedHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
   const feedbackQuery = {

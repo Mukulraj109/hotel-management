@@ -332,10 +332,8 @@ function GuestRequests() {
 
     try {
       setSubmittingFeedback(true);
-      await guestServiceService.updateServiceRequest(feedbackRequestId, {
-        rating: feedbackRating,
-        feedback: feedbackText
-      } as Partial<GuestServiceRequest>);
+      // Use the dedicated feedback endpoint — enforces completed status and guest ownership server-side
+      await guestServiceService.submitFeedback(feedbackRequestId, feedbackRating, feedbackText || undefined);
       toast.success('Thank you for your feedback!');
       setFeedbackRequestId(null);
       setFeedbackRating(0);

@@ -76,11 +76,23 @@ router.use(ensurePropertyAccess);
 router.use(authorizePolicy('digitalKeys', 'baseAccess'));
 
 // Get all digital keys for the authenticated user
+// Allowlists for digital key query filter fields — prevent NoSQL operator injection.
+const ALLOWED_KEY_STATUSES = ['active', 'expired', 'revoked', 'suspended'];
+const ALLOWED_KEY_TYPES = ['standard', 'master', 'temporary', 'guest'];
+
 router.get('/', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, type } = req.query;
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (safePage - 1) * safeLimit;
+
+  // SECURITY: Validate enum filter values against allowlists to prevent NoSQL operator injection.
+  if (status && !ALLOWED_KEY_STATUSES.includes(status)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid status filter value' });
+  }
+  if (type && !ALLOWED_KEY_TYPES.includes(type)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid type filter value' });
+  }
 
   // Guests may not have a hotelId on their user record (they belong to a hotel
   // via booking, not via the user.hotelId field).  Use tenantId from context when
@@ -1117,6 +1129,10 @@ router.delete(
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { keyId } = req.params;
+    // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+    if (!mongoose.Types.ObjectId.isValid(keyId)) {
+      throw new ApplicationError('Digital key not found', 404);
+    }
 
     // SECURITY: Enforce tenant isolation — staff cannot revoke a key from
     // another hotel by supplying a foreign hotel query param.
@@ -1183,6 +1199,10 @@ router.delete(
 
 // Get a specific digital key
 router.get('/:keyId', catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.keyId)) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
   const keyHotelId = req.tenantId || req.user.hotelId;
   const keyFilter = {
     _id: req.params.keyId,
@@ -1301,6 +1321,10 @@ router.post('/validate/:keyCode', keyValidationLimiter, validate(mutationBaselin
 // Share a digital key
 router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async (req, res) => {
   const { keyId } = req.params;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(keyId)) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
   const { email, name, expiresAt } = req.body;
 
   // Do NOT use .lean() — we need Mongoose instance methods (shareWithUser)
@@ -1371,6 +1395,10 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
 // Revoke a shared key
 router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyId, userIdOrEmail } = req.params;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(keyId)) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
 
   // Do NOT use .lean() — we need Mongoose instance methods (revokeShare)
   const revokeShareHotelId = req.tenantId || req.user.hotelId;
@@ -1406,11 +1434,15 @@ router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), 
 // Get access logs for a digital key
 router.get('/:keyId/logs', catchAsync(async (req, res) => {
   const { keyId } = req.params;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(keyId)) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
   const { page = 1, limit = 50 } = req.query;
   const safePage = Math.max(1, parseInt(page, 10) || 1);
   const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
   const skip = (safePage - 1) * safeLimit;
-  
+
   const logsHotelId = req.tenantId || req.user.hotelId;
   const logsFilter = { _id: keyId, userId: req.user.id };
   if (logsHotelId) logsFilter.hotelId = logsHotelId;
@@ -1444,6 +1476,10 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
 // Revoke a digital key
 router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyId } = req.params;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(keyId)) {
+    throw new ApplicationError('Digital key not found', 404);
+  }
   const selfRevokeHotelId = req.tenantId || req.user.hotelId;
 
   // Do NOT use .lean() — we need Mongoose instance methods (revokeKey)

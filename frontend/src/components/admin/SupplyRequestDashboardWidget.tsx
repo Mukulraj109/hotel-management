@@ -59,7 +59,7 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSummary = async () => {
+  const fetchSummary = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -118,11 +118,11 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchSummary();
-  }, [hotelId]);
+  }, [hotelId, fetchSummary]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -246,7 +246,7 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-gray-600">#{index + 1}</span>
                   <Badge className={getDepartmentColor(dept.department)}>
-                    {dept.department.replace('_', ' ')}
+                    {(dept.department || '').replace('_', ' ')}
                   </Badge>
                 </div>
                 <div className="text-right">
@@ -280,7 +280,7 @@ export function SupplyRequestDashboardWidget({ hotelId, onNavigate }: SupplyRequ
                   </div>
                   <div className="text-sm text-gray-600 truncate">{request.title}</div>
                   <div className="text-xs text-gray-500">
-                    {request.requestedBy.name} • {request.department.replace('_', ' ')}
+                    {request.requestedBy?.name || 'Unknown'} • {(request.department || '').replace('_', ' ')}
                   </div>
                 </div>
                 <div className="text-right ml-3">

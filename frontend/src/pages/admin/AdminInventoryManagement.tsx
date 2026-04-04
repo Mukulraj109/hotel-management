@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';

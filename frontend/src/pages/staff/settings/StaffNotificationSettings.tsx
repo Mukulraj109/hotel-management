@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface StaffNotificationFormData {
   workAssignments: boolean;
@@ -30,7 +31,7 @@ interface StaffNotificationSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffNotificationSettings({ onSettingsChange }: StaffNotificationSettingsProps = {}) {
+function StaffNotificationSettings({ onSettingsChange }: StaffNotificationSettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -277,3 +278,5 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
     </div>
   );
 }
+
+export default withErrorBoundary(StaffNotificationSettings);

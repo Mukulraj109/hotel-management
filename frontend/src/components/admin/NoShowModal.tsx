@@ -321,7 +321,7 @@ const NoShowModal: React.FC<NoShowModalProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-orange-700 font-semibold mb-1.5 uppercase tracking-wide">Current Status</p>
-                        <Badge variant={getStatusColor(booking.status) as unknown} size="sm" className="font-bold">
+                        <Badge variant={(getStatusColor(booking.status) || 'default') as 'default' | 'info' | 'warning' | 'error' | 'success'} size="sm" className="font-bold">
                           {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
                         </Badge>
                       </div>
@@ -382,7 +382,7 @@ const NoShowModal: React.FC<NoShowModalProps> = ({
                     <p className="text-xs font-semibold text-gray-600 mb-2.5 uppercase tracking-wide">Quick Select:</p>
                     <div className="flex flex-wrap gap-2.5">
                       {recentReasons.map((reason, index) => (
-                        <button aria-label="Close"
+                        <button aria-label={`Select reason: ${reason}`}
                           key={`recentReasons-${index}-${reason}`}
                           type="button"
                           onClick={() => handleRecentReason(reason)}

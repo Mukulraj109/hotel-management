@@ -181,7 +181,7 @@ For any queries, please contact us.
             <CheckCircle className="h-12 w-12 text-green-600" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Booking Confirmed!
+            {booking?.status === 'confirmed' ? 'Booking Confirmed!' : booking?.status === 'pending' ? 'Booking Submitted!' : 'Booking Received!'}
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             Your booking has been recorded. Check your bookings page for status updates.

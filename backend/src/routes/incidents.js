@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import IncidentReport from '../models/IncidentReport.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -255,6 +256,9 @@ router.get('/', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (r
  *         description: Incident report details
  */
 router.get('/:id', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Incident report not found', 404);
+  }
   const incident = await IncidentReport.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('roomId', 'number type floor amenities')
@@ -327,8 +331,11 @@ router.get('/:id', authorizePolicy('incidents', 'staffAccess'), catchAsync(async
  *         description: Incident updated successfully
  */
 router.patch('/:id', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Incident report not found', 404);
+  }
   const incident = await IncidentReport.findById(req.params.id);
-  
+
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);
   }
@@ -405,9 +412,12 @@ router.patch('/:id', authorizePolicy('incidents', 'staffAccess'), validate(mutat
  */
 router.post('/:id/assign', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { assignedTo, notes } = req.body;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Incident report not found', 404);
+  }
   const incident = await IncidentReport.findById(req.params.id).lean();
-  
+
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);
   }
@@ -469,9 +479,12 @@ router.post('/:id/assign', authorizePolicy('incidents', 'staffAccess'), validate
  */
 router.post('/:id/actions', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { action, notes, cost } = req.body;
-  
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Incident report not found', 404);
+  }
   const incident = await IncidentReport.findById(req.params.id).lean();
-  
+
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);
   }

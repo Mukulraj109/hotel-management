@@ -7,11 +7,23 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { maintenanceService, MaintenanceTask, GroupedTasks } from '../../services/maintenanceService';
 import { useRealTime } from '../../services/realTimeService';
-import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffMaintenance() {
-  const { user } = useAuth();
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    const response = e.response as Record<string, unknown> | undefined;
+    if (response?.status === 401) return 'Authentication failed. Please login again.';
+    if (response?.status === 403) return 'You do not have permission to perform this action.';
+    if (response?.status === 404) return 'Task not found. It may have been deleted.';
+    const data = response?.data as Record<string, unknown> | undefined;
+    if (typeof data?.message === 'string') return data.message;
+  }
+  return fallback;
+}
+
+function StaffMaintenance() {
   const [tasks, setTasks] = useState<GroupedTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,19 +35,6 @@ export default function StaffMaintenance() {
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchTasksRef = useRef<(() => Promise<void>) | null>(null);
   const { connect, on, off, isConnected } = useRealTime();
-
-  const getApiErrorMessage = (err: unknown, fallback: string): string => {
-    if (err && typeof err === 'object') {
-      const e = err as Record<string, unknown>;
-      const response = e.response as Record<string, unknown> | undefined;
-      if (response?.status === 401) return 'Authentication failed. Please login again.';
-      if (response?.status === 403) return 'You do not have permission to perform this action.';
-      if (response?.status === 404) return 'Task not found. It may have been deleted.';
-      const data = response?.data as Record<string, unknown> | undefined;
-      if (typeof data?.message === 'string') return data.message;
-    }
-    return fallback;
-  };
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -716,3 +715,5 @@ export default function StaffMaintenance() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffMaintenance);

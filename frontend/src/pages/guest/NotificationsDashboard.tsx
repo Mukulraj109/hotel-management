@@ -336,7 +336,7 @@ function NotificationsDashboard() {
     isLoading: isLoadingTypes
   } = useQuery({
     queryKey: ['notificationTypes'],
-    queryFn: notificationService.getNotificationTypes
+    queryFn: () => notificationService.getNotificationTypes()
   });
 
   // Fetch notification channels
@@ -345,7 +345,7 @@ function NotificationsDashboard() {
     isLoading: isLoadingChannels
   } = useQuery({
     queryKey: ['notificationChannels'],
-    queryFn: notificationService.getNotificationChannels
+    queryFn: () => notificationService.getNotificationChannels()
   });
 
   // Fetch preferences
@@ -354,7 +354,7 @@ function NotificationsDashboard() {
     isLoading: isLoadingPreferences
   } = useQuery({
     queryKey: ['notificationPreferences'],
-    queryFn: notificationService.getPreferences,
+    queryFn: () => notificationService.getPreferences(),
     enabled: activeTab === 'preferences'
   });
 

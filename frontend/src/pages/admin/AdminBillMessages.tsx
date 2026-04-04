@@ -153,7 +153,7 @@ const AdminBillMessages: React.FC = () => {
     try {
       setLoading(true);
       const response = await api.get('/pos/bill-messages', {
-        params: { propertyId: selectedPropertyId }
+        params: { propertyId: selectedPropertyId, page: 1, limit: 100 }
       });
       if (response.data.status === 'success') {
         setMessages(response.data.data.messages);
@@ -166,6 +166,10 @@ const AdminBillMessages: React.FC = () => {
   };
 
   const handleCreateMessage = async () => {
+    if (!formData.name.trim() || !formData.messageType || !formData.content.trim()) {
+      toast.error('Message name, type, and content are required');
+      return;
+    }
     try {
       const response = await api.post('/pos/bill-messages', formData);
       if (response.data.status === 'success') {
@@ -182,7 +186,10 @@ const AdminBillMessages: React.FC = () => {
 
   const handleUpdateMessage = async () => {
     if (!selectedMessage) return;
-
+    if (!formData.name.trim() || !formData.messageType || !formData.content.trim()) {
+      toast.error('Message name, type, and content are required');
+      return;
+    }
     try {
       const response = await api.put(`/pos/bill-messages/${selectedMessage._id}`, formData);
       if (response.data.status === 'success') {
@@ -670,7 +677,7 @@ const MessageForm: React.FC<{
               min="1"
               max="1000"
               value={formData.priority}
-              onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+              onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 100 })}
             />
           </div>
 
@@ -681,7 +688,7 @@ const MessageForm: React.FC<{
               type="number"
               min="0"
               value={formData.sortOrder}
-              onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) })}
+              onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
             />
           </div>
 

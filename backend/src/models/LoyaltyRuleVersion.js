@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const loyaltyRuleVersionSchema = new mongoose.Schema(
   {
+    hotelId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hotel',
+      required: true,
+      index: true
+    },
     version: { type: Number, required: true },
     isActive: { type: Boolean, default: false, index: true },
     rules: {
@@ -16,7 +22,7 @@ const loyaltyRuleVersionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-loyaltyRuleVersionSchema.index({ version: -1 }, { unique: true });
-loyaltyRuleVersionSchema.index({ isActive: 1, updatedAt: -1 });
+loyaltyRuleVersionSchema.index({ hotelId: 1, version: -1 }, { unique: true });
+loyaltyRuleVersionSchema.index({ hotelId: 1, isActive: 1, updatedAt: -1 });
 
 export default mongoose.model('LoyaltyRuleVersion', loyaltyRuleVersionSchema);

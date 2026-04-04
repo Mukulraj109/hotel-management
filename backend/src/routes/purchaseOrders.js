@@ -5,12 +5,25 @@ import { authenticate } from '../middleware/auth.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
-import { validate, validateRequest } from '../middleware/validation.js';
-import { body, param, query } from 'express-validator';
+import { validate } from '../middleware/validation.js';
+import { body, param, query, validationResult } from 'express-validator';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+// Express-validator validation middleware
+const validateRequest = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      details: errors.array()
+    });
+  }
+  next();
+};
 
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);

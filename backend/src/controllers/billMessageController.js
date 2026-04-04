@@ -44,9 +44,10 @@ class BillMessageController {
     }
 
     // Check for duplicate message name in the same hotel
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const existingMessage = await BillMessage.findOne({
       hotelId: req.user.hotelId,
-      name: { $regex: new RegExp(`^${name}$`, 'i') }
+      name: { $regex: new RegExp(`^${escapedName}$`, 'i') }
     }).lean();
 
     if (existingMessage) {
@@ -204,9 +205,10 @@ class BillMessageController {
 
     // Check for duplicate name if name is being updated
     if (req.body.name && req.body.name !== message.name) {
+      const escapedUpdateName = req.body.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const existingMessage = await BillMessage.findOne({
         hotelId: req.user.hotelId,
-        name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
+        name: { $regex: new RegExp(`^${escapedUpdateName}$`, 'i') },
         _id: { $ne: req.params.id }
       }).lean();
 

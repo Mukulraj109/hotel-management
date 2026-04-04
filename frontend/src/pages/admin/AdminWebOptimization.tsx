@@ -28,6 +28,7 @@ import PerformanceMonitor from '../../components/web/PerformanceMonitor';
 import UserBehaviorTracker from '../../components/web/UserBehaviorTracker';
 import PersonalizationRules from '../../components/web/PersonalizationRules';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface OptimizationSummary {
   activeTests: number;
@@ -60,16 +61,17 @@ const AdminWebOptimization: React.FC = () => {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Early return if no property selected in single mode
-  if (!selectedPropertyId && viewMode === 'single') {
-    return <div className="p-6">Please select a property</div>;
-  }
-
   useEffect(() => {
     if (selectedPropertyId) {
       fetchOptimizationData();
     }
   }, [selectedPropertyId]);
+
+  // Early return if no property selected in single mode
+  // NOTE: This must be AFTER all hooks to comply with React rules of hooks
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
 
   const fetchOptimizationData = async () => {
     try {
@@ -305,4 +307,4 @@ const AdminWebOptimization: React.FC = () => {
   );
 };
 
-export default AdminWebOptimization;
+export default withErrorBoundary(AdminWebOptimization);

@@ -29,10 +29,11 @@ import {
 } from '../../services/housekeepingService';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const PAGE_LIMIT = 20;
 
-export default function FrontDeskHousekeeping() {
+function FrontDeskHousekeeping() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -539,3 +540,5 @@ export default function FrontDeskHousekeeping() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskHousekeeping);

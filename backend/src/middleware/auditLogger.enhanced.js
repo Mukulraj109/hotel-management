@@ -3,6 +3,7 @@
  * Logs all critical operations for compliance (GDPR, PCI-DSS).
  * Records: who, what, when, where, and the before/after state.
  */
+import logger from '../utils/logger.js';
 
 const CRITICAL_OPERATIONS = {
   DELETE: 'DELETE',
@@ -75,8 +76,8 @@ const enhancedAuditLogger = (AuditLogModel) => {
 
       // Non-blocking save
       if (AuditLogModel) {
-        AuditLogModel.create(auditEntry).catch(() => {
-          // Silently ignore audit log failures — don't pollute logs
+        AuditLogModel.create(auditEntry).catch(err => {
+          logger.warn('Audit log entry creation failed:', err.message);
         });
       }
 

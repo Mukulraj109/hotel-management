@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Booking {
   _id: string;
@@ -54,7 +55,7 @@ const getPriorityColor = (priority: string) => {
   }
 };
 
-export default function InventoryRequests() {
+function InventoryRequests() {
   const { user } = useAuth();
   const { on, off } = useRealTime();
   const queryClient = useQueryClient();
@@ -684,3 +685,5 @@ export default function InventoryRequests() {
     </div>
   );
 }
+
+export default withErrorBoundary(InventoryRequests);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Shield, 
+import { withErrorBoundary } from '../../components/ErrorBoundary';
+import {
+  Shield,
   Activity, 
   AlertTriangle, 
   Users, 
@@ -29,6 +30,7 @@ import SecurityAlerts from '../../components/login/SecurityAlerts';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import EmptyState from '../../components/ui/EmptyState';
 
 interface LoginSession {
   _id: string;
@@ -560,7 +562,12 @@ const AdminLoginActivity: React.FC = () => {
               </div>
             </div>
             <div className="divide-y divide-gray-200">
-              {activeSessions.map((session) => (
+              {activeSessions.length === 0 ? (
+                <EmptyState
+                  title="No active sessions"
+                  description="There are no active login sessions at this time."
+                />
+              ) : activeSessions.map((session) => (
                 <div key={session._id} className="p-6 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">

@@ -350,25 +350,31 @@ function AdminHousekeeping() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only connect once on mount
 
+  // Keep refs to latest fetch functions so socket handlers never use stale closures
+  const fetchTasksRef = React.useRef(fetchTasks);
+  fetchTasksRef.current = fetchTasks;
+  const fetchStatsRef = React.useRef(fetchStats);
+  fetchStatsRef.current = fetchStats;
+
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
 
-    const handleTaskCreate = (data: Record<string, unknown>) => {
-      fetchTasks();
-      fetchStats();
+    const handleTaskCreate = (_data: Record<string, unknown>) => {
+      fetchTasksRef.current();
+      fetchStatsRef.current();
       toast.success('New housekeeping task created!');
     };
 
     const handleTaskUpdate = (data: Record<string, unknown>) => {
-      fetchTasks();
-      fetchStats();
+      fetchTasksRef.current();
+      fetchStatsRef.current();
       toast.success(`Housekeeping task ${data.status === 'completed' ? 'completed' : 'updated'}!`);
     };
 
     const handleTaskAssigned = (data: Record<string, unknown>) => {
-      fetchTasks();
-      fetchStats();
+      fetchTasksRef.current();
+      fetchStatsRef.current();
       toast.success(`Task assigned to ${data.assignedToName || 'staff member'}!`);
     };
 
@@ -693,8 +699,20 @@ function AdminHousekeeping() {
               size="sm"
               onClick={() => handleStatusUpdate(row._id, 'completed')}
               disabled={updating}
+              title="Mark Completed"
             >
               <CheckSquare className="h-4 w-4 text-green-600" />
+            </Button>
+          )}
+          {row.status === 'completed' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleStatusUpdate(row._id, 'inspected')}
+              disabled={updating}
+              title="Mark Inspected"
+            >
+              <CheckCircle className="h-4 w-4 text-emerald-600" />
             </Button>
           )}
         </div>

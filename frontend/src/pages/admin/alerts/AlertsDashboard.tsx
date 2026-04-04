@@ -20,8 +20,9 @@ import { useAlerts } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { formatRelativeTime, sortAlerts } from '../../../utils/dashboardUtils';
 import type { Alert } from '../../../types/dashboard';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function AlertsDashboard() {
+function AlertsDashboard() {
   const { selectedPropertyId } = useProperty();
 
   const [filters, setFilters] = useState({
@@ -613,3 +614,5 @@ export default function AlertsDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(AlertsDashboard);

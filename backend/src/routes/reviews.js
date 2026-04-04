@@ -503,6 +503,9 @@ router.get('/user/my-reviews', authenticate, ensureTenantContext, ensureProperty
  *         description: Review details
  */
 router.get('/:id', optionalAuth, catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Review not found', 404);
+  }
   const review = await Review.findById(req.params.id)
     .populate('hotelId', 'name address')
     .populate('userId', 'name')
@@ -555,6 +558,9 @@ router.post('/:id/response', authenticate, ensureTenantContext, authorizePolicy(
     throw new ApplicationError('Response content is required', 400);
   }
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Review not found', 404);
+  }
   // Do NOT use .lean() here -- we need the Mongoose document instance for .addResponse()
   const review = await Review.findById(req.params.id);
   if (!review) {
@@ -597,6 +603,9 @@ router.post('/:id/response', authenticate, ensureTenantContext, authorizePolicy(
  */
 router.post('/:id/helpful', authenticate, ensureTenantContext, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ status: 'error', message: 'Review not found' });
+    }
     const review = await Review.findById(req.params.id);
     if (!review) {
       return res.status(404).json({ status: 'error', message: 'Review not found' });
@@ -651,6 +660,9 @@ router.post('/:id/helpful', authenticate, ensureTenantContext, async (req, res) 
 router.post('/:id/report', authenticate, ensureTenantContext, async (req, res) => {
   try {
     const { reason } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ status: 'error', message: 'Review not found' });
+    }
     const review = await Review.findById(req.params.id);
     if (!review) {
       return res.status(404).json({ status: 'error', message: 'Review not found' });
@@ -720,6 +732,9 @@ router.patch('/:id/moderate', authenticate, ensureTenantContext, authorizePolicy
     throw new ApplicationError('Valid moderation status is required (approved, rejected, pending)', 400);
   }
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Review not found', 404);
+  }
   // Do NOT use .lean() here -- we need the Mongoose document instance for .moderate()
   const review = await Review.findById(req.params.id);
   if (!review) {

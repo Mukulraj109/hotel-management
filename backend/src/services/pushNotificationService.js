@@ -10,7 +10,7 @@ const vapidKeys = {
 };
 
 if (!vapidKeys.publicKey || !vapidKeys.privateKey) {
-  console.warn('VAPID keys not configured. Push notifications will be disabled.');
+  logger.warn('VAPID keys not configured. Push notifications will be disabled.');
 }
 
 webpush.setVapidDetails(

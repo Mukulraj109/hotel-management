@@ -130,7 +130,7 @@ export const vendorController = {
     const allowedUpdates = [
       'name', 'category', 'contactPerson', 'email', 'phone', 'address',
       'paymentTerms', 'deliveryTime', 'minOrderValue', 'specializations',
-      'isPreferred', 'isActive', 'contract', 'financial', 'notes', 'tags'
+      'isPreferred', 'isActive', 'status', 'contract', 'financial', 'notes', 'tags'
     ];
 
     const updates = {};

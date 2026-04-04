@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Plus,
   Search,
@@ -80,6 +81,8 @@ const AdminAddOnServices: React.FC = () => {
   const [selectedService, setSelectedService] = useState<AddOnService | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, pages: 1 });
   const [filters, setFilters] = useState({
     priceRange: { min: '', max: '' },
     rating: '',
@@ -104,7 +107,7 @@ const AdminAddOnServices: React.FC = () => {
     if (selectedPropertyId) {
       loadData();
     }
-  }, [selectedCategory, searchTerm, selectedPropertyId]);
+  }, [selectedCategory, searchTerm, selectedPropertyId, currentPage]);
 
   const loadData = async () => {
     try {
@@ -112,16 +115,22 @@ const AdminAddOnServices: React.FC = () => {
 
       const [servicesRes, categoriesRes] = await Promise.all([
         addOnServicesService.getServices({
-          propertyId: selectedPropertyId,
+          hotelId: selectedPropertyId,
           category: selectedCategory !== 'all' ? selectedCategory : undefined,
           search: searchTerm || undefined,
-          ...filters
+          page: currentPage,
+          limit: 20,
         }),
-        addOnServicesService.getCategories({ propertyId: selectedPropertyId })
+        addOnServicesService.getCategories({ hotelId: selectedPropertyId })
       ]);
 
-      setServices(servicesRes.data.services || servicesRes.data);
-      setCategories(categoriesRes.data);
+      const servicesData = servicesRes.data?.services || servicesRes.data || [];
+      setServices(Array.isArray(servicesData) ? servicesData : []);
+      setPagination({
+        total: servicesRes.data?.pagination?.total || servicesData.length || 0,
+        pages: servicesRes.data?.pagination?.pages || 1
+      });
+      setCategories(categoriesRes.data || []);
     } catch (error: unknown) {
       showToast('Error loading services data', 'error');
     } finally {
@@ -131,7 +140,7 @@ const AdminAddOnServices: React.FC = () => {
 
   const handleCreateService = async (serviceData: Partial<AddOnService>) => {
     try {
-      await addOnServicesService.createService(serviceData);
+      await addOnServicesService.createService({ ...serviceData, hotelId: selectedPropertyId });
       showToast('Service created successfully', 'success');
       setShowCreateModal(false);
       loadData();
@@ -488,11 +497,36 @@ const AdminAddOnServices: React.FC = () => {
                   </button>
                 </div>
               )}
+
+              {/* Pagination Controls */}
+              {pagination.pages > 1 && (
+                <div className="flex items-center justify-between mt-6 px-4">
+                  <p className="text-sm text-gray-600">
+                    Showing page {currentPage} of {pagination.pages} ({pagination.total} total)
+                  </p>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage <= 1}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(pagination.pages, prev + 1))}
+                      disabled={currentPage >= pagination.pages}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'catalog' && (
-            <AddOnCatalog 
+            <AddOnCatalog
               services={services}
               onServiceBook={(serviceId, bookingDetails) => {
                 showToast('Service booking functionality will be implemented', 'info');
@@ -575,4 +609,4 @@ const AdminAddOnServices: React.FC = () => {
   );
 };
 
-export default AdminAddOnServices;
+export default withErrorBoundary(AdminAddOnServices);

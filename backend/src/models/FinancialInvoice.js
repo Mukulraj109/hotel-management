@@ -37,7 +37,7 @@ const financialInvoiceSchema = new mongoose.Schema({
     },
     corporateId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Corporate'
+      ref: 'CorporateCompany'
     },
     details: {
       name: { type: String, required: true },
@@ -187,6 +187,11 @@ const financialInvoiceSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Invoice',
     index: true
+  },
+  // Flag to prevent infinite sync loops with Invoice model
+  _skipReverseSync: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true,
@@ -263,6 +268,43 @@ financialInvoiceSchema.statics.generateInvoiceNumber = async function(hotelId) {
     throw new Error(`${error.message}`);
   }
 };
+
+// Reverse sync: FinancialInvoice status changes back to source Invoice
+financialInvoiceSchema.post('save', async function(doc) {
+  // Only sync if linked to a source Invoice
+  if (!doc.sourceInvoiceId) return;
+
+  // Prevent infinite loop: if this save was triggered by Invoice forward sync, skip
+  if (doc._skipReverseSync) return;
+
+  try {
+    const Invoice = (await import('./Invoice.js')).default;
+
+    // Map FinancialInvoice status back to Invoice status
+    const statusMap = {
+      'draft': 'draft',
+      'sent': 'issued',
+      'paid': 'paid',
+      'partially_paid': 'partially_paid',
+      'overdue': 'overdue',
+      'cancelled': 'cancelled',
+      'refunded': 'refunded'
+    };
+
+    const invoiceStatus = statusMap[doc.status] || doc.status;
+
+    await Invoice.findByIdAndUpdate(doc.sourceInvoiceId, {
+      $set: {
+        status: invoiceStatus,
+        syncedFromFinancial: true,
+        financialSyncedAt: new Date()
+      }
+    });
+  } catch (err) {
+    // Non-blocking — don't fail the FinancialInvoice save
+    console.warn('FinancialInvoice->Invoice reverse sync failed:', err.message);
+  }
+});
 
 const FinancialInvoice = mongoose.model('FinancialInvoice', financialInvoiceSchema);
 

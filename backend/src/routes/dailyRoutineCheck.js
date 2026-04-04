@@ -354,6 +354,11 @@ router.get('/rooms/:roomId/inventory', authorizePolicy('dailyRoutineCheck', 'sta
   const { hotelId } = req.user;
   const { roomId } = req.params;
 
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Room not found', 404);
+  }
+
   // Verify room exists and belongs to hotel
   const room = await Room.findOne({
     _id: roomId,
@@ -461,6 +466,11 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { cart, notes } = req.body;
+
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Room not found', 404);
+  }
 
   logger.debug('Completing daily check for room', { roomId, checkedBy });
 
@@ -616,13 +626,27 @@ router.post('/rooms/:roomId/complete', authorizePolicy('dailyRoutineCheck', 'sta
     logger.warn('Failed to emit websocket event for daily check completion', { roomId, error: socketError.message });
   }
 
-  // Update Room status to 'vacant' (clean) after daily check completion
+  // Determine whether any items need replacement (maintenance required).
+  // If so, keep the room in a non-bookable state until the maintenance is resolved.
+  const hasReplaceItems = Array.isArray(cart) && cart.some(item => item.action === 'replace');
+  const postCheckRoomStatus = hasReplaceItems ? 'maintenance' : 'vacant';
+
+  // Update Room status after daily check completion.
+  // - 'maintenance' when replacement items found (room blocked until fixed)
+  // - 'vacant' when everything is fine
   try {
-    await Room.findByIdAndUpdate(roomId, { status: 'vacant', lastCleaned: new Date() }, { new: true });
-    logger.debug('Room status updated to vacant after daily check', { roomId });
+    const roomUpdateFields = { status: postCheckRoomStatus };
+    if (!hasReplaceItems) roomUpdateFields.lastCleaned = new Date();
+    await Room.findByIdAndUpdate(roomId, roomUpdateFields, { new: true });
+    logger.debug('Room status updated after daily check', { roomId, status: postCheckRoomStatus });
     await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:status_updated', {
       roomId,
-      roomStatus: 'vacant'
+      roomStatus: postCheckRoomStatus
+    });
+    await websocketService.broadcastToHotel(hotelId.toString(), 'room:status_changed', {
+      roomId,
+      status: postCheckRoomStatus,
+      event: 'daily_routine_check_completed'
     });
   } catch (roomErr) {
     logger.warn('Failed to update room status after daily check', { roomId, error: roomErr.message });
@@ -837,6 +861,11 @@ router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { notes } = req.body;
+
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Room not found', 404);
+  }
 
   // Verify room exists and belongs to hotel
   const room = await Room.findOne({
@@ -1320,10 +1349,17 @@ router.post('/templates', authorizePolicy('dailyRoutineCheck', 'managerFrontdesk
  *       200:
  *         description: Template updated successfully
  */
+const ALLOWED_ROOM_TYPES = ['single', 'double', 'suite', 'deluxe'];
+
 router.put('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(updateTemplateSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
   const { fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
+
+  // SECURITY: Allowlist roomType to prevent NoSQL operator injection via path param.
+  if (!ALLOWED_ROOM_TYPES.includes(roomType)) {
+    throw new ApplicationError('Invalid room type', 400);
+  }
 
   // Validate inventory items if provided
   if (fixedInventory) {
@@ -1397,6 +1433,11 @@ router.put('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'manager
 router.delete('/templates/:roomType', authorizePolicy('dailyRoutineCheck', 'managerFrontdeskAccess'), validate(emptyBodySchema), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
+
+  // SECURITY: Allowlist roomType to prevent NoSQL operator injection via path param.
+  if (!ALLOWED_ROOM_TYPES.includes(roomType)) {
+    throw new ApplicationError('Invalid room type', 400);
+  }
 
   const template = await DailyRoutineCheckTemplate.findOneAndUpdate(
     {

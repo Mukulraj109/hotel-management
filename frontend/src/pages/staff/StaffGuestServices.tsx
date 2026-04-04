@@ -39,7 +39,7 @@ function StaffGuestServices() {
     if (currentUserId && propertyScopeId) {
       fetchRequests(1, activeTab);
     }
-  }, [currentUserId, activeTab, propertyScopeId]);
+  }, [currentUserId, activeTab, propertyScopeId, fetchRequests]);
 
   useEffect(() => {
     connect().catch(() => {
@@ -71,7 +71,7 @@ function StaffGuestServices() {
       off('guest-services:completed', handleGuestServiceEvent);
       off('guest-services:cancelled', handleGuestServiceEvent);
     };
-  }, [isConnected, currentUserId, on, off, page, activeTab]);
+  }, [isConnected, currentUserId, on, off, page, activeTab, fetchRequests]);
 
   const fetchRequests = useCallback(async (targetPage: number = 1, status?: string) => {
     if (!currentUserId || !propertyScopeId) {
@@ -112,11 +112,12 @@ function StaffGuestServices() {
 
       const response = await guestServiceService.getServiceRequests(params);
       setRequests(response.data.serviceRequests || []);
+      // Always update page so UI controls stay in sync even if pagination is absent
+      setPage(targetPage);
       const pagination = response.data.pagination;
       if (pagination) {
         setTotalPages(pagination.pages ?? 1);
         setTotalCount(pagination.total ?? 0);
-        setPage(targetPage);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to load service requests';
@@ -336,7 +337,7 @@ function StaffGuestServices() {
               {request.serviceVariations && request.serviceVariations.length > 0
                 ? request.serviceVariations.length === 1
                   ? request.serviceVariations[0]
-                  : `${request.serviceVariations.length} ${request.serviceType.replace(/_/g, ' ')} services`
+                  : `${request.serviceVariations.length} ${request.serviceType?.replace(/_/g, ' ')} services`
                 : request.title || request.serviceVariation || 'Service Request'}
             </p>
             {request.priority && (
@@ -346,7 +347,7 @@ function StaffGuestServices() {
             )}
           </div>
           <p className="text-sm text-gray-600 mt-0.5">
-            Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} — {request.serviceType.replace(/_/g, ' ')}
+            Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'} — {request.serviceType?.replace(/_/g, ' ')}
             {request.bookingId?.bookingNumber && (
               <span className="text-xs ml-1 text-gray-400">(#{request.bookingId.bookingNumber})</span>
             )}
@@ -559,7 +560,7 @@ function StaffGuestServices() {
             selectedRequest.serviceVariations && selectedRequest.serviceVariations.length > 0
               ? selectedRequest.serviceVariations.length === 1
                 ? selectedRequest.serviceVariations[0]
-                : `${selectedRequest.serviceVariations.length} ${selectedRequest.serviceType.replace(/_/g, ' ')} services`
+                : `${selectedRequest.serviceVariations.length} ${selectedRequest.serviceType?.replace(/_/g, ' ')} services`
               : selectedRequest.title || 'Guest Service Request'
           }`}
           steps={

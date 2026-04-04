@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import contactService, { ContactForm } from '../../services/contactService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function ContactPage() {
+function ContactPage() {
   const [formData, setFormData] = useState<ContactForm>({
     name: '',
     email: '',
@@ -436,3 +437,5 @@ export default function ContactPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(ContactPage);

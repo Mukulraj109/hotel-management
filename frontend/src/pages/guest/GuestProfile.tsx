@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ProfileFormData {
   name: string;
@@ -57,7 +58,7 @@ const formatMemberSince = (date?: string) => {
   return parsed.toLocaleDateString('en-GB');
 };
 
-export default function GuestProfile() {
+function GuestProfile() {
   const { user, updateUser, isLoading: authLoading } = useAuth();
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -654,3 +655,5 @@ export default function GuestProfile() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestProfile);

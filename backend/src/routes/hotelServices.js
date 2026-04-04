@@ -503,8 +503,17 @@ router.post('/:serviceId/bookings',
       const openTime = service.operatingHours.open;
       const closeTime = service.operatingHours.close;
 
-      // Simple time comparison (works for same-day services)
-      if (bookingTimeStr < openTime || bookingTimeStr >= closeTime) {
+      // Time comparison supporting both normal and overnight hours
+      let isOutsideHours;
+      if (openTime <= closeTime) {
+        // Normal hours (e.g., 09:00 - 18:00)
+        isOutsideHours = bookingTimeStr < openTime || bookingTimeStr >= closeTime;
+      } else {
+        // Overnight hours (e.g., 20:00 - 02:00)
+        isOutsideHours = bookingTimeStr < openTime && bookingTimeStr >= closeTime;
+      }
+
+      if (isOutsideHours) {
         return res.status(400).json({
           status: 'error',
           message: `This service is only available between ${openTime} and ${closeTime}`

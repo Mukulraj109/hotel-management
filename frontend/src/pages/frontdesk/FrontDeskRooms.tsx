@@ -532,6 +532,24 @@ function FrontDeskRooms() {
     handleClearSelection();
   };
 
+  // No property selected — show a helpful message instead of empty metrics
+  if (!hotelId) {
+    return (
+      <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+        <PropertyBreadcrumb items={['Rooms']} />
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Room Management</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage and monitor all hotel rooms</p>
+        </div>
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <p className="text-sm font-medium text-yellow-800">
+            Please select a property to view room data.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading && !roomsQuery.data) {
     return (
       <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">

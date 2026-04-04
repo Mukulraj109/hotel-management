@@ -7,6 +7,7 @@ import RevenueManagementDashboard from '../../components/revenue/RevenueManageme
 import PackageManagement from '../../components/revenue/PackageManagement';
 import RateShoppingDashboard from '../../components/revenue/RateShoppingDashboard';
 import CorporateRatesManagement from '../../components/revenue/CorporateRatesManagement';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const AdminRevenueManagement: React.FC = () => {
   const { selectedPropertyId } = useProperty();
@@ -62,4 +63,4 @@ const AdminRevenueManagement: React.FC = () => {
   );
 };
 
-export default AdminRevenueManagement;
+export default withErrorBoundary(AdminRevenueManagement);

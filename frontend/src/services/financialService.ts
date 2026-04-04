@@ -237,12 +237,15 @@ export interface FinancialReport {
 
 class FinancialService {
   // Chart of Accounts
-  async getAccounts(filters?: { type?: string; category?: string; active?: boolean }) {
+  async getAccounts(filters?: { type?: string; category?: string; active?: boolean; page?: number; limit?: number }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.type) params.append('type', filters.type);
-    if (filters?.category) params.append('category', filters.category);
-    if (filters?.active !== undefined) params.append('active', filters.active.toString());
-    
+    if (normalizedFilters.type) params.append('type', normalizedFilters.type);
+    if (normalizedFilters.category) params.append('category', normalizedFilters.category);
+    if (normalizedFilters.active !== undefined) params.append('active', normalizedFilters.active.toString());
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
+
     const response = await apiClient.get(`/financial/chart-of-accounts?${params}`);
     return response.data;
   }
@@ -390,11 +393,14 @@ class FinancialService {
   }
 
   // Bank Accounts
-  async getBankAccounts(filters?: { isActive?: boolean; isPrimary?: boolean }) {
+  async getBankAccounts(filters?: { isActive?: boolean; isPrimary?: boolean; page?: number; limit?: number }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
-    if (filters?.isPrimary !== undefined) params.append('isPrimary', filters.isPrimary.toString());
-    
+    if (normalizedFilters.isActive !== undefined) params.append('isActive', normalizedFilters.isActive.toString());
+    if (normalizedFilters.isPrimary !== undefined) params.append('isPrimary', normalizedFilters.isPrimary.toString());
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
+
     const response = await apiClient.get(`/financial/bank-accounts?${params}`);
     return response.data;
   }
@@ -415,12 +421,15 @@ class FinancialService {
   }
 
   // Budgets
-  async getBudgets(filters?: { fiscalYear?: number; status?: string; department?: string }) {
+  async getBudgets(filters?: { fiscalYear?: number; status?: string; department?: string; page?: number; limit?: number }) {
+    const normalizedFilters = normalizeListParams(filters || {});
     const params = new URLSearchParams();
-    if (filters?.fiscalYear) params.append('fiscalYear', filters.fiscalYear.toString());
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.department) params.append('department', filters.department);
-    
+    if (normalizedFilters.fiscalYear) params.append('fiscalYear', normalizedFilters.fiscalYear.toString());
+    if (normalizedFilters.status) params.append('status', normalizedFilters.status);
+    if (normalizedFilters.department) params.append('department', normalizedFilters.department);
+    params.append('page', String(normalizedFilters.page));
+    params.append('limit', String(normalizedFilters.limit));
+
     const response = await apiClient.get(`/financial/budgets?${params}`);
     return response.data;
   }
@@ -538,9 +547,10 @@ class FinancialService {
   }
 
   async exportFinancialReport(params: { type: string; format: string; startDate: string; endDate: string }) {
+    const needsBlobResponse = params.format === 'pdf' || params.format === 'excel';
     const response = await apiClient.get(`/financial/reports/comprehensive`, {
-      params: { startDate: params.startDate, endDate: params.endDate },
-      responseType: params.format === 'pdf' ? 'blob' : 'json'
+      params: { startDate: params.startDate, endDate: params.endDate, reportType: params.type, format: params.format },
+      responseType: needsBlobResponse ? 'blob' : 'json'
     });
     // For PDF/Excel, trigger download; for JSON return data
     if (params.format === 'pdf' || params.format === 'excel') {

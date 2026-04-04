@@ -18,8 +18,9 @@ import { Badge } from '@/components/ui/badge';
 import { useGuestSatisfaction } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { formatPercentage, formatRelativeTime } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function GuestSatisfaction() {
+function GuestSatisfaction() {
   const { selectedPropertyId, properties } = useProperty();
 
   const [filters, setFilters] = useState({
@@ -203,11 +204,37 @@ export default function GuestSatisfaction() {
           height="400px"
         >
           <BarChart
-            data={data?.overview.ratingDistribution?.map(item => ({
-              rating: `${item.rating} Star${item.rating !== 1 ? 's' : ''}`,
-              count: item.count,
-              percentage: item.percentage,
-            })) || []}
+            data={(() => {
+              const dist = data?.overview?.ratingDistribution;
+              if (!dist) return [];
+              // Backend returns { excellent, good, average, poor } object or an array
+              if (Array.isArray(dist)) {
+                return dist.map((item: { rating: number; count: number; percentage: number }) => ({
+                  rating: `${item.rating} Star${item.rating !== 1 ? 's' : ''}`,
+                  count: item.count,
+                  percentage: item.percentage,
+                }));
+              }
+              // Convert object format { excellent, good, average, poor } to chart array
+              const labelMap: Record<string, { label: string; stars: number }> = {
+                excellent: { label: '5 Stars', stars: 5 },
+                good: { label: '4 Stars', stars: 4 },
+                average: { label: '3 Stars', stars: 3 },
+                poor: { label: '1-2 Stars', stars: 1 },
+              };
+              const total = Object.values(dist as Record<string, number>).reduce((s: number, v: unknown) => s + (Number(v) || 0), 0);
+              return Object.entries(dist as Record<string, number>)
+                .filter(([key]) => labelMap[key])
+                .map(([key, count]) => ({
+                  rating: labelMap[key].label,
+                  count: Number(count) || 0,
+                  percentage: total > 0 ? Math.round(((Number(count) || 0) / total) * 100) : 0,
+                }))
+                .sort((a, b) => {
+                  const order = ['5 Stars', '4 Stars', '3 Stars', '1-2 Stars'];
+                  return order.indexOf(a.rating) - order.indexOf(b.rating);
+                });
+            })()}
             xDataKey="rating"
             bars={[
               {
@@ -518,3 +545,5 @@ export default function GuestSatisfaction() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestSatisfaction);

@@ -10,6 +10,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import ProfileSyncService from '../services/profileSyncService.js';
+import logger from '../utils/logger.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -278,7 +279,7 @@ router.put('/guest', authorizePolicy('userPreferences', 'guestAccess'), catchAsy
   const preferences = await UserPreference.updatePreferences(userId, updates);
 
   // Sync preferences back to User model
-  await ProfileSyncService.syncPreferencesToUser(req.user._id).catch(() => {});
+  await ProfileSyncService.syncPreferencesToUser(req.user._id).catch(err => logger.warn('ProfileSyncService.syncPreferencesToUser failed:', err.message));
 
   res.status(200).json({
     status: 'success',

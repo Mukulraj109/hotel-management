@@ -8,6 +8,13 @@ import logger from '../utils/logger.js';
  * Handles templates, snippets, and reusable content blocks with built-in translation support.
  */
 const contentSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
+
   // Content identification
   key: {
     type: String,
@@ -324,8 +331,9 @@ const contentSchema = new mongoose.Schema({
 });
 
 // Indexes
-contentSchema.index({ key: 1, isActive: 1 });
-contentSchema.index({ namespace: 1, category: 1, isActive: 1 });
+contentSchema.index({ hotelId: 1, status: 1 });
+contentSchema.index({ hotelId: 1, key: 1, isActive: 1 });
+contentSchema.index({ hotelId: 1, namespace: 1, category: 1, isActive: 1 });
 contentSchema.index({ status: 1, isActive: 1 });
 contentSchema.index({ 'translationConfig.isTranslatable': 1, isActive: 1 });
 contentSchema.index({ tags: 1, isActive: 1 });

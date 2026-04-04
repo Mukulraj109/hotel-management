@@ -308,6 +308,93 @@ router.post('/',
  */
 router.get('/', posTaxController.getTaxes);
 
+// --- Named GET routes MUST be registered before the /:id param catch-all ---
+
+/**
+ * @swagger
+ * /pos/taxes/groups:
+ *   get:
+ *     summary: Get tax groups
+ *     description: Get all available tax groups for the hotel
+ *     tags: [POS Tax Management]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tax groups retrieved successfully
+ */
+router.get('/groups', posTaxController.getTaxGroups);
+
+/**
+ * @swagger
+ * /pos/taxes/types:
+ *   get:
+ *     summary: Get tax types
+ *     description: Get all available tax types for the hotel
+ *     tags: [POS Tax Management]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tax types retrieved successfully
+ */
+router.get('/types', posTaxController.getTaxTypes);
+
+/**
+ * @swagger
+ * /pos/taxes/report:
+ *   get:
+ *     summary: Get tax report
+ *     description: Generate tax calculation and collection report
+ *     tags: [POS Tax Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: taxType
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: taxGroup
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tax report generated successfully
+ */
+router.get('/report',
+  authorize(['admin', 'manager']),
+  posTaxController.getTaxReport
+);
+
+/**
+ * @swagger
+ * /pos/taxes/validate:
+ *   get:
+ *     summary: Validate tax configuration
+ *     description: Validate the hotel's tax configuration for issues and warnings
+ *     tags: [POS Tax Management]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tax configuration validated successfully
+ */
+router.get('/validate',
+  authorize(['admin', 'manager']),
+  posTaxController.validateTaxConfiguration
+);
+
 /**
  * @swagger
  * /pos/taxes/{id}:
@@ -487,92 +574,6 @@ router.post('/calculate',
 router.post('/calculate/order', 
   validate(calculateOrderTaxesSchema), 
   posTaxController.calculateOrderTaxes
-);
-
-// Tax management endpoints
-/**
- * @swagger
- * /pos/taxes/groups:
- *   get:
- *     summary: Get tax groups
- *     description: Get all available tax groups for the hotel
- *     tags: [POS Tax Management]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Tax groups retrieved successfully
- */
-router.get('/groups', posTaxController.getTaxGroups);
-
-/**
- * @swagger
- * /pos/taxes/types:
- *   get:
- *     summary: Get tax types
- *     description: Get all available tax types for the hotel
- *     tags: [POS Tax Management]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Tax types retrieved successfully
- */
-router.get('/types', posTaxController.getTaxTypes);
-
-/**
- * @swagger
- * /pos/taxes/report:
- *   get:
- *     summary: Get tax report
- *     description: Generate tax calculation and collection report
- *     tags: [POS Tax Reports]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: taxType
- *         schema:
- *           type: string
- *       - in: query
- *         name: taxGroup
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Tax report generated successfully
- */
-router.get('/report', 
-  authorize(['admin', 'manager']), 
-  posTaxController.getTaxReport
-);
-
-/**
- * @swagger
- * /pos/taxes/validate:
- *   get:
- *     summary: Validate tax configuration
- *     description: Validate the hotel's tax configuration for issues and warnings
- *     tags: [POS Tax Management]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Tax configuration validated successfully
- */
-router.get('/validate', 
-  authorize(['admin', 'manager']), 
-  posTaxController.validateTaxConfiguration
 );
 
 /**

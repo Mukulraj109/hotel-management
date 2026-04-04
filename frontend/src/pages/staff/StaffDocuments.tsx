@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import StaffDocumentUpload from '../../components/staff/StaffDocumentUpload';
 import { toast } from 'sonner';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Document {
   _id: string;
@@ -88,7 +89,7 @@ const staffDocumentCategories: Record<string, { icon: React.ComponentType<{ clas
   bank_details: { icon: PiggyBank, label: 'Banking Information' }
 };
 
-export default function StaffDocuments() {
+function StaffDocuments() {
   useAuth(); // Ensures authenticated context is present
   const [activeTab, setActiveTab] = useState<'overview' | 'upload' | 'documents'>('overview');
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -641,3 +642,5 @@ export default function StaffDocuments() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffDocuments);

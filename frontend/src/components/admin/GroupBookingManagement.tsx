@@ -361,7 +361,7 @@ function GroupBookingManagement() {
   // Fetch corporate companies when creating modal opens
   useEffect(() => {
     if (creatingBooking && corporateCompanies.length === 0) {
-      corporateService.getAllCompanies({ isActive: true })
+      corporateService.getAllCompanies({ isActive: true, limit: 100 })
         .then(response => {
           setCorporateCompanies(response.data.companies || []);
         })

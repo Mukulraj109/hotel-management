@@ -192,6 +192,10 @@ export const getMyServiceRequests = catchAsync(async (req, res) => {
  */
 export const getServiceRequestDetails = catchAsync(async (req, res) => {
   const requestId = req.params.id;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    throw new ApplicationError('Service request not found or not assigned to you', 404);
+  }
   const staffId = req.user._id;
 
   const request = await GuestService.findOne({
@@ -254,12 +258,18 @@ export const getServiceRequestDetails = catchAsync(async (req, res) => {
  */
 export const updateServiceRequestStatus = catchAsync(async (req, res) => {
   const requestId = req.params.id;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    throw new ApplicationError('Service request not found or not assigned to you', 404);
+  }
   const staffId = req.user._id;
   const { status, notes, actualCost } = req.body;
 
   // Validate status transitions using the canonical GUEST_SERVICE_TRANSITIONS map:
   // pending -> assigned -> in_progress -> completed
+  // Also allow pending -> in_progress as a shortcut when auto-assignment was skipped
   const validTransitions = {
+    'pending': ['in_progress'],
     'assigned': ['in_progress'],
     'in_progress': ['completed']
   };
@@ -355,6 +365,10 @@ export const updateServiceRequestStatus = catchAsync(async (req, res) => {
  */
 export const addNotesToRequest = catchAsync(async (req, res) => {
   const requestId = req.params.id;
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    throw new ApplicationError('Service request not found or not assigned to you', 404);
+  }
   const staffId = req.user._id;
   const { notes } = req.body;
 

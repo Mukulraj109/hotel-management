@@ -171,6 +171,20 @@ class GuestServiceService {
       throw error instanceof Error ? error : new Error('Request failed');
     }
   }
+
+  /**
+   * Submit rating + feedback for a completed service request.
+   * Uses the dedicated POST /guest-services/:id/feedback endpoint which enforces
+   * that the request is completed and belongs to the current guest.
+   */
+  async submitFeedback(id: string, rating: number, feedback?: string): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
+    try {
+      const response = await api.post(`/guest-services/${normalizeEntityId(id)}/feedback`, { rating, feedback });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
 }
 
 export const guestServiceService = new GuestServiceService();

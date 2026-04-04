@@ -34,10 +34,9 @@ import { format } from 'date-fns';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { realTimeService } from '../../services/realTimeService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-interface StaffMeetUpSupervisionProps {}
-
-export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) {
+function StaffMeetUpSupervision() {
   const { user } = useAuth();
   const staffHotelId = useMemo(() => {
     if (!user?.hotelId) return undefined;
@@ -321,7 +320,12 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                if (tab.id === 'guest-reports') setReportPage(1);
+                // Reset pagination when switching tabs to avoid stale page offsets
+                if (tab.id === 'guest-reports') {
+                  setReportPage(1);
+                } else {
+                  setCurrentPage(1);
+                }
               }}
               className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                 activeTab === tab.id
@@ -626,7 +630,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                         <Badge variant="outline" className="capitalize">
                           {r.reason}
                         </Badge>
-                        <span className="text-xs text-gray-500">{format(new Date(r.createdAt), 'PPp')}</span>
+                        <span className="text-xs text-gray-500">{r.createdAt && !isNaN(new Date(r.createdAt).getTime()) ? format(new Date(r.createdAt), 'PPp') : '—'}</span>
                       </div>
                       <p className="text-sm text-gray-800 mb-2">
                         <span className="font-medium">Reporter:</span>{' '}
@@ -906,3 +910,5 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
     </div>
   );
 }
+
+export default withErrorBoundary(StaffMeetUpSupervision);

@@ -81,6 +81,9 @@ const AdminReasons: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -172,46 +175,42 @@ const AdminReasons: React.FC = () => {
 
   useEffect(() => {
     loadReasons();
-  }, []);
-
-  useEffect(() => {
-    filterReasons();
-  }, [reasons, searchTerm, categoryFilter, statusFilter]);
+  }, [currentPage, searchTerm, categoryFilter, statusFilter]);
 
   const loadReasons = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await reasonService.getReasons();
-      setReasons(response.data.reasons || []);
+      const filters: Record<string, string | number> = {
+        page: currentPage,
+        limit: 50,
+        sortBy: 'name',
+        sortOrder: 'asc'
+      };
+      if (categoryFilter !== 'all') filters.category = categoryFilter;
+      if (statusFilter !== 'all') filters.isActive = statusFilter === 'active' ? 'true' : 'false';
+      if (searchTerm) filters.search = searchTerm;
+
+      const response = await reasonService.getReasons(filters);
+      const reasonsList = response.data.reasons || response.data || [];
+      setReasons(reasonsList);
+      setFilteredReasons(reasonsList);
+      if (response.data.pagination) {
+        setTotalPages(response.data.pagination.pages || 1);
+        setTotalCount(response.data.pagination.total || reasonsList.length);
+      } else if (response.pagination) {
+        setTotalPages(response.pagination.pages || 1);
+        setTotalCount(response.pagination.total || reasonsList.length);
+      } else {
+        setTotalPages(1);
+        setTotalCount(reasonsList.length);
+      }
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to load reasons');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to load reasons');
     } finally {
       setLoading(false);
     }
-  };
-
-  const filterReasons = () => {
-    let filtered = reasons;
-
-    if (searchTerm) {
-      filtered = filtered.filter(reason =>
-        reason.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reason.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reason.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter(reason => reason.category === categoryFilter);
-    }
-
-    if (statusFilter !== 'all') {
-      const isActive = statusFilter === 'active';
-      filtered = filtered.filter(reason => reason.isActive === isActive);
-    }
-
-    setFilteredReasons(filtered);
   };
 
   const handleCreateReason = async () => {
@@ -240,7 +239,8 @@ const AdminReasons: React.FC = () => {
         loadReasons();
       }
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to create reason');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to create reason');
     }
   };
 
@@ -272,7 +272,8 @@ const AdminReasons: React.FC = () => {
         loadReasons();
       }
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to update reason');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to update reason');
     }
   };
 
@@ -298,7 +299,8 @@ const AdminReasons: React.FC = () => {
       setSelectedReason(null);
       loadReasons();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to delete reason');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to delete reason');
     }
   };
 
@@ -311,7 +313,8 @@ const AdminReasons: React.FC = () => {
       resetForm();
       loadReasons();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to clone reason');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to clone reason');
     }
   };
 
@@ -320,7 +323,8 @@ const AdminReasons: React.FC = () => {
       await reasonService.updateReasonStatus(reason._id, !reason.isActive);
       loadReasons();
     } catch (err: unknown) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setError(axiosErr?.response?.data?.message || 'Failed to update status');
     }
   };
 
@@ -493,14 +497,15 @@ const AdminReasons: React.FC = () => {
   ];
 
   const getSummaryCards = () => {
-    const total = reasons.length;
+    // Use totalCount from server pagination for total; derive others from current page
+    const total = totalCount || reasons.length;
     const active = reasons.filter(r => r.isActive).length;
     const withFinancialImpact = reasons.filter(r => r.hasFinancialImpact).length;
     const requiresApproval = reasons.filter(r => r.requiresApproval).length;
 
     return [
       { label: 'Total Reasons', value: total, color: 'primary' },
-      { label: 'Active', value: active, color: 'success' },
+      { label: 'Active (this page)', value: active, color: 'success' },
       { label: 'Financial Impact', value: withFinancialImpact, color: 'warning' },
       { label: 'Requires Approval', value: requiresApproval, color: 'error' }
     ];
@@ -646,8 +651,12 @@ const AdminReasons: React.FC = () => {
           <DataGrid
             rows={filteredReasons}
             columns={columns}
-            pageSize={25}
-            rowsPerPageOptions={[25, 50, 100]}
+            pageSize={50}
+            rowsPerPageOptions={[50]}
+            rowCount={totalCount}
+            paginationMode="server"
+            page={currentPage - 1}
+            onPageChange={(newPage) => setCurrentPage(newPage + 1)}
             autoHeight
             disableSelectionOnClick
             getRowId={(row) => row._id}

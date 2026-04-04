@@ -163,6 +163,9 @@ const guestServiceSchema = new mongoose.Schema({
   completedTime: {
     type: Date
   },
+  statusUpdatedAt: {
+    type: Date
+  },
   estimatedCost: {
     type: Number,
     min: [0, 'Estimated cost cannot be negative'],
@@ -326,6 +329,10 @@ guestServiceSchema.index({ userId: 1, createdAt: -1 });
 guestServiceSchema.index({ bookingId: 1 });
 guestServiceSchema.index({ assignedTo: 1, status: 1 });
 guestServiceSchema.index({ serviceType: 1, priority: 1 });
+// Duplicate-request detection: one active request per booking+serviceType+variation
+guestServiceSchema.index({ bookingId: 1, serviceType: 1, status: 1 });
+guestServiceSchema.index({ hotelId: 1, serviceType: 1, status: 1 });
+guestServiceSchema.index({ hotelId: 1, priority: 1, status: 1, createdAt: -1 });
 
 // Calculate total cost
 guestServiceSchema.methods.calculateTotalCost = function() {

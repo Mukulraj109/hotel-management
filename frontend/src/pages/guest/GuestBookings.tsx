@@ -35,6 +35,7 @@ import { toEntityIdString } from '../../utils/entityId';
 import EmptyState from '../../components/ui/EmptyState';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Extended interface for bookings with populated hotel data
 interface BookingWithHotel extends Omit<Booking, 'hotelId'> {
@@ -383,7 +384,7 @@ const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNav
 ));
 GuestBookingCard.displayName = 'GuestBookingCard';
 
-export default function GuestBookings() {
+function GuestBookings() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -760,3 +761,5 @@ export default function GuestBookings() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestBookings);

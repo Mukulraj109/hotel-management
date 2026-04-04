@@ -16,7 +16,7 @@ const dayUseBookingSchema = new mongoose.Schema({
   
   guestInfo: {
     primaryGuest: {
-      guestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Guest' },
+      guestId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       firstName: { type: String, required: true, trim: true },
       lastName: { type: String, required: true, trim: true },
       email: { type: String, required: true, lowercase: true },
@@ -184,7 +184,7 @@ const dayUseBookingSchema = new mongoose.Schema({
     },
     channel: String,
     bookingAgent: {
-      agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
+      agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       agentName: String,
       commission: Number
     },
@@ -202,7 +202,7 @@ const dayUseBookingSchema = new mongoose.Schema({
         enum: ['pending', 'in_progress', 'completed'],
         default: 'pending'
       },
-      assignedStaff: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Staff' }]
+      assignedStaff: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
     }
   },
   
@@ -237,11 +237,11 @@ const dayUseBookingSchema = new mongoose.Schema({
     }]
   },
   
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
-  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   notes: [{
     note: String,
-    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff' },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     addedAt: { type: Date, default: Date.now },
     type: { type: String, enum: ['general', 'guest_request', 'operational', 'billing'] }
   }]

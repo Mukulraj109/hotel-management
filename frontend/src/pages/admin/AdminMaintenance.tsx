@@ -861,7 +861,10 @@ export default function AdminMaintenance() {
         {/* Create Task Modal */}
         <Modal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setShowCreateModal(false);
+            resetFormData();
+          }}
           title={
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">

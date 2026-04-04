@@ -16,6 +16,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Salutation {
   _id: string;
@@ -50,6 +51,11 @@ const AdminSalutations: React.FC = () => {
     gender: '',
     isActive: '',
     search: ''
+  });
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pages: 1,
+    total: 0
   });
 
   // Multi-property support
@@ -107,30 +113,36 @@ const AdminSalutations: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Reset to page 1 when filters change
+    setPagination(prev => ({ ...prev, current: 1 }));
+  }, [filters.category, filters.gender, filters.isActive, filters.search]);
+
+  useEffect(() => {
     fetchSalutations();
-  }, [filters]);
+  }, [filters, pagination.current]);
 
   const fetchSalutations = async () => {
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
-      
+
+      queryParams.append('page', pagination.current.toString());
+      queryParams.append('limit', '50');
+
       if (filters.category) queryParams.append('category', filters.category);
       if (filters.gender) queryParams.append('gender', filters.gender);
       if (filters.isActive) queryParams.append('isActive', filters.isActive);
+      if (filters.search) queryParams.append('search', filters.search);
 
       const { data } = await api.get(`/salutations?${queryParams}`);
-      let filteredSalutations = data.data.salutations;
-
-      // Client-side search filter
-      if (filters.search) {
-        filteredSalutations = filteredSalutations.filter((sal: Salutation) =>
-          sal.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-          (sal.fullForm && sal.fullForm.toLowerCase().includes(filters.search.toLowerCase()))
-        );
+      setSalutations(data.data.salutations);
+      if (data.pagination) {
+        setPagination({
+          current: data.pagination.page,
+          pages: data.pagination.pages,
+          total: data.pagination.total
+        });
       }
-
-      setSalutations(filteredSalutations);
     } catch (error) {
       toast.error('Failed to fetch salutations');
     } finally {
@@ -548,6 +560,31 @@ const AdminSalutations: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Pagination */}
+        {pagination.pages > 1 && (
+          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+            <div className="text-sm text-gray-700">
+              Page {pagination.current} of {pagination.pages} ({pagination.total} total)
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, current: Math.max(1, prev.current - 1) }))}
+                disabled={pagination.current <= 1}
+                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, current: Math.min(prev.pages, prev.current + 1) }))}
+                disabled={pagination.current >= pagination.pages}
+                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Confirmation Dialog */}
@@ -564,4 +601,4 @@ const AdminSalutations: React.FC = () => {
   );
 };
 
-export default AdminSalutations;
+export default withErrorBoundary(AdminSalutations);

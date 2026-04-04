@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface FrontDeskFeatureNoticeProps {
   title: string;
@@ -11,7 +12,7 @@ interface FrontDeskFeatureNoticeProps {
   fallbackLabel?: string;
 }
 
-export default function FrontDeskFeatureNotice({
+function FrontDeskFeatureNotice({
   title,
   description,
   fallbackPath = '/frontdesk',
@@ -39,3 +40,5 @@ export default function FrontDeskFeatureNotice({
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskFeatureNotice);

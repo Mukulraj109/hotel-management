@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen, CheckCircle, Loader2 } from 'lucide-react';
+import { Bell, AlertTriangle, User, Settings, Menu, PanelLeftClose, PanelLeftOpen, CheckCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 import { useNotifications, useNotificationStream } from '../../hooks/useNotifications';
 import NotificationDropdown from '../../components/notifications/NotificationDropdown';
+import StaffAlertDropdown from '../../components/staff/StaffAlertDropdown';
 import SettingsDropdown from '../../components/settings/SettingsDropdown';
+import { useStaffAlerts } from '../../hooks/useStaffAlerts';
 import { PropertySelector } from '../../components/common/PropertySelector';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
@@ -19,8 +21,10 @@ interface FrontDeskHeaderProps {
 export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: FrontDeskHeaderProps) {
   const { user, logout } = useAuth();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { unreadCount } = useNotifications();
+  const { unacknowledgedCount, criticalCount } = useStaffAlerts();
 
   // Connect to notification stream
   useNotificationStream();
@@ -95,6 +99,27 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
               )}
             </Link>
           ) : null}
+
+          {/* Staff Alert Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsAlertOpen(!isAlertOpen)}
+              className="relative p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              title={`${unacknowledgedCount} unacknowledged alert${unacknowledgedCount !== 1 ? 's' : ''}`}
+            >
+              <AlertTriangle className={`h-5 w-5 ${criticalCount > 0 ? 'text-red-500' : ''}`} />
+              {unacknowledgedCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+                  {unacknowledgedCount > 9 ? '9+' : unacknowledgedCount}
+                </span>
+              )}
+            </button>
+            <StaffAlertDropdown
+              isOpen={isAlertOpen}
+              onToggle={() => setIsAlertOpen(!isAlertOpen)}
+              alertCenterPath="/frontdesk/alerts"
+            />
+          </div>
 
           {/* Notification Dropdown */}
           <div className="relative">

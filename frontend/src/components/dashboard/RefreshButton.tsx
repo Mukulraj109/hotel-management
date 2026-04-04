@@ -26,16 +26,18 @@ export function RefreshButton({
   className,
 }: RefreshButtonProps) {
   const [isAutoRefreshing, setIsAutoRefreshing] = React.useState(autoRefresh);
+  const onRefreshRef = React.useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
 
   React.useEffect(() => {
     if (isAutoRefreshing) {
       const interval = setInterval(() => {
-        onRefresh();
+        onRefreshRef.current();
       }, refreshInterval);
 
       return () => clearInterval(interval);
     }
-  }, [isAutoRefreshing, refreshInterval, onRefresh]);
+  }, [isAutoRefreshing, refreshInterval]);
 
   const formatLastUpdated = (timestamp: string) => {
     const date = new Date(timestamp);

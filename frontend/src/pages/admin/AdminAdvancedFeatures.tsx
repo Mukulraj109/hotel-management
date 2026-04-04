@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { Box, Typography, Tabs, Tab, Paper, Grid, Card, CardContent, CardHeader } from '@mui/material';
 import {
   LocalOffer,
@@ -18,6 +19,7 @@ import JobTypeManager from '../../components/advanced/JobTypeManager';
 import AdvancedAnalytics from '../../components/advanced/AdvancedAnalytics';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { api } from '../../services/api';
 
 interface OverviewData {
   summary: {
@@ -56,55 +58,28 @@ const AdminAdvancedFeatures: React.FC = () => {
   const fetchOverviewData = async () => {
     try {
       setLoading(true);
-      // const response = await api.get('/discount-pricing/overview');
-      // setOverviewData(response.data.overview);
-      
-      // Mock data for demonstration
+      const response = await api.get('/discount-pricing/overview', {
+        params: { propertyId: selectedPropertyId }
+      });
+      if (response.data?.data?.overview) {
+        setOverviewData(response.data.data.overview);
+      } else if (response.data?.overview) {
+        setOverviewData(response.data.overview);
+      }
+    } catch {
+      // If overview endpoint not available, set empty defaults
       setOverviewData({
         summary: {
-          totalDiscounts: 15,
-          activeDiscounts: 12,
-          totalPricingRules: 8,
-          activePricingRules: 6,
-          totalMarketSegments: 10,
-          totalJobTypes: 25,
-          remoteEligibleJobs: 8
+          totalDiscounts: 0,
+          activeDiscounts: 0,
+          totalPricingRules: 0,
+          activePricingRules: 0,
+          totalMarketSegments: 0,
+          totalJobTypes: 0,
+          remoteEligibleJobs: 0
         },
-        topSegments: [
-          {
-            _id: '1',
-            name: 'Business Travelers',
-            category: 'business',
-            analytics: {
-              totalRevenue: 125000,
-              totalBookings: 450,
-              averageBookingValue: 277.78
-            }
-          },
-          {
-            _id: '2',
-            name: 'Leisure Families',
-            category: 'leisure',
-            analytics: {
-              totalRevenue: 98000,
-              totalBookings: 320,
-              averageBookingValue: 306.25
-            }
-          },
-          {
-            _id: '3',
-            name: 'Corporate Groups',
-            category: 'corporate',
-            analytics: {
-              totalRevenue: 156000,
-              totalBookings: 180,
-              averageBookingValue: 866.67
-            }
-          }
-        ]
+        topSegments: []
       });
-    } catch {
-      // Error handled silently
     } finally {
       setLoading(false);
     }
@@ -321,4 +296,4 @@ const AdminAdvancedFeatures: React.FC = () => {
   );
 };
 
-export default AdminAdvancedFeatures;
+export default withErrorBoundary(AdminAdvancedFeatures);

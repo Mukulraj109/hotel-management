@@ -13,9 +13,10 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 
-// All portfolio routes require authentication
+// All portfolio routes require authentication and admin/manager authorization
 router.use(authenticate);
 router.use(ensureTenantContext);
+router.use(authorize('admin', 'manager'));
 
 /**
  * Get all accessible property IDs for the current user.

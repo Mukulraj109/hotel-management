@@ -15,6 +15,7 @@ import {
   BillingHistorySummary
 } from '../../services/billingHistoryService';
 import { useAuth } from '../../context/AuthContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Filter Component
 interface BillingFiltersProps {
@@ -491,7 +492,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
 };
 
 // Main Component
-export default function BillingHistory() {
+function BillingHistory() {
   const { user } = useAuth();
   const [filters, setFilters] = useState<BillingHistoryFilters>({
     page: 1,
@@ -569,8 +570,21 @@ export default function BillingHistory() {
       </div>
 
       {/* Summary Stats */}
-      <SummaryStats 
-        summary={historyData?.data.summary || {} as BillingHistorySummary}
+      <SummaryStats
+        summary={historyData?.data.summary ?? {
+          totalTransactions: 0,
+          totalAmount: 0,
+          invoiceCount: 0,
+          paymentCount: 0,
+          refundCount: 0,
+          bookingCount: 0,
+          checkoutChargeCount: 0,
+          totalInvoiceAmount: 0,
+          totalPaymentAmount: 0,
+          totalRefundAmount: 0,
+          totalBookingAmount: 0,
+          totalCheckoutChargeAmount: 0
+        }}
         isLoading={isLoading}
       />
 
@@ -611,3 +625,5 @@ export default function BillingHistory() {
     </div>
   );
 }
+
+export default withErrorBoundary(BillingHistory);

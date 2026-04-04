@@ -191,12 +191,14 @@ export const SecurityCompliance: React.FC = () => {
         securityMonitoringService.getSecurityDashboard(),
       ]);
 
-      // Audit logs
-      const logs = (auditRes.data || []).map(mapAuditLogEntry);
+      // Audit logs — backend wraps array in { logs, total, pagination }
+      const rawLogs = Array.isArray(auditRes.data) ? auditRes.data : (auditRes.data?.logs || []);
+      const logs = rawLogs.map(mapAuditLogEntry);
       setAuditLogs(logs);
 
-      // Threat alerts
-      const threats = (alertRes.data || []).map(mapThreatAlert);
+      // Threat alerts — backend wraps array in { alerts, total, pagination }
+      const rawAlerts = Array.isArray(alertRes.data) ? alertRes.data : (alertRes.data?.alerts || []);
+      const threats = rawAlerts.map(mapThreatAlert);
       setSecurityThreats(threats);
 
       // Compliance checks from dashboard

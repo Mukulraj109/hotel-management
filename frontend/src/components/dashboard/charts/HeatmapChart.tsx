@@ -27,6 +27,14 @@ export function HeatmapChart({
   showLegend = true,
   className,
 }: HeatmapChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('flex items-center justify-center', className)} style={{ height }}>
+        <p className="text-gray-500">No room data available</p>
+      </div>
+    );
+  }
+
   const statusTypes = [
     { status: 'occupied', label: 'Occupied', color: '#ef4444' },
     { status: 'vacant', label: 'Available', color: '#10b981' },
@@ -36,7 +44,8 @@ export function HeatmapChart({
     { status: 'maintenance', label: 'Maintenance', color: '#f97316' },
   ];
 
-  const maxRoomsPerFloor = Math.max(...data.map(floor => floor.rooms.length));
+  const roomCounts = data.map(floor => floor.rooms.length);
+  const maxRoomsPerFloor = roomCounts.length > 0 ? Math.max(...roomCounts) : 1;
   const roomWidth = Math.min(60, Math.max(30, (100 / maxRoomsPerFloor) * 4));
 
   return (

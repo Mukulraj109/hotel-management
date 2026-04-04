@@ -13,6 +13,7 @@ import StaffProfileSettings from './settings/StaffProfileSettings';
 import StaffNotificationSettings from './settings/StaffNotificationSettings';
 import StaffDisplaySettings from './settings/StaffDisplaySettings';
 import StaffAvailabilitySettings from './settings/StaffAvailabilitySettings';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabItem {
   id: string;
@@ -21,7 +22,7 @@ interface TabItem {
   component: React.ComponentType<{ onSettingsChange: (hasChanges: boolean) => void }>;
 }
 
-export default function StaffSettings() {
+function StaffSettings() {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -156,3 +157,5 @@ export default function StaffSettings() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffSettings);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,8 +7,9 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffDashboardService, RoomStatusData, StaffActivityData } from '../../services/staffDashboardService';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffRooms() {
+function StaffRooms() {
   const [roomData, setRoomData] = useState<RoomStatusData | null>(null);
   const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,7 @@ export default function StaffRooms() {
 
   useEffect(() => {
     fetchRoomData();
-  }, []);
+  }, [fetchRoomData]);
 
   // Real-time connection setup
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
@@ -85,9 +86,9 @@ export default function StaffRooms() {
       off('room:updated', handleRoomUpdate);
       off('occupancy:changed', handleRoomUpdate);
     };
-  }, [isConnected, on, off]);
+  }, [isConnected, on, off, fetchRoomData]);
 
-  const fetchRoomData = async () => {
+  const fetchRoomData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -102,7 +103,7 @@ export default function StaffRooms() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleMarkRoomClean = async (roomId: string, roomNumber: string) => {
     try {
@@ -335,3 +336,5 @@ export default function StaffRooms() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffRooms);

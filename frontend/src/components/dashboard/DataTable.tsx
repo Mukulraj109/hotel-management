@@ -270,20 +270,37 @@ export function DataTable<T extends Record<string, unknown>>({
                 Prev
               </Button>
               <div className="hidden sm:flex items-center space-x-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const pageNumber = i + 1;
-                  return (
-                    <Button
-                      key={pageNumber}
-                      variant={currentPage === pageNumber ? 'primary' : 'ghost'}
-                      size="sm"
-                      onClick={() => setCurrentPage(pageNumber)}
-                      className="text-xs min-w-[32px]"
-                    >
-                      {pageNumber}
-                    </Button>
-                  );
-                })}
+                {(() => {
+                  const maxVisible = 5;
+                  let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                  let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                  if (endPage - startPage + 1 < maxVisible) {
+                    startPage = Math.max(1, endPage - maxVisible + 1);
+                  }
+                  const pages: React.ReactNode[] = [];
+                  if (startPage > 1) {
+                    pages.push(
+                      <Button key={1} variant="ghost" size="sm" onClick={() => setCurrentPage(1)} className="text-xs min-w-[32px]">1</Button>
+                    );
+                    if (startPage > 2) {
+                      pages.push(<span key="start-ellipsis" className="text-xs text-gray-400 px-1">...</span>);
+                    }
+                  }
+                  for (let i = startPage; i <= endPage; i++) {
+                    pages.push(
+                      <Button key={i} variant={currentPage === i ? 'primary' : 'ghost'} size="sm" onClick={() => setCurrentPage(i)} className="text-xs min-w-[32px]">{i}</Button>
+                    );
+                  }
+                  if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                      pages.push(<span key="end-ellipsis" className="text-xs text-gray-400 px-1">...</span>);
+                    }
+                    pages.push(
+                      <Button key={totalPages} variant="ghost" size="sm" onClick={() => setCurrentPage(totalPages)} className="text-xs min-w-[32px]">{totalPages}</Button>
+                    );
+                  }
+                  return pages;
+                })()}
               </div>
               <div className="sm:hidden text-xs text-gray-500">
                 {currentPage} / {totalPages}

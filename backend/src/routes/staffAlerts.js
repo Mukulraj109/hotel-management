@@ -256,6 +256,11 @@ router.post('/', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutatio
 // @route   PUT /api/v1/staff/alerts/:id
 // @access  Private (staff, admin, manager)
 router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutationBaselineSchema), asyncHandler(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ status: 'error', message: 'Staff alert not found' });
+  }
+
   const { hotelId, _id: userId } = req.user;
   await validateAssignedUser(req.body.assignedTo, hotelId);
 
@@ -322,8 +327,11 @@ router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutat
     updateData.escalationLevel = (alert.escalationLevel || 0) + 1;
   }
 
-  alert = await StaffAlert.findByIdAndUpdate(
-    req.params.id,
+  // SECURITY: Include hotelId in the update filter to prevent a TOCTOU race where
+  // the document's hotelId could change between the initial findOne check and this
+  // write, potentially allowing cross-tenant updates.
+  alert = await StaffAlert.findOneAndUpdate(
+    { _id: req.params.id, hotelId },
     updateData,
     { new: true, runValidators: true }
   )
@@ -365,6 +373,11 @@ router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutat
 // @route   PATCH /api/v1/staff/alerts/:id/acknowledge
 // @access  Private (staff, admin, manager)
 router.patch('/:id/acknowledge', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutationBaselineSchema), asyncHandler(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ status: 'error', message: 'Staff alert not found' });
+  }
+
   const { hotelId, _id: userId } = req.user;
 
   // Verify alert exists for this hotel
@@ -433,6 +446,11 @@ router.patch('/:id/acknowledge', authorizePolicy('staffAlerts', 'staffAccess'), 
 // @route   DELETE /api/v1/staff/alerts/:id
 // @access  Private (admin, manager)
 router.delete('/:id', authorizePolicy('staffAlerts', 'manageAccess'), validate(mutationBaselineSchema), asyncHandler(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ status: 'error', message: 'Staff alert not found' });
+  }
+
   const { hotelId } = req.user;
 
   const alert = await StaffAlert.findOne({

@@ -334,9 +334,13 @@ class DashboardService {
       params.append('hotelId', hotelId);
       params.append('reportType', reportType);
 
+      // Backend /reports endpoint requires startDate and endDate - provide defaults
+      const defaultEnd = new Date().toISOString().split('T')[0];
+      const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      params.append('startDate', options?.startDate || defaultStart);
+      params.append('endDate', options?.endDate || defaultEnd);
+
       if (options) {
-        if (options.startDate) params.append('startDate', options.startDate);
-        if (options.endDate) params.append('endDate', options.endDate);
         if (options.groupBy) params.append('groupBy', options.groupBy);
         if (options.format) params.append('format', options.format);
         if (typeof options.includeCharts === 'boolean') params.append('includeCharts', String(options.includeCharts));

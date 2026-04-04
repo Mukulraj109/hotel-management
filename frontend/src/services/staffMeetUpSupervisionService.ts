@@ -337,7 +337,10 @@ class StaffMeetUpSupervisionService {
   }
 
   shouldHighlightUrgent(supervision: SupervisionMeetUp['supervision'], proposedDate: string): boolean {
-    const isWithin24Hours = new Date(proposedDate).getTime() - new Date().getTime() < 24 * 60 * 60 * 1000;
+    const msUntil = new Date(proposedDate).getTime() - new Date().getTime();
+    // Past meet-ups are never highlighted as urgent
+    if (msUntil <= 0) return false;
+    const isWithin24Hours = msUntil < 24 * 60 * 60 * 1000;
     const isHighRisk = supervision.priority.priority === 'high';
     const requiresStaff = supervision.requiresStaffPresence;
 
@@ -351,6 +354,11 @@ class StaffMeetUpSupervisionService {
   } {
     const timeUntil = new Date(meetUp.proposedDate).getTime() - new Date().getTime();
     const hoursUntil = timeUntil / (1000 * 60 * 60);
+
+    // Past meet-ups are no longer actionable — treat as low urgency
+    if (hoursUntil <= 0) {
+      return { level: 'low', color: 'bg-gray-400 text-white', label: 'PAST' };
+    }
 
     if (hoursUntil < 2 && meetUp.supervision.priority.priority === 'high') {
       return { level: 'urgent', color: 'bg-red-600 text-white', label: 'URGENT' };

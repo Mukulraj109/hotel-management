@@ -22,6 +22,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../com
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
 import { api } from '../../../services/api';
 import { useProperty } from '../../../context/PropertyContext';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface DisplayFormData {
   theme: 'light' | 'dark' | 'auto';
@@ -39,7 +40,7 @@ interface DisplaySettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function DisplaySettings({ onSettingsChange }: DisplaySettingsProps = {}) {
+function DisplaySettings({ onSettingsChange }: DisplaySettingsProps = {}) {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
 
@@ -528,3 +529,5 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
     </div>
   );
 }
+
+export default withErrorBoundary(DisplaySettings);

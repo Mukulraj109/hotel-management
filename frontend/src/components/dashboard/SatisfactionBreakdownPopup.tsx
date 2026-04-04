@@ -148,11 +148,12 @@ export const SatisfactionBreakdownPopup: React.FC<SatisfactionBreakdownPopupProp
               onChange={(e) => setYear(parseInt(e.target.value))}
               className="border border-gray-300 rounded px-2 py-1 text-sm"
             >
-              {Array.from({ length: 3 }, (_, i) => (
-                <option key={2022 + i} value={2022 + i}>
-                  {2022 + i}
-                </option>
-              ))}
+              {Array.from({ length: 5 }, (_, i) => {
+                const y = new Date().getFullYear() - 4 + i;
+                return (
+                  <option key={y} value={y}>{y}</option>
+                );
+              })}
             </select>
           </div>
 

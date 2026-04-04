@@ -11,8 +11,8 @@ import {
   CheckCircle,
   RefreshCw
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
-import { Button } from '../ui/Button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Button } from '../ui/button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';

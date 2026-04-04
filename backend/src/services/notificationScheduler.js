@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import mongoose from 'mongoose';
 import NotificationAutomationService from './notificationAutomationService.js';
+import emailService from './emailService.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -86,6 +87,16 @@ class NotificationScheduler {
     // Daily at 3 AM - Check equipment failure patterns
     cron.schedule('0 3 * * *', () => {
       this.checkEquipmentFailurePatterns();
+    });
+
+    // Daily at 9 AM - Send check-in reminders for tomorrow's arrivals
+    cron.schedule('0 9 * * *', () => {
+      this.sendCheckInReminders();
+    });
+
+    // Every 5 minutes - Expire stale pending reservations
+    cron.schedule('*/5 * * * *', () => {
+      this.expirePendingReservations();
     });
 
     this.isInitialized = true;
@@ -1171,6 +1182,102 @@ class NotificationScheduler {
     });
 
     return status;
+  }
+
+  /**
+   * Expire pending bookings whose reservedUntil window has passed
+   * and release any rooms that were held for them.
+   */
+  static async expirePendingReservations() {
+    try {
+      logger.debug('🔍 Checking for expired pending reservations...');
+
+      const Booking = mongoose.model('Booking');
+      const Room = mongoose.model('Room');
+      const now = new Date();
+
+      const expiredBookings = await Booking.find({
+        status: 'pending',
+        reservedUntil: { $lt: now, $exists: true }
+      }).select('_id rooms hotelId bookingNumber').limit(500).lean();
+
+      if (expiredBookings.length === 0) return;
+
+      logger.info(`Found ${expiredBookings.length} expired pending reservations`);
+
+      const expiredIds = expiredBookings.map(b => b._id);
+      await Booking.updateMany(
+        { _id: { $in: expiredIds } },
+        { $set: { status: 'cancelled', cancellationReason: 'Reservation expired — payment not completed in time' } }
+      );
+
+      // Release any reserved rooms
+      const roomIds = expiredBookings.flatMap(b => (b.rooms || []).map(r => r.roomId?._id || r.roomId)).filter(Boolean);
+      if (roomIds.length > 0) {
+        await Room.updateMany(
+          { _id: { $in: roomIds }, status: 'reserved' },
+          { $set: { status: 'vacant' }, $unset: { currentBookingId: '' } }
+        );
+      }
+
+      logger.info(`✅ Expired ${expiredBookings.length} pending reservations`);
+    } catch (error) {
+      logger.error('❌ Error expiring pending reservations:', error);
+    }
+  }
+
+  static async sendCheckInReminders() {
+    try {
+      logger.debug('📧 Sending check-in reminders for tomorrow arrivals...');
+
+      const Booking = mongoose.model('Booking');
+      const User = mongoose.model('User');
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      const dayAfter = new Date(tomorrow);
+      dayAfter.setDate(dayAfter.getDate() + 1);
+
+      const upcomingBookings = await Booking.find({
+        checkIn: { $gte: tomorrow, $lt: dayAfter },
+        status: { $in: ['confirmed', 'pending'] },
+        reminderSent: { $ne: true }
+      }).select('_id bookingNumber checkIn checkOut userId hotelId').limit(500).lean();
+
+      logger.debug(`📋 Found ${upcomingBookings.length} bookings for tomorrow check-in reminders`);
+
+      let sentCount = 0;
+      for (const booking of upcomingBookings) {
+        try {
+          if (!booking.userId) continue;
+          const guest = await User.findById(booking.userId).select('email name').lean();
+          if (!guest?.email) continue;
+
+          await emailService.sendEmail({
+            to: guest.email,
+            subject: `Check-in Reminder — ${booking.bookingNumber || booking._id}`,
+            html: `
+              <h2>Your stay is tomorrow!</h2>
+              <p>Dear ${guest.name || 'Guest'},</p>
+              <p>This is a friendly reminder that your check-in for booking <strong>${booking.bookingNumber || booking._id}</strong> is scheduled for <strong>${new Date(booking.checkIn).toLocaleDateString()}</strong>.</p>
+              <p>We look forward to welcoming you!</p>
+            `
+          });
+
+          await Booking.updateOne({ _id: booking._id }, { $set: { reminderSent: true } });
+          sentCount++;
+        } catch (err) {
+          logger.warn('Failed to send check-in reminder', { bookingId: booking._id, error: err.message });
+        }
+      }
+
+      if (sentCount > 0) {
+        logger.info(`✅ Sent ${sentCount} check-in reminder emails`);
+      }
+    } catch (error) {
+      logger.error('❌ Error sending check-in reminders:', error);
+    }
   }
 }
 

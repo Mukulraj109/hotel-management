@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle
 } from '../../components/ui/card';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/Badge';
 import {
   Dialog,
@@ -208,7 +208,8 @@ function ScheduledUpdates() {
       refetch();
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to cancel update');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to cancel update');
     }
   });
 
@@ -229,7 +230,7 @@ function ScheduledUpdates() {
       queryClient.invalidateQueries({ queryKey: ['scheduled-updates'] });
       refetch();
     },
-    onError: (error: unknown) => {
+    onError: (_error: unknown) => {
       toast.error('Failed to cancel some updates');
     }
   });
@@ -246,7 +247,8 @@ function ScheduledUpdates() {
       refetch();
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to execute update');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to execute update');
     }
   });
 
@@ -264,7 +266,8 @@ function ScheduledUpdates() {
       refetch();
     },
     onError: (error: unknown) => {
-      toast.error(error.response?.data?.message || 'Failed to reschedule update');
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to reschedule update');
     }
   });
 

@@ -372,6 +372,18 @@ router.post('/bulk-upload',
       const file = req.files[i];
       const fileMetadata = parsedMetadata[i] || {};
 
+      // SECURITY: Verify magic bytes match declared MIME type for each bulk-uploaded file.
+      // This mirrors the validation in the single-upload route to prevent content-type spoofing.
+      const normalisedMime = file._normalisedMime || file.mimetype;
+      const magicValid = await validateMagicBytes(file.path, normalisedMime);
+      if (!magicValid) {
+        // Remove the malicious/mismatched file and all previously written files before rejecting
+        for (const f of req.files) {
+          try { fs.unlinkSync(f.path); } catch { /* ignore cleanup error */ }
+        }
+        throw new ApplicationError(`File ${i + 1}: content does not match the declared file type`, 400);
+      }
+
       const documentData = {
         userId,
         userType: role === 'staff' ? 'staff' : 'guest',
@@ -440,7 +452,7 @@ router.post('/bulk-upload',
  *     security:
  *       - bearerAuth: []
  */
-router.get('/', catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('documentUpload', 'baseAccess'), catchAsync(async (req, res) => {
   const {
     status,
     category,
@@ -450,13 +462,17 @@ router.get('/', catchAsync(async (req, res) => {
     page,
     limit = 20,
     skip = 0,
-    sortBy = '-createdAt'
   } = req.query;
 
   const parsedLimit = Math.min(parseInt(limit) || 20, 100);
   const parsedPage = Math.max(parseInt(page) || 1, 1);
   const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
   const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // SECURITY: Allowlist sort fields to prevent NoSQL injection via unsanitized sort param.
+  const ALLOWED_SORT_FIELDS = ['createdAt', '-createdAt', 'updatedAt', '-updatedAt', 'originalName', '-originalName', 'status', '-status'];
+  const rawSortBy = req.query.sortBy || '-createdAt';
+  const sortBy = ALLOWED_SORT_FIELDS.includes(rawSortBy) ? rawSortBy : '-createdAt';
 
   const query = {
     userId: req.user._id,
@@ -604,6 +620,11 @@ router.get('/pending-verifications',
     const parsedPage = Math.max(parseInt(page) || 1, 1);
     const parsedSkip = page ? (parsedPage - 1) * parsedLimit : (parseInt(skip) || 0);
 
+    // SECURITY: Validate departmentId as ObjectId to prevent CastError leakage.
+    if (departmentId && !mongoose.Types.ObjectId.isValid(departmentId)) {
+      throw new ApplicationError('Invalid departmentId filter value', 400);
+    }
+
     const countQuery = { hotelId: req.user.hotelId, status: 'pending', isActive: true, isDeleted: false };
     if (userType) countQuery.userType = userType;
     if (departmentId) countQuery.departmentId = departmentId;
@@ -639,7 +660,7 @@ router.get('/pending-verifications',
  *     summary: Get document analytics and statistics
  *     tags: [Documents]
  */
-router.get('/analytics', catchAsync(async (req, res) => {
+router.get('/analytics', authorizePolicy('documentUpload', 'managerAccess'), catchAsync(async (req, res) => {
   const { period = '30d', userType = 'all', propertyId } = req.query;
 
   // Calculate date range
@@ -768,6 +789,10 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/:id/download', catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Document not found', 404);
+  }
   const document = await Document.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId

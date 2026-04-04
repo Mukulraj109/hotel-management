@@ -4,6 +4,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import EmptyState from '../../components/ui/EmptyState';
 
 interface PurchaseOrder {
   _id: string;
@@ -492,7 +493,16 @@ const AdminPurchaseOrders: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {purchaseOrders.map((po) => (
+              {purchaseOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <EmptyState
+                      title="No purchase orders found"
+                      description="There are no purchase orders matching your criteria. Create a new purchase order to get started."
+                    />
+                  </td>
+                </tr>
+              ) : purchaseOrders.map((po) => (
                 <tr key={po._id} className={`hover:bg-gray-50 ${po.isOverdue ? 'bg-red-50' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
@@ -593,7 +603,7 @@ const AdminPurchaseOrders: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

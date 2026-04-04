@@ -1,5 +1,6 @@
 import React from 'react';
 import BillingHistory from '../admin/BillingHistory';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 /**
  * FrontDeskBilling — Front-desk billing & payments page.
@@ -16,4 +17,4 @@ const FrontDeskBilling: React.FC = () => {
   return <BillingHistory />;
 };
 
-export default FrontDeskBilling;
+export default withErrorBoundary(FrontDeskBilling);

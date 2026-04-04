@@ -4,7 +4,6 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext, requireTenantInBulkOps } from '../middleware/tenantIsolation.js';
 import { authorizePolicy } from '../middleware/rbacPolicy.js';
-// TODO: Add request body validation (e.g., express-validator or Joi) to POST/PUT routes
 import { validate, schemas } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import Joi from 'joi';
@@ -27,6 +26,19 @@ import ChartOfAccounts from '../models/ChartOfAccounts.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+const integrationSettingsSchema = Joi.object({
+  enabled: Joi.boolean().optional(),
+  apiKey: Joi.string().max(500).optional(),
+  apiSecret: Joi.string().max(500).optional(),
+  webhookUrl: Joi.string().uri().max(500).optional(),
+  syncFrequency: Joi.string().valid('realtime', 'hourly', 'daily', 'manual').optional()
+}).unknown(true);
+
+const chartOfAccountsInitSchema = Joi.object({
+  template: Joi.string().valid('standard', 'hospitality', 'minimal').optional(),
+  currency: Joi.string().length(3).uppercase().optional()
+}).unknown(true);
 
 // Rate limiting for financial operations
 const financialLimiter = rateLimit({
@@ -76,7 +88,7 @@ router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 
 // === INTEGRATION SETTINGS ===
-router.put('/integrations/:integrationId/settings', authorize('admin', 'manager'), async (req, res) => {
+router.put('/integrations/:integrationId/settings', authorize('admin', 'manager'), validate(integrationSettingsSchema), async (req, res) => {
   try {
     const { integrationId } = req.params;
     const hotelId = req.user?.hotelId;
@@ -112,7 +124,7 @@ router.put('/integrations/:integrationId/settings', authorize('admin', 'manager'
 });
 
 // === CHART OF ACCOUNTS ROUTES ===
-router.post('/chart-of-accounts/initialize', authorize('admin', 'manager'), async (req, res) => {
+router.post('/chart-of-accounts/initialize', authorize('admin', 'manager'), validate(chartOfAccountsInitSchema), async (req, res) => {
   try {
     const hotelId = req.user?.hotelId;
     if (!hotelId) return res.status(400).json({ success: false, message: 'Hotel ID required' });
@@ -165,39 +177,39 @@ router.post('/chart-of-accounts/initialize', authorize('admin', 'manager'), asyn
 });
 
 router.route('/chart-of-accounts')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccounts)
+  .get(authorize('admin', 'manager'), chartOfAccountsController.getAccounts)
   .post(authorize('admin', 'manager'), chartOfAccountsController.createAccount);
 
-router.get('/chart-of-accounts/tree', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccountTree);
-router.get('/chart-of-accounts/flattened', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getFlattenedAccounts);
+router.get('/chart-of-accounts/tree', authorize('admin', 'manager'), chartOfAccountsController.getAccountTree);
+router.get('/chart-of-accounts/flattened', authorize('admin', 'manager'), chartOfAccountsController.getFlattenedAccounts);
 router.post('/chart-of-accounts/bulk-import', authorizePolicy('financial', 'chartBulkImport'), validate(mutationBaselineSchema), requireTenantInBulkOps, chartOfAccountsController.bulkImportAccounts);
 
 router.route('/chart-of-accounts/:id')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccount)
+  .get(authorize('admin', 'manager'), chartOfAccountsController.getAccount)
   .patch(authorize('admin', 'manager'), chartOfAccountsController.updateAccount)
   .delete(authorize('admin'), chartOfAccountsController.deleteAccount);
 
-router.get('/chart-of-accounts/:id/activity', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccountActivity);
+router.get('/chart-of-accounts/:id/activity', authorize('admin', 'manager'), chartOfAccountsController.getAccountActivity);
 
 // === GENERAL LEDGER ROUTES ===
-router.get('/general-ledger', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getLedgerEntries);
-router.get('/general-ledger/trial-balance', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.getTrialBalance);
-router.get('/general-ledger/financial-statements', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.getFinancialStatements);
-router.get('/general-ledger/aging-report', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAgingReport);
-router.get('/general-ledger/export', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.exportLedger);
-router.get('/general-ledger/account/:accountId', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAccountLedger);
+router.get('/general-ledger', authorize('admin', 'manager'), generalLedgerController.getLedgerEntries);
+router.get('/general-ledger/trial-balance', authorize('admin', 'manager'), generalLedgerController.getTrialBalance);
+router.get('/general-ledger/financial-statements', authorize('admin', 'manager'), generalLedgerController.getFinancialStatements);
+router.get('/general-ledger/aging-report', authorize('admin', 'manager'), generalLedgerController.getAgingReport);
+router.get('/general-ledger/export', authorize('admin', 'manager'), generalLedgerController.exportLedger);
+router.get('/general-ledger/account/:accountId', authorize('admin', 'manager'), generalLedgerController.getAccountLedger);
 router.get('/general-ledger/verify-balance', authorize('admin', 'manager'), generalLedgerController.verifyBalance);
 
 // === JOURNAL ENTRY ROUTES ===
 router.route('/journal-entries')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalEntries)
+  .get(authorize('admin', 'manager'), journalEntryController.getJournalEntries)
   .post(authorize('admin', 'manager'), journalEntryController.createJournalEntry);
 
-router.get('/journal-entries/templates', authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalTemplates);
+router.get('/journal-entries/templates', authorize('admin', 'manager'), journalEntryController.getJournalTemplates);
 router.post('/journal-entries/bulk-create', authorizePolicy('financial', 'journalBulkCreate'), validate(mutationBaselineSchema), requireTenantInBulkOps, journalEntryController.bulkCreateJournalEntries);
 
 router.route('/journal-entries/:id')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalEntry)
+  .get(authorize('admin', 'manager'), journalEntryController.getJournalEntry)
   .patch(authorize('admin', 'manager'), journalEntryController.updateJournalEntry)
   .delete(authorize('admin'), journalEntryController.deleteJournalEntry);
 
@@ -208,35 +220,35 @@ router.post('/journal-entries/:id/reject', authorizePolicy('financial', 'journal
 
 // === BANK ACCOUNT ROUTES ===
 router.route('/bank-accounts')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getBankAccounts)
+  .get(authorize('admin', 'manager'), bankAccountController.getBankAccounts)
   .post(authorize('admin', 'manager'), bankAccountController.createBankAccount);
 
-router.get('/bank-accounts/cash-position', authorize('admin', 'manager', 'frontdesk'), bankAccountController.getCashPosition);
-router.get('/bank-accounts/balances', authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getAccountBalances);
+router.get('/bank-accounts/cash-position', authorize('admin', 'manager'), bankAccountController.getCashPosition);
+router.get('/bank-accounts/balances', authorize('admin', 'manager'), bankAccountController.getAccountBalances);
 
 router.route('/bank-accounts/:id')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getBankAccount)
+  .get(authorize('admin', 'manager'), bankAccountController.getBankAccount)
   .patch(authorize('admin', 'manager'), bankAccountController.updateBankAccount)
   .delete(authorize('admin'), bankAccountController.deactivateBankAccount);
 
-router.get('/bank-accounts/:id/transactions', authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getTransactions);
+router.get('/bank-accounts/:id/transactions', authorize('admin', 'manager'), bankAccountController.getTransactions);
 router.post('/bank-accounts/:id/transactions', authorizePolicy('financial', 'bankTransactionCreate'), validate(mutationBaselineSchema), bankAccountController.addTransaction);
 router.post('/bank-accounts/:id/reconcile', authorizePolicy('financial', 'bankReconcileImport'), validate(mutationBaselineSchema), bankAccountController.reconcileAccount);
 router.post('/bank-accounts/:id/import-statement', authorizePolicy('financial', 'bankReconcileImport'), validate(mutationBaselineSchema), bankAccountController.importStatement);
 
 // === BUDGET ROUTES ===
 router.route('/budgets')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), budgetController.getBudgets)
+  .get(authorize('admin', 'manager'), budgetController.getBudgets)
   .post(authorize('admin', 'manager'), budgetController.createBudget);
 
-router.get('/budgets/summary', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetSummary);
-router.get('/budgets/statistics', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetStatistics);
-router.get('/budgets/templates', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetTemplates);
-router.get('/budgets/vs-actual', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetVsActual);
-router.get('/budgets/forecast', authorize('admin', 'manager', 'frontdesk'), budgetController.generateForecast);
+router.get('/budgets/summary', authorize('admin', 'manager'), budgetController.getBudgetSummary);
+router.get('/budgets/statistics', authorize('admin', 'manager'), budgetController.getBudgetStatistics);
+router.get('/budgets/templates', authorize('admin', 'manager'), budgetController.getBudgetTemplates);
+router.get('/budgets/vs-actual', authorize('admin', 'manager'), budgetController.getBudgetVsActual);
+router.get('/budgets/forecast', authorize('admin', 'manager'), budgetController.generateForecast);
 
 router.route('/budgets/:id')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), budgetController.getBudget)
+  .get(authorize('admin', 'manager'), budgetController.getBudget)
   .patch(authorize('admin', 'manager'), budgetController.updateBudget)
   .delete(authorize('admin'), budgetController.deleteBudget);
 
@@ -246,7 +258,7 @@ router.post('/budgets/:id/revise', authorizePolicy('financial', 'budgetSubmitRev
 
 // === INVOICES ===
 router.route('/invoices')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
+  .get(authorize('admin', 'manager'), async (req, res) => {
     try {
       const hotelId = req.user.hotelId;
       if (!hotelId) {
@@ -353,7 +365,7 @@ async function calculatePaymentStatistics(FinancialPayment, query = {}) {
 
 // === PAYMENTS ===
 router.route('/payments')
-  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
+  .get(authorize('admin', 'manager'), async (req, res) => {
     try {
       // Build query filters with tenant isolation
       const hotelId = req.user.hotelId;
@@ -432,7 +444,7 @@ router.route('/payments')
   });
 
 // === PAYMENT STATISTICS ===
-router.get('/payments/statistics', authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
+router.get('/payments/statistics', authorize('admin', 'manager'), async (req, res) => {
   try {
     // Build query filters with tenant isolation
     const hotelId = req.user.hotelId;

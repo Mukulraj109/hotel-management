@@ -438,6 +438,9 @@ const userSchema = new mongoose.Schema({
   lastLogin: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  emailVerified: { type: Boolean, default: false },
+  emailVerificationToken: { type: String, select: false },
+  emailVerificationExpires: { type: Date, select: false },
   // Tracks when password was last changed. authenticate() middleware uses this
   // to invalidate JWTs issued before this timestamp (session revocation on breach).
   passwordChangedAt: {

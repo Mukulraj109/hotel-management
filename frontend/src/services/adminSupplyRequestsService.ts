@@ -225,7 +225,7 @@ class AdminSupplyRequestsService {
     const queryString = queryParams.toString();
     const endpoint = queryString ? `?${queryString}` : '';
 
-    return this.apiRequest(`/${endpoint}`);
+    return this.apiRequest(endpoint);
   }
 
   async getRequestById(requestId: string): Promise<ApiResponse<SupplyRequest>> {

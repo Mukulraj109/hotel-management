@@ -53,6 +53,7 @@ import { api } from '../../services/api';
 import { toast } from 'react-toastify';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -160,7 +161,7 @@ const AdminDayUseManagement: React.FC = () => {
       ]);
 
       const todayRevenue = revenueRes.data.data.revenue.reduce(
-        (sum: number, item: Record<string, unknown>) => sum + item.totalRevenue, 0
+        (sum: number, item: Record<string, unknown>) => sum + ((item.totalRevenue as number) || 0), 0
       );
       
       const occupancyItems = occupancyRes.data.data.occupancy;
@@ -172,9 +173,10 @@ const AdminDayUseManagement: React.FC = () => {
 
       setQuickStats({
         totalSlots: slots.length,
-        activeBookings: bookings.filter((b: unknown) => 
-          ['confirmed', 'checked_in', 'in_use'].includes(b.status.bookingStatus)
-        ).length,
+        activeBookings: bookings.filter((b: Record<string, unknown>) => {
+          const status = b.status as Record<string, unknown> | undefined;
+          return status && ['confirmed', 'checked_in', 'in_use'].includes(status.bookingStatus as string);
+        }).length,
         todayRevenue,
         occupancyRate: Math.round(avgOccupancy)
       });
@@ -423,4 +425,4 @@ const AdminDayUseManagement: React.FC = () => {
   );
 };
 
-export default AdminDayUseManagement;
+export default withErrorBoundary(AdminDayUseManagement);

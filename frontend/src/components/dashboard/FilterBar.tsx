@@ -46,6 +46,7 @@ export function FilterBar({
           <select
             key={filter.key}
             value={value}
+            aria-label={filter.label}
             onChange={(e) => onChange(filter.key, e.target.value)}
             className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
           >
@@ -64,6 +65,7 @@ export function FilterBar({
             key={filter.key}
             type="date"
             value={value}
+            aria-label={filter.label}
             onChange={(e) => onChange(filter.key, e.target.value)}
             className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
           />
@@ -74,6 +76,7 @@ export function FilterBar({
           <div key={filter.key} className="flex flex-col sm:flex-row gap-2">
             <input
               type="date"
+              aria-label={`${filter.label} start date`}
               value={value?.start || ''}
               onChange={(e) => onChange(filter.key, { ...value, start: e.target.value })}
               className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
@@ -81,6 +84,7 @@ export function FilterBar({
             />
             <input
               type="date"
+              aria-label={`${filter.label} end date`}
               value={value?.end || ''}
               onChange={(e) => onChange(filter.key, { ...value, end: e.target.value })}
               className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
@@ -95,6 +99,7 @@ export function FilterBar({
             <input
               type="text"
               value={value}
+              aria-label={filter.label}
               onChange={(e) => onChange(filter.key, e.target.value)}
               placeholder={filter.placeholder || `Search ${filter.label}`}
               className="block w-full min-w-0 pl-8 sm:pl-10 pr-2 sm:pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"

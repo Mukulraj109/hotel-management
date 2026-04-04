@@ -12,6 +12,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface RoomType {
   _id: string;
@@ -543,4 +544,4 @@ const AdminRoomAllotmentCreate: React.FC = () => {
   );
 };
 
-export default AdminRoomAllotmentCreate;
+export default withErrorBoundary(AdminRoomAllotmentCreate);

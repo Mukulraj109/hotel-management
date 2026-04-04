@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const getTierColor = (tier: string) => {
   return loyaltyService.getTierColor(tier);
@@ -56,7 +57,7 @@ const getOfferIcon = (type: string) => {
   }
 };
 
-export default function LoyaltyDashboard() {
+function LoyaltyDashboard() {
   const [redeemingOffer, setRedeemingOffer] = useState<string | null>(null);
   const navigate = useNavigate();
   const { on, off } = useRealTime();
@@ -366,3 +367,5 @@ export default function LoyaltyDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(LoyaltyDashboard);

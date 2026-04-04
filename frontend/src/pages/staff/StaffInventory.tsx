@@ -1,24 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffDashboardService, StaffInventoryData, StaffTodayData } from '../../services/staffDashboardService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffInventory() {
+function StaffInventory() {
   const [inventoryData, setInventoryData] = useState<StaffInventoryData | null>(null);
   const [todayData, setTodayData] = useState<StaffTodayData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-
-  useEffect(() => {
-    fetchInventoryData();
-  }, []);
-
-
-  const fetchInventoryData = async () => {
+  // fetchInventoryData must be declared before the useEffect that references it.
+  const fetchInventoryData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -33,13 +29,16 @@ export default function StaffInventory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchInventoryData();
+  }, [fetchInventoryData]);
 
   const handleInspectRoom = async (roomId: string, roomNumber: string) => {
     try {
       await staffDashboardService.markRoomInspected(roomId);
       toast.success(`Room ${roomNumber} marked as inspected!`);
-      // Refresh the data to update the UI
       fetchInventoryData();
     } catch (err) {
       toast.error('Failed to mark room as inspected');
@@ -49,11 +48,12 @@ export default function StaffInventory() {
   const handleOrderItem = async (itemId: string, itemName: string) => {
     try {
       await staffDashboardService.orderInventoryItem(itemId);
-      toast.success(`Order placed for ${itemName}! Stock will be replenished.`);
-      // Refresh the data to update the UI
+      // Backend now creates a supply request instead of directly updating stock.
+      // Inform the user accordingly.
+      toast.success(`Supply request created for ${itemName}. Awaiting manager approval.`);
       fetchInventoryData();
     } catch (err) {
-      toast.error('Failed to place order');
+      toast.error('Failed to create supply request');
     }
   };
 
@@ -124,7 +124,7 @@ export default function StaffInventory() {
                       size="sm"
                       onClick={() => handleOrderItem(item._id, item.name)}
                     >
-                      Order
+                      Request Restock
                     </Button>
                   </div>
                 ))
@@ -214,3 +214,5 @@ export default function StaffInventory() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffInventory);

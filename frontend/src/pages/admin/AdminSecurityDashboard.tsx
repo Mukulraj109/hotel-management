@@ -3,8 +3,9 @@ import BypassSecurityDashboard from '../../components/admin/BypassSecurityDashbo
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { Shield } from 'lucide-react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminSecurityDashboardPage() {
+function AdminSecurityDashboardPage() {
   const { selectedPropertyId, viewMode } = useProperty();
 
   if (!selectedPropertyId && viewMode === 'single') {
@@ -27,3 +28,5 @@ export default function AdminSecurityDashboardPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminSecurityDashboardPage);

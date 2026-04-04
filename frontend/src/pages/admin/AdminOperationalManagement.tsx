@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { Box, Typography, Tabs, Tab, Paper, Grid, Card, CardContent, CardHeader, CardTitle } from '@mui/material';
 import { 
   Business, 
@@ -16,6 +17,7 @@ import LostFoundManager from '../../components/operational/LostFoundManager';
 import OperationalAnalytics from '../../components/operational/OperationalAnalytics';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { api } from '../../services/api';
 
 interface OverviewData {
   summary: {
@@ -45,24 +47,26 @@ const AdminOperationalManagement: React.FC = () => {
 
     try {
       setLoading(true);
-      // const response = await api.get('/operational-management/overview', {
-      //   params: { propertyId: selectedPropertyId }
-      // });
-      // setOverviewData(response.data.overview);
-
-      // Mock data for demonstration
+      const response = await api.get('/operational-management/overview', {
+        params: { propertyId: selectedPropertyId }
+      });
+      if (response.data?.data?.overview) {
+        setOverviewData(response.data.data.overview);
+      } else if (response.data?.overview) {
+        setOverviewData(response.data.overview);
+      }
+    } catch {
+      // If overview endpoint not available, set empty defaults
       setOverviewData({
         summary: {
-          totalCounters: 8,
-          availableCounters: 6,
-          totalModes: 12,
-          totalLostFoundItems: 45,
-          foundItems: 12,
-          claimedItems: 28
+          totalCounters: 0,
+          availableCounters: 0,
+          totalModes: 0,
+          totalLostFoundItems: 0,
+          foundItems: 0,
+          claimedItems: 0
         }
       });
-    } catch {
-      // Error handled silently
     } finally {
       setLoading(false);
     }

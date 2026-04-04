@@ -20,16 +20,33 @@ class APIMetricsService extends EventEmitter {
    */
   startMetricsCollection() {
     // Flush buffer periodically
-    setInterval(() => {
+    this._flushIntervalId = setInterval(() => {
       this.flushMetrics();
     }, this.flushInterval);
 
     // Cleanup old metrics data periodically (daily)
-    setInterval(() => {
+    this._cleanupIntervalId = setInterval(() => {
       this.cleanupOldMetrics();
     }, 24 * 60 * 60 * 1000);
 
     logger.info('API Metrics Service started');
+  }
+
+  /**
+   * Gracefully shut down the metrics service, clearing all intervals
+   */
+  shutdown() {
+    if (this._flushIntervalId) {
+      clearInterval(this._flushIntervalId);
+      this._flushIntervalId = null;
+    }
+    if (this._cleanupIntervalId) {
+      clearInterval(this._cleanupIntervalId);
+      this._cleanupIntervalId = null;
+    }
+    // Flush any remaining metrics before shutdown
+    this.flushMetrics();
+    logger.info('API Metrics Service shut down');
   }
 
   /**
@@ -162,8 +179,9 @@ class APIMetricsService extends EventEmitter {
         metric.security.authFailures += 1;
       }
 
-      // Flush buffer if too large
-      if (this.metricsBuffer.size > this.maxBufferSize) {
+      // Flush buffer if it exceeds the size cap to prevent memory leaks
+      if (this.metricsBuffer.size >= this.maxBufferSize) {
+        logger.warn(`Metrics buffer reached size cap (${this.maxBufferSize}), forcing flush`);
         await this.flushMetrics();
       }
 

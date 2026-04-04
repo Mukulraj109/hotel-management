@@ -14,6 +14,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface NotificationFormData {
   channels: {
@@ -45,7 +46,7 @@ interface NotificationSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function NotificationSettings({ onSettingsChange }: NotificationSettingsProps = {}) {
+function NotificationSettings({ onSettingsChange }: NotificationSettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -451,3 +452,5 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
     </div>
   );
 }
+
+export default withErrorBoundary(NotificationSettings);

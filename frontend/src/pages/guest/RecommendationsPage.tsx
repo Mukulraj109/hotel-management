@@ -7,6 +7,7 @@ import { loyaltyService } from '../../services/loyaltyService';
 import FavoriteButton from '../../components/ui/FavoriteButton';
 import BackButton from '../../components/ui/BackButton';
 import ErrorAlert, { parseErrorToLoyaltyError } from '../../components/ui/ErrorAlert';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const RecommendationsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'recommended' | 'popular'>('recommended');
@@ -280,4 +281,4 @@ const RecommendationsPage: React.FC = () => {
   );
 };
 
-export default RecommendationsPage;
+export default withErrorBoundary(RecommendationsPage);

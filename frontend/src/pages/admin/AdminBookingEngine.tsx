@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -73,4 +74,4 @@ const AdminBookingEngine: React.FC = () => {
   );
 };
 
-export default AdminBookingEngine;
+export default withErrorBoundary(AdminBookingEngine);

@@ -8,6 +8,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { travelAgentService } from '../../services/travelAgentService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface AgentFormData {
   companyName: string;
@@ -33,7 +34,7 @@ const defaultForm: AgentFormData = {
   paymentTerms: { creditLimit: 0, paymentDueDays: 30, preferredPaymentMethod: 'bank_transfer' },
 };
 
-export default function TravelAgentForm() {
+function TravelAgentForm() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { selectedPropertyId } = useProperty();
@@ -278,3 +279,5 @@ export default function TravelAgentForm() {
     </div>
   );
 }
+
+export default withErrorBoundary(TravelAgentForm);

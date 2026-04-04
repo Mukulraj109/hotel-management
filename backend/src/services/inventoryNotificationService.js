@@ -292,7 +292,9 @@ class InventoryNotificationService {
         'inventory_guest_charged',
         'inventory_low_stock',
         'checkout_inspection_failed',
-        'inventory_theft'
+        'inventory_theft',
+        'supply_request_approved',
+        'supply_request_rejected'
       ];
 
       return await Notification.find({
@@ -334,12 +336,14 @@ class InventoryNotificationService {
     try {
       const inventoryTypes = [
         'inventory_damage',
-        'inventory_missing', 
+        'inventory_missing',
         'inventory_replacement_needed',
         'inventory_guest_charged',
         'inventory_low_stock',
         'checkout_inspection_failed',
-        'inventory_theft'
+        'inventory_theft',
+        'supply_request_approved',
+        'supply_request_rejected'
       ];
 
       return await Notification.countDocuments({

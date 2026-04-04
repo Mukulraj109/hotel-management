@@ -26,6 +26,12 @@ const mismatchSchema = new mongoose.Schema(
 
 const loyaltyReconciliationRunSchema = new mongoose.Schema(
   {
+    hotelId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hotel',
+      required: true,
+      index: true
+    },
     status: {
       type: String,
       enum: ['completed', 'failed'],
@@ -68,7 +74,8 @@ const loyaltyReconciliationRunSchema = new mongoose.Schema(
   }
 );
 
-loyaltyReconciliationRunSchema.index({ createdAt: -1 });
-loyaltyReconciliationRunSchema.index({ status: 1, createdAt: -1 });
+loyaltyReconciliationRunSchema.index({ hotelId: 1, createdAt: -1 });
+loyaltyReconciliationRunSchema.index({ hotelId: 1, status: 1 });
+loyaltyReconciliationRunSchema.index({ hotelId: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model('LoyaltyReconciliationRun', loyaltyReconciliationRunSchema);

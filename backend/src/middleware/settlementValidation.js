@@ -4,6 +4,7 @@ import { ApplicationError } from './errorHandler.js';
 import calculationValidationService from '../services/calculationValidationService.js';
 import financialRulesEngine from '../services/financialRulesEngine.js';
 import Settlement from '../models/Settlement.js';
+import logger from '../utils/logger.js';
 
 /**
  * Settlement Validation Middleware
@@ -541,7 +542,7 @@ export const validateCalculationIntegrity = async (req, res, next) => {
 
       if (!validationResult.isValid) {
         // Log calculation errors for investigation
-        console.error(`Settlement ${settlement.settlementNumber} has calculation errors:`, validationResult.errors);
+        logger.error(`Settlement ${settlement.settlementNumber} has calculation errors:`, validationResult.errors);
 
         return res.status(400).json({
           status: 'error',
@@ -559,7 +560,7 @@ export const validateCalculationIntegrity = async (req, res, next) => {
     next();
 
   } catch (error) {
-    console.error('Calculation integrity validation error:', error);
+    logger.error('Calculation integrity validation error:', error);
     next(error);
   }
 };
@@ -574,7 +575,7 @@ export const logFinancialOperation = (operationType) => {
     res.send = function(data) {
       // Log successful financial operations
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        console.log(`Financial Operation: ${operationType}`, {
+        logger.info(`Financial Operation: ${operationType}`, {
           userId: req.user?._id,
           userRole: req.user?.role,
           settlementId: req.params.id,

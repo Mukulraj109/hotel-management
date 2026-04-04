@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface StaffAvailabilityFormData {
   status: 'available' | 'busy' | 'break' | 'offline';
@@ -26,7 +27,7 @@ interface StaffAvailabilitySettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps = {}) {
+function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps = {}) {
   const [workInfo, setWorkInfo] = useState({
     todayStatus: '',
     hoursWorked: '',
@@ -373,3 +374,5 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
     </div>
   );
 }
+
+export default withErrorBoundary(StaffAvailabilitySettings);

@@ -511,7 +511,7 @@ class GDPRComplianceService {
             await fs.unlink(fullPath);
           } catch (err) {
             // File may already be deleted - log and continue
-            console.warn(`Could not delete document file ${doc.filePath}:`, err.message);
+            logger.warn(`Could not delete document file ${doc.filePath}:`, err.message);
           }
         }
       }
@@ -519,9 +519,9 @@ class GDPRComplianceService {
       await Document.deleteMany({ userId: userId });
 
       // Clean up related guest data
-      await GuestCRMProfile.deleteMany({ userId: userId }).catch(() => {});
-      await GuestBehavior.deleteMany({ userId: userId }).catch(() => {});
-      await GuestCustomData.deleteMany({ userId: userId }).catch(() => {});
+      await GuestCRMProfile.deleteMany({ userId: userId }).catch(err => logger.warn('GDPR cleanup: GuestCRMProfile deletion failed:', err.message));
+      await GuestBehavior.deleteMany({ userId: userId }).catch(err => logger.warn('GDPR cleanup: GuestBehavior deletion failed:', err.message));
+      await GuestCustomData.deleteMany({ userId: userId }).catch(err => logger.warn('GDPR cleanup: GuestCustomData deletion failed:', err.message));
 
       return results;
     } catch (error) {

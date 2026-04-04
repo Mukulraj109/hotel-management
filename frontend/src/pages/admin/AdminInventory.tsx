@@ -399,10 +399,13 @@ function AdminInventory() {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    a.style.display = 'none';
     a.href = url;
     a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
 
     setSelectedItems([]);
     setShowBulkModal(false);
@@ -528,10 +531,13 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
     const blob = new Blob([reportText], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
+    a.style.display = 'none';
     a.href = url;
     a.download = `inventory-report-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   };
 
   const applyAdvancedFilters = () => {

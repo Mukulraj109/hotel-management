@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { formatIndianCurrency } from '../../utils/currency';
 import { usePublicRoomCatalog } from '../../hooks/usePublicRoomCatalog';
 import { resolvePublicHotelId } from '../../utils/publicBookingHotel';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const API_FALLBACK_IMAGES = [
   'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
@@ -101,7 +102,7 @@ const ROOM_TYPES = {
   }
 };
 
-export default function RoomDetailPage() {
+function RoomDetailPage() {
   const { type } = useParams<{ type: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -448,3 +449,5 @@ export default function RoomDetailPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(RoomDetailPage);

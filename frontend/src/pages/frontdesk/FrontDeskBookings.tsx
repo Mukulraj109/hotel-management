@@ -1160,6 +1160,27 @@ function FrontDeskBookings() {
     }
   ];
 
+  // No property selected — show a helpful message instead of an empty table
+  if (!activeHotelId) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <PropertyBreadcrumb items={['Bookings']} />
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Booking Management</h1>
+          <p className="text-gray-600 text-sm sm:text-base">Manage all hotel bookings and reservations</p>
+        </div>
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-yellow-400 mr-3" />
+            <p className="text-sm font-medium text-yellow-800">
+              Please select a property to view bookings.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Breadcrumb */}

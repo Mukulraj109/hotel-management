@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   CloudArrowUpIcon,
   DocumentArrowDownIcon,

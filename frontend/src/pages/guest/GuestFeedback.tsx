@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface CheckedOutBooking extends Omit<Booking, 'hotelId'> {
   hotelId: {
@@ -91,12 +92,9 @@ const toSafeHotelInfo = (hotelId: unknown): SafeHotelInfo => {
   return { _id: '', name: 'Hotel', city: 'Location' };
 };
 
-export default function GuestFeedback() {
+function GuestFeedback() {
   const { user } = useAuth();
   const { on, off } = useRealTime();
-  const [checkedOutBookings, setCheckedOutBookings] = useState<CheckedOutBooking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<CheckedOutBooking | null>(null);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
@@ -109,9 +107,6 @@ export default function GuestFeedback() {
   // Bookings pagination state
   const BOOKINGS_PER_PAGE = 10;
   const [bookingsPage, setBookingsPage] = useState(1);
-  const [bookingsPagination, setBookingsPagination] = useState<PaginationInfo>({
-    page: 1, limit: BOOKINGS_PER_PAGE, total: 0, pages: 0
-  });
 
   const [feedbackForm, setFeedbackForm] = useState<FeedbackForm>({
     bookingId: '',
@@ -129,11 +124,10 @@ export default function GuestFeedback() {
     isAnonymous: false
   });
 
-  const fetchCheckedOutBookings = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      // Use server-side status filter — avoids loading all bookings then client-side filtering
+  // Fetch checked-out bookings via TanStack Query
+  const { data: bookingsData, isLoading: bookingsLoading, error: bookingsError, refetch: refetchBookings } = useQuery({
+    queryKey: ['feedback-bookings', bookingsPage],
+    queryFn: async () => {
       const response = await bookingService.getUserBookings({
         status: 'checked_out',
         page: bookingsPage,
@@ -145,30 +139,31 @@ export default function GuestFeedback() {
       // Server already returned only checked_out bookings; cast directly
       const checkedOut = bookings as CheckedOutBooking[];
 
-      setCheckedOutBookings(checkedOut);
-      if (response.pagination) {
-        setBookingsPagination({
-          page: response.pagination.page || bookingsPage,
-          limit: response.pagination.limit || BOOKINGS_PER_PAGE,
-          total: response.pagination.total || 0,
-          pages: response.pagination.pages || 0
-        });
-      } else {
-        setBookingsPagination({
-          page: bookingsPage,
-          limit: BOOKINGS_PER_PAGE,
-          total: checkedOut.length,
-          pages: checkedOut.length >= BOOKINGS_PER_PAGE ? bookingsPage + 1 : bookingsPage
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load your bookings. Please try again.';
-      setError(message);
-      toast.error('Failed to load your bookings');
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingsPage]);
+      const pagination: PaginationInfo = response.pagination
+        ? {
+            page: response.pagination.page || bookingsPage,
+            limit: response.pagination.limit || BOOKINGS_PER_PAGE,
+            total: response.pagination.total || 0,
+            pages: response.pagination.pages || 0
+          }
+        : {
+            page: bookingsPage,
+            limit: BOOKINGS_PER_PAGE,
+            total: checkedOut.length,
+            pages: checkedOut.length >= BOOKINGS_PER_PAGE ? bookingsPage + 1 : bookingsPage
+          };
+
+      return { bookings: checkedOut, pagination };
+    },
+    enabled: !!user && activeTab === 'leave',
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev: unknown) => prev,
+  });
+
+  const checkedOutBookings = bookingsData?.bookings || [];
+  const bookingsPagination: PaginationInfo = bookingsData?.pagination || {
+    page: 1, limit: BOOKINGS_PER_PAGE, total: 0, pages: 0
+  };
 
   // Fetch reviews via TanStack Query
   const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
@@ -184,12 +179,6 @@ export default function GuestFeedback() {
 
   const myReviews = reviewsData?.reviews || [];
   const reviewsPagination: PaginationInfo = reviewsData?.pagination || { page: 1, limit: 10, total: 0, pages: 0 };
-
-  useEffect(() => {
-    if (user) {
-      fetchCheckedOutBookings();
-    }
-  }, [user, fetchCheckedOutBookings]);
 
   // Real-time updates for review responses and moderation changes
   useEffect(() => {
@@ -263,7 +252,7 @@ export default function GuestFeedback() {
       setShowFeedbackForm(false);
       setSelectedBooking(null);
       resetForm();
-      fetchCheckedOutBookings(); // Refresh to show updated status
+      refetchBookings(); // Refresh to show updated status
       // Also refresh reviews history
       queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
     } catch (error: unknown) {
@@ -321,7 +310,7 @@ export default function GuestFeedback() {
     );
   };
 
-  if (loading) {
+  if (bookingsLoading && checkedOutBookings.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner size="lg" />
@@ -329,14 +318,15 @@ export default function GuestFeedback() {
     );
   }
 
-  if (error && checkedOutBookings.length === 0) {
+  if (bookingsError && checkedOutBookings.length === 0) {
+    const errorMessage = bookingsError instanceof Error ? bookingsError.message : 'Failed to load your bookings. Please try again.';
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <MessageSquare className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to load feedback data</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={fetchCheckedOutBookings} variant="outline">
+          <p className="text-gray-600 mb-4">{errorMessage}</p>
+          <Button onClick={() => refetchBookings()} variant="outline">
             Try Again
           </Button>
         </div>
@@ -864,3 +854,5 @@ export default function GuestFeedback() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestFeedback);

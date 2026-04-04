@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface StaffDisplayFormData {
   theme: 'light' | 'dark';
@@ -30,7 +31,7 @@ interface StaffDisplaySettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplaySettingsProps = {}) {
+function StaffDisplaySettings({ onSettingsChange }: StaffDisplaySettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -350,3 +351,5 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
     </div>
   );
 }
+
+export default withErrorBoundary(StaffDisplaySettings);

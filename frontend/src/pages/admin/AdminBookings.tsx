@@ -268,10 +268,18 @@ function AdminBookings() {
     try {
       setUpdating(true);
       await adminService.cancelBooking(bookingId, reason);
+      toast.success('Booking cancelled successfully');
+
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+
       await fetchBookings();
       await fetchStats();
-    } catch {
-      // Error handled silently
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to cancel booking');
     } finally {
       setUpdating(false);
     }
@@ -639,21 +647,19 @@ function AdminBookings() {
         // Close the checkout payment modal
         setShowCheckOutPaymentModal(false);
 
-        // Fetch updated booking to get new totalPaid
-        await fetchBookings();
-
-        // Find the updated booking
-        const updatedBookings = bookings;
-        const updatedBooking = updatedBookings.find(b => b._id === selectedBookingForCheckOut._id);
-
-        // Now proceed with checkout using the updated booking
-        if (updatedBooking) {
-          await processCheckOut(updatedBooking);
-        } else if (updatedBookingFromResponse) {
+        // Proceed with checkout using the updated booking from the payment response,
+        // or fall back to the original booking. Do NOT use stale `bookings` state.
+        if (updatedBookingFromResponse) {
           await processCheckOut(updatedBookingFromResponse);
         } else {
-          // Fallback to original booking
-          await processCheckOut(selectedBookingForCheckOut);
+          // Fetch fresh booking data for checkout
+          try {
+            const freshResponse = await adminService.getBookingById(selectedBookingForCheckOut._id);
+            const freshBooking = freshResponse.data?.booking;
+            await processCheckOut(freshBooking || selectedBookingForCheckOut);
+          } catch {
+            await processCheckOut(selectedBookingForCheckOut);
+          }
         }
 
         // Clear checkout payment state
@@ -764,16 +770,21 @@ function AdminBookings() {
       await fetchBookings();
       await fetchStats();
 
-      // Update the selected booking in the modal if it's the same booking
+      // Update the selected booking in the detail modal with fresh data from the API
+      // (cannot rely on `bookings` state here as it may not have been updated yet)
       if (selectedBooking && selectedBookingForPriceAdjustment && selectedBooking._id === selectedBookingForPriceAdjustment._id) {
-        // Fetch updated booking data
-        const updatedBooking = bookings.find(b => b._id === selectedBooking._id);
-        if (updatedBooking) {
-          setSelectedBooking(updatedBooking);
+        try {
+          const freshResponse = await adminService.getBookingById(selectedBooking._id);
+          const freshBooking = freshResponse.data?.booking;
+          if (freshBooking) {
+            setSelectedBooking(freshBooking);
+          }
+        } catch {
+          // If individual fetch fails, the list refresh above will still update the table
         }
       }
     } catch {
-      // Error handled silently
+      toast.error('Failed to refresh booking data after price adjustment');
     }
   };
 
@@ -803,6 +814,8 @@ function AdminBookings() {
       setCreating(true);
       await adminService.createBooking(createForm);
 
+      toast.success('Booking created successfully');
+
       // Reset form and close modal
       setCreateForm({
         hotelId: selectedPropertyId || user?.hotelId || '',
@@ -821,12 +834,17 @@ function AdminBookings() {
         status: 'pending'
       });
       setShowCreateModal(false);
-      
-      // Refresh bookings and stats
+
+      // Invalidate queries and refresh data
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+
       await fetchBookings();
       await fetchStats();
-    } catch {
-      // Error handled silently
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || 'Failed to create booking');
     } finally {
       setCreating(false);
     }
@@ -861,9 +879,12 @@ function AdminBookings() {
     }
   }, [createForm.hotelId, createForm.checkIn, createForm.checkOut]);
 
-  // Fetch users when user search changes
+  // Fetch users when user search changes (debounced)
   useEffect(() => {
-    fetchUsers(userSearch);
+    const timer = setTimeout(() => {
+      fetchUsers(userSearch);
+    }, 300);
+    return () => clearTimeout(timer);
   }, [userSearch]);
 
   // Table columns
@@ -1033,8 +1054,9 @@ function AdminBookings() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleStatusUpdate(row._id, 'checked_out')}
+              onClick={() => handleCheckOut(row)}
               disabled={updating}
+              title="Check Out"
             >
               <UserX className="h-4 w-4 text-gray-600" />
             </Button>
@@ -1988,7 +2010,7 @@ function AdminBookings() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="text-sm text-gray-600">Guest: </span>
-                  <span className="font-medium">{selectedBookingForRoomAssignment.userId.name}</span>
+                  <span className="font-medium">{selectedBookingForRoomAssignment.userId?.name || 'Unknown Guest'}</span>
                 </div>
                 <div>
                   <span className="text-sm text-gray-600">Dates: </span>
@@ -2017,8 +2039,8 @@ function AdminBookings() {
                   selectedBookingForRoomAssignment.rooms.map((room, index) => (
                     <div key={`selectedBookingForRoomAssignment-rooms-${index}-${room.type}`} className="flex justify-between items-center">
                       <div>
-                        <div className="font-medium">Room {room.roomId.roomNumber}</div>
-                        <div className="text-sm text-gray-600 capitalize">{room.roomId.type}</div>
+                        <div className="font-medium">Room {room.roomId?.roomNumber || 'N/A'}</div>
+                        <div className="text-sm text-gray-600 capitalize">{room.roomId?.type || 'Unknown'}</div>
                       </div>
                       <div className="text-right">
                         <div className="font-medium">{formatCurrency(room.rate, selectedBookingForRoomAssignment.currency)}/night</div>
@@ -2208,8 +2230,10 @@ function AdminBookings() {
           }}
           onConfirm={handlePaymentCollection}
           totalAmount={selectedBookingForPayment.totalAmount}
+          paidAmount={selectedBookingForPayment.paymentDetails?.totalPaid || 0}
           currency={selectedBookingForPayment.currency}
           bookingNumber={selectedBookingForPayment.bookingNumber}
+          mode="checkin"
         />
       )}
 
@@ -2244,7 +2268,12 @@ function AdminBookings() {
         return (
           <Modal
             isOpen={showBypassCheckoutDialog}
-            onClose={null}
+            onClose={() => {
+              setShowBypassCheckoutDialog(false);
+              setSelectedBookingForBypass(null);
+              setBypassReason('');
+              setBypassConfirmed(false);
+            }}
             noPadding={true}
           >
             <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto overflow-hidden">
@@ -2289,7 +2318,7 @@ function AdminBookings() {
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     {reasonTemplates.map((template) => (
-                      <button aria-label="Close"
+                      <button aria-label={`Select reason: ${template}`}
                         key={template}
                         onClick={() => setBypassReason(template)}
                         className={`px-4 py-3 text-sm border-2 rounded-lg text-left transition-all duration-200 ${
@@ -2400,9 +2429,9 @@ Date/Time: ${new Date().toLocaleString('en-IN', {
   dateStyle: 'medium',
   timeStyle: 'short'
 })}
-Staff: ${user?.firstName} ${user?.lastName} (${user?.email})
+Staff: ${user?.name || 'Unknown'} (${user?.email || 'N/A'})
 Booking: #${selectedBookingForBypass.bookingNumber}
-Guest: ${selectedBookingForBypass.guestName}
+Guest: ${selectedBookingForBypass.userId?.name || 'Unknown'}
 Outstanding: ₹${outstandingBalance.toLocaleString('en-IN')}
 Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}`}
                   </pre>

@@ -18,8 +18,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useOccupancyData, useOperationsData } from '../../../hooks/useDashboard';
 import { useProperty } from '../../../context/PropertyContext';
 import { formatPercentage, calculateOccupancyRate } from '../../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
-export default function OccupancyAnalytics() {
+function OccupancyAnalytics() {
   const { selectedPropertyId, properties } = useProperty();
 
   const [filters, setFilters] = useState({
@@ -531,3 +532,5 @@ export default function OccupancyAnalytics() {
     </div>
   );
 }
+
+export default withErrorBoundary(OccupancyAnalytics);

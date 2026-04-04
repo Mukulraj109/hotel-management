@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
 import { travelAgentService } from '../../services/travelAgentService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface BookingPreferences {
   autoConfirm: boolean;
@@ -609,4 +610,4 @@ const TravelAgentSettings: React.FC = () => {
   );
 };
 
-export default TravelAgentSettings;
+export default withErrorBoundary(TravelAgentSettings);

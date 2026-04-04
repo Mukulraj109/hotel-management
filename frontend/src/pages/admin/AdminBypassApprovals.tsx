@@ -3,8 +3,9 @@ import BypassApprovalCenter from '../../components/admin/BypassApprovalCenter';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { Shield } from 'lucide-react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminBypassApprovalsPage() {
+function AdminBypassApprovalsPage() {
   const { selectedPropertyId, viewMode } = useProperty();
 
   if (!selectedPropertyId && viewMode === 'single') {
@@ -28,3 +29,4 @@ export default function AdminBypassApprovalsPage() {
   );
 }
 
+export default withErrorBoundary(AdminBypassApprovalsPage);

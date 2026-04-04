@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const roomLockSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true
+  },
   lockId: {
     type: String,
     unique: true,
@@ -40,11 +46,11 @@ const roomLockSchema = new mongoose.Schema({
 });
 
 // Compound index to prevent duplicate locks on same room
-roomLockSchema.index({ roomId: 1, userId: 1 }, { unique: false });
+roomLockSchema.index({ hotelId: 1, roomId: 1, userId: 1 }, { unique: false });
 
 // Index for efficient cleanup and queries
 roomLockSchema.index({ expiresAt: 1 });
-roomLockSchema.index({ roomId: 1, expiresAt: 1 });
+roomLockSchema.index({ hotelId: 1, roomId: 1, expiresAt: 1 });
 
 // Pre-save middleware to generate lock ID
 roomLockSchema.pre('save', async function(next) {

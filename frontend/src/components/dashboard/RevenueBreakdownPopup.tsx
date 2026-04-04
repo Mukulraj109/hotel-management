@@ -3,13 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { reportsService, RevenueBreakdown } from '../../services/reportsService';
 import { formatCurrency } from '../../utils/dashboardUtils';
 import { LoadingSpinner } from '../LoadingSpinner';
-import { 
-  TrendingUp, 
-  PieChart, 
+import {
+  PieChart,
   IndianRupee,
   Calendar,
   Users,
-  CreditCard,
   AlertCircle
 } from 'lucide-react';
 
@@ -20,6 +18,32 @@ interface RevenueBreakdownPopupProps {
   position?: 'right' | 'left' | 'bottom';
 }
 
+const POPUP_STYLE_ID = 'breakdownPopupAnimations';
+
+function ensureBreakdownStyles() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(POPUP_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = POPUP_STYLE_ID;
+  style.textContent = `
+    @keyframes fadeInRight {
+      from { opacity: 0; transform: translateY(-50%) translateX(-10px); }
+      to { opacity: 1; transform: translateY(-50%) translateX(0); }
+    }
+    @keyframes fadeInLeft {
+      from { opacity: 0; transform: translateY(-50%) translateX(10px); }
+      to { opacity: 1; transform: translateY(-50%) translateX(0); }
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+  `;
+  document.head.appendChild(style);
+}
+
 export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
   isVisible,
   hotelId,
@@ -28,6 +52,10 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
 }) => {
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+
+  useEffect(() => {
+    ensureBreakdownStyles();
+  }, []);
 
   const { data: breakdownData, isLoading, error, refetch } = useQuery({
     queryKey: ['revenue-breakdown', hotelId, month, year],
@@ -128,11 +156,12 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
                   onChange={(e) => setYear(parseInt(e.target.value))}
                   className="border-0 bg-transparent text-sm font-medium text-gray-700 focus:outline-none"
                 >
-                  {Array.from({ length: 3 }, (_, i) => (
-                    <option key={2022 + i} value={2022 + i}>
-                      {2022 + i}
-                    </option>
-                  ))}
+                  {Array.from({ length: 5 }, (_, i) => {
+                    const y = new Date().getFullYear() - 4 + i;
+                    return (
+                      <option key={y} value={y}>{y}</option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -266,49 +295,4 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
   );
 };
 
-// Add CSS animation keyframes and scrollbar hide utility
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes fadeInRight {
-    from {
-      opacity: 0;
-      transform: translateY(-50%) translateX(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(-50%) translateX(0);
-    }
-  }
-  
-  @keyframes fadeInLeft {
-    from {
-      opacity: 0;
-      transform: translateY(-50%) translateX(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(-50%) translateX(0);
-    }
-  }
-  
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-  }
-  
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-`;
-document.head.appendChild(style);
+// Styles are injected via ensureBreakdownStyles() in the component's useEffect above.

@@ -15,8 +15,9 @@ import { dailyInventoryCheckService, DailyInventoryCheck } from '../../services/
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffTasks() {
+function StaffTasks() {
   const [inventoryChecks, setInventoryChecks] = useState<DailyInventoryCheck[]>([]);
   const [serviceRequests, setServiceRequests] = useState<GuestServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -470,3 +471,5 @@ export default function StaffTasks() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffTasks);

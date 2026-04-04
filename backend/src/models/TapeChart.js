@@ -413,10 +413,15 @@ const advancedReservationSchema = new mongoose.Schema({
 
 // Tape Chart View Configuration
 const tapeChartViewSchema = new mongoose.Schema({
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: [true, 'Hotel ID is required'],
+    index: true
+  },
   viewId: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   viewName: {
     type: String,
@@ -500,6 +505,9 @@ const tapeChartViewSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Compound unique: one viewId per hotel
+tapeChartViewSchema.index({ hotelId: 1, viewId: 1 }, { unique: true });
 
 // Room Assignment Rules Schema
 const roomAssignmentRulesSchema = new mongoose.Schema({
@@ -683,6 +691,17 @@ const RoomBlock = mongoose.model('RoomBlock', roomBlockSchema);
 const AdvancedReservation = mongoose.model('AdvancedReservation', advancedReservationSchema);
 const TapeChartView = mongoose.model('TapeChartView', tapeChartViewSchema);
 const RoomAssignmentRules = mongoose.model('RoomAssignmentRules', roomAssignmentRulesSchema);
+
+// Migration: drop stale unique index on viewId alone and clean up orphaned docs
+(async () => {
+  try {
+    await TapeChartView.collection.dropIndex('viewId_1');
+  } catch (_) { /* index may not exist */ }
+  try {
+    // Remove old views that have no hotelId (created before schema update)
+    await TapeChartView.collection.deleteMany({ hotelId: { $exists: false } });
+  } catch (_) { /* collection may not exist yet */ }
+})();
 
 export default {
   RoomConfiguration,

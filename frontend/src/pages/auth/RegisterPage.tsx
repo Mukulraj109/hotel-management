@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface FormData {
   name: string;
@@ -10,7 +11,7 @@ interface FormData {
   phone: string;
 }
 
-export default function RegisterPage() {
+function RegisterPage() {
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -267,3 +268,5 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(RegisterPage);

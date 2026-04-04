@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TodayOverview {
   todayCheckIns: number;
@@ -54,7 +55,7 @@ const fetchMyTasks = async (page = 1, limit = 20): Promise<{ tasks: StaffTask[] 
   return data.data || { tasks: [] };
 };
 
-export default function FrontDeskStaffManagement() {
+function FrontDeskStaffManagement() {
   const [refreshing, setRefreshing] = useState(false);
 
   const {
@@ -299,3 +300,5 @@ export default function FrontDeskStaffManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskStaffManagement);

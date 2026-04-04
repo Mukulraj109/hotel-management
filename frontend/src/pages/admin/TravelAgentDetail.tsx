@@ -7,8 +7,9 @@ import { ArrowLeft, Edit, Building2, Phone, Mail, MapPin, TrendingUp, IndianRupe
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { travelAgentService } from '../../services/travelAgentService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function TravelAgentDetail() {
+function TravelAgentDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [agent, setAgent] = useState<Record<string, unknown> | null>(null);
@@ -227,3 +228,5 @@ export default function TravelAgentDetail() {
     </div>
   );
 }
+
+export default withErrorBoundary(TravelAgentDetail);

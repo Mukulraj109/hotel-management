@@ -35,7 +35,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
+import { notificationService, Notification, NotificationType, NotificationChannel, NotificationChannelValue, NotificationPreference } from '../../services/notificationService';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,15 +71,34 @@ const iconNameToComponent: Record<string, LucideIcon> = {
   'alert-octagon': AlertOctagon,
 };
 
+/** Simple debounce hook for search input */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 function AdminNotifications() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
     priority: '',
     search: ''
   });
+
+  // Sync debounced search into filters and reset page
+  useEffect(() => {
+    setFilters(prev => ({ ...prev, search: debouncedSearch }));
+    setCurrentPage(1);
+  }, [debouncedSearch]);
+
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [showPreferences, setShowPreferences] = useState(false);
   const [expandedNotification, setExpandedNotification] = useState<string | null>(null);
@@ -233,7 +252,7 @@ function AdminNotifications() {
     }
   };
 
-  const handleBulkAction = (action: 'read' | 'delete') => {
+  const handleBulkAction = async (action: 'read' | 'delete') => {
     if (selectedNotifications.length === 0) {
       toast.error('Please select notifications first');
       return;
@@ -243,13 +262,25 @@ function AdminNotifications() {
       return;
     }
 
-    selectedNotifications.forEach(id => {
+    try {
       if (action === 'read') {
-        markAsReadMutation.mutate(id);
+        // Use batch endpoint instead of firing individual mutations per notification
+        await notificationService.markMultipleAsRead(selectedNotifications);
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+        toast.success(`${selectedNotifications.length} notification(s) marked as read`);
       } else {
-        deleteNotificationMutation.mutate(id);
+        // Delete must still be sequential since there is no batch-delete endpoint
+        await Promise.all(
+          selectedNotifications.map(id => notificationService.deleteNotification(id))
+        );
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+        toast.success(`${selectedNotifications.length} notification(s) deleted`);
       }
-    });
+    } catch {
+      toast.error(`Failed to ${action === 'read' ? 'mark as read' : 'delete'} notifications`);
+    }
 
     setSelectedNotifications([]);
   };
@@ -301,7 +332,7 @@ function AdminNotifications() {
     }
   };
 
-  const getChannelIcon = (channel: NotificationChannel) => {
+  const getChannelIcon = (channel: NotificationChannelValue) => {
     switch (channel) {
       case 'email': return Mail;
       case 'sms': return Smartphone;
@@ -517,15 +548,15 @@ function AdminNotifications() {
                   <Input
                     type="text"
                     placeholder="Search notifications..."
-                    value={filters.search}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-10 w-64"
                   />
                 </div>
 
                 <select
                   value={filters.status}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                  onChange={(e) => { setFilters({ ...filters, status: e.target.value }); setCurrentPage(1); }}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Status</option>
@@ -535,7 +566,7 @@ function AdminNotifications() {
 
                 <select
                   value={filters.type}
-                  onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                  onChange={(e) => { setFilters({ ...filters, type: e.target.value }); setCurrentPage(1); }}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Types</option>
@@ -549,7 +580,7 @@ function AdminNotifications() {
 
                 <select
                   value={filters.priority}
-                  onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+                  onChange={(e) => { setFilters({ ...filters, priority: e.target.value }); setCurrentPage(1); }}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Priorities</option>
@@ -679,12 +710,12 @@ function AdminNotifications() {
                                 </span>
                               )}
 
-                              {notification.channel && (
+                              {notification.channels && notification.channels.length > 0 && (
                                 <div className="flex items-center space-x-1 text-gray-500">
-                                  {React.createElement(getChannelIcon(notification.channel), {
+                                  {React.createElement(getChannelIcon(notification.channels[0]), {
                                     className: 'h-3 w-3'
                                   })}
-                                  <span className="text-xs">{notification.channel.replace('_', ' ')}</span>
+                                  <span className="text-xs">{notification.channels[0].replace('_', ' ')}</span>
                                 </div>
                               )}
                             </div>
@@ -697,7 +728,7 @@ function AdminNotifications() {
                               {notification.message}
                             </p>
 
-                            {notification.data && Object.keys(notification.data).length > 0 && (
+                            {notification.metadata && Object.keys(notification.metadata).length > 0 && (
                               <div className="mt-2">
                                 <Button
                                   variant="ghost"
@@ -723,7 +754,7 @@ function AdminNotifications() {
                                 {expandedNotification === notificationId && (
                                   <div className="mt-2 p-3 bg-gray-50 rounded-md">
                                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                                      {JSON.stringify(notification.data, null, 2)}
+                                      {JSON.stringify(notification.metadata, null, 2)}
                                     </pre>
                                   </div>
                                 )}

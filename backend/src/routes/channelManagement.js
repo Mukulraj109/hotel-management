@@ -5,7 +5,8 @@ import { Channel } from '../models/ChannelManager.js';
 import RoomType from '../models/RoomType.js';
 import RoomAvailability from '../models/RoomAvailability.js';
 import BookingComService from '../services/channels/bookingComService.js';
-// import { syncMiddleware } from '../middleware/channelSyncMiddleware.js'; // Temporarily disabled to debug server hang
+// channelSyncMiddleware disabled: constructor instantiates BookingComService which requires external API config
+// import { syncMiddleware } from '../middleware/channelSyncMiddleware.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';

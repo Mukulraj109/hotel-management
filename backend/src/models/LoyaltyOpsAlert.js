@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const loyaltyOpsAlertSchema = new mongoose.Schema(
   {
+    hotelId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hotel',
+      required: true,
+      index: true
+    },
     type: {
       type: String,
       enum: ['reconciliation_stale', 'mismatch_rate_high', 'drift_spike', 'expiry_backlog'],
@@ -24,6 +30,7 @@ const loyaltyOpsAlertSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-loyaltyOpsAlertSchema.index({ status: 1, createdAt: -1 });
+loyaltyOpsAlertSchema.index({ hotelId: 1, status: 1 });
+loyaltyOpsAlertSchema.index({ hotelId: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model('LoyaltyOpsAlert', loyaltyOpsAlertSchema);

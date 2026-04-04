@@ -97,7 +97,7 @@ function AdminCheckoutInventoryManagement() {
     
     const handlePaymentProcessed = (data: Record<string, unknown>) => {
       fetchData();
-      toast.success(`Payment processed: ${formatCurrency(data.amount)} for Room ${data.roomNumber}`);
+      toast.success(`Payment processed: ${formatCurrency(Number(data.amount) || 0)} for Room ${data.roomNumber || 'unknown'}`);
     };
     
     const handleCheckoutInventoryUpdated = (data: Record<string, unknown>) => {
@@ -128,7 +128,7 @@ function AdminCheckoutInventoryManagement() {
       // Fetch all checkout inventories and calculate overview data
       const response = await checkoutInventoryService.getCheckoutInventories({
         limit: 100,
-        propertyId: selectedPropertyId
+        hotelId: selectedPropertyId
       });
       const checks = response.data.checkoutInventories || [];
       setAllChecks(checks);

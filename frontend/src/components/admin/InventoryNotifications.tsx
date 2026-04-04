@@ -41,20 +41,27 @@ interface InventoryNotification {
   };
 }
 
+interface NotificationSummary {
+  unread: number;
+  categories: Record<string, number>;
+  recent: InventoryNotification[];
+}
+
 interface InventoryNotificationsProps {
   className?: string;
   showAll?: boolean;
   onClose?: () => void;
 }
 
-export function InventoryNotifications({ 
-  className = '', 
-  showAll = false, 
-  onClose 
+export function InventoryNotifications({
+  className = '',
+  showAll = false,
+  onClose
 }: InventoryNotificationsProps) {
   const [notifications, setNotifications] = useState<InventoryNotification[]>([]);
-  const [summary, setSummary] = useState<unknown>(null);
+  const [summary, setSummary] = useState<NotificationSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [markingRead, setMarkingRead] = useState<string[]>([]);
 
   useEffect(() => {
@@ -68,10 +75,11 @@ export function InventoryNotifications({
   const fetchNotifications = async () => {
     try {
       setLoading(true);
+      setError(null);
       const { data: data } = await api.get('/inventory-notifications');
-      setNotifications(data.data.notifications);
+      setNotifications(data.data?.notifications || []);
     } catch {
-      // Error handled silently
+      setError('Failed to load notifications');
     } finally {
       setLoading(false);
     }
@@ -80,10 +88,11 @@ export function InventoryNotifications({
   const fetchSummary = async () => {
     try {
       setLoading(true);
+      setError(null);
       const { data: data } = await api.get('/inventory-notifications/summary');
-      setSummary(data.data);
+      setSummary(data.data || null);
     } catch {
-      // Error handled silently
+      setError('Failed to load notification summary');
     } finally {
       setLoading(false);
     }
@@ -97,23 +106,26 @@ export function InventoryNotifications({
       if (response.data) {
         // Update local state
         if (showAll) {
-          setNotifications(prev => 
-            prev.map(notification => 
-              notificationIds.includes(notification.id) 
+          setNotifications(prev =>
+            prev.map(notification =>
+              notificationIds.includes(notification.id)
                 ? { ...notification, isRead: true }
                 : notification
             )
           );
         } else {
-          setSummary(prev => ({
-            ...prev,
-            unread: Math.max(0, prev.unread - notificationIds.length),
-            recent: prev.recent.map((notification: Record<string, unknown>) => 
-              notificationIds.includes(notification.id) 
-                ? { ...notification, isRead: true }
-                : notification
-            )
-          }));
+          setSummary(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              unread: Math.max(0, prev.unread - notificationIds.length),
+              recent: prev.recent.map(notification =>
+                notificationIds.includes(notification.id)
+                  ? { ...notification, isRead: true }
+                  : notification
+              )
+            };
+          });
         }
       }
     } catch {
@@ -154,6 +166,25 @@ export function InventoryNotifications({
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-center h-32">
           <LoadingSpinner />
+        </div>
+      </Card>
+    );
+  }
+
+  if (error && !showAll && !summary) {
+    return (
+      <Card className={`p-6 ${className}`}>
+        <div className="text-center py-8">
+          <Bell className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+          <p className="text-gray-500 text-sm">{error}</p>
+          <Button
+            onClick={showAll ? fetchNotifications : fetchSummary}
+            variant="secondary"
+            size="sm"
+            className="mt-2"
+          >
+            Retry
+          </Button>
         </div>
       </Card>
     );
@@ -289,14 +320,16 @@ export function InventoryNotifications({
       </div>
 
       {/* Category Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        {Object.entries(summary.categories).map(([key, count]) => (
-          <div key={key} className="text-center p-2 bg-gray-50 rounded-lg">
-            <div className="text-lg font-bold text-gray-900">{count as number}</div>
-            <div className="text-xs text-gray-600 capitalize">{key.replace('_', ' ')}</div>
-          </div>
-        ))}
-      </div>
+      {summary.categories && Object.keys(summary.categories).length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          {Object.entries(summary.categories).map(([key, count]) => (
+            <div key={key} className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-lg font-bold text-gray-900">{count}</div>
+              <div className="text-xs text-gray-600 capitalize">{key.replace('_', ' ')}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Recent Notifications */}
       <div className="space-y-3">
@@ -304,7 +337,7 @@ export function InventoryNotifications({
         {summary.recent.length === 0 ? (
           <p className="text-gray-500 text-sm">No recent notifications</p>
         ) : (
-          summary.recent.map((notification: Record<string, unknown>) => (
+          summary.recent.map((notification) => (
             <div
               key={notification.id}
               className={`p-3 border rounded-lg ${
@@ -344,7 +377,7 @@ export function InventoryNotifications({
         </Button>
         {summary.unread > 0 && (
           <Button
-            onClick={() => markAsRead(summary.recent.filter((n: unknown) => !n.isRead).map((n: unknown) => n.id))}
+            onClick={() => markAsRead(summary.recent.filter(n => !n.isRead).map(n => n.id))}
             size="sm"
           >
             Mark All Read

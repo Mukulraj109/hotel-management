@@ -30,7 +30,8 @@ export const MAINTENANCE_TRANSITIONS = {
 
 // ── Guest service requests ──────────────────────────────────────────────
 export const GUEST_SERVICE_TRANSITIONS = {
-  pending:      ['assigned', 'cancelled'],
+  // pending -> in_progress allowed as shortcut when staff self-assigns and immediately starts
+  pending:      ['assigned', 'in_progress', 'cancelled'],
   assigned:     ['in_progress', 'cancelled'],
   in_progress:  ['completed', 'cancelled'],
   completed:    [],                              // terminal

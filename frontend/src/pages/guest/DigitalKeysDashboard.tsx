@@ -90,17 +90,12 @@ function DigitalKeysDashboard() {
 
     const handleDigitalKeyUpdated = (data: { digitalKey: DigitalKey; previousStatus?: string }) => {
       const updatedKey = data.digitalKey;
-      
-      // Update the cache with the new key data
-      queryClient.setQueryData(['digital-keys'], (oldData: { keys: DigitalKey[] } | undefined) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          keys: oldData.keys.map((key: DigitalKey) =>
-            key._id === updatedKey._id ? updatedKey : key
-          )
-        };
-      });
+
+      // Invalidate the paginated keys query so the current page refetches with
+      // fresh data. setQueryData is intentionally NOT used here because the query
+      // key includes page/status/type filters and a partial cache write would
+      // silently miss the active entry.
+      queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
 
       // Show notification for key status changes
       if (data.previousStatus && data.previousStatus !== updatedKey.status) {
@@ -109,7 +104,7 @@ function DigitalKeysDashboard() {
           'expired': `Digital key for Room ${updatedKey.roomId?.number || 'N/A'} has expired`,
           'used': `Digital key for Room ${updatedKey.roomId?.number || 'N/A'} was used for access`
         };
-        
+
         const message = statusMessages[updatedKey.status as keyof typeof statusMessages];
         if (message) {
           toast(message, {
@@ -118,10 +113,7 @@ function DigitalKeysDashboard() {
                   updatedKey.status === 'expired' ? '⏰' : '🚪'
           });
         }
-      }
 
-      // Invalidate stats if key status changed significantly
-      if (data.previousStatus && data.previousStatus !== updatedKey.status) {
         queryClient.invalidateQueries({ queryKey: ['key-stats'] });
       }
     };
@@ -155,22 +147,12 @@ function DigitalKeysDashboard() {
 
     const handleDigitalKeyAccessed = (data: { digitalKey: DigitalKey }) => {
       const accessedKey = data.digitalKey;
-      
-      // Update the cache with new usage count
-      queryClient.setQueryData(['digital-keys'], (oldData: { keys: DigitalKey[] } | undefined) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          keys: oldData.keys.map((key: DigitalKey) =>
-            key._id === accessedKey._id ? {
-              ...key,
-              currentUses: accessedKey.currentUses,
-              remainingUses: accessedKey.remainingUses,
-              lastUsedAt: accessedKey.lastUsedAt
-            } : key
-          )
-        };
-      });
+
+      // Invalidate the paginated query so the current page refetches with the
+      // updated usage count. setQueryData is intentionally NOT used here because
+      // the query key includes page/status/type filters and a partial cache write
+      // would silently miss the active entry.
+      queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
 
       toast.success(`Room ${accessedKey.roomId?.number || 'N/A'} accessed successfully`, {
         duration: 3000,

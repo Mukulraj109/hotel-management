@@ -276,6 +276,9 @@ router.get('/overdue', authenticate, authorizePolicy('dailyInventoryCheck', 'sta
  *         description: Daily inventory check details
  */
 router.get('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Daily inventory check not found', 404);
+  }
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id)
     .populate('roomId', 'roomNumber type')
     .populate('checkedBy', 'name email')
@@ -333,6 +336,9 @@ router.get('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAc
  *         description: Daily inventory check updated successfully
  */
 router.patch('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Daily inventory check not found', 404);
+  }
   // Read-only check for permissions
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
 
@@ -394,6 +400,9 @@ router.patch('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staff
  *         description: Daily inventory check marked as completed
  */
 router.patch('/:id/complete', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Daily inventory check not found', 404);
+  }
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
 
   if (!existingCheck) {
@@ -461,6 +470,9 @@ router.patch('/:id/complete', authenticate, authorizePolicy('dailyInventoryCheck
 router.post('/:id/issues', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { itemId, issue, priority = 'medium' } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Daily inventory check not found', 404);
+  }
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
 
   if (!existingCheck) {

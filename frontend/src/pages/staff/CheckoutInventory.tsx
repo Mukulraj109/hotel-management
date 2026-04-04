@@ -25,8 +25,9 @@ import { formatDate, formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { CheckoutInventoryForm } from '../../components/staff/CheckoutInventoryForm';
 import { CheckoutInventoryDetails } from '../../components/staff/CheckoutInventoryDetails';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function CheckoutInventory() {
+function CheckoutInventory() {
 
   const [checkoutInventories, setCheckoutInventories] = useState<CheckoutInventoryType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,24 +42,8 @@ export default function CheckoutInventory() {
   const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 20;
 
-  // Fetch when filter or page changes. The filterRef below is used to detect
-  // filter changes so we can reset page without causing a double-fetch.
-  const filterRef = useRef(filter);
-  useEffect(() => {
-    if (filterRef.current !== filter) {
-      // Filter changed: reset to page 1. If page is already 1, fetch now.
-      filterRef.current = filter;
-      if (page !== 1) {
-        setPage(1); // The [page] change will trigger fetchCheckoutInventories.
-        return;
-      }
-    }
-    fetchCheckoutInventories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, page]);
-
-
-  const fetchCheckoutInventories = async () => {
+  // Stable fetch function — depends on filter and page so it always has fresh values.
+  const fetchCheckoutInventories = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -93,7 +78,21 @@ export default function CheckoutInventory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, page]);
+
+  // Fetch when filter or page changes. The filterRef is used to detect
+  // filter changes so we can reset page without a double-fetch.
+  const filterRef = useRef(filter);
+  useEffect(() => {
+    if (filterRef.current !== filter) {
+      filterRef.current = filter;
+      if (page !== 1) {
+        setPage(1); // The [page] change will trigger fetchCheckoutInventories via its own effect.
+        return;
+      }
+    }
+    fetchCheckoutInventories();
+  }, [filter, page, fetchCheckoutInventories]);
 
   const handleCreateSuccess = () => {
     setShowCreateForm(false);
@@ -450,3 +449,5 @@ export default function CheckoutInventory() {
     </div>
   );
 }
+
+export default withErrorBoundary(CheckoutInventory);

@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface PrivacyFormData {
   dataSharing: boolean;
@@ -119,7 +120,6 @@ const PrivacySettings: React.FC = () => {
   const deleteAccount = async () => {
     setShowDeleteModal(false);
     try {
-      // TODO: Backend endpoint /data-privacy/erasure-request does not exist yet — add it to backend/src/routes/dataPrivacy.js
       await api.post('/data-privacy/erasure-request', {
         reason: 'User requested account deletion',
         confirmation: true
@@ -452,4 +452,4 @@ const PrivacySettings: React.FC = () => {
   );
 };
 
-export default PrivacySettings;
+export default withErrorBoundary(PrivacySettings);

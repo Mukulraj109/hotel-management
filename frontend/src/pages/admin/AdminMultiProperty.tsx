@@ -1,4 +1,5 @@
 import React from 'react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { MultiPropertyManager } from '../../components/multi-property/MultiPropertyManager';
 
 const AdminMultiProperty: React.FC = () => {

@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Building2, Bed, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function PortfolioDashboard() {
+function PortfolioDashboard() {
   const navigate = useNavigate();
   const { properties, setSelectedPropertyId, setViewMode } = useProperty();
 
@@ -292,3 +293,5 @@ export default function PortfolioDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(PortfolioDashboard);

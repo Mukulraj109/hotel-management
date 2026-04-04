@@ -1,6 +1,8 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import SupplyRequest from '../models/SupplyRequest.js';
+import Inventory from '../models/Inventory.js';
+import Notification from '../models/Notification.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -10,6 +12,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 import websocketService from '../services/websocketService.js';
+import inventoryNotificationService from '../services/inventoryNotificationService.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -188,6 +191,11 @@ router.post('/', authorizePolicy('supplyRequests', 'staffAccess'), validate(muta
  *       200:
  *         description: List of supply requests
  */
+// Allowlists for supply request query filter fields — prevent NoSQL operator injection.
+const ALLOWED_SUPPLY_STATUSES = ['pending', 'approved', 'rejected', 'ordered', 'partial_received', 'received', 'cancelled'];
+const ALLOWED_SUPPLY_PRIORITIES = ['low', 'medium', 'high', 'urgent', 'emergency'];
+const ALLOWED_SUPPLY_DEPARTMENTS = ['housekeeping', 'maintenance', 'front_desk', 'food_beverage', 'spa', 'laundry', 'kitchen', 'bar', 'other'];
+
 router.get('/', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     status,
@@ -196,17 +204,34 @@ router.get('/', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(asy
     requestedBy,
     overdue,
     startDate,
-    endDate
+    endDate,
+    search
   } = req.query;
 
   const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
+  // SECURITY: Validate enum filter values against allowlists to prevent NoSQL operator injection.
+  if (status && !ALLOWED_SUPPLY_STATUSES.includes(status)) {
+    throw new ApplicationError('Invalid status filter value', 400);
+  }
+  if (priority && !ALLOWED_SUPPLY_PRIORITIES.includes(priority)) {
+    throw new ApplicationError('Invalid priority filter value', 400);
+  }
+  if (department && !ALLOWED_SUPPLY_DEPARTMENTS.includes(department)) {
+    throw new ApplicationError('Invalid department filter value', 400);
+  }
+  // SECURITY: Validate requestedBy as ObjectId to prevent injection via user ID field.
+  if (requestedBy && !mongoose.Types.ObjectId.isValid(requestedBy)) {
+    throw new ApplicationError('Invalid requestedBy filter value', 400);
+  }
+
   const query = {};
 
-  // Tenant isolation: always scope by hotelId
-  if (req.user.role === 'admin' && req.query.hotelId) {
-    query.hotelId = req.query.hotelId;
+  // SECURITY: Always use the tenant-scoped hotelId; req.tenantId is set and validated by
+  // ensureTenantContext + ensurePropertyAccess and cannot be spoofed by a client.
+  if (req.tenantId) {
+    query.hotelId = req.tenantId;
   } else if (req.user.hotelId) {
     query.hotelId = req.user.hotelId;
   }
@@ -222,6 +247,17 @@ router.get('/', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(asy
   if (priority) query.priority = priority;
   if (requestedBy && ['admin', 'manager'].includes(req.user.role)) {
     query.requestedBy = requestedBy;
+  }
+
+  // Full-text search on title, description and requestNumber
+  if (search && typeof search === 'string' && search.trim()) {
+    const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(escapedSearch, 'i');
+    query.$or = [
+      { title: searchRegex },
+      { description: searchRegex },
+      { requestNumber: searchRegex }
+    ];
   }
 
   if (startDate || endDate) {
@@ -300,7 +336,11 @@ router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsyn
   const effectiveStartDate = startDate || dateFrom;
   const effectiveEndDate = endDate || dateTo;
 
-  const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  // SECURITY: Always use the tenant-scoped hotelId from the authenticated user to prevent
+  // cross-tenant data access. req.tenantId is set by ensureTenantContext and cannot be
+  // overridden by clients. Only fall back to req.query.hotelId for admin users whose
+  // tenantId is already validated by ensurePropertyAccess upstream.
+  const rawHotelId = req.tenantId || req.user.hotelId;
   const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
 
   if (!hotelId) {
@@ -442,7 +482,13 @@ router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsyn
  *         description: Pending approval requests
  */
 router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAccess'), catchAsync(async (req, res) => {
-  const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.query.hotelId;
+  // SECURITY: For non-manager roles (e.g. admin), validate the client-supplied hotelId
+  // to prevent CastError leakage and ensure it's a valid ObjectId before DB use.
+  const rawHotelId = req.user.role === 'manager' ? req.user.hotelId : req.query.hotelId;
+  if (rawHotelId && rawHotelId !== req.user.hotelId && !mongoose.Types.ObjectId.isValid(String(rawHotelId))) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
+  const hotelId = rawHotelId;
 
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
@@ -496,7 +542,8 @@ router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAcces
  *         description: Overdue requests
  */
 router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
-  const rawHotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  // SECURITY: Use tenant-scoped hotelId validated by middleware — never trust raw query param.
+  const rawHotelId = req.tenantId || req.user.hotelId;
   const hotelId = typeof rawHotelId === 'object' ? (rawHotelId._id || rawHotelId) : rawHotelId;
 
   if (!hotelId) {
@@ -719,15 +766,17 @@ router.post(`/:id${OBJECT_ID_PARAM}/cancel`, authorizePolicy('supplyRequests', '
     throw new ApplicationError('You can only cancel your own requests', 403);
   }
 
-  // Only pending requests can be cancelled by staff
-  if (!['pending', 'approved'].includes(supplyRequest.status)) {
-    throw new ApplicationError('Only pending or approved requests can be cancelled', 400);
-  }
-
-  // Managers and above can cancel at any non-terminal state
+  // Terminal states can never be cancelled
   const terminalStatuses = ['received', 'cancelled'];
   if (terminalStatuses.includes(supplyRequest.status)) {
-    throw new ApplicationError('Request is already in a terminal state', 400);
+    throw new ApplicationError('Request is already in a terminal state and cannot be cancelled', 400);
+  }
+
+  // Staff can only cancel their own pending requests
+  // Managers/admins can cancel any non-terminal request (including ordered)
+  const isManager = ['admin', 'manager', 'frontdesk'].includes(req.user.role);
+  if (!isManager && !['pending', 'approved'].includes(supplyRequest.status)) {
+    throw new ApplicationError('Staff can only cancel pending or approved requests', 400);
   }
 
   supplyRequest.status = 'cancelled';
@@ -809,7 +858,8 @@ router.post(`/:id${OBJECT_ID_PARAM}/approve`, authorizePolicy('supplyRequests', 
   }
 
   await supplyRequest.populate([
-    { path: 'approvedBy', select: 'name' }
+    { path: 'approvedBy', select: 'name' },
+    { path: 'requestedBy', select: 'name' }
   ]);
 
   res.json({
@@ -817,13 +867,33 @@ router.post(`/:id${OBJECT_ID_PARAM}/approve`, authorizePolicy('supplyRequests', 
     message: 'Supply request approved successfully',
     data: { supplyRequest }
   });
+
+  // Notify the requester that their request was approved
   try {
-    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
-      supplyRequest,
-      status: supplyRequest.status
-    });
-  } catch (wsError) {
-    logger.warn('Failed to broadcast supply request approval event', { error: wsError.message });
+    const requesterId = supplyRequest.requestedBy?._id || supplyRequest.requestedBy;
+    const hotelId = supplyRequest.hotelId?._id || supplyRequest.hotelId;
+    if (requesterId) {
+      await Notification.create({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        userId: new mongoose.Types.ObjectId(requesterId),
+        type: 'supply_request_approved',
+        title: `Supply Request Approved: ${supplyRequest.title}`,
+        message: `Your supply request "${supplyRequest.title}" (${supplyRequest.requestNumber}) has been approved.`,
+        channels: ['in_app'],
+        priority: 'medium',
+        metadata: {
+          supplyRequestId: supplyRequest._id.toString(),
+          requestNumber: supplyRequest.requestNumber
+        },
+        isRead: false
+      });
+      websocketService.broadcastToHotel(hotelId.toString(), 'supply-requests:status_changed', {
+        supplyRequest,
+        status: supplyRequest.status
+      });
+    }
+  } catch (notifError) {
+    logger.warn('Failed to notify requester of supply request approval', { error: notifError.message });
   }
 }));
 
@@ -878,13 +948,34 @@ router.post(`/:id${OBJECT_ID_PARAM}/reject`, authorizePolicy('supplyRequests', '
     message: 'Supply request rejected successfully',
     data: { supplyRequest }
   });
+
+  // Notify the requester that their request was rejected
   try {
-    await websocketService.broadcastToHotel(supplyRequest.hotelId?._id || supplyRequest.hotelId, 'supply-requests:status_changed', {
-      supplyRequest,
-      status: supplyRequest.status
-    });
-  } catch (wsError) {
-    logger.warn('Failed to broadcast supply request rejection event', { error: wsError.message });
+    const requesterId = supplyRequest.requestedBy?._id || supplyRequest.requestedBy;
+    const hotelId = supplyRequest.hotelId?._id || supplyRequest.hotelId;
+    if (requesterId) {
+      await Notification.create({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        userId: new mongoose.Types.ObjectId(requesterId),
+        type: 'supply_request_rejected',
+        title: `Supply Request Rejected: ${supplyRequest.title}`,
+        message: `Your supply request "${supplyRequest.title}" (${supplyRequest.requestNumber}) was rejected.${reason ? ` Reason: ${reason}` : ''}`,
+        channels: ['in_app'],
+        priority: 'medium',
+        metadata: {
+          supplyRequestId: supplyRequest._id.toString(),
+          requestNumber: supplyRequest.requestNumber,
+          rejectedReason: reason
+        },
+        isRead: false
+      });
+      websocketService.broadcastToHotel(hotelId.toString(), 'supply-requests:status_changed', {
+        supplyRequest,
+        status: supplyRequest.status
+      });
+    }
+  } catch (notifError) {
+    logger.warn('Failed to notify requester of supply request rejection', { error: notifError.message });
   }
 }));
 
@@ -1041,12 +1132,61 @@ router.post(`/:id${OBJECT_ID_PARAM}/items/:itemIndex/receive`, authorizePolicy('
     supplyRequest.items[itemIdx].invoiceNumber = invoiceNumber;
   }
 
+  const receivedItem = supplyRequest.items[itemIdx];
+  const previouslyReceived = receivedItem.receivedQuantity || 0;
+
   await supplyRequest.receiveItem(itemIdx, receivedQuantity, condition, req.user._id, notes);
+
+  // Update the Inventory model quantity for items actually received.
+  // We increment by the net new quantity received (handles re-receives after partial).
+  const netNewQty = receivedQuantity - previouslyReceived;
+  if (netNewQty > 0) {
+    try {
+      const hotelId = supplyRequest.hotelId?._id || supplyRequest.hotelId;
+      // Match by hotel + item name (case-insensitive) as there is no FK between
+      // SupplyRequest items and Inventory items.
+      const updatedInventoryItem = await Inventory.findOneAndUpdate(
+        {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          name: { $regex: new RegExp(`^${receivedItem.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          isActive: true
+        },
+        { $inc: { quantity: netNewQty }, $set: { lastRestocked: new Date() } },
+        { new: true }
+      );
+
+      if (updatedInventoryItem) {
+        logger.debug('Inventory quantity updated after supply receipt', {
+          itemName: receivedItem.name,
+          addedQty: netNewQty,
+          newQty: updatedInventoryItem.quantity,
+          minimumThreshold: updatedInventoryItem.minimumThreshold
+        });
+        // If still below threshold after restocking, fire a low-stock alert
+        if (updatedInventoryItem.quantity <= updatedInventoryItem.minimumThreshold) {
+          inventoryNotificationService.notifyLowStock(hotelId.toString(), [{
+            name: updatedInventoryItem.name,
+            currentStock: updatedInventoryItem.quantity,
+            stockThreshold: updatedInventoryItem.minimumThreshold,
+            category: updatedInventoryItem.category
+          }]).catch(e => logger.warn('Low-stock notification failed after receipt', { error: e.message }));
+        }
+      } else {
+        logger.debug('No matching Inventory item found for received supply item — skipping quantity update', {
+          itemName: receivedItem.name,
+          hotelId
+        });
+      }
+    } catch (invErr) {
+      // Non-fatal — inventory sync failure must not roll back the receipt record.
+      logger.warn('Failed to sync Inventory quantity after supply receipt', { error: invErr.message });
+    }
+  }
 
   res.json({
     status: 'success',
     message: 'Item marked as received successfully',
-    data: { 
+    data: {
       supplyRequest,
       completionPercentage: supplyRequest.completionPercentage
     }

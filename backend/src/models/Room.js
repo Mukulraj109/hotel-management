@@ -149,6 +149,11 @@ const roomSchema = new mongoose.Schema({
     index: true
   },
   lastCleaned: Date,
+  lastCheckout: Date,
+  currentBookingId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Booking'
+  },
   maintenanceNotes: String
 }, {
   timestamps: true,
@@ -311,10 +316,11 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
       if (availabilityRecords.length > 0) {
         const minAvailable = Math.min(...availabilityRecords.map(r => r.availableRooms));
         if (minAvailable > 0) {
-          // Find actual room instances — exclude only out_of_order/maintenance, not 'occupied'
+          // Find actual room instances — exclude all non-bookable statuses.
+          // 'dirty' and 'cleaning' rooms must not be offered to guests until housekeeping clears them.
           const query = {
             hotelId,
-            status: { $nin: ['out_of_order', 'maintenance'] },
+            status: { $nin: ['out_of_order', 'maintenance', 'dirty', 'cleaning'] },
             isActive: true
           };
         
@@ -345,11 +351,12 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
       booking.rooms.map(room => room.roomId.toString())
     );
 
-    // Build query for available rooms — exclude only out_of_order/maintenance, not 'occupied'
+    // Build query for available rooms — exclude all non-bookable statuses.
+    // 'dirty' and 'cleaning' rooms must not be offered to guests until housekeeping clears them.
     const query = {
       hotelId,
       _id: { $nin: occupiedRoomIds },
-      status: { $nin: ['out_of_order', 'maintenance'] },
+      status: { $nin: ['out_of_order', 'maintenance', 'dirty', 'cleaning'] },
       isActive: true
     };
 
@@ -463,10 +470,12 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
       status: { $in: ['pending', 'in_progress', 'assigned'] }
     }).select('roomId status').lean().limit(1000);
 
-    // Get all pending housekeeping/cleaning tasks for these rooms
+    // Get all active housekeeping/cleaning tasks for these rooms.
+    // 'assigned' is included so a room with a task that is assigned but not yet started
+    // still shows as 'dirty' on dashboards rather than 'vacant'.
     const housekeepingTasks = await Housekeeping.find({
       roomId: { $in: rooms.map(r => r._id) },
-      status: { $in: ['pending', 'in_progress'] }
+      status: { $in: ['pending', 'assigned', 'in_progress'] }
     }).select('roomId status').lean().limit(1000);
 
     // Create maps for quick lookup

@@ -26,6 +26,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffService } from '../../services/staffService';
 import { EditUserModal } from '../../components/user/EditUserModal';
 import { CreateUserModal } from '../../components/user/CreateUserModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface StaffMember {
   _id: string;
@@ -54,7 +55,7 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export default function AdminStaffManagement() {
+function AdminStaffManagement() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const { user } = useAuth();
 
@@ -179,10 +180,17 @@ export default function AdminStaffManagement() {
   const canGoPrev = currentPage > 1;
   const canGoNext = currentPage < totalPages;
 
-  // Compute stats from current page data (best available without a dedicated stats endpoint)
-  const activeCount = staffList.filter((s: StaffMember) => s.isActive).length;
-  const adminCount = staffList.filter((s: StaffMember) => s.role === 'admin').length;
-  const regularCount = staffList.filter((s: StaffMember) => s.role === 'staff').length;
+  // Fetch real aggregate stats from server (uses limit=1 requests for efficient counts)
+  const { data: staffStats } = useQuery({
+    queryKey: ['staff-stats', selectedPropertyId],
+    queryFn: () => staffService.getStaffStats(selectedPropertyId ?? undefined),
+    enabled: !!selectedPropertyId,
+    staleTime: 30000,
+  });
+
+  const activeCount = staffStats?.active ?? 0;
+  const adminCount = staffStats?.admins ?? 0;
+  const regularCount = staffStats?.regularStaff ?? 0;
 
   if (error) {
     return (
@@ -240,7 +248,7 @@ export default function AdminStaffManagement() {
                 <Eye className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active (this page)</p>
+                <p className="text-sm font-medium text-gray-600">Active</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {activeCount}
                 </p>
@@ -256,7 +264,7 @@ export default function AdminStaffManagement() {
                 <Shield className="w-6 h-6 text-purple-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Admins (this page)</p>
+                <p className="text-sm font-medium text-gray-600">Admins</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {adminCount}
                 </p>
@@ -272,7 +280,7 @@ export default function AdminStaffManagement() {
                 <Users className="w-6 h-6 text-orange-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Regular Staff (this page)</p>
+                <p className="text-sm font-medium text-gray-600">Regular Staff</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {regularCount}
                 </p>
@@ -579,3 +587,5 @@ export default function AdminStaffManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminStaffManagement);

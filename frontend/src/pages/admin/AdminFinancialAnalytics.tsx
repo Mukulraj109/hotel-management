@@ -2,8 +2,9 @@ import React from 'react';
 import BypassFinancialDashboard from '../../components/admin/BypassFinancialDashboard';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminFinancialAnalyticsPage() {
+function AdminFinancialAnalyticsPage() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
 
   // If in single mode and no property selected, show selection prompt
@@ -27,3 +28,5 @@ export default function AdminFinancialAnalyticsPage() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminFinancialAnalyticsPage);
