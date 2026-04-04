@@ -233,10 +233,11 @@ staffTaskSchema.statics.getStaffTasks = function(staffId, options = {}) {
 };
 
 staffTaskSchema.statics.getTodaysTasks = function(staffId, hotelId) {
+  // Use UTC boundaries so results are consistent regardless of server timezone.
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
   const query = {
     assignedTo: staffId,

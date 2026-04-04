@@ -16,7 +16,11 @@ class FinancialController {
   // Chart of Accounts Management
   async createAccount(req, res) {
     try {
-      const account = new ChartOfAccounts(req.body);
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ success: false, message: 'Hotel context required' });
+      }
+      const account = new ChartOfAccounts({ ...req.body, hotelId });
       await account.save();
       res.status(201).json({ success: true, data: account });
     } catch (error) {
@@ -27,7 +31,11 @@ class FinancialController {
   async getAccounts(req, res) {
     try {
       const { type, category, active } = req.query;
-      const filter = {};
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ success: false, message: 'Hotel context required' });
+      }
+      const filter = { hotelId };
       if (type) filter.accountType = type;
       if (category) filter.category = category;
       if (active !== undefined) filter.isActive = active === 'true';
@@ -35,7 +43,7 @@ class FinancialController {
       const accounts = await ChartOfAccounts.find(filter)
         .populate('parentAccount', 'accountName accountCode')
         .sort({ accountCode: 1 }).lean().limit(1000);
-      
+
       res.json({ success: true, data: accounts });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -44,8 +52,12 @@ class FinancialController {
 
   async updateAccount(req, res) {
     try {
-      const account = await ChartOfAccounts.findByIdAndUpdate(
-        req.params.id,
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ success: false, message: 'Hotel context required' });
+      }
+      const account = await ChartOfAccounts.findOneAndUpdate(
+        { _id: req.params.id, hotelId },
         req.body,
         { new: true, runValidators: true }
       );
@@ -60,7 +72,18 @@ class FinancialController {
 
   async deleteAccount(req, res) {
     try {
-      await ChartOfAccounts.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ success: false, message: 'Hotel context required' });
+      }
+      const account = await ChartOfAccounts.findOneAndUpdate(
+        { _id: req.params.id, hotelId },
+        { isActive: false },
+        { new: true }
+      );
+      if (!account) {
+        return res.status(404).json({ success: false, message: 'Account not found' });
+      }
       res.json({ success: true, message: 'Account deactivated successfully' });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -95,9 +118,13 @@ class FinancialController {
 
   async getJournalEntries(req, res) {
     try {
-      const { startDate, endDate, account, journal, status } = req.query;
-      const filter = {};
-      
+      const hotelId = req.user?.hotelId;
+      if (!hotelId) {
+        return res.status(400).json({ success: false, message: 'Hotel context required' });
+      }
+      const { startDate, endDate, account, journal, status, page = 1, limit = 20 } = req.query;
+      const filter = { hotelId };
+
       if (startDate && endDate) {
         filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
       }
@@ -105,12 +132,29 @@ class FinancialController {
       if (journal) filter.journal = journal;
       if (status) filter.status = status;
 
-      const entries = await GeneralLedger.find(filter)
-        .populate('entries.account', 'accountName accountCode')
-        .populate('postedBy', 'name email')
-        .sort({ date: -1 }).lean().limit(1000);
+      const parsedPage = Math.max(1, parseInt(page));
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(limit)));
+      const skip = (parsedPage - 1) * parsedLimit;
 
-      res.json({ success: true, data: entries });
+      const [entries, totalCount] = await Promise.all([
+        GeneralLedger.find(filter)
+          .populate('entries.account', 'accountName accountCode')
+          .populate('postedBy', 'name email')
+          .sort({ date: -1 })
+          .skip(skip)
+          .limit(parsedLimit)
+          .lean(),
+        GeneralLedger.countDocuments(filter)
+      ]);
+
+      res.json({
+        success: true,
+        data: entries,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / parsedLimit)
+      });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }

@@ -872,10 +872,10 @@ function FrontDeskBookings() {
     }
   };
 
-  // Fetch users for guest selection
+  // Fetch users for guest selection (with limit to avoid unbounded queries)
   const fetchUsers = async (search: string = '') => {
     try {
-      const response = await adminService.getUsers({ search, role: 'guest' });
+      const response = await adminService.getUsers({ search, role: 'guest', limit: 20 } as Record<string, unknown>);
       setUsers((response.data.users || []) as typeof users);
     } catch (error) {
       setUsers([]);
@@ -964,9 +964,12 @@ function FrontDeskBookings() {
     }
   }, [createForm.hotelId, createForm.checkIn, createForm.checkOut]);
 
-  // Fetch users when user search changes
+  // Fetch users when user search changes (debounced to avoid excessive API calls)
   useEffect(() => {
-    fetchUsers(userSearch);
+    const timer = setTimeout(() => {
+      fetchUsers(userSearch);
+    }, 300);
+    return () => clearTimeout(timer);
   }, [userSearch]);
 
   // Table columns
@@ -1004,20 +1007,28 @@ function FrontDeskBookings() {
     {
       key: 'checkIn',
       header: 'Check In',
-      render: (value: string) => (
-        <div className="text-sm">
-          {value ? format(parseISO(value), 'MMM dd, yyyy') : 'No date'}
-        </div>
-      )
+      render: (value: string) => {
+        if (!value) return <div className="text-sm text-gray-500">No date</div>;
+        try {
+          const d = parseISO(value);
+          return <div className="text-sm">{isNaN(d.getTime()) ? 'Invalid date' : format(d, 'MMM dd, yyyy')}</div>;
+        } catch {
+          return <div className="text-sm text-gray-500">Invalid date</div>;
+        }
+      }
     },
     {
       key: 'checkOut',
       header: 'Check Out',
-      render: (value: string) => (
-        <div className="text-sm">
-          {value ? format(parseISO(value), 'MMM dd, yyyy') : 'No date'}
-        </div>
-      )
+      render: (value: string) => {
+        if (!value) return <div className="text-sm text-gray-500">No date</div>;
+        try {
+          const d = parseISO(value);
+          return <div className="text-sm">{isNaN(d.getTime()) ? 'Invalid date' : format(d, 'MMM dd, yyyy')}</div>;
+        } catch {
+          return <div className="text-sm text-gray-500">Invalid date</div>;
+        }
+      }
     },
     {
       key: 'nights',
@@ -1269,6 +1280,7 @@ function FrontDeskBookings() {
                 >
                   <option value="">All Payment Statuses</option>
                   <option value="pending">Pending</option>
+                  <option value="partially_paid">Partially Paid</option>
                   <option value="paid">Paid</option>
                   <option value="refunded">Refunded</option>
                   <option value="failed">Failed</option>
@@ -1478,22 +1490,22 @@ function FrontDeskBookings() {
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Check In</h3>
                 <p className="text-sm text-gray-900">
-                  {format(parseISO(selectedBooking.checkIn), 'EEEE, MMMM dd, yyyy')}
+                  {(() => { try { return selectedBooking.checkIn ? format(parseISO(selectedBooking.checkIn), 'EEEE, MMMM dd, yyyy') : 'N/A'; } catch { return 'Invalid date'; } })()}
                 </p>
                 {selectedBooking.checkInTime && (
                   <p className="text-sm text-gray-600">
-                    Time: {format(parseISO(selectedBooking.checkInTime), 'HH:mm')}
+                    Time: {(() => { try { return format(parseISO(selectedBooking.checkInTime), 'HH:mm'); } catch { return 'N/A'; } })()}
                   </p>
                 )}
               </div>
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Check Out</h3>
                 <p className="text-sm text-gray-900">
-                  {format(parseISO(selectedBooking.checkOut), 'EEEE, MMMM dd, yyyy')}
+                  {(() => { try { return selectedBooking.checkOut ? format(parseISO(selectedBooking.checkOut), 'EEEE, MMMM dd, yyyy') : 'N/A'; } catch { return 'Invalid date'; } })()}
                 </p>
                 {selectedBooking.checkOutTime && (
                   <p className="text-sm text-gray-600">
-                    Time: {format(parseISO(selectedBooking.checkOutTime), 'HH:mm')}
+                    Time: {(() => { try { return format(parseISO(selectedBooking.checkOutTime), 'HH:mm'); } catch { return 'N/A'; } })()}
                   </p>
                 )}
               </div>
@@ -1676,7 +1688,7 @@ function FrontDeskBookings() {
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  Created: {format(parseISO(selectedBooking.createdAt), 'MMM dd, yyyy HH:mm')}
+                  Created: {(() => { try { return selectedBooking.createdAt ? format(parseISO(selectedBooking.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'; } catch { return 'N/A'; } })()}
                 </div>
                 <div className="flex space-x-2">
                   {selectedBooking.status === 'pending' && (
@@ -2054,7 +2066,7 @@ function FrontDeskBookings() {
                 <div>
                   <span className="text-sm text-gray-600">Dates: </span>
                   <span className="font-medium">
-                    {format(parseISO(selectedBookingForRoomAssignment.checkIn), 'MMM dd')} - {format(parseISO(selectedBookingForRoomAssignment.checkOut), 'MMM dd')}
+                    {(() => { try { return `${format(parseISO(selectedBookingForRoomAssignment.checkIn), 'MMM dd')} - ${format(parseISO(selectedBookingForRoomAssignment.checkOut), 'MMM dd')}`; } catch { return 'N/A'; } })()}
                   </span>
                 </div>
               </div>

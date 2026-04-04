@@ -74,6 +74,7 @@ interface ServiceRequestFilters {
   serviceType?: string;
   priority?: string;
   assignedTo?: string;
+  hotelId?: string;
   page?: number;
   limit?: number;
   fromDate?: string;

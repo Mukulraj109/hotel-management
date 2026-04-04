@@ -48,6 +48,7 @@ import BlockManagementPanel from './BlockManagementPanel';
 import BookingDetailsModal from './BookingDetailsModal';
 import WalkInBooking from '../../pages/admin/WalkInBooking';
 import { withErrorBoundary } from '../ErrorBoundary';
+import { useProperty } from '../../context/PropertyContext';
 
 interface RoomCell {
   id: string;
@@ -121,6 +122,7 @@ interface ConflictIndicator {
 }
 
 const TapeChartView: React.FC = () => {
+  const { selectedPropertyId } = useProperty();
   const [chartData, setChartData] = useState<TapeChartData | null>(null);
 
   // Slide-to-create reservation state (Hotelogix GAME CHANGER feature)
@@ -559,8 +561,10 @@ const TapeChartView: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchViews();
-  }, []);
+    if (selectedPropertyId) {
+      fetchViews();
+    }
+  }, [selectedPropertyId]);
 
   useEffect(() => {
     if (selectedView) {
@@ -600,7 +604,7 @@ const TapeChartView: React.FC = () => {
 
   const fetchViews = async () => {
     try {
-      const response = await tapeChartService.getTapeChartViews();
+      const response = await tapeChartService.getTapeChartViews(selectedPropertyId || undefined);
 
       let viewsData = response.data || [];
 
@@ -658,7 +662,7 @@ const TapeChartView: React.FC = () => {
       const response = await tapeChartService.generateTapeChartData(selectedView, {
         startDate: formatISO(startDate, { representation: 'date' }),
         endDate: formatISO(endDate, { representation: 'date' })
-      });
+      }, selectedPropertyId || undefined);
       setChartData(response);
       setError(null);
     } catch (err: unknown) {

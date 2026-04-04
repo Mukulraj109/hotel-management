@@ -104,7 +104,44 @@ const storage = multer.diskStorage({
   }
 });
 
-// Enhanced file filter
+// Known magic byte signatures for allowed file types.
+// Checked after multer writes the file so we can read actual bytes — prevents
+// MIME-type spoofing where a client sends a script with Content-Type: image/jpeg.
+const MAGIC_SIGNATURES = [
+  { mime: 'image/jpeg', bytes: [0xFF, 0xD8, 0xFF] },
+  { mime: 'image/png',  bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header (WebP starts with RIFF....WEBP)
+  { mime: 'application/pdf', bytes: [0x25, 0x50, 0x44, 0x46] }, // %PDF
+  // DOC / DOCX both start with the OLE/PK signature — specific type confirmed by extension
+  { mime: 'application/msword', bytes: [0xD0, 0xCF, 0x11, 0xE0] },
+  { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', bytes: [0x50, 0x4B, 0x03, 0x04] } // PK zip
+];
+
+/**
+ * Read the first N bytes of a file from the stream buffer.
+ * Multer passes a `stream` — we need to read from disk after writing, or use a memory
+ * buffer approach. Since multer diskStorage writes the file before the callback returns,
+ * we validate in the post-upload handler instead (see upload middleware below).
+ */
+async function validateMagicBytes(filePath, declaredMime) {
+  const MAX_HEADER_BYTES = 8;
+  const buffer = Buffer.alloc(MAX_HEADER_BYTES);
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const { bytesRead } = fs.readSync(fd, buffer, 0, MAX_HEADER_BYTES, 0);
+    if (bytesRead < 2) return false;
+    const sig = MAGIC_SIGNATURES.find(s => s.mime === declaredMime);
+    if (!sig) return false;
+    return sig.bytes.every((byte, i) => buffer[i] === byte);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* ignore */ }
+  }
+}
+
+// Enhanced file filter — MIME allowlist check (magic bytes verified post-write)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = [
     'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
@@ -113,9 +150,11 @@ const fileFilter = (req, file, cb) => {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ];
 
+  // Normalise image/jpg → image/jpeg for consistent magic-byte lookup
+  const normalisedMime = file.mimetype === 'image/jpg' ? 'image/jpeg' : file.mimetype;
+  file._normalisedMime = normalisedMime;
+
   if (allowedTypes.includes(file.mimetype)) {
-    // Note: MIME type from client header. For production, add magic byte verification
-    // using a library like 'file-type' to prevent content-type spoofing
     cb(null, true);
   } else {
     cb(new ApplicationError(
@@ -199,6 +238,16 @@ router.post('/upload',
 
     if (!req.file) {
       throw new ApplicationError('No document uploaded', 400);
+    }
+
+    // SECURITY: Verify magic bytes match declared MIME type to prevent content-type spoofing.
+    // A client can lie about Content-Type; the actual file bytes cannot be faked this way.
+    const normalisedMime = req.file._normalisedMime || req.file.mimetype;
+    const magicValid = await validateMagicBytes(req.file.path, normalisedMime);
+    if (!magicValid) {
+      // Remove the malicious/mismatched file before rejecting
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore cleanup error */ }
+      throw new ApplicationError('File content does not match the declared file type', 400);
     }
 
     // Validate user type from authenticated role only

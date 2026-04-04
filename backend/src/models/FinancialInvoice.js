@@ -182,6 +182,11 @@ const financialInvoiceSchema = new mongoose.Schema({
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  sourceInvoiceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Invoice',
+    index: true
   }
 }, {
   timestamps: true,

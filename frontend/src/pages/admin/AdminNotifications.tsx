@@ -30,6 +30,9 @@ import {
   HelpCircle,
   Minus,
   AlertOctagon,
+  Send,
+  X,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
@@ -43,6 +46,7 @@ import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import { api } from '../../services/api';
 
 // Map string icon names from notificationService.getNotificationTypeInfo to Lucide components
 const iconNameToComponent: Record<string, LucideIcon> = {
@@ -79,6 +83,13 @@ function AdminNotifications() {
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const [showPreferences, setShowPreferences] = useState(false);
   const [expandedNotification, setExpandedNotification] = useState<string | null>(null);
+  const [showComposeModal, setShowComposeModal] = useState(false);
+  const [composeData, setComposeData] = useState({ title: '', message: '', priority: 'medium' });
+  const [selectedRecipients, setSelectedRecipients] = useState<Array<{ _id: string; name: string; email: string }>>([]);
+  const [guestSearchQuery, setGuestSearchQuery] = useState('');
+  const [guestSearchResults, setGuestSearchResults] = useState<Array<{ _id: string; name: string; email: string }>>([]);
+  const [isSearchingGuests, setIsSearchingGuests] = useState(false);
+  const [isSendingNotification, setIsSendingNotification] = useState(false);
 
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
@@ -300,6 +311,74 @@ function AdminNotifications() {
     }
   };
 
+  // Guest search for compose modal
+  const handleGuestSearch = async (query: string) => {
+    setGuestSearchQuery(query);
+    if (query.length < 2) {
+      setGuestSearchResults([]);
+      return;
+    }
+    setIsSearchingGuests(true);
+    try {
+      const { data } = await api.get('/users', {
+        params: { search: query, role: 'guest', limit: 10, page: 1 }
+      });
+      const users = data?.data?.users || data?.users || data?.data || [];
+      setGuestSearchResults(
+        (Array.isArray(users) ? users : []).map((u: Record<string, unknown>) => ({
+          _id: String(u._id || u.id),
+          name: String(u.name || u.firstName || u.email || 'Unknown'),
+          email: String(u.email || '')
+        }))
+      );
+    } catch {
+      setGuestSearchResults([]);
+    } finally {
+      setIsSearchingGuests(false);
+    }
+  };
+
+  const addRecipient = (guest: { _id: string; name: string; email: string }) => {
+    if (!selectedRecipients.find(r => r._id === guest._id)) {
+      setSelectedRecipients(prev => [...prev, guest]);
+    }
+    setGuestSearchQuery('');
+    setGuestSearchResults([]);
+  };
+
+  const removeRecipient = (id: string) => {
+    setSelectedRecipients(prev => prev.filter(r => r._id !== id));
+  };
+
+  const handleSendNotification = async () => {
+    if (selectedRecipients.length === 0) {
+      toast.error('Please select at least one recipient');
+      return;
+    }
+    if (!composeData.title.trim() || !composeData.message.trim()) {
+      toast.error('Title and message are required');
+      return;
+    }
+    setIsSendingNotification(true);
+    try {
+      await api.post('/notifications/send', {
+        recipientIds: selectedRecipients.map(r => r._id),
+        title: composeData.title,
+        message: composeData.message,
+        priority: composeData.priority
+      });
+      toast.success('Notification sent successfully');
+      setShowComposeModal(false);
+      setComposeData({ title: '', message: '', priority: 'medium' });
+      setSelectedRecipients([]);
+      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+    } catch {
+      toast.error('Failed to send notification');
+    } finally {
+      setIsSendingNotification(false);
+    }
+  };
+
   if (!selectedPropertyId && viewMode === 'single') {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -359,6 +438,13 @@ function AdminNotifications() {
                 }`} />
                 <span className="capitalize">{connectionState}</span>
               </div>
+              <Button
+                onClick={() => setShowComposeModal(true)}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Send Notification
+              </Button>
               <Button
                 onClick={() => setShowPreferences(!showPreferences)}
                 variant="outline"
@@ -725,6 +811,178 @@ function AdminNotifications() {
             </div>
           )}
         </Card>
+
+        {/* Compose Notification Modal */}
+        {showComposeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-6 border-b">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Send className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-gray-900">Send Notification</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowComposeModal(false);
+                    setComposeData({ title: '', message: '', priority: 'medium' });
+                    setSelectedRecipients([]);
+                    setGuestSearchQuery('');
+                    setGuestSearchResults([]);
+                  }}
+                  className="p-1 rounded-md hover:bg-gray-100 text-gray-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Recipient Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Recipients</label>
+
+                  {/* Selected recipients */}
+                  {selectedRecipients.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {selectedRecipients.map(r => (
+                        <span
+                          key={r._id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200"
+                        >
+                          <Users className="h-3 w-3" />
+                          {r.name}
+                          <button
+                            onClick={() => removeRecipient(r._id)}
+                            className="ml-0.5 hover:text-blue-900"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      type="text"
+                      placeholder="Search guests by name or email..."
+                      value={guestSearchQuery}
+                      onChange={(e) => handleGuestSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                    {isSearchingGuests && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <LoadingSpinner />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search results dropdown */}
+                  {guestSearchResults.length > 0 && (
+                    <div className="mt-1 border border-gray-200 rounded-md shadow-sm bg-white max-h-40 overflow-y-auto">
+                      {guestSearchResults.map(guest => (
+                        <button
+                          key={guest._id}
+                          onClick={() => addRecipient(guest)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center justify-between"
+                          disabled={selectedRecipients.some(r => r._id === guest._id)}
+                        >
+                          <div>
+                            <span className="font-medium text-gray-900">{guest.name}</span>
+                            <span className="text-gray-500 ml-2">{guest.email}</span>
+                          </div>
+                          {selectedRecipients.some(r => r._id === guest._id) && (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {guestSearchQuery.length >= 2 && guestSearchResults.length === 0 && !isSearchingGuests && (
+                    <p className="mt-1 text-sm text-gray-500">No guests found matching "{guestSearchQuery}"</p>
+                  )}
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <Input
+                    type="text"
+                    placeholder="Notification title..."
+                    value={composeData.title}
+                    onChange={(e) => setComposeData(prev => ({ ...prev, title: e.target.value }))}
+                  />
+                </div>
+
+                {/* Message */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                  <textarea
+                    placeholder="Write your message..."
+                    value={composeData.message}
+                    onChange={(e) => setComposeData(prev => ({ ...prev, message: e.target.value }))}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+                  />
+                </div>
+
+                {/* Priority */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                  <select
+                    value={composeData.priority}
+                    onChange={(e) => setComposeData(prev => ({ ...prev, priority: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between p-6 border-t bg-gray-50 rounded-b-xl">
+                <p className="text-sm text-gray-500">
+                  {selectedRecipients.length} recipient{selectedRecipients.length !== 1 ? 's' : ''} selected
+                </p>
+                <div className="flex space-x-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowComposeModal(false);
+                      setComposeData({ title: '', message: '', priority: 'medium' });
+                      setSelectedRecipients([]);
+                      setGuestSearchQuery('');
+                      setGuestSearchResults([]);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSendNotification}
+                    disabled={isSendingNotification || selectedRecipients.length === 0 || !composeData.title.trim() || !composeData.message.trim()}
+                    className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isSendingNotification ? (
+                      <>Sending...</>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Notification
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -118,13 +118,13 @@ const ContactlessGuestApp: React.FC = () => {
     if (currentUser) {
       setGuestProfile({
         id: currentUser._id || currentUser.id || '',
-        name: currentUser.name || '',
-        email: currentUser.email || '',
-        phone: (currentUser as Record<string, unknown>).phone as string || '',
-        roomNumber: (currentUser as Record<string, unknown>).roomNumber as string || '',
-        checkIn: (currentUser as Record<string, unknown>).checkIn as string || '',
-        checkOut: (currentUser as Record<string, unknown>).checkOut as string || '',
-        loyaltyTier: (currentUser as Record<string, unknown>).loyaltyTier as string || '',
+        name: currentUser?.name || '',
+        email: currentUser?.email || '',
+        phone: currentUser?.phone || '',
+        roomNumber: '', // Available from active booking, not user object
+        checkIn: '',
+        checkOut: '',
+        loyaltyTier: currentUser?.loyalty?.tier || 'bronze',
         preferences: {
           roomTemp: 22,
           wakeUpCall: '',

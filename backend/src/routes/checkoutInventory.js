@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -66,6 +67,11 @@ router.use(ensurePropertyAccess);
  *         description: Checkout inventory check for booking
  */
 router.get('/booking/:bookingId', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.bookingId)) {
+    throw new ApplicationError('Checkout inventory check not found for this booking', 404);
+  }
+
   const checkoutInventory = await CheckoutInventory.findOne({
     bookingId: req.params.bookingId,
     hotelId: req.user.hotelId
@@ -240,7 +246,7 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
   const { status, paymentStatus, bookingId } = req.query;
   const { hotelId } = req.user;
   const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 10), 1000);
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 10), 100);
 
   const filter = { hotelId };
   if (status) filter.status = status;
@@ -303,6 +309,11 @@ router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(
  *         description: Checkout inventory check details
  */
 router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
+  // SECURITY: Validate ObjectId format to prevent CastError stack-trace leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApplicationError('Checkout inventory check not found', 404);
+  }
+
   const checkoutInventory = await CheckoutInventory.findById(req.params.id)
     .populate([
       {

@@ -30,6 +30,9 @@ const dailyCartItemSchema = Joi.object({
   action: Joi.string().valid('replace', 'add', 'laundry', 'reuse').required(),
   quantity: Joi.number().integer().min(1).max(1000).optional(),
   unitPrice: Joi.number().min(0).max(1000000).optional(),
+  // totalPrice is computed client-side and sent alongside unitPrice/quantity —
+  // we allow it here (backend always recomputes it) to avoid a 400 on extra keys.
+  totalPrice: Joi.number().min(0).max(1000000000).optional(),
   notes: Joi.string().trim().allow('').max(500).optional()
 });
 const completeRoomCheckSchema = Joi.object({
@@ -163,11 +166,28 @@ router.get('/rooms', authorizePolicy('dailyRoutineCheck', 'staffFrontdeskAccess'
     checkDate: { $gte: today, $lt: tomorrow }
   }).select('roomId status checkedAt').lean().limit(1000);
 
-  const previousChecks = await DailyRoutineCheck.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    roomId: { $in: roomIds },
-    checkDate: { $lt: today }
-  }).sort({ checkDate: -1, createdAt: -1 }).select('roomId status checkedAt').lean().limit(5000);
+  // We only need the most recent historical check per room to determine overdue
+  // status.  Use an aggregation $group to fetch exactly one doc per roomId instead
+  // of pulling thousands of documents and deduplicating in JS.
+  const previousChecks = await DailyRoutineCheck.aggregate([
+    {
+      $match: {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        roomId: { $in: roomIds.map(id => new mongoose.Types.ObjectId(id)) },
+        checkDate: { $lt: today }
+      }
+    },
+    { $sort: { checkDate: -1, createdAt: -1 } },
+    {
+      $group: {
+        _id: '$roomId',
+        roomId: { $first: '$roomId' },
+        status: { $first: '$status' },
+        checkedAt: { $first: '$checkedAt' }
+      }
+    },
+    { $limit: 1000 }
+  ]);
 
   // Create a map of room checks
   const roomCheckMap = new Map();
@@ -896,6 +916,19 @@ router.post('/rooms/:roomId/mark-checked', authorizePolicy('dailyRoutineCheck', 
         { new: true }
       );
     }
+  }
+
+  // Update Room status to 'vacant' (clean) after mark-checked, matching the
+  // complete endpoint behaviour so room status syncs to Tape Chart / Dashboard.
+  try {
+    await Room.findByIdAndUpdate(roomId, { status: 'vacant', lastCleaned: new Date() }, { new: true });
+    logger.debug('Room status updated to vacant after mark-checked', { roomId });
+    await websocketService.broadcastToHotel(hotelId.toString(), 'daily-routine-check:status_updated', {
+      roomId,
+      roomStatus: 'vacant'
+    });
+  } catch (roomErr) {
+    logger.warn('Failed to update room status after mark-checked', { roomId, error: roomErr.message });
   }
 
   try {

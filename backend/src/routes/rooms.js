@@ -451,7 +451,8 @@ router.patch('/:id',
     const updatePayload = Object.fromEntries(
       Object.entries(req.body || {}).filter(([key]) => allowed.includes(key))
     );
-    const room = await Room.findByIdAndUpdate(
+    // Use findOneAndUpdate (NOT findByIdAndUpdate) to enforce hotelId tenant isolation
+    const room = await Room.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       updatePayload,
       { new: true, runValidators: true }
@@ -496,7 +497,7 @@ router.delete('/:id',
   ensurePropertyAccess,
   validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
-    const room = await Room.findByIdAndUpdate(
+    const room = await Room.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       { isActive: false },
       { new: true }
@@ -560,7 +561,7 @@ router.put('/:id/pricing',
     if (baseRate !== undefined) updateFields.baseRate = baseRate;
     if (currentRate !== undefined) updateFields.currentRate = currentRate;
 
-    const room = await Room.findByIdAndUpdate(
+    const room = await Room.findOneAndUpdate(
       { _id: roomId, hotelId: req.user.hotelId },
       { $set: updateFields },
       { new: true, runValidators: true }

@@ -4,7 +4,21 @@ import Room from '../models/Room.js';
 import RoomType from '../models/RoomType.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { refToHotelIdString } from '../middleware/propertyAccess.js';
 import mongoose from 'mongoose';
+
+/**
+ * Safely resolve the hotelId for the current request.
+ * Prefers the tenant-scoped req.tenantId (set by ensureTenantContext middleware)
+ * and falls back to req.user.hotelId — handling populated ObjectId refs safely.
+ */
+const resolveHotelId = (req) => {
+  const hotelId = req.tenantId || refToHotelIdString(req.user.hotelId);
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context is required', 400, 'HOTEL_REQUIRED');
+  }
+  return hotelId;
+};
 
 /**
  * @desc    Create a new approval request
@@ -37,28 +51,21 @@ export const createApprovalRequest = catchAsync(async (req, res) => {
     );
   }
 
-  // Get hotelId from authenticated user
-  const hotelId = req.user.hotelId;
-
-  if (!hotelId) {
-    throw new ApplicationError(
-      'User must be associated with a hotel',
-      400,
-      'HOTEL_REQUIRED'
-    );
-  }
+  // Safely resolve hotelId (handles populated refs and tenantContext)
+  const hotelId = resolveHotelId(req);
 
   // Verify target resource exists
   let targetExists = false;
+  const hotelIdObj = new mongoose.Types.ObjectId(hotelId);
   switch (targetResource) {
     case 'booking':
-      targetExists = await Booking.exists({ _id: targetResourceId, hotelId });
+      targetExists = await Booking.exists({ _id: targetResourceId, hotelId: hotelIdObj });
       break;
     case 'room':
-      targetExists = await Room.exists({ _id: targetResourceId, hotelId });
+      targetExists = await Room.exists({ _id: targetResourceId, hotelId: hotelIdObj });
       break;
     case 'room_type':
-      targetExists = await RoomType.exists({ _id: targetResourceId, hotelId });
+      targetExists = await RoomType.exists({ _id: targetResourceId, hotelId: hotelIdObj });
       break;
     default:
       throw new ApplicationError(
@@ -115,14 +122,20 @@ export const getApprovalRequests = catchAsync(async (req, res) => {
     sortOrder = 'desc'
   } = req.query;
 
-  const hotelId = req.user.hotelId;
+  const hotelId = resolveHotelId(req);
 
   // Build query
-  const query = { hotelId };
+  const query = { hotelId: new mongoose.Types.ObjectId(hotelId) };
 
-  // Frontdesk users can only see their own requests
-  // Managers and admins can see all requests for their hotel
-  if (req.user.role === 'frontdesk') {
+  // Determine if this is the /my-requests endpoint or the general listing.
+  // /my-requests should always scope to the current user's requests, regardless of role.
+  const isMyRequestsRoute = req.path === '/my-requests';
+
+  if (isMyRequestsRoute) {
+    // Always scope to current user for /my-requests
+    query.requestedBy = req.user._id;
+  } else if (req.user.role === 'frontdesk') {
+    // Frontdesk users can only see their own requests on the general listing too
     query.requestedBy = req.user._id;
   }
 
@@ -196,9 +209,10 @@ export const getApprovalRequestById = catchAsync(async (req, res) => {
     );
   }
 
-  // Verify user has access to this request
+  // Verify user has access to this request (use resolveHotelId for safe comparison)
+  const userHotelId = resolveHotelId(req);
   if (
-    approvalRequest.hotelId.toString() !== req.user.hotelId.toString() ||
+    approvalRequest.hotelId.toString() !== userHotelId ||
     (req.user.role === 'frontdesk' && approvalRequest.requestedBy._id.toString() !== req.user._id.toString())
   ) {
     throw new ApplicationError(
@@ -253,8 +267,9 @@ export const approveRequest = catchAsync(async (req, res) => {
     );
   }
 
-  // Verify hotel access
-  if (approvalRequest.hotelId.toString() !== req.user.hotelId.toString()) {
+  // Verify hotel access (use resolveHotelId for safe comparison when hotelId is populated)
+  const approverHotelId = resolveHotelId(req);
+  if (approvalRequest.hotelId.toString() !== approverHotelId) {
     throw new ApplicationError(
       'You do not have permission to approve this request',
       403,
@@ -383,8 +398,9 @@ export const rejectRequest = catchAsync(async (req, res) => {
     );
   }
 
-  // Verify hotel access
-  if (approvalRequest.hotelId.toString() !== req.user.hotelId.toString()) {
+  // Verify hotel access (use resolveHotelId for safe comparison when hotelId is populated)
+  const rejecterHotelId = resolveHotelId(req);
+  if (approvalRequest.hotelId.toString() !== rejecterHotelId) {
     throw new ApplicationError(
       'You do not have permission to reject this request',
       403,
@@ -501,10 +517,10 @@ export const cancelRequest = catchAsync(async (req, res) => {
  * @access  Private (frontdesk, manager, admin)
  */
 export const getPendingCount = catchAsync(async (req, res) => {
-  const hotelId = req.user.hotelId;
+  const hotelId = resolveHotelId(req);
 
   // Build query based on role
-  const query = { hotelId, status: 'pending' };
+  const query = { hotelId: new mongoose.Types.ObjectId(hotelId), status: 'pending' };
 
   // Frontdesk users can only see their own requests
   if (req.user.role === 'frontdesk') {
@@ -525,7 +541,7 @@ export const getPendingCount = catchAsync(async (req, res) => {
  */
 export const getApprovalStats = catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
-  const hotelId = req.user.hotelId;
+  const hotelId = resolveHotelId(req);
 
   // Only managers and admins can view stats
   if (req.user.role !== 'manager' && req.user.role !== 'admin') {
@@ -536,8 +552,9 @@ export const getApprovalStats = catchAsync(async (req, res) => {
     );
   }
 
-  const stats = await ApprovalRequest.getApprovalStats(hotelId, startDate, endDate);
-  const pendingCount = await ApprovalRequest.getPendingCount(hotelId);
+  const hotelIdObj = new mongoose.Types.ObjectId(hotelId);
+  const stats = await ApprovalRequest.getApprovalStats(hotelIdObj, startDate, endDate);
+  const pendingCount = await ApprovalRequest.getPendingCount(hotelIdObj);
 
   res.status(200).json({
     status: 'success',

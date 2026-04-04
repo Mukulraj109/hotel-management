@@ -22,8 +22,7 @@ import {
   BarChart3,
   PieChart,
   Lightbulb,
-  Target,
-  DollarSign
+  Target
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -639,31 +638,7 @@ export default function StaffSupplyRequests() {
         </div>
       )
     }
-  ], [requests, getDepartmentColor, getPriorityColor, isOverdue, canEdit]);
-  // memoizedStats uses server-side counts from `stats` (accurate across all pages)
-  // and falls back to page-local counts only when stats haven't loaded yet.
-  const memoizedStats = useMemo(() => {
-    if (stats) {
-      return {
-        pending: stats.pending,
-        approved: stats.approved,
-        overdue: requests.filter(r => isOverdue(r)).length, // overdue is page-scoped (no server stat)
-        totalValue: stats.totalValue
-      };
-    }
-    if (!requests.length) return null;
-    return {
-      pending: requests.filter(r => r.status === 'pending').length,
-      approved: requests.filter(r => r.status === 'approved').length,
-      overdue: requests.filter(r => isOverdue(r)).length,
-      totalValue: requests.reduce((sum, r) => sum + r.totalEstimatedCost, 0)
-    };
-  }, [stats, requests, isOverdue]);
-
-  const memoizedFilteredRequests = useMemo(() => {
-    return requests; // Already filtered by API
-  }, [requests]);
-
+  ], [getDepartmentColor, getPriorityColor, isOverdue, canEdit]);
   const totalEstimatedCost = useMemo(() =>
     newRequest.items.reduce((sum, item) => sum + (item.estimatedCost * item.quantity), 0),
     [newRequest.items]
@@ -1547,11 +1522,23 @@ export default function StaffSupplyRequests() {
                     value={newItem.name}
                     onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                   />
-                  <Input
-                    placeholder="Category *"
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     value={newItem.category}
                     onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                  />
+                  >
+                    <option value="">Select Category *</option>
+                    <option value="cleaning">Cleaning</option>
+                    <option value="toiletries">Toiletries</option>
+                    <option value="linens">Linens</option>
+                    <option value="food">Food</option>
+                    <option value="beverage">Beverage</option>
+                    <option value="office">Office</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="technology">Technology</option>
+                    <option value="furniture">Furniture</option>
+                    <option value="other">Other</option>
+                  </select>
                   <div>
                     <select
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
@@ -1684,7 +1671,7 @@ export default function StaffSupplyRequests() {
                       <div className="flex items-center ml-2">
                         {suggestion.savings > 0 && (
                           <div className="flex items-center text-green-600">
-                            <DollarSign className="h-3 w-3 mr-1" />
+                            <IndianRupee className="h-3 w-3 mr-1" />
                             <span className="text-xs font-medium">{formatCurrency(suggestion.savings)}</span>
                           </div>
                         )}

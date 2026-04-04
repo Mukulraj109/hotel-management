@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ interface CartItem {
   itemId: string;
   itemName: string;
   category: string;
+  inventoryType: 'fixed' | 'daily';
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -39,6 +40,7 @@ interface CartItem {
 export default function DailyRoutineCheck() {
   const [rooms, setRooms] = useState<DailyCheckData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('all'); // all, pending, completed, overdue
   const [selectedRoom, setSelectedRoom] = useState<DailyCheckData | null>(null);
@@ -59,11 +61,7 @@ export default function DailyRoutineCheck() {
     };
   }, []);
 
-  useEffect(() => {
-    fetchRooms();
-  }, [filter]);
-
-  const fetchRooms = async () => {
+  const fetchRooms = useCallback(async () => {
     try {
       setLoading(true);
       const response = await dailyRoutineCheckService.getRoomsForDailyCheck({ filter, assignedToMe: true });
@@ -75,7 +73,11 @@ export default function DailyRoutineCheck() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchRooms();
+  }, [fetchRooms]);
 
   const handleStartCheck = (room: DailyCheckData) => {
     setSelectedRoom(room);
@@ -91,7 +93,11 @@ export default function DailyRoutineCheck() {
       if (!confirmed) return;
     }
 
+    // Guard against double-submit
+    if (submitting) return;
+
     try {
+      setSubmitting(true);
       await dailyRoutineCheckService.completeDailyCheck(roomId, { cart });
       toast.success('Daily check completed successfully!');
       setShowRoomDetails(false);
@@ -101,10 +107,13 @@ export default function DailyRoutineCheck() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to complete daily check';
       toast.error(message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const addToCart = (item: RoomInventoryItem, action: 'replace' | 'add' | 'laundry' | 'reuse', quantity: number = 1, isFixedInventory: boolean = false) => {
+    const inventoryType: 'fixed' | 'daily' = isFixedInventory ? 'fixed' : 'daily';
 
     const existingItem = cart.find(cartItem =>
       cartItem.itemId === item._id && cartItem.action === action
@@ -131,6 +140,7 @@ export default function DailyRoutineCheck() {
         itemId: item._id,
         itemName: item.name,
         category: item.category,
+        inventoryType,
         quantity,
         unitPrice: item.unitPrice || 0,
         totalPrice: (item.unitPrice || 0) * quantity,
@@ -649,13 +659,15 @@ export default function DailyRoutineCheck() {
                 <Button
                   variant="outline"
                   onClick={() => setShowRoomDetails(false)}
+                  disabled={submitting}
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={() => handleCompleteCheck(selectedRoom._id)}
+                  disabled={submitting}
                 >
-                  Complete Check
+                  {submitting ? 'Completing...' : 'Complete Check'}
                 </Button>
               </div>
             </div>

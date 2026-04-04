@@ -661,7 +661,25 @@ const bookingSchema = new mongoose.Schema({
   checkOutTime: Date,
   source: {
     type: String,
-    enum: ['direct', 'walk_in', 'booking_com', 'expedia', 'airbnb'],
+    // Accept current and legacy booking-origin values so unrelated updates
+    // (for example automated status changes) do not fail on revalidation.
+    enum: [
+      'direct',
+      'walk_in',
+      'phone',
+      'email',
+      'web',
+      'online',
+      'booking_com',
+      'expedia',
+      'airbnb',
+      'ota',
+      'corporate',
+      'travel_agent',
+      'admin',
+      'api',
+      'manual'
+    ],
     default: 'direct'
   },
   // OTA Integration fields for channel management

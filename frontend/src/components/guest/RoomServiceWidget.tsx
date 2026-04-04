@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import {
   Package,
@@ -20,6 +21,17 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { roomInventoryService } from '../../services/roomInventoryService';
 import { formatCurrency } from '../../utils/formatters';
+
+interface InventoryChargeItem {
+  name?: string;
+  status?: string;
+  cost?: number;
+}
+
+interface InventoryCharge {
+  date?: string;
+  items?: InventoryChargeItem[];
+}
 
 interface RoomServiceWidgetProps {
   bookingId?: string;
@@ -59,6 +71,7 @@ interface RoomServiceSummary {
     date: string;
   }>;
   totalCharges: number;
+  currency?: string;
   roomCondition: {
     score: number;
     status: string;
@@ -87,6 +100,7 @@ export function RoomServiceWidget({
   guestId,
   onRequestService
 }: RoomServiceWidgetProps) {
+  const navigate = useNavigate();
   const [summary, setSummary] = useState<RoomServiceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -116,10 +130,10 @@ export function RoomServiceWidget({
           inventoryCharges = charges.flatMap((charge: Record<string, unknown>) => {
             const items = Array.isArray(charge.items) ? charge.items : [];
             return items.map((item: Record<string, unknown>) => ({
-              itemName: (item as any).name || 'Unknown',
-              reason: (item as any).status || 'damage',
-              cost: Number((item as any).cost) || 0,
-              date: (charge as any).date || ''
+              itemName: (item as InventoryChargeItem).name || 'Unknown',
+              reason: (item as InventoryChargeItem).status || 'damage',
+              cost: Number((item as InventoryChargeItem).cost) || 0,
+              date: (charge as InventoryCharge).date || ''
             }));
           });
         } catch (error) {
@@ -360,7 +374,7 @@ export function RoomServiceWidget({
                   </div>
                 </div>
                 <Button
-                  onClick={() => window.location.href = '/app/billing'}
+                  onClick={() => navigate('/app/billing')}
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700"
                 >
@@ -391,7 +405,7 @@ export function RoomServiceWidget({
                   </div>
                 </div>
                 <Button
-                  onClick={() => window.location.href = '/app/billing'}
+                  onClick={() => navigate('/app/billing')}
                   size="sm"
                   className="bg-orange-600 hover:bg-orange-700"
                 >
@@ -415,7 +429,7 @@ export function RoomServiceWidget({
               </div>
               <div className="text-right">
                                   <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalCharges)}</p>
-                  <p className="text-xs text-gray-500">{(summary as any)?.currency || 'INR'}</p>
+                  <p className="text-xs text-gray-500">{summary?.currency || 'INR'}</p>
               </div>
             </div>
           </Card>
@@ -611,7 +625,7 @@ export function RoomServiceWidget({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Recent Requests</h3>
           <Button
-            onClick={() => window.location.href = '/app/services'}
+            onClick={() => navigate('/app/services')}
             size="sm"
             variant="secondary"
           >
@@ -659,7 +673,7 @@ export function RoomServiceWidget({
             Contact our housekeeping team for any special requests or assistance
           </p>
           <Button
-            onClick={() => window.location.href = '/contact'}
+            onClick={() => navigate('/contact')}
             className="bg-blue-600 hover:bg-blue-700"
           >
             Contact Housekeeping

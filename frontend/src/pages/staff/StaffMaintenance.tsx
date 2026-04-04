@@ -145,11 +145,12 @@ export default function StaffMaintenance() {
     }
   };
 
-  const formatTimeAgo = (dateString: string) => {
+  const formatTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Unknown';
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 60) {
       return `${diffInMinutes} min ago`;
     } else if (diffInMinutes < 1440) {
@@ -540,7 +541,7 @@ export default function StaffMaintenance() {
                               )}
                               <div className="flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-lg">
                                 <Calendar className="h-3 w-3 mr-1" />
-                                Started: {formatTimeAgo(task.startedDate || task.updatedAt)}
+                                Started: {formatTimeAgo(task.startedDate ?? task.updatedAt)}
                               </div>
                               {task.reportedBy && (
                                 <div className="flex items-center bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">

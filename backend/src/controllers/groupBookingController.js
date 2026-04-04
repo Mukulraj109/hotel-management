@@ -125,22 +125,33 @@ export const createGroupBooking = catchAsync(async (req, res, next) => {
  */
 export const getAllGroupBookings = catchAsync(async (req, res, next) => {
   const filter = { hotelId: req.user.hotelId };
-  
+
   const features = new APIFeatures(GroupBooking.find(filter), req.query)
     .filter()
     .sort()
     .limitFields()
     .paginate();
-    
+
   const groupBookings = await features.query
     .populate('corporateCompanyId', 'name email phone')
-    .populate('rooms.bookingId');
-  
+    .populate('rooms.bookingId')
+    .lean();
+
+  const totalCount = await GroupBooking.countDocuments(filter);
+  const page = features.page || 1;
+  const limit = features.limit || 20;
+
   res.status(200).json({
     status: 'success',
     results: groupBookings.length,
     data: {
-      groupBookings
+      groupBookings,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     }
   });
 });

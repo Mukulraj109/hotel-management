@@ -415,20 +415,7 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
       checkIn: { $lte: tomorrow } // Started or starting soon
     }).select('rooms.roomId status checkIn checkOut').lean().limit(1000);
   
-    console.log('Real-time status calculation:', {
-      hotelId,
-      today: today.toISOString(),
-      tomorrow: tomorrow.toISOString(),
-      totalRooms: rooms.length,
-      currentBookings: currentBookings.length,
-      bookings: currentBookings.map(b => ({
-        id: b._id,
-        status: b.status,
-        checkIn: b.checkIn,
-        checkOut: b.checkOut,
-        roomIds: b.rooms.map(r => r.roomId)
-      }))
-    });
+    // Debug logging removed — was leaking booking details to stdout in production
   
     // Create a map of room occupancy
     const roomOccupancyMap = new Map();

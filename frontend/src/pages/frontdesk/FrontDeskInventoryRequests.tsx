@@ -84,7 +84,7 @@ export default function FrontDeskInventoryRequests() {
     scheduledTime: ''
   });
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
       const response = await adminGuestServicesService.getServices({
@@ -107,7 +107,7 @@ export default function FrontDeskInventoryRequests() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, selectedPropertyId, computeStats]);
 
   // Stats are computed from the current page slice for status breakdown,
   // but the "total" counter uses the server-side pagination total so it
@@ -124,14 +124,14 @@ export default function FrontDeskInventoryRequests() {
     });
   }, []);
 
-  const fetchAvailableStaff = async () => {
+  const fetchAvailableStaff = useCallback(async () => {
     try {
       const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId);
       setAvailableStaff(response.data || []);
     } catch {
       setAvailableStaff([]);
     }
-  };
+  }, [selectedPropertyId]);
 
   const debouncedSearch = useCallback((term: string) => {
     if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
@@ -175,7 +175,7 @@ export default function FrontDeskInventoryRequests() {
       fetchAvailableStaff();
     }
     return () => { if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current); };
-  }, [filters, selectedPropertyId]);
+  }, [fetchRequests, fetchAvailableStaff, selectedPropertyId]);
 
   // Stats are updated inside fetchRequests with the correct server total.
   // This secondary effect is kept only to handle edge cases where requests

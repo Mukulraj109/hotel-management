@@ -9,6 +9,7 @@ import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
+import ProfileSyncService from '../services/profileSyncService.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -275,6 +276,9 @@ router.put('/guest', authorizePolicy('userPreferences', 'guestAccess'), catchAsy
   const updates = flattenToDotNotation(req.body, 'guest');
 
   const preferences = await UserPreference.updatePreferences(userId, updates);
+
+  // Sync preferences back to User model
+  await ProfileSyncService.syncPreferencesToUser(req.user._id).catch(() => {});
 
   res.status(200).json({
     status: 'success',

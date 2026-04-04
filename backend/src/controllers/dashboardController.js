@@ -3,6 +3,7 @@ import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import GuestService from '../models/GuestService.js';
 import InventoryItem from '../models/InventoryItem.js';
+import logger from '../utils/logger.js';
 
 class DashboardController {
   // Get real-time dashboard counts
@@ -153,7 +154,7 @@ class DashboardController {
       });
 
     } catch (error) {
-      console.error('Dashboard counts error:', error);
+      logger.error('Dashboard counts error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to fetch dashboard counts',
@@ -186,7 +187,8 @@ class DashboardController {
         }
       ]);
 
-      const totalRooms = await Room.countDocuments({ hotelId, isActive: true });
+      // Use the same ObjectId for countDocuments for consistency
+      const totalRooms = await Room.countDocuments({ hotelId: hotelOid, isActive: true });
 
       const summary = {
         total: totalRooms,
@@ -210,7 +212,7 @@ class DashboardController {
       });
 
     } catch (error) {
-      console.error('Room status summary error:', error);
+      logger.error('Room status summary error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to fetch room status summary',
@@ -279,7 +281,7 @@ class DashboardController {
       });
 
     } catch (error) {
-      console.error('Recent activities error:', error);
+      logger.error('Recent activities error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to fetch recent activities',

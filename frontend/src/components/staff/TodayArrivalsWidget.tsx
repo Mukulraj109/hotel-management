@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,17 +25,24 @@ export default function TodayArrivalsWidget() {
     totalUpcoming: 0
   });
   const [loading, setLoading] = useState(true);
+  // Guard state updates after component unmounts (e.g. during interval fire)
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const fetchUpcomingBookings = useCallback(async () => {
     try {
-      setLoading(true);
+      if (mountedRef.current) setLoading(true);
       const response = await staffBookingService.getUpcomingBookings({ days: 3, limit: 10 });
+      if (!mountedRef.current) return;
       setBookings(response.data || []);
       setStats(response.stats || { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 });
     } catch {
       // Error handled silently — widget is non-critical
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

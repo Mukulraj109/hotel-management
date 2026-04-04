@@ -19,6 +19,7 @@ import SupplyRequest from '../models/SupplyRequest.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import websocketService from '../services/websocketService.js';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -43,10 +44,12 @@ router.get('/health', (req, res) => {
  */
 router.get('/today', catchAsync(async (req, res) => {
   const { hotelId } = req.user;
+  // Use UTC boundaries so results are consistent regardless of server timezone.
+  // MongoDB stores all dates in UTC; comparisons must also be in UTC.
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
   logger.debug('Staff dashboard today overview', { hotelId });
 
@@ -417,6 +420,11 @@ router.post('/inventory/:itemId/order', validate(orderInventorySchema), catchAsy
   const { hotelId } = req.user;
   const { quantity = 50 } = req.body; // Default order quantity
 
+  // SECURITY: Validate ObjectId format before hitting MongoDB to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(itemId)) {
+    throw new ApplicationError('Inventory item not found', 404);
+  }
+
   // Atomic: find the inventory item, verify ownership, and compute new stock in one step
   // First read to get threshold for calculation
   const existingItem = await Inventory.findOne({
@@ -468,6 +476,11 @@ router.patch('/rooms/:roomId/status', validate(updateRoomStatusSchema), catchAsy
   const { hotelId } = req.user;
   const { status } = req.body;
 
+  // SECURITY: Validate ObjectId format before hitting MongoDB to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Room not found or access denied', 404);
+  }
+
   const room = await Room.findOneAndUpdate(
     { _id: roomId, hotelId: new mongoose.Types.ObjectId(hotelId) },
     { $set: { status, ...(status === 'vacant' ? { lastCleaned: new Date() } : {}) } },
@@ -476,6 +489,17 @@ router.patch('/rooms/:roomId/status', validate(updateRoomStatusSchema), catchAsy
 
   if (!room) {
     throw new ApplicationError('Room not found or access denied', 404);
+  }
+
+  // Broadcast real-time status change so all connected staff clients update immediately
+  try {
+    await websocketService.broadcastToHotel(hotelId.toString(), 'room:status_changed', {
+      roomId: room._id.toString(),
+      roomNumber: room.roomNumber,
+      status: room.status
+    });
+  } catch (wsErr) {
+    logger.warn('Failed to broadcast room status change from staff dashboard', { error: wsErr.message });
   }
 
   res.status(200).json({
@@ -498,6 +522,11 @@ router.patch('/rooms/:roomId/status', validate(updateRoomStatusSchema), catchAsy
 router.patch('/rooms/:roomId/inspect', validate(inspectRoomSchema), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { hotelId } = req.user;
+
+  // SECURITY: Validate ObjectId format before hitting MongoDB to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    throw new ApplicationError('Room not found', 404);
+  }
 
   // Atomic update: find room, verify ownership, and update lastCleaned
   const room = await Room.findOneAndUpdate(

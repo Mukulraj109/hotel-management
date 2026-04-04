@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -103,12 +103,30 @@ export default function StaffDocuments() {
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageLimit] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce search input to avoid firing a request on every keystroke
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   // Fetch stats once on mount (independent of list filters)
   useEffect(() => {
@@ -117,7 +135,7 @@ export default function StaffDocuments() {
 
   useEffect(() => {
     fetchDocuments();
-  }, [currentPage, statusFilter, categoryFilter, searchTerm]);
+  }, [currentPage, statusFilter, categoryFilter, debouncedSearch]);
 
   const fetchDocuments = async () => {
     try {
@@ -129,7 +147,7 @@ export default function StaffDocuments() {
       };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (categoryFilter !== 'all') params.category = categoryFilter;
-      if (searchTerm.trim()) params.search = searchTerm.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
 
       const { data } = await api.get('/documents', { params });
       const fetchedDocs: Document[] = data?.data?.documents || [];
@@ -441,10 +459,7 @@ export default function StaffDocuments() {
                   <Input
                     placeholder="Search documents..."
                     value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
@@ -515,7 +530,7 @@ export default function StaffDocuments() {
               <div className="text-center py-8">
                 <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">
-                  {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
+                  {debouncedSearch || statusFilter !== 'all' || categoryFilter !== 'all'
                     ? 'No documents match your filters'
                     : 'No documents uploaded yet'
                   }

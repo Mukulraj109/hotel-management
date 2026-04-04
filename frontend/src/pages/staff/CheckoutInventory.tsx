@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,13 +41,21 @@ export default function CheckoutInventory() {
   const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 20;
 
+  // Fetch when filter or page changes. The filterRef below is used to detect
+  // filter changes so we can reset page without causing a double-fetch.
+  const filterRef = useRef(filter);
   useEffect(() => {
-    setPage(1); // Reset to page 1 whenever the filter changes
-  }, [filter]);
-
-  useEffect(() => {
+    if (filterRef.current !== filter) {
+      // Filter changed: reset to page 1. If page is already 1, fetch now.
+      filterRef.current = filter;
+      if (page !== 1) {
+        setPage(1); // The [page] change will trigger fetchCheckoutInventories.
+        return;
+      }
+    }
     fetchCheckoutInventories();
-  }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, page]);
 
 
   const fetchCheckoutInventories = async () => {

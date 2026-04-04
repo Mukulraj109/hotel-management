@@ -20,7 +20,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
 interface GuestStats {
   bookings: {
@@ -56,6 +56,7 @@ interface Guest {
 
 interface GuestListResponse {
   status: string;
+  results?: number;
   data: { guests: Guest[] };
   pagination: {
     current: number;
@@ -95,7 +96,7 @@ const StaffGuestManagement: React.FC = () => {
   const { data, isLoading, isError, error, refetch } = useQuery<GuestListResponse, Error>({
     queryKey: ['staff-guests', page, searchTerm],
     queryFn: fetchGuests,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const guests = data?.data?.guests ?? [];
@@ -300,7 +301,7 @@ const StaffGuestManagement: React.FC = () => {
                               )}
                               {guest.stats.bookings.totalSpent > 0 && (
                                 <div className="text-gray-500 text-xs">
-                                  Spent: ${guest.stats.bookings.totalSpent.toLocaleString()}
+                                  Spent: ₹{guest.stats.bookings.totalSpent.toLocaleString()}
                                 </div>
                               )}
                             </div>

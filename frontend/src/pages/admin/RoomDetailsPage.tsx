@@ -188,7 +188,7 @@ export default function RoomDetailsPage() {
     }
   };
 
-  const currentStatus = (room as unknown).computedStatus || room.status;
+  const currentStatus = (room as Record<string, unknown>).computedStatus as string || room.status;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -303,7 +303,7 @@ export default function RoomDetailsPage() {
             </Card>
 
             {/* Current Booking Card */}
-            {(room as unknown).currentBooking && (
+            {room.currentBooking && (
               <Card>
                 <CardHeader>
                   <h2 className="text-lg font-semibold text-gray-900">Current Booking</h2>
@@ -314,19 +314,19 @@ export default function RoomDetailsPage() {
                       <div>
                         <label className="block text-sm font-medium text-blue-800">Check-in</label>
                         <p className="text-blue-900 font-semibold">
-                          {new Date((room as unknown).currentBooking.checkIn).toLocaleDateString()}
+                          {new Date(room.currentBooking.checkIn).toLocaleDateString()}
                         </p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-blue-800">Check-out</label>
                         <p className="text-blue-900 font-semibold">
-                          {new Date((room as unknown).currentBooking.checkOut).toLocaleDateString()}
+                          {new Date(room.currentBooking.checkOut).toLocaleDateString()}
                         </p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-blue-800">Booking Status</label>
                         <p className="text-blue-900 font-semibold capitalize">
-                          {(room as unknown).currentBooking.status.replace('_', ' ')}
+                          {room.currentBooking.status.replace('_', ' ')}
                         </p>
                       </div>
                     </div>

@@ -529,25 +529,40 @@ export const getLaundryStatistics = catchAsync(async (req, res, next) => {
  *         description: List of laundry transactions
  */
 export const getAllLaundryTransactions = catchAsync(async (req, res, next) => {
-  const features = new APIFeatures(
-    LaundryTransaction.find({ hotelId: req.user.hotelId })
+  // Parse and clamp pagination params
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+
+  const baseFilter = { hotelId: req.user.hotelId };
+  if (req.query.status) baseFilter.status = req.query.status;
+  if (req.query.roomId) baseFilter.roomId = req.query.roomId;
+
+  const sortField = req.query.sort || '-createdAt';
+
+  const [transactions, totalCount] = await Promise.all([
+    LaundryTransaction.find(baseFilter)
       .populate('roomId', 'roomNumber type')
       .populate('itemId', 'name category')
       .populate('processedBy', 'name')
-      .populate('returnedBy', 'name'),
-    req.query
-  )
-    .filter()
-    .sort()
-    .limitFields()
-    .paginate();
-
-  const transactions = await features.query;
+      .populate('returnedBy', 'name')
+      .sort(sortField)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    LaundryTransaction.countDocuments(baseFilter)
+  ]);
 
   res.json({
     status: 'success',
     results: transactions.length,
-    data: transactions
+    data: transactions,
+    pagination: {
+      page,
+      limit,
+      total: totalCount,
+      pages: Math.ceil(totalCount / limit)
+    }
   });
 });
 

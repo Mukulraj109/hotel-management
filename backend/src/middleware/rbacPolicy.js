@@ -37,10 +37,10 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   mapping: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   rolePermissions: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   meetUpRequests: {
     baseAccess: AUTHENTICATED_ROLES
@@ -49,7 +49,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   seasonalPricing: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   systemIntegration: {
     modifyAccess: ['admin', 'manager']
@@ -70,7 +70,7 @@ export const RBAC_POLICIES = {
     modifyAccess: ['admin', 'manager', 'staff']
   },
   reorder: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   serviceTypes: {
     baseAccess: AUTHENTICATED_ROLES
@@ -131,12 +131,12 @@ export const RBAC_POLICIES = {
     baseAccess: OPERATIONAL_ROLES
   },
   stockMovements: {
-    baseAccess: AUTHENTICATED_ROLES,
+    baseAccess: OPERATIONAL_ROLES,
     staffAccess: ['admin', 'staff'],
     adminAccess: ['admin']
   },
   measurementUnits: {
-    baseAccess: AUTHENTICATED_ROLES,
+    baseAccess: OPERATIONAL_ROLES,
     manageAccess: ['admin', 'manager']
   },
   bypassFinancialAnalytics: {
@@ -160,7 +160,7 @@ export const RBAC_POLICIES = {
   },
   guestServices: {
     baseAccess: AUTHENTICATED_ROLES,
-    staffAccess: ['staff', 'admin', 'frontdesk'],
+    staffAccess: ['staff', 'admin', 'frontdesk', 'manager'],
     guestAccess: ['guest']
   },
   hotelServices: {
@@ -188,7 +188,7 @@ export const RBAC_POLICIES = {
     baseAccess: AUTHENTICATED_ROLES
   },
   vendorComparison: {
-    baseAccess: AUTHENTICATED_ROLES
+    baseAccess: OPERATIONAL_ROLES
   },
   auth: {
     baseAccess: AUTHENTICATED_ROLES
@@ -344,7 +344,7 @@ export const RBAC_POLICIES = {
     staffAccess: ['admin', 'manager', 'staff']
   },
   laundry: {
-    staffFrontdeskAccess: ['admin', 'manager', 'housekeeping', 'frontdesk'],
+    staffFrontdeskAccess: ['admin', 'manager', 'staff', 'housekeeping', 'frontdesk'],
     housekeepingAccess: ['admin', 'manager', 'housekeeping'],
     managerAccess: ['admin', 'manager']
   },
@@ -352,7 +352,7 @@ export const RBAC_POLICIES = {
     staffAccess: ['admin', 'staff']
   },
   roomTypes: {
-    readAccess: ['admin', 'manager', 'frontdesk'],
+    readAccess: ['admin', 'manager', 'frontdesk', 'staff'],
     manageAccess: ['admin', 'manager'],
     channelManageAccess: ['admin', 'channel_manager'],
     adminAccess: ['admin']
@@ -366,10 +366,10 @@ export const RBAC_POLICIES = {
     batchAccess: ['admin', 'revenue_manager', 'frontdesk']
   },
   dailyRoutineCheck: {
-    staffFrontdeskAccess: ['staff', 'admin', 'frontdesk'],
-    staffOnlyAccess: ['staff', 'frontdesk'],
+    staffFrontdeskAccess: ['staff', 'admin', 'frontdesk', 'housekeeping'],
+    staffOnlyAccess: ['staff', 'frontdesk', 'housekeeping'],
     managerFrontdeskAccess: ['admin', 'manager', 'frontdesk'],
-    fullAccess: ['admin', 'manager', 'staff', 'frontdesk']
+    fullAccess: ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping']
   },
   propertyGroups: {
     managerAccess: ['admin', 'manager'],
@@ -384,7 +384,7 @@ export const RBAC_POLICIES = {
     purchasingAccess: ['admin', 'manager', 'purchasing', 'frontdesk']
   },
   laundryTemplates: {
-    staffAccess: ['admin', 'manager', 'staff'],
+    staffAccess: ['admin', 'manager', 'staff', 'housekeeping', 'frontdesk'],
     managerAccess: ['admin', 'manager']
   },
   purchaseOrders: {
@@ -425,11 +425,11 @@ export const RBAC_POLICIES = {
     manageAccess: ['admin', 'manager']
   },
   dailyInventoryCheck: {
-    staffAccess: ['staff', 'admin'],
+    staffAccess: ['staff', 'admin', 'manager', 'housekeeping', 'frontdesk'],
     guestAccess: ['staff', 'admin', 'guest']
   },
   housekeepingAutomation: {
-    staffFrontdeskAccess: ['admin', 'manager', 'staff', 'frontdesk'],
+    staffFrontdeskAccess: ['admin', 'manager', 'staff', 'frontdesk', 'housekeeping'],
     managerFrontdeskAccess: ['admin', 'manager', 'frontdesk']
   },
   photoUpload: {
@@ -443,7 +443,7 @@ export const RBAC_POLICIES = {
     adminStaffAccess: ['admin', 'staff']
   },
   rooms: {
-    createUpdateAccess: ['admin', 'staff'],
+    createUpdateAccess: ['admin', 'staff', 'frontdesk'],
     deleteAccess: ['admin'],
     pricingAccess: ['admin', 'manager'],
     priceHistoryAccess: ['admin', 'manager', 'staff'],

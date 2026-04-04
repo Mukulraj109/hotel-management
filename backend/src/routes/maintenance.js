@@ -319,8 +319,13 @@ router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async 
     }
     // If querying only pending tasks, no assignedTo filter — any staff can see them
   } else {
-    // For admin/manager/frontdesk: use query param or fall back to user's hotelId
-    query.hotelId = req.query.hotelId || req.user.hotelId;
+    // For admin/manager/frontdesk: use query param or fall back to user's hotelId.
+    // SECURITY: Validate the client-supplied hotelId to prevent CastError leakage.
+    const rawQueryHotelId = req.query.hotelId;
+    if (rawQueryHotelId && !mongoose.Types.ObjectId.isValid(rawQueryHotelId)) {
+      throw new ApplicationError('Invalid hotel ID format', 400);
+    }
+    query.hotelId = rawQueryHotelId || req.user.hotelId;
 
     // Apply filters
     if (status) query.status = status;
@@ -393,8 +398,12 @@ router.get('/', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async 
  */
 router.get('/stats', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
-  
+
   const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (!operationalRoles.includes(req.user.role) && req.query.hotelId && !mongoose.Types.ObjectId.isValid(req.query.hotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
@@ -505,6 +514,10 @@ router.get('/stats', authorizePolicy('maintenance', 'staffAccess'), catchAsync(a
  */
 router.get('/available-staff', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (!operationalRoles.includes(req.user.role) && req.query.hotelId && !mongoose.Types.ObjectId.isValid(req.query.hotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
@@ -544,6 +557,10 @@ router.get('/available-staff', authorizePolicy('maintenance', 'staffAccess'), ca
  */
 router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (!operationalRoles.includes(req.user.role) && req.query.hotelId && !mongoose.Types.ObjectId.isValid(req.query.hotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
@@ -583,6 +600,10 @@ router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), ca
  */
 router.get('/overdue', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (!operationalRoles.includes(req.user.role) && req.query.hotelId && !mongoose.Types.ObjectId.isValid(req.query.hotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
@@ -627,6 +648,10 @@ router.get('/overdue', authorizePolicy('maintenance', 'staffAccess'), catchAsync
 router.get('/recurring/upcoming', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { days = 30 } = req.query;
   const operationalRoles = ['staff', 'housekeeping', 'maintenance'];
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (!operationalRoles.includes(req.user.role) && req.query.hotelId && !mongoose.Types.ObjectId.isValid(req.query.hotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = operationalRoles.includes(req.user.role) ? req.user.hotelId : (req.query.hotelId || req.user.hotelId);
   
   if (!hotelId) {
@@ -930,15 +955,14 @@ router.patch('/:id([0-9a-fA-F]{24})', authorizePolicy('maintenance', 'staffAcces
 router.post('/:id([0-9a-fA-F]{24})/assign', authorizePolicy('maintenance', 'staffAccess'), validate(assignMaintenanceSchema), catchAsync(async (req, res) => {
   const { assignedTo, scheduledDate, notes } = req.body;
 
-  const existingTask = await MaintenanceTask.findById(req.params.id).lean();
+  // SECURITY: Scope by hotelId to prevent cross-tenant information disclosure
+  const hotelScopeFilter = req.user.hotelId
+    ? { _id: req.params.id, hotelId: req.user.hotelId }
+    : { _id: req.params.id };
+  const existingTask = await MaintenanceTask.findOne(hotelScopeFilter).lean();
 
   if (!existingTask) {
     throw new ApplicationError('Maintenance task not found', 404);
-  }
-
-  // Check access permissions — only non-admin roles are bound to their own hotel
-  if (req.user.role !== 'admin' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only assign tasks for your hotel', 403);
   }
 
   // Atomic update: assign task and set notes in one operation

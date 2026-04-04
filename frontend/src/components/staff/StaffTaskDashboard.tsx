@@ -129,11 +129,15 @@ export function StaffTaskDashboard() {
         }
       }
       await api.patch(`/staff-tasks/${taskId}/status`, body);
-      toast.success(`Task marked as ${status.replace(/_/g, ' ')}`);
+      if (mountedRef.current) {
+        toast.success(`Task marked as ${status.replace(/_/g, ' ')}`);
+      }
       await fetchTasks();
       await fetchTodaysTasks();
     } catch {
-      toast.error('Failed to update task status');
+      if (mountedRef.current) {
+        toast.error('Failed to update task status');
+      }
     }
   }, [fetchTasks, fetchTodaysTasks]);
 

@@ -55,9 +55,7 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const [{ data: notifData }] = await Promise.all([
-          api.get('/user-preferences/notifications')
-        ]);
+        const { data: notifData } = await api.get('/user-preferences/notifications');
 
         const cats = notifData?.data?.notifications?.categories || {};
         const notifPrefs = notifData?.data?.notifications || {};

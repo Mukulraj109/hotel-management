@@ -37,14 +37,16 @@ function GuestDashboard() {
                       Array.isArray(response.data) ? response.data : [];
 
       // Use server-provided stats/pagination when available, don't compute from limited dataset
-      const totalBookings = (response as any).pagination?.total
-        ?? (response as any).stats?.totalBookings
-        ?? bookings.length;
-      const totalSpent = (response as any).stats?.totalRevenue ?? bookings
-        .filter((b: any) => b.paymentStatus === 'paid')
-        .reduce((sum: number, b: any) => sum + (Number(b.totalAmount) || 0), 0);
-      const upcomingBookings = (response as any).stats?.upcomingCount ?? bookings
-        .filter((b: any) => new Date(b.checkIn) > new Date() && b.status !== 'cancelled')
+      const resp = response as Record<string, unknown>;
+      const pagination = (resp.pagination || resp.data?.pagination) as Record<string, number> | undefined;
+      const stats = (resp.stats || resp.data?.stats) as Record<string, number> | undefined;
+
+      const totalBookings = pagination?.total ?? stats?.totalBookings ?? bookings.length;
+      const totalSpent = stats?.totalRevenue ?? bookings
+        .filter((b: Booking) => b.paymentStatus === 'paid')
+        .reduce((sum: number, b: Booking) => sum + (Number(b.totalAmount) || 0), 0);
+      const upcomingBookings = stats?.upcomingCount ?? bookings
+        .filter((b: Booking) => new Date(b.checkIn) > new Date() && b.status !== 'cancelled')
         .length;
       const loyaltyPoints = user?.loyalty?.points || 0;
       const loyaltyTier = user?.loyalty?.tier || 'bronze';
@@ -145,10 +147,10 @@ function GuestDashboard() {
                 <div>
                   <p className="text-sm text-green-700 font-medium">Your Current Stay</p>
                   <p className="text-lg font-bold text-gray-900">
-                    Room {(activeBooking as any).rooms?.[0]?.roomId?.roomNumber || (activeBooking as any).rooms?.[0]?.roomNumber || (activeBooking as any).roomNumber || '—'}
+                    Room {activeBooking.rooms?.[0]?.roomId?.roomNumber || activeBooking.rooms?.[0]?.roomNumber || '—'}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Check-out: {formatDate((activeBooking as any).checkOut)}
+                    Check-out: {formatDate(activeBooking.checkOut)}
                   </p>
                 </div>
               </div>
@@ -374,8 +376,8 @@ function GuestDashboard() {
           b.status === 'checked_in' && new Date(b.checkOut) > new Date()
         );
         if (!activeBooking) return null;
-        const roomId = (activeBooking as any).rooms?.[0]?.roomId?._id
-          || (activeBooking as any).rooms?.[0]?.roomId
+        const roomId = activeBooking.rooms?.[0]?.roomId?._id
+          || activeBooking.rooms?.[0]?.roomId
           || undefined;
         return (
           <div className="mt-8">
@@ -384,7 +386,7 @@ function GuestDashboard() {
               bookingId={toEntityIdString(activeBooking._id) ?? ''}
               roomId={typeof roomId === 'string' ? roomId : undefined}
               onRequestService={(serviceType, items) => {
-                toast.success(`Service request submitted (${(items as any[]).length} items). Our team will be with you shortly.`);
+                toast.success(`Service request submitted (${Array.isArray(items) ? items.length : 0} items). Our team will be with you shortly.`);
               }}
             />
           </div>

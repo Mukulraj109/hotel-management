@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen, CheckCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -24,14 +25,14 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
   // Connect to notification stream
   useNotificationStream();
 
-  // Fetch pending approval count
+  // Fetch pending approval count from the approvals API (matches MyApprovalRequests page)
   const { data: pendingApprovalsData, isLoading: isLoadingApprovals } = useQuery({
     queryKey: ['pending-approvals-count'],
     queryFn: async () => {
       try {
-        const response = await api.get('/admin-bypass-management/approvals/pending');
+        const response = await api.get('/approvals/pending-count');
         return response.data;
-      } catch (error) {
+      } catch {
         return { count: 0 };
       }
     },
@@ -81,8 +82,8 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
               <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
             </div>
           ) : pendingApprovalCount > 0 ? (
-            <a
-              href="/frontdesk/my-approvals"
+            <Link
+              to="/frontdesk/my-approvals"
               className="relative p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               title={`${pendingApprovalCount} pending approval${pendingApprovalCount > 1 ? 's' : ''}`}
             >
@@ -92,7 +93,7 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
                   {pendingApprovalCount > 9 ? '9+' : pendingApprovalCount}
                 </span>
               )}
-            </a>
+            </Link>
           ) : null}
 
           {/* Notification Dropdown */}

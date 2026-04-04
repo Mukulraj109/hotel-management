@@ -99,6 +99,12 @@ router.get('/stats', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(as
  * Get specific task details
  */
 router.get('/:taskId', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
+  // SECURITY: Validate taskId is a valid ObjectId before hitting MongoDB to prevent
+  // CastError stack-trace leakage and potential injection via malformed IDs.
+  if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
+    throw new ApplicationError('Task not found', 404);
+  }
+
   const userHotelId = req.user.hotelId?.toString();
 
   // Scope task lookup to the user's hotel first to prevent cross-tenant IDOR
@@ -132,6 +138,11 @@ router.get('/:taskId', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(
  * Update task status
  */
 router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate taskId is a valid ObjectId to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
+    throw new ApplicationError('Task not found', 404);
+  }
+
   const { status, completionNotes, completionPhotos, completionData } = req.body;
   const userHotelId = req.user.hotelId?.toString();
 
@@ -155,11 +166,35 @@ router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), va
   // Update task fields
   task.status = status;
   if (completionNotes) task.completionNotes = completionNotes;
-  // Persist completion photo URLs sent from client (already uploaded separately)
+  // SECURITY: Validate completion photo URLs — must be strings, no path traversal.
+  // Only relative paths or https:// URLs from the same origin are permitted.
   if (Array.isArray(completionPhotos) && completionPhotos.length > 0) {
-    task.completionPhotos = completionPhotos;
+    const MAX_PHOTOS = 20;
+    const validatedPhotos = completionPhotos
+      .slice(0, MAX_PHOTOS)
+      .filter((url) => {
+        if (typeof url !== 'string' || url.length > 2048) return false;
+        // Allow relative paths (already-uploaded files) and HTTPS URLs only.
+        if (url.startsWith('/uploads/') || url.startsWith('https://')) return true;
+        return false;
+      });
+    task.completionPhotos = validatedPhotos;
   }
-  if (completionData) task.completionData = { ...task.completionData, ...completionData };
+  // SECURITY: completionData is spread into an existing object — restrict to known
+  // safe scalar fields to prevent prototype pollution and unintended field overwrite.
+  if (completionData && typeof completionData === 'object' && !Array.isArray(completionData)) {
+    const ALLOWED_COMPLETION_DATA_KEYS = [
+      'checklist', 'measurements', 'observations', 'repairsNeeded',
+      'partsUsed', 'timeSpent', 'supervisorNotes', 'guestFeedback'
+    ];
+    const sanitizedCompletionData = {};
+    for (const key of ALLOWED_COMPLETION_DATA_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(completionData, key)) {
+        sanitizedCompletionData[key] = completionData[key];
+      }
+    }
+    task.completionData = { ...task.completionData, ...sanitizedCompletionData };
+  }
 
   // Handle specific status changes
   if (status === 'in_progress' && !task.startedAt) {
@@ -213,6 +248,11 @@ router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), va
  * Update task progress (for partial completion tracking)
  */
 router.patch('/:taskId/progress', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate taskId is a valid ObjectId to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
+    throw new ApplicationError('Task not found', 404);
+  }
+
   const { progressData } = req.body;
   const userHotelId = req.user.hotelId?.toString();
 
@@ -238,7 +278,21 @@ router.patch('/:taskId/progress', authorizePolicy('staffTasks', 'staffAccess'), 
  * Add completion photo to task
  */
 router.post('/:taskId/photos', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate taskId is a valid ObjectId to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
+    throw new ApplicationError('Task not found', 404);
+  }
+
   const { photoUrl, description } = req.body;
+
+  // SECURITY: Validate photoUrl to prevent path traversal / SSRF via stored URLs.
+  if (!photoUrl || typeof photoUrl !== 'string' || photoUrl.length > 2048) {
+    throw new ApplicationError('A valid photo URL is required', 400);
+  }
+  if (!photoUrl.startsWith('/uploads/') && !photoUrl.startsWith('https://')) {
+    throw new ApplicationError('Photo URL must be a relative upload path or an HTTPS URL', 400);
+  }
+
   const userHotelId = req.user.hotelId?.toString();
 
   // Do NOT use .lean() here — we need Mongoose document methods (addCompletionPhoto)
@@ -370,6 +424,11 @@ router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (
  * Delete task (admin only)
  */
 router.delete('/:taskId', authorizePolicy('staffTasks', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  // SECURITY: Validate taskId is a valid ObjectId to prevent CastError leakage.
+  if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
+    throw new ApplicationError('Task not found', 404);
+  }
+
   const task = await StaffTask.findOne({
     _id: req.params.taskId,
     hotelId: req.user.hotelId

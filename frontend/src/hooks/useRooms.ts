@@ -99,15 +99,18 @@ export const useUpdateRoomStatus = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: Room['status'] }) =>
-      roomsService.updateRoomStatus(id, status),
+    mutationFn: ({ id, status, maintenanceNotes }: { id: string; status: Room['status']; maintenanceNotes?: string }) =>
+      roomsService.updateRoom(id, { status, ...(maintenanceNotes ? { maintenanceNotes } : {}) } as Partial<Room>),
     onSuccess: (data) => {
+      const room = (data as { room?: Room })?.room || data;
+      const roomId = (room as Room)?._id;
+      const hotelId = (room as Room)?.hotelId;
       // Update the room detail cache
-      queryClient.setQueryData(roomsKeys.detail(data._id), data);
+      if (roomId) queryClient.setQueryData(roomsKeys.detail(roomId), data);
       // Invalidate rooms list to refetch
       queryClient.invalidateQueries({ queryKey: roomsKeys.lists() });
       // Invalidate metrics to refetch
-      queryClient.invalidateQueries({ queryKey: roomsKeys.metrics(data.hotelId) });
+      if (hotelId) queryClient.invalidateQueries({ queryKey: roomsKeys.metrics(hotelId) });
     },
   });
 };

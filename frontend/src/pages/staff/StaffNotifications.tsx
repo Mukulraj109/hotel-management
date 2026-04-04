@@ -206,14 +206,7 @@ function StaffNotifications() {
     }
   });
 
-  // Update preferences mutation
-  const updatePreferencesMutation = useMutation({
-    mutationFn: notificationService.updatePreferences,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
-      toast.success('Notification preferences updated');
-    }
-  });
+  // Preferences are managed by the PushNotificationSetup component when showPreferences is true
 
   const handleMarkAsRead = (notificationId: string) => {
     markAsReadMutation.mutate(notificationId);
@@ -436,8 +429,8 @@ function StaffNotifications() {
           </div>
         </div>
 
-        {/* Push Notification Setup */}
-        <PushNotificationSetup />
+        {/* Push Notification Setup — shown only when the Settings panel is open */}
+        {showPreferences && <PushNotificationSetup />}
 
         {/* Filters and Actions */}
         <Card className="mb-6">

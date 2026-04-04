@@ -175,7 +175,7 @@ export default function StaffTasks() {
                       className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 mb-2"
                     >
                       <div>
-                        <p className="font-medium">Room {check.roomId.roomNumber}</p>
+                        <p className="font-medium">Room {check.roomId?.roomNumber ?? 'N/A'}</p>
                         <p className="text-sm text-gray-600">
                           {check.items.length} items to check
                         </p>
@@ -212,7 +212,7 @@ export default function StaffTasks() {
                       className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200 mb-2"
                     >
                       <div>
-                        <p className="font-medium">Room {check.roomId.roomNumber}</p>
+                        <p className="font-medium">Room {check.roomId?.roomNumber ?? 'N/A'}</p>
                         <p className="text-sm text-gray-600">
                           {check.items.length} items to check
                         </p>
@@ -248,7 +248,7 @@ export default function StaffTasks() {
                       className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 mb-2"
                     >
                       <div>
-                        <p className="font-medium">Room {check.roomId.roomNumber}</p>
+                        <p className="font-medium">Room {check.roomId?.roomNumber ?? 'N/A'}</p>
                         <p className="text-sm text-gray-600">
                           {check.items.length} items checked
                         </p>
@@ -285,7 +285,7 @@ export default function StaffTasks() {
                       className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200 mb-2"
                     >
                       <div>
-                        <p className="font-medium">Room {check.roomId.roomNumber}</p>
+                        <p className="font-medium">Room {check.roomId?.roomNumber ?? 'N/A'}</p>
                         <p className="text-sm text-gray-600">
                           {check.items.length} items checked
                         </p>

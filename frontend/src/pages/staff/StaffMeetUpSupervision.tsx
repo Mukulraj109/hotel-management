@@ -406,138 +406,140 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
       {/* Meet-ups List */}
       {(activeTab === 'requiring-supervision' || activeTab === 'all-meetups' || activeTab === 'safety-alerts') && (
         <div className="space-y-4">
-          {filteredMeetUps.length === 0 ? (
-            <Card className="p-12 text-center">
-              <Users className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-              <h3 className="text-xl font-semibold text-gray-600 mb-2">No Meet-ups Found</h3>
-              <p className="text-gray-500">There are no meet-ups matching your current filters.</p>
-            </Card>
-          ) : (
-            filteredMeetUps
-              .filter(meetUp => {
-                if (activeTab === 'requiring-supervision') {
-                  return meetUp.supervision?.priority?.priority !== 'low';
-                }
-                if (activeTab === 'safety-alerts') {
-                  return meetUp.supervision?.safetyLevel?.level === 'low';
-                }
-                return true;
-              })
-              .map((meetUp) => {
-                const safetyLevel = meetUp.supervision?.safetyLevel;
-                const priority = meetUp.supervision?.priority;
-                const typeInfo = meetUpRequestService.getMeetUpTypeInfo(meetUp.type);
-                const statusInfo = meetUpRequestService.getStatusInfo(meetUp.status);
-                const supervisionStatusColor = staffMeetUpSupervisionService.getSupervisionStatusColor(meetUp.supervisionStatus);
-                const supervisionStatusLabel = staffMeetUpSupervisionService.getSupervisionStatusLabel(meetUp.supervisionStatus);
-                const urgency = staffMeetUpSupervisionService.getUrgencyIndicator(meetUp);
-                const timeUntil = staffMeetUpSupervisionService.getTimeUntil(meetUp.proposedDate);
-                const isUpcoming = staffMeetUpSupervisionService.isUpcoming(meetUp.proposedDate);
+          {(() => {
+            const tabFilteredMeetUps = filteredMeetUps.filter(meetUp => {
+              if (activeTab === 'requiring-supervision') {
+                return meetUp.supervision?.priority?.priority !== 'low';
+              }
+              if (activeTab === 'safety-alerts') {
+                return meetUp.supervision?.safetyLevel?.level === 'low';
+              }
+              return true;
+            });
+            if (tabFilteredMeetUps.length === 0) {
+              return (
+                <Card className="p-12 text-center">
+                  <Users className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-xl font-semibold text-gray-600 mb-2">No Meet-ups Found</h3>
+                  <p className="text-gray-500">There are no meet-ups matching your current filters.</p>
+                </Card>
+              );
+            }
+            return tabFilteredMeetUps.map((meetUp) => {
+              const safetyLevel = meetUp.supervision?.safetyLevel;
+              const priority = meetUp.supervision?.priority;
+              const typeInfo = meetUpRequestService.getMeetUpTypeInfo(meetUp.type);
+              const statusInfo = meetUpRequestService.getStatusInfo(meetUp.status);
+              const supervisionStatusColor = staffMeetUpSupervisionService.getSupervisionStatusColor(meetUp.supervisionStatus);
+              const supervisionStatusLabel = staffMeetUpSupervisionService.getSupervisionStatusLabel(meetUp.supervisionStatus);
+              const urgency = staffMeetUpSupervisionService.getUrgencyIndicator(meetUp);
+              const timeUntil = staffMeetUpSupervisionService.getTimeUntil(meetUp.proposedDate);
+              const isUpcoming = staffMeetUpSupervisionService.isUpcoming(meetUp.proposedDate);
 
-                return (
-                  <Card key={meetUp._id} className={`p-6 ${urgency.level === 'urgent' ? 'border-red-400 border-2' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3 flex-wrap">
-                          <h3 className="text-lg font-semibold text-gray-900">{meetUp.title}</h3>
-                          <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
-                          <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
-                          {priority && <Badge className={priority.color}>{priority.label}</Badge>}
-                          <Badge className={supervisionStatusColor}>{supervisionStatusLabel}</Badge>
-                          {isUpcoming && (
-                            <Badge className={urgency.color} title={`${timeUntil} until meet-up`}>
-                              {urgency.label}
-                              {timeUntil !== 'Now' && ` · ${timeUntil}`}
-                            </Badge>
-                          )}
+              return (
+                <Card key={meetUp._id} className={`p-6 ${urgency.level === 'urgent' ? 'border-red-400 border-2' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h3 className="text-lg font-semibold text-gray-900">{meetUp.title}</h3>
+                        <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
+                        <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
+                        {priority && <Badge className={priority.color}>{priority.label}</Badge>}
+                        <Badge className={supervisionStatusColor}>{supervisionStatusLabel}</Badge>
+                        {isUpcoming && (
+                          <Badge className={urgency.color} title={`${timeUntil} until meet-up`}>
+                            {urgency.label}
+                            {timeUntil !== 'Now' && ` · ${timeUntil}`}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <p className="text-gray-600 text-sm mb-4">{meetUp.description}</p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-gray-500" />
+                          <span className="text-gray-700">
+                            {meetUp.requesterId?.name || 'Unknown'} → {meetUp.targetUserId?.name || 'Unknown'}
+                          </span>
                         </div>
 
-                        <p className="text-gray-600 text-sm mb-4">{meetUp.description}</p>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-700">
-                              {meetUp.requesterId?.name || 'Unknown'} → {meetUp.targetUserId?.name || 'Unknown'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-700">{formatDate(meetUp.proposedDate)}</span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-700">
-                              {meetUp.proposedTime?.start || '--:--'} - {meetUp.proposedTime?.end || '--:--'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-gray-500" />
-                            <span className="text-gray-700">{meetUp.location?.name || 'Not specified'}</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-gray-500" />
+                          <span className="text-gray-700">{formatDate(meetUp.proposedDate)}</span>
                         </div>
 
-                        <div className="flex items-center gap-4 mt-4 flex-wrap">
-                          {safetyLevel && (
-                            <div className="flex items-center gap-2">
-                              <Shield className="w-4 h-4 text-gray-500" />
-                              <Badge className={safetyLevel.color}>{safetyLevel.label}</Badge>
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-gray-500" />
+                          <span className="text-gray-700">
+                            {meetUp.proposedTime?.start || '--:--'} - {meetUp.proposedTime?.end || '--:--'}
+                          </span>
+                        </div>
 
-                          {meetUp.safety?.hotelStaffPresent && (
-                            <div className="flex items-center gap-2">
-                              <Bell className="w-4 h-4 text-blue-500" />
-                              <span className="text-sm text-blue-600 font-medium">Staff Presence Required</span>
-                            </div>
-                          )}
-
-                          {(meetUp.participants?.maxParticipants ?? 0) > 4 && (
-                            <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-orange-500" />
-                              <span className="text-sm text-orange-600 font-medium">Large Group ({meetUp.participants?.maxParticipants})</span>
-                            </div>
-                          )}
-
-                          {meetUp.assignedStaff && (
-                            <div className="flex items-center gap-2">
-                              <UserCheck className="w-4 h-4 text-green-500" />
-                              <span className="text-sm text-green-600 font-medium">
-                                Assigned: {meetUp.assignedStaff.name}
-                              </span>
-                            </div>
-                          )}
-
-                          {priority?.factors && priority.factors.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <Activity className="w-4 h-4 text-gray-400" />
-                              <span className="text-xs text-gray-500">
-                                {staffMeetUpSupervisionService.formatRiskFactors(priority.factors)}
-                              </span>
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-gray-500" />
+                          <span className="text-gray-700">{meetUp.location?.name || 'Not specified'}</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 ml-6">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDetails(meetUp)}
-                          className="flex items-center gap-2"
-                        >
-                          <Eye className="w-4 h-4" />
-                          Details
-                        </Button>
+                      <div className="flex items-center gap-4 mt-4 flex-wrap">
+                        {safetyLevel && (
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-gray-500" />
+                            <Badge className={safetyLevel.color}>{safetyLevel.label}</Badge>
+                          </div>
+                        )}
+
+                        {meetUp.safety?.hotelStaffPresent && (
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-blue-500" />
+                            <span className="text-sm text-blue-600 font-medium">Staff Presence Required</span>
+                          </div>
+                        )}
+
+                        {(meetUp.participants?.maxParticipants ?? 0) > 4 && (
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-orange-500" />
+                            <span className="text-sm text-orange-600 font-medium">Large Group ({meetUp.participants?.maxParticipants})</span>
+                          </div>
+                        )}
+
+                        {meetUp.assignedStaff && (
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-4 h-4 text-green-500" />
+                            <span className="text-sm text-green-600 font-medium">
+                              Assigned: {meetUp.assignedStaff.name}
+                            </span>
+                          </div>
+                        )}
+
+                        {priority?.factors && priority.factors.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-gray-400" />
+                            <span className="text-xs text-gray-500">
+                              {staffMeetUpSupervisionService.formatRiskFactors(priority.factors)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </Card>
-                );
-              })
-          )}
+
+                    <div className="flex items-center gap-3 ml-6">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDetails(meetUp)}
+                        className="flex items-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Details
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            });
+          })()}
 
           {/* Pagination Controls */}
           {meetUpsData?.pagination && meetUpsData.pagination.totalPages > 1 && (
@@ -632,10 +634,9 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                         <span className="font-medium">Reported:</span>{' '}
                         {r.reportedUserId?.name || r.reportedUserId?.email || '—'}
                       </p>
-                      {r.meetUpRequestId && typeof r.meetUpRequestId === 'object' && (
+                      {r.meetUpRequestId && (
                         <p className="text-xs text-gray-600 mb-1">
-                          Meet-up: {(r.meetUpRequestId as { title?: string }).title || '—'} (
-                          {(r.meetUpRequestId as { status?: string }).status || '—'})
+                          Meet-up: {r.meetUpRequestId.title || '—'} ({r.meetUpRequestId.status || '—'})
                         </p>
                       )}
                       {r.details ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.details}</p> : null}
@@ -801,7 +802,7 @@ export default function StaffMeetUpSupervision({}: StaffMeetUpSupervisionProps) 
                       <div>
                         <span className="text-gray-500">Risk Factors:</span>
                         <ul className="mt-1 list-disc list-inside text-red-700">
-                          {selectedMeetUp.supervision.riskFactors.map((f, i) => <li key={i}>{f}</li>)}
+                          {selectedMeetUp.supervision.riskFactors.map((f) => <li key={f}>{f}</li>)}
                         </ul>
                       </div>
                     )}

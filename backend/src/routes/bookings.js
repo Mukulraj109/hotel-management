@@ -151,12 +151,19 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
   const scopedHotelId = req.query.hotelId || req.user.hotelId;
   if (req.user.role === 'guest') {
     finalQuery.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && scopedHotelId) {
+  } else if (scopedHotelId) {
+    // All non-guest roles MUST be scoped to a hotel to prevent cross-tenant data leaks
     finalQuery.hotelId = scopedHotelId;
-  } else if (req.user.role === 'admin' && scopedHotelId) {
-    finalQuery.hotelId = scopedHotelId;
+  } else {
+    // No hotelId available - return empty to prevent cross-tenant exposure
+    return res.json({
+      status: 'success',
+      results: 0,
+      stats: { todayArrivals: 0, tomorrowArrivals: 0, totalUpcoming: 0 },
+      pagination: { page, limit, total: 0, pages: 0 },
+      data: []
+    });
   }
-  // Admin sees bookings for their hotel, or all if no hotelId
 
   const skip = (page - 1) * limit;
 
@@ -189,14 +196,15 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
     checkIn: { $gte: tomorrow, $lt: dayAfterTomorrow }
   };
 
-  // Add role-based filtering to stats queries
+  // Add role-based filtering to stats queries (must match main query scoping)
   if (req.user.role === 'guest') {
     todayQuery.userId = req.user._id;
     tomorrowQuery.userId = req.user._id;
-  } else if ((req.user.role === 'staff' || req.user.role === 'admin' || req.user.role === 'frontdesk') && scopedHotelId) {
+  } else if (scopedHotelId) {
     todayQuery.hotelId = scopedHotelId;
     tomorrowQuery.hotelId = scopedHotelId;
   }
+  // Note: if no scopedHotelId, the early return above already handled it
 
   const [todayCount, tomorrowCount] = await Promise.all([
     Booking.countDocuments(todayQuery),
@@ -294,6 +302,16 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   } else if (scopedHotelId) {
     // All roles (admin, manager, staff, frontdesk) are scoped to their hotel
     query.hotelId = scopedHotelId;
+  } else {
+    // No hotelId available for non-guest role - refuse to return unscoped data
+    const parsedPage = parseInt(page) || 1;
+    return res.json({
+      status: 'success',
+      results: 0,
+      pagination: { page: parsedPage, current: parsedPage, limit: parsedLimit, total: 0, pages: 0 },
+      stats: { total: 0, totalBookings: 0, pending: 0, pendingBookings: 0, averageBookingValue: 0, totalRevenue: 0 },
+      data: []
+    });
   }
 
   if (status) {
@@ -390,6 +408,15 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
   const baseQuery = { ...query };
   delete baseQuery.status; // Remove status filter for overall counts
 
+  // Build aggregation match with proper ObjectId casting (aggregation bypasses Mongoose casting)
+  const aggMatch = { ...baseQuery };
+  if (aggMatch.hotelId && typeof aggMatch.hotelId === 'string' && mongoose.Types.ObjectId.isValid(aggMatch.hotelId)) {
+    aggMatch.hotelId = new mongoose.Types.ObjectId(aggMatch.hotelId);
+  }
+  if (aggMatch.userId && typeof aggMatch.userId === 'string' && mongoose.Types.ObjectId.isValid(aggMatch.userId)) {
+    aggMatch.userId = new mongoose.Types.ObjectId(aggMatch.userId);
+  }
+
   const [
     totalBookings,
     pendingCount,
@@ -398,7 +425,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     Booking.countDocuments(baseQuery),
     Booking.countDocuments({ ...baseQuery, status: 'pending' }),
     Booking.aggregate([
-      { $match: baseQuery },
+      { $match: aggMatch },
       { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
     ])
   ]);
@@ -475,37 +502,42 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
  */
 router.get('/room/:roomId', authenticate, ensureTenantContext, authorizePolicy('bookings', 'getRoomBookings'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { roomId } = req.params;
-  const { 
+  const {
     status,
     timeFilter = 'all',
-    page = 1,
-    limit = 10
+    page: rawPage = 1,
+    limit: rawLimit = 10
   } = req.query;
-  
+
+  const parsedPage = Math.max(parseInt(rawPage) || 1, 1);
+  const parsedLimit = Math.min(Math.max(parseInt(rawLimit) || 10, 1), 100);
+
   // Validate room exists and user has access
   const room = await Room.findById(roomId).lean();
   if (!room) {
     throw new ApplicationError('Room not found', 404);
   }
-  
-  // Check if user has access to this hotel
-  if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && req.user.hotelId.toString() !== room.hotelId.toString()) {
+
+  // Check if user has access to this hotel (all non-guest roles must match)
+  const userHotelId = req.user.hotelId?.toString();
+  if (req.user.role !== 'guest' && userHotelId && userHotelId !== room.hotelId.toString()) {
     throw new ApplicationError('You do not have access to this room', 403);
   }
-  
-  // Build query
+
+  // Build query - always scope to the room's hotel for tenant isolation
   const query = {
-    'rooms.roomId': roomId
+    'rooms.roomId': roomId,
+    hotelId: room.hotelId
   };
-  
+
   if (status) {
     query.status = status;
   }
-  
+
   // Add time-based filters
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
+
   switch (timeFilter) {
     case 'past':
       query.checkOut = { $lt: today };
@@ -521,28 +553,28 @@ router.get('/room/:roomId', authenticate, ensureTenantContext, authorizePolicy('
       break;
     // 'all' case - no additional filter needed
   }
-  
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  
+
+  const skip = (parsedPage - 1) * parsedLimit;
+
   const bookings = await Booking.find(query)
     .populate('userId', 'name email phone')
     .populate('rooms.roomId', 'roomNumber type baseRate currentRate')
     .populate('hotelId', 'name')
     .sort({ checkIn: -1 })
     .skip(skip)
-    .limit(parseInt(limit)).lean();
-  
+    .limit(parsedLimit).lean();
+
   const total = await Booking.countDocuments(query);
-  
+
   res.json({
     status: 'success',
     data: {
       bookings,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parsedPage,
+        limit: parsedLimit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / parsedLimit)
       }
     }
   });
@@ -577,7 +609,7 @@ router.post('/check-availability', validate(mutationBaselineSchema), authenticat
     $or: [
       { checkIn: { $lt: checkOutDate }, checkOut: { $gt: checkInDate } }
     ]
-  }).select('rooms checkIn checkOut status bookingNumber').lean().limit(1000);
+  }).select('rooms checkIn checkOut status bookingNumber').lean().limit(100);
 
   const unavailableRoomIds = new Set();
   for (const booking of overlappingBookings) {

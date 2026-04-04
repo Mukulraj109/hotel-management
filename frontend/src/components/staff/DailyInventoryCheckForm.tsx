@@ -61,54 +61,63 @@ export function DailyInventoryCheckForm({
   const [loading, setLoading] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(true);
 
-  // Load template data on mount
+  // Load template data whenever roomId changes.
+  // fetchTemplate is defined inside the effect so the dep array is exhaustive
+  // (only roomId matters) and there is no stale-closure risk.
   useEffect(() => {
-    fetchTemplate();
-  }, [roomId]);
+    let cancelled = false;
 
-  const fetchTemplate = async () => {
-    try {
-      setLoadingTemplate(true);
-      // Use the correct daily-routine-check endpoint for room inventory templates
-      const { data } = await api.get(`/daily-routine-check/rooms/${roomId}/inventory`);
-      const roomData = data.data;
-      // Map template items to the InventoryItem format expected by this form
-      const allItems = [
-        ...(roomData.fixedInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
-          itemId: item._id,
-          itemName: item.name,
-          category: item.category,
-          expectedQuantity: item.quantity || 1,
-          actualQuantity: item.quantity || 1,
-          condition: 'good' as const,
-          needsReplacement: false,
-          chargeGuest: false,
-          replacementCost: item.unitPrice || 0,
-          notes: '',
-          photos: []
-        })),
-        ...(roomData.dailyInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
-          itemId: item._id,
-          itemName: item.name,
-          category: item.category,
-          expectedQuantity: item.quantity || 1,
-          actualQuantity: item.quantity || 1,
-          condition: 'good' as const,
-          needsReplacement: false,
-          chargeGuest: false,
-          replacementCost: item.unitPrice || 0,
-          notes: '',
-          photos: []
-        }))
-      ];
-      setItems(allItems);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load inventory template';
-      toast.error(message);
-    } finally {
-      setLoadingTemplate(false);
-    }
-  };
+    const fetchTemplate = async () => {
+      try {
+        setLoadingTemplate(true);
+        // Use the correct daily-routine-check endpoint for room inventory templates
+        const { data } = await api.get(`/daily-routine-check/rooms/${roomId}/inventory`);
+        if (cancelled) return;
+        const roomData = data.data;
+        // Map template items to the InventoryItem format expected by this form
+        const allItems = [
+          ...(roomData.fixedInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
+            itemId: item._id,
+            itemName: item.name,
+            category: item.category,
+            expectedQuantity: item.quantity || 1,
+            actualQuantity: item.quantity || 1,
+            condition: 'good' as const,
+            needsReplacement: false,
+            chargeGuest: false,
+            replacementCost: item.unitPrice || 0,
+            notes: '',
+            photos: []
+          })),
+          ...(roomData.dailyInventory || []).map((item: { _id: string; name: string; category: string; unitPrice?: number; quantity?: number }) => ({
+            itemId: item._id,
+            itemName: item.name,
+            category: item.category,
+            expectedQuantity: item.quantity || 1,
+            actualQuantity: item.quantity || 1,
+            condition: 'good' as const,
+            needsReplacement: false,
+            chargeGuest: false,
+            replacementCost: item.unitPrice || 0,
+            notes: '',
+            photos: []
+          }))
+        ];
+        setItems(allItems);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Failed to load inventory template';
+        toast.error(message);
+      } finally {
+        if (!cancelled) setLoadingTemplate(false);
+      }
+    };
+
+    fetchTemplate();
+
+    // If roomId changes before the request resolves, ignore the stale response
+    return () => { cancelled = true; };
+  }, [roomId]);
 
   const updateItem = (index: number, field: keyof InventoryItem, value: unknown) => {
     const newItems = [...items];
@@ -132,7 +141,14 @@ export function DailyInventoryCheckForm({
     setItems(newItems);
   };
 
-  const updateItemPhotos = (index: number, photos: unknown[]) => {
+  // PhotoUpload returns a richer Photo type; map it down to our InventoryItem photo shape.
+  const updateItemPhotos = (index: number, incomingPhotos: Array<{ id: string; url: string; description: string; file?: File; [key: string]: unknown }>) => {
+    const photos: InventoryItem['photos'] = incomingPhotos.map(p => ({
+      id: p.id,
+      url: p.url,
+      description: p.description,
+      ...(p.file ? { file: p.file } : {})
+    }));
     const newItems = [...items];
     newItems[index] = { ...newItems[index], photos };
     setItems(newItems);

@@ -12,8 +12,10 @@ export interface HousekeepingTask {
     _id: string;
     roomNumber: string;
     type: string;
+    floor?: string;
   };
-  assignedToUserId?: string;
+  assignedToUserId?: string | { _id: string; name: string };
+  assignedTo?: string | { _id: string; name: string };
   estimatedDuration: number;
   startedAt?: string;
   completedAt?: string;
@@ -64,6 +66,57 @@ class HousekeepingService {
 
       const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
       const response = await api.get(`${this.baseURL}${endpoint}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  /** Supervisor/frontdesk list with optional filters. Does NOT filter by assignedToUserId
+   *  so the backend returns all hotel tasks (requires supervisor role). */
+  async getTasksFiltered(params: {
+    status?: string;
+    priority?: string;
+    taskType?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<HousekeepingListResponse> {
+    try {
+      const normalizedParams = normalizeListParams(params);
+      const queryParams = new URLSearchParams();
+      if (params.status) queryParams.append('status', params.status);
+      if (params.priority) queryParams.append('priority', params.priority);
+      if (params.taskType) queryParams.append('taskType', params.taskType);
+      if (params.search) queryParams.append('search', params.search);
+      queryParams.append('page', normalizedParams.page.toString());
+      queryParams.append('limit', normalizedParams.limit.toString());
+
+      const response = await api.get(`${this.baseURL}?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  /** Get housekeeping statistics (aggregated counts by status). */
+  async getStats(): Promise<ApiResponse<{ stats: Array<{ _id: string; count: number; avgDuration: number | null }> }>> {
+    try {
+      const response = await api.get(`${this.baseURL}/stats`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
+  }
+
+  /** Inspect a completed task (QA workflow). */
+  async inspectTask(taskId: string, inspection: {
+    passed: boolean;
+    rating?: number;
+    notes?: string;
+  }): Promise<ApiResponse<{ task: HousekeepingTask }>> {
+    try {
+      const response = await api.post(`${this.baseURL}/${taskId}/inspect`, inspection);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');

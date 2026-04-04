@@ -64,7 +64,7 @@ export default function StaffRooms() {
       toast.error(`Room ${payload.roomNumber || 'N/A'} needs attention: ${payload.reason || ''}`);
     };
     
-    const handleRoomUpdate = (data: Record<string, unknown>) => {
+    const handleRoomUpdate = (_data: Record<string, unknown>) => {
       fetchRoomData();
     };
     
@@ -224,7 +224,7 @@ export default function StaffRooms() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="destructive">Attention</Badge>
-                      {room.status === 'dirty' && (
+                      {(room.status === 'dirty' || room.status === 'vacant_dirty') && (
                         <Button
                           size="sm"
                           variant="outline"

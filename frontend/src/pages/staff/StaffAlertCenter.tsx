@@ -165,13 +165,12 @@ export default function StaffAlertCenter() {
     );
   };
 
-  // Handle select all
+  // Handle select all — toggle: if every current-page alert is already selected, deselect all; otherwise select all
   const handleSelectAll = () => {
     if (alertsData?.alerts) {
       const allIds = alertsData.alerts.map(alert => alert._id);
-      setSelectedAlerts(prev => 
-        prev.length === allIds.length ? [] : allIds
-      );
+      const allSelected = allIds.every(id => selectedAlerts.includes(id));
+      setSelectedAlerts(allSelected ? [] : allIds);
     }
   };
 

@@ -280,8 +280,8 @@ function DigitalKeysDashboard() {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return (
-        key.roomId.number.toLowerCase().includes(searchLower) ||
-        key.hotelId.name.toLowerCase().includes(searchLower) ||
+        key.roomId?.number?.toLowerCase().includes(searchLower) ||
+        key.hotelId?.name?.toLowerCase().includes(searchLower) ||
         key.keyCode.toLowerCase().includes(searchLower)
       );
     }
@@ -1007,10 +1007,12 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
     },
     retry: 2,
     staleTime: 5 * 60 * 1000,
-    onError: (error: unknown) => {
-      toast.error('Failed to load bookings');
-    }
   });
+
+  // Show toast when bookings fail to load
+  React.useEffect(() => {
+    if (bookingsError) toast.error('Failed to load bookings');
+  }, [bookingsError]);
 
   const handleBookingSelect = (bookingId: string) => {
     const booking = bookingsData?.find((b: Booking) => b._id === bookingId);

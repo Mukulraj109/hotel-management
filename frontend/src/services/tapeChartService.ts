@@ -452,8 +452,10 @@ class TapeChartService {
   }
 
   // Tape Chart Views
-  async getTapeChartViews() {
-    const response = await apiClient.get('/tape-chart/views');
+  async getTapeChartViews(hotelId?: string) {
+    const params = new URLSearchParams();
+    if (hotelId) params.append('hotelId', hotelId);
+    const response = await apiClient.get(`/tape-chart/views?${params}`);
     return response.data;
   }
 
@@ -473,12 +475,13 @@ class TapeChartService {
   }
 
   // Generate Tape Chart Data
-  async generateTapeChartData(viewId: string, dateRange: { startDate: string; endDate: string }) {
+  async generateTapeChartData(viewId: string, dateRange: { startDate: string; endDate: string }, hotelId?: string) {
     const params = new URLSearchParams();
     params.append('viewId', viewId);
     params.append('startDate', dateRange.startDate);
     params.append('endDate', dateRange.endDate);
-    
+    if (hotelId) params.append('hotelId', hotelId);
+
     const response = await apiClient.get(`/tape-chart/chart-data?${params}`);
     return response.data.data;
   }

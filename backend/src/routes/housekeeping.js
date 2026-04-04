@@ -79,13 +79,17 @@ router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping
     estimatedDurationMin,
     estimatedDurationMax,
     page = 1,
-    limit = 10
+    limit = 20
   } = req.query;
 
   // Admin and manager roles can filter by a specific hotelId query param (multi-property support).
   // Operational staff are always scoped to their own hotel via the JWT token.
   const supervisorRoles = ['admin', 'manager', 'frontdesk'];
   const requestedHotelId = req.query.hotelId;
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (requestedHotelId && !mongoose.Types.ObjectId.isValid(requestedHotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   let hotelId;
   if (supervisorRoles.includes(req.user.role) && requestedHotelId) {
     hotelId = requestedHotelId;
@@ -271,6 +275,10 @@ router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeepin
 router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const supervisorRoles = ['admin', 'manager', 'frontdesk'];
   const requestedHotelId = req.query.hotelId;
+  // SECURITY: Validate client-supplied hotelId to prevent CastError leakage.
+  if (requestedHotelId && !mongoose.Types.ObjectId.isValid(requestedHotelId)) {
+    throw new ApplicationError('Invalid hotel ID format', 400);
+  }
   const hotelId = (supervisorRoles.includes(req.user.role) && requestedHotelId)
     ? requestedHotelId
     : req.user.hotelId;

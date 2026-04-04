@@ -506,20 +506,41 @@ export default function AllOffers() {
                 </div>
               )}
 
-              <div className="flex justify-end">
-                <Button 
-                  onClick={() => handleRedeemOffer(selectedOffer._id)}
-                  disabled={redeemingOffer === selectedOffer._id}
-                >
-                  {redeemingOffer === selectedOffer._id ? (
+              <div className="flex flex-col items-end gap-2">
+                {(() => {
+                  const eligibility = canUserRedeemOffer(selectedOffer);
+                  const isEligible = eligibility.canRedeem;
+                  return (
                     <>
-                      <LoadingSpinner size="sm" />
-                      Redeeming...
+                      {!isEligible && eligibility.reason !== 'loading' && (
+                        <p className="text-sm text-orange-600">
+                          {eligibility.reason === 'insufficient_points' && `You need ${eligibility.pointsNeeded} more points to redeem this offer.`}
+                          {eligibility.reason === 'tier_required' && `This offer requires ${eligibility.requiredTier} tier (you are ${eligibility.userTier}).`}
+                          {eligibility.reason === 'offer_expired' && 'This offer has expired.'}
+                          {eligibility.reason === 'offer_inactive' && 'This offer is currently inactive.'}
+                        </p>
+                      )}
+                      <Button
+                        onClick={() => isEligible ? handleRedeemOffer(selectedOffer._id) : null}
+                        disabled={redeemingOffer === selectedOffer._id || !isEligible}
+                        className={!isEligible ? 'bg-gray-400 hover:bg-gray-500 cursor-not-allowed' : ''}
+                      >
+                        {redeemingOffer === selectedOffer._id ? (
+                          <>
+                            <LoadingSpinner size="sm" />
+                            Redeeming...
+                          </>
+                        ) : isEligible ? (
+                          `Redeem for ${selectedOffer.pointsRequired} points`
+                        ) : (
+                          eligibility.reason === 'insufficient_points' ? `Need ${eligibility.pointsNeeded} more points` :
+                          eligibility.reason === 'tier_required' ? 'Tier Required' :
+                          'Not Available'
+                        )}
+                      </Button>
                     </>
-                  ) : (
-                    `Redeem for ${selectedOffer.pointsRequired} points`
-                  )}
-                </Button>
+                  );
+                })()}
               </div>
             </div>
           )}

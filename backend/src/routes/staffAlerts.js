@@ -103,6 +103,17 @@ router.get('/summary', authorizePolicy('staffAlerts', 'staffAccess'), asyncHandl
   });
 }));
 
+// Allowlists for filter fields — prevent NoSQL operator injection ($gt, $ne, etc.)
+const ALLOWED_ALERT_STATUSES = ['active', 'acknowledged', 'in_progress', 'resolved', 'dismissed'];
+const ALLOWED_ALERT_PRIORITIES = ['low', 'medium', 'high', 'urgent', 'critical'];
+const ALLOWED_ALERT_CATEGORIES = [
+  'housekeeping', 'maintenance', 'security', 'safety', 'guest_service',
+  'front_desk', 'food_beverage', 'it', 'management', 'other'
+];
+const ALLOWED_ALERT_TYPES = [
+  'info', 'warning', 'error', 'critical', 'task', 'reminder', 'escalation'
+];
+
 // @desc    Get all staff alerts
 // @route   GET /api/v1/staff/alerts
 // @access  Private (staff, admin, manager)
@@ -130,21 +141,34 @@ router.get('/', authorizePolicy('staffAlerts', 'staffAccess'), asyncHandler(asyn
   // Build filter
   const filter = { hotelId };
 
+  // SECURITY: Allowlist all enum filter values to prevent NoSQL operator injection.
   if (status !== 'all' && status) {
+    if (!ALLOWED_ALERT_STATUSES.includes(status)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid status filter value' });
+    }
     filter.status = status;
   } else if (activeOnly === 'true') {
     filter.status = { $in: ['active', 'acknowledged', 'in_progress'] };
   }
 
   if (priority !== 'all' && priority) {
+    if (!ALLOWED_ALERT_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid priority filter value' });
+    }
     filter.priority = priority;
   }
 
   if (category !== 'all' && category) {
+    if (!ALLOWED_ALERT_CATEGORIES.includes(category)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid category filter value' });
+    }
     filter.category = category;
   }
 
   if (type && type !== 'all') {
+    if (!ALLOWED_ALERT_TYPES.includes(type)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid type filter value' });
+    }
     filter.type = type;
   }
 
@@ -247,8 +271,22 @@ router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutat
     });
   }
 
-  // Build update data, stripping hotelId to prevent override
-  const { hotelId: _stripHotelId, createdBy: _stripCreatedBy, ...safeBody } = req.body;
+  // SECURITY: Strip protected fields and reject non-object bodies before spreading.
+  if (typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid request body' });
+  }
+  const { hotelId: _stripHotelId, createdBy: _stripCreatedBy, escalate: _rawEscalate, ...safeBody } = req.body;
+
+  // SECURITY: Allowlist status transitions — prevent arbitrary MongoDB operator injection.
+  if (safeBody.status && !ALLOWED_ALERT_STATUSES.includes(safeBody.status)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid status value' });
+  }
+
+  // SECURITY: Allowlist priority values.
+  if (safeBody.priority && !ALLOWED_ALERT_PRIORITIES.includes(safeBody.priority)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid priority value' });
+  }
+
   const updateData = {
     ...safeBody,
     updatedAt: new Date(),
@@ -272,11 +310,16 @@ router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutat
     }
   }
 
-  // Escalation: bump priority to critical and record escalation
-  if (safeBody.escalate) {
+  // SECURITY: Escalation (priority bump to critical) is a privileged action.
+  // Only managers and admins may escalate; plain staff cannot self-escalate alerts.
+  const canEscalate = ['admin', 'manager'].includes(req.user.role);
+  const requestedEscalate = Boolean(_rawEscalate);
+  if (requestedEscalate && !canEscalate) {
+    return res.status(403).json({ status: 'error', message: 'Insufficient permissions to escalate alerts' });
+  }
+  if (requestedEscalate && canEscalate) {
     updateData.priority = 'critical';
     updateData.escalationLevel = (alert.escalationLevel || 0) + 1;
-    delete updateData.escalate;
   }
 
   alert = await StaffAlert.findByIdAndUpdate(
@@ -295,7 +338,7 @@ router.put('/:id', authorizePolicy('staffAlerts', 'staffAccess'), validate(mutat
     let eventName;
     if (safeBody.status === 'resolved') {
       eventName = 'staff-alert:resolved';
-    } else if (safeBody.escalate) {
+    } else if (requestedEscalate && canEscalate) {
       eventName = 'staff-alert:escalated';
     } else {
       eventName = 'staff-alert:updated';

@@ -17,9 +17,12 @@ class TapeChartController {
 
   async getRoomConfigurations(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { floor, building, wing, isActive } = req.query;
       const filters = {};
-      
+
+      // hotelId is required for multi-tenancy isolation
+      if (hotelId) filters.hotelId = hotelId;
       if (floor) filters.floor = parseInt(floor);
       if (building) filters.building = building;
       if (wing) filters.wing = wing;
@@ -112,9 +115,12 @@ class TapeChartController {
 
   async getRoomBlocks(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { status, eventType, startDate, endDate } = req.query;
       const filters = {};
-      
+
+      // hotelId is required for multi-tenancy isolation
+      if (hotelId) filters.hotelId = hotelId;
       if (status) filters.status = status;
       if (eventType) filters.eventType = eventType;
       if (startDate) filters.startDate = startDate;
@@ -172,9 +178,12 @@ class TapeChartController {
 
   async getAdvancedReservations(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { reservationType, priority, vipStatus } = req.query;
       const filters = {};
-      
+
+      // hotelId is required for multi-tenancy isolation
+      if (hotelId) filters.hotelId = hotelId;
       if (reservationType) filters.reservationType = reservationType;
       if (priority) filters.priority = priority;
       if (vipStatus) filters.vipStatus = vipStatus;
@@ -272,7 +281,7 @@ class TapeChartController {
   // Generate Tape Chart Data
   async generateTapeChartData(req, res) {
     try {
-      const { viewId, startDate, endDate } = req.query;
+      const { viewId, startDate, endDate, hotelId: queryHotelId } = req.query;
 
       if (!viewId || !startDate || !endDate) {
         return res.status(400).json({
@@ -281,7 +290,8 @@ class TapeChartController {
         });
       }
 
-      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
+      // Prefer explicit query param for multi-property support; fall back to user context
+      const hotelId = refToHotelIdString(queryHotelId || req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const chartData = await tapeChartService.generateTapeChartData(
         viewId,
         { startDate, endDate },
@@ -363,7 +373,9 @@ class TapeChartController {
 
   async getWaitlist(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const reservations = await tapeChartService.getAdvancedReservations({
+        hotelId,
         'waitlistInfo.waitlistPosition': { $exists: true, $ne: null }
       });
       res.json({ success: true, data: reservations });
@@ -375,20 +387,22 @@ class TapeChartController {
   // Analytics and Reporting
   async getOccupancyReport(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { startDate, endDate, groupBy = 'day' } = req.query;
-      
+
       if (!startDate || !endDate) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'startDate and endDate are required' 
+        return res.status(400).json({
+          success: false,
+          message: 'startDate and endDate are required'
         });
       }
 
       const report = await tapeChartService.generateOccupancyReport(
         { startDate, endDate },
-        groupBy
+        groupBy,
+        hotelId
       );
-      
+
       res.json({ success: true, data: report });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -397,8 +411,9 @@ class TapeChartController {
 
   async getRoomUtilizationStats(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { startDate, endDate } = req.query;
-      const stats = await tapeChartService.getRoomUtilizationStats({ startDate, endDate });
+      const stats = await tapeChartService.getRoomUtilizationStats({ startDate, endDate }, hotelId);
       res.json({ success: true, data: stats });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -407,8 +422,9 @@ class TapeChartController {
 
   async getRevenueByRoomType(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { startDate, endDate } = req.query;
-      const revenue = await tapeChartService.getRevenueByRoomType({ startDate, endDate });
+      const revenue = await tapeChartService.getRevenueByRoomType({ startDate, endDate }, hotelId);
       res.json({ success: true, data: revenue });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -429,8 +445,9 @@ class TapeChartController {
   // Real-time Updates
   async getRoomStatusUpdates(req, res) {
     try {
+      const hotelId = refToHotelIdString(req.hotel?._id || req.user?.hotelId || req.user?.primaryProperty);
       const { since } = req.query;
-      const updates = await tapeChartService.getRoomStatusUpdates(since);
+      const updates = await tapeChartService.getRoomStatusUpdates(since, hotelId);
       res.json({ success: true, data: updates });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });

@@ -63,6 +63,8 @@ class TapeChartService {
   async getRoomConfigurations(filters = {}) {
     try {
       const query = {};
+      // hotelId is required for multi-tenancy isolation
+      if (filters.hotelId) query.hotelId = filters.hotelId;
       if (filters.floor) query.floor = filters.floor;
       if (filters.building) query.building = filters.building;
       if (filters.wing) query.wing = filters.wing;
@@ -316,7 +318,9 @@ class TapeChartService {
   async getRoomBlocks(filters = {}) {
     try {
       const query = {};
-      
+
+      // hotelId is required for multi-tenancy isolation
+      if (filters.hotelId) query.hotelId = filters.hotelId;
       if (filters.status) query.status = filters.status;
       if (filters.eventType) query.eventType = filters.eventType;
       if (filters.startDate && filters.endDate) {
@@ -418,7 +422,9 @@ class TapeChartService {
   async getAdvancedReservations(filters = {}) {
     try {
       const query = {};
-      
+
+      // hotelId is required for multi-tenancy isolation
+      if (filters.hotelId) query.hotelId = filters.hotelId;
       if (filters.reservationType) query.reservationType = filters.reservationType;
       if (filters.priority) query.priority = filters.priority;
       if (filters.vipStatus) query['guestProfile.vipStatus'] = filters.vipStatus;
@@ -587,12 +593,16 @@ class TapeChartService {
 
   async getTapeChartViews(userId, hotelId) {
     try {
-      let views = await TapeChartView.find({
+      // Build query scoped by hotelId for multi-tenancy isolation
+      const viewQuery = {
         $or: [
           { createdBy: userId },
           { isSystemDefault: true }
         ]
-      }).sort({ isSystemDefault: -1, viewName: 1 }).lean().limit(1000);
+      };
+      if (hotelId) viewQuery.hotelId = hotelId;
+
+      let views = await TapeChartView.find(viewQuery).sort({ isSystemDefault: -1, viewName: 1 }).lean().limit(1000);
 
       // Create default view if none exist
       if (views.length === 0) {
@@ -696,10 +706,11 @@ class TapeChartService {
       const hotelIdStr = safeObjectIdString(hotelId);
       const hotelFilter = hotelIdStr ? { hotelId: hotelIdStr } : {};
 
-      // Get room configurations
+      // Get room configurations — scoped by hotelId for tenant isolation
       let roomConfigs = await this.getRoomConfigurations({
         isActive: true,
-        ...view.filters
+        ...view.filters,
+        ...(hotelIdStr ? { hotelId: hotelIdStr } : {})
       });
 
       // If no room configurations exist, create them from existing rooms
@@ -763,11 +774,12 @@ class TapeChartService {
 
 
 
-      // Get room blocks
+      // Get room blocks — scoped by hotelId for tenant isolation
       const blocks = await this.getRoomBlocks({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-        status: 'active'
+        status: 'active',
+        ...(hotelIdStr ? { hotelId: hotelIdStr } : {})
       });
 
       // Generate chart data
@@ -1263,16 +1275,18 @@ class TapeChartService {
   }
 
   // Analytics and Reporting
-  async generateOccupancyReport(dateRange, groupBy = 'day') {
+  async generateOccupancyReport(dateRange, groupBy = 'day', hotelId = null) {
     try {
       const startDate = new Date(dateRange.startDate);
       const endDate = new Date(dateRange.endDate);
 
+      // Build match filter — scoped by hotelId for multi-tenancy
+      const matchFilter = { date: { $gte: startDate, $lte: endDate } };
+      if (hotelId) matchFilter.hotelId = hotelId;
+
       const pipeline = [
         {
-          $match: {
-            date: { $gte: startDate, $lte: endDate }
-          }
+          $match: matchFilter
         },
         {
           $lookup: {
@@ -1336,13 +1350,19 @@ class TapeChartService {
   }
 
   // Room Utilization Stats
-  async getRoomUtilizationStats(dateRange = {}) {
+  async getRoomUtilizationStats(dateRange = {}, hotelId = null) {
     try {
       const startDate = dateRange.startDate ? new Date(dateRange.startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const endDate = dateRange.endDate ? new Date(dateRange.endDate) : new Date();
 
+      // Build hotelId match filter for multi-tenancy
+      const roomMatch = hotelId ? { $match: { hotelId } } : null;
+      const historyMatch = { date: { $gte: startDate, $lte: endDate } };
+      if (hotelId) historyMatch.hotelId = hotelId;
+
       // Get total rooms by type
-      const roomsByType = await Room.aggregate([
+      const roomPipeline = [
+        ...(roomMatch ? [roomMatch] : []),
         {
           $group: {
             _id: '$roomType',
@@ -1354,14 +1374,13 @@ class TapeChartService {
             }
           }
         }
-      ]);
+      ];
+      const roomsByType = await Room.aggregate(roomPipeline);
 
       // Get occupancy data
       const occupancyData = await RoomStatusHistory.aggregate([
         {
-          $match: {
-            date: { $gte: startDate, $lte: endDate }
-          }
+          $match: historyMatch
         },
         {
           $lookup: {
@@ -1688,13 +1707,15 @@ class TapeChartService {
   }
 
   // Real-time Updates
-  async getRoomStatusUpdates(since) {
+  async getRoomStatusUpdates(since, hotelId = null) {
     try {
       const sinceDate = since ? new Date(since) : new Date(Date.now() - 300000); // Last 5 minutes
 
-      const updates = await RoomStatusHistory.find({
-        createdAt: { $gte: sinceDate }
-      })
+      // Build query — scoped by hotelId for multi-tenancy
+      const query = { createdAt: { $gte: sinceDate } };
+      if (hotelId) query.hotelId = hotelId;
+
+      const updates = await RoomStatusHistory.find(query)
       .populate('roomId', 'roomNumber roomType')
       .populate('changedBy', 'name')
       .sort({ createdAt: -1 })

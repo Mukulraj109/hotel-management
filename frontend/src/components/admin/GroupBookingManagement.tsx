@@ -83,7 +83,7 @@ interface GroupBooking {
 }
 
 // API function to fetch group bookings
-const fetchGroupBookings = async (page = 1, limit = 100): Promise<{ groupBookings: GroupBooking[] }> => {
+const fetchGroupBookings = async (page = 1, limit = 20): Promise<{ groupBookings: GroupBooking[]; pagination?: { page: number; limit: number; totalCount: number; totalPages: number } }> => {
   try {
     const { data } = await api.get(`/corporate/group-bookings?page=${page}&limit=${limit}`);
     return data.data || { groupBookings: [] };
@@ -164,6 +164,8 @@ function GroupBookingManagement() {
   const [formErrors, setFormErrors] = useState<FieldValidationErrors>({});
   const [createFormErrors, setCreateFormErrors] = useState<FieldValidationErrors>({});
   const [corporateCompanies, setCorporateCompanies] = useState<CorporateCompany[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const queryClient = useQueryClient();
 
@@ -273,15 +275,16 @@ function GroupBookingManagement() {
     }
   }, [editingBooking, form]);
 
-  // Fetch group bookings
+  // Fetch group bookings with server-side pagination
   const {
     data: bookingsData,
     isLoading,
     error,
     refetch
   } = useQuery({
-    queryKey: ['group-bookings'],
-    queryFn: fetchGroupBookings,
+    queryKey: ['group-bookings', currentPage],
+    queryFn: () => fetchGroupBookings(currentPage, PAGE_SIZE),
+    keepPreviousData: true,
   });
 
   // Toggle status mutation
@@ -887,6 +890,37 @@ function GroupBookingManagement() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {bookingsData?.pagination && bookingsData.pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg mt-4">
+          <div className="text-sm text-gray-700">
+            Showing page {bookingsData.pagination.page} of {bookingsData.pagination.totalPages}
+            {' '}({bookingsData.pagination.totalCount} total bookings)
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600 px-2">
+              Page {currentPage}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= (bookingsData.pagination.totalPages || 1)}
+              onClick={() => setCurrentPage(prev => prev + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Booking Details Modal */}
       {selectedBooking && (

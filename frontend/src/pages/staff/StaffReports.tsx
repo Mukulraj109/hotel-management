@@ -23,9 +23,48 @@ export default function StaffReports() {
   // Real-time connection
   const { connect, on, off, isConnected } = useRealTime();
 
+  // Define data-fetching callbacks before effects so they can be listed as deps
+  const fetchCheckoutInventoryData = useCallback(async () => {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+
+      const checkoutResponse = await reportsService.getCheckoutInventoryReport({
+        startDate: startOfDay,
+        endDate: endOfDay,
+        groupBy: 'day'
+      });
+
+      setCheckoutInventoryData(checkoutResponse);
+    } catch (err) {
+      // Don't set error for checkout data, as other data might still be valid
+    }
+  }, []);
+
+  const fetchTodayData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [todayResponse, activityResponse] = await Promise.all([
+        staffDashboardService.getTodayOverview(),
+        staffDashboardService.getRecentActivity()
+      ]);
+      setTodayData(todayResponse.data.today);
+      setActivityData(activityResponse.data);
+
+      // Also fetch checkout inventory data
+      await fetchCheckoutInventoryData();
+    } catch (err) {
+      setError('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchCheckoutInventoryData]);
+
   useEffect(() => {
     fetchTodayData();
-  }, []);
+  }, [fetchTodayData]);
 
   // Real-time connection setup
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components
@@ -36,65 +75,27 @@ export default function StaffReports() {
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
-    
-    const handleCheckoutInventoryUpdate = (data: Record<string, unknown>) => {
+
+    const handleCheckoutInventoryUpdate = (_data: Record<string, unknown>) => {
       fetchCheckoutInventoryData();
     };
-    
-    const handleReportsUpdate = (data: Record<string, unknown>) => {
+
+    const handleReportsUpdate = (_data: Record<string, unknown>) => {
       fetchTodayData();
     };
-    
+
     on('checkout-inventory:created', handleCheckoutInventoryUpdate);
     on('checkout-inventory:completed', handleCheckoutInventoryUpdate);
     on('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
     on('reports:updated', handleReportsUpdate);
-    
+
     return () => {
       off('checkout-inventory:created', handleCheckoutInventoryUpdate);
       off('checkout-inventory:completed', handleCheckoutInventoryUpdate);
       off('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
       off('reports:updated', handleReportsUpdate);
     };
-  }, [isConnected, on, off]);
-
-  const fetchTodayData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [todayResponse, activityResponse] = await Promise.all([
-        staffDashboardService.getTodayOverview(),
-        staffDashboardService.getRecentActivity()
-      ]);
-      setTodayData(todayResponse.data.today);
-      setActivityData(activityResponse.data);
-      
-      // Also fetch checkout inventory data
-      await fetchCheckoutInventoryData();
-    } catch (err) {
-      setError('Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCheckoutInventoryData = async () => {
-    try {
-      const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
-      
-      const checkoutResponse = await reportsService.getCheckoutInventoryReport({
-        startDate: startOfDay,
-        endDate: endOfDay,
-        groupBy: 'day'
-      });
-      
-      setCheckoutInventoryData(checkoutResponse);
-    } catch (err) {
-      // Don't set error for checkout data, as other data might still be valid
-    }
-  };
+  }, [isConnected, on, off, fetchCheckoutInventoryData, fetchTodayData]);
 
   const handleDownloadReport = useCallback(async (
     reportLabel: string,

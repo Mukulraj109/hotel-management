@@ -215,9 +215,10 @@ router.post('/extra-person-charges/intent',
     }
     await assertBookingPropertyAccess(booking, req.user);
 
-    // Check permissions - only admin/staff can create extra person charge payments
-    if (!['admin', 'staff'].includes(req.user.role)) {
-      throw new ApplicationError('Only admin and staff can process extra person charges', 403);
+    // Check permissions - only admin/staff/manager/frontdesk can create extra person charge payments
+    // (aligned with RBAC policy payments.createExtraPersonIntent)
+    if (!['admin', 'staff', 'manager', 'frontdesk'].includes(req.user.role)) {
+      throw new ApplicationError('Only authorized staff can process extra person charges', 403);
     }
 
     // Calculate total extra person charges
@@ -342,9 +343,9 @@ router.post('/settlement/intent',
       req.user
     );
 
-    // Check permissions - only admin/staff with property access or booking owner
+    // Check permissions - operational staff with property access or booking owner
     const isBookingOwner = settlement.bookingId.userId.toString() === req.user._id.toString();
-    const isStaffWithAccess = ['admin', 'staff'].includes(req.user.role) && hasAccess;
+    const isStaffWithAccess = ['admin', 'staff', 'manager', 'frontdesk'].includes(req.user.role) && hasAccess;
 
     if (!isBookingOwner && !isStaffWithAccess) {
       throw new ApplicationError('You do not have permission to pay this settlement', 403);

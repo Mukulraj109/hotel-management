@@ -561,7 +561,7 @@ function FrontDeskUpcomingBookings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Upcoming Arrivals ({filteredBookings.length})
+            Upcoming Arrivals ({filteredBookings.length}{pagination.total > filteredBookings.length ? ` of ${pagination.total}` : ''})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -569,10 +569,35 @@ function FrontDeskUpcomingBookings() {
             data={filteredBookings}
             columns={columns}
             loading={loading}
-            pagination={true}
-            pageSize={50}
+            pagination={false}
             emptyMessage="No upcoming bookings found"
           />
+          {/* Server-side pagination controls */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                Page {pagination.current} of {pagination.pages} ({pagination.total} total)
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                  disabled={pagination.current <= 1 || loading}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(prev => ({ ...prev, page: Math.min(pagination.pages, prev.page + 1) }))}
+                  disabled={pagination.current >= pagination.pages || loading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

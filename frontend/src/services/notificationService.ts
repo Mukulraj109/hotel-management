@@ -725,41 +725,25 @@ class NotificationService {
   }
 
   formatTimeAgo(dateString: string): string {
-    const date = new Date(dateString);
     const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    const then = new Date(dateString);
+    const diffMs = now.getTime() - then.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-    if (diffInSeconds < 60) {
-      return 'Just now';
-    }
+    if (diffSeconds < 60) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
 
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
-    }
-
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) {
-      return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-    }
-
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) {
-      return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
-    }
-
-    const diffInWeeks = Math.floor(diffInDays / 7);
-    if (diffInWeeks < 4) {
-      return `${diffInWeeks} week${diffInWeeks > 1 ? 's' : ''} ago`;
-    }
-
-    const diffInMonths = Math.floor(diffInDays / 30);
-    if (diffInMonths < 12) {
-      return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
-    }
-
-    const diffInYears = Math.floor(diffInDays / 365);
-    return `${diffInYears} year${diffInYears > 1 ? 's' : ''} ago`;
+    // Use actual month/year calculation instead of approximate division
+    const months = (now.getFullYear() - then.getFullYear()) * 12 + (now.getMonth() - then.getMonth());
+    if (months < 12) return `${months}mo ago`;
+    const years = Math.floor(months / 12);
+    return `${years}y ago`;
   }
 
   isUnread(notification: Notification): boolean {

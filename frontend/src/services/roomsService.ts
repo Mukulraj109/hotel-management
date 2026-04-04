@@ -4,17 +4,20 @@ export interface Room {
   _id: string;
   hotelId: string;
   roomNumber: string;
+  roomTypeId?: string;
   type: 'single' | 'double' | 'suite' | 'deluxe';
   baseRate: number;
   currentRate: number;
-  status: 'vacant' | 'occupied' | 'dirty' | 'maintenance' | 'out_of_order' | 'reserved';
-  computedStatus?: 'vacant' | 'occupied' | 'dirty' | 'maintenance' | 'out_of_order' | 'reserved';
+  status: 'vacant' | 'occupied' | 'dirty' | 'cleaning' | 'reserved' | 'maintenance' | 'out_of_order';
+  computedStatus?: 'vacant' | 'occupied' | 'dirty' | 'cleaning' | 'reserved' | 'maintenance' | 'out_of_order';
   floor: number;
   capacity: number;
   amenities: string[];
   images: string[];
   description: string;
   isActive: boolean;
+  maintenanceNotes?: string;
+  lastCleaned?: string;
   createdAt: string;
   updatedAt: string;
   currentBooking?: {

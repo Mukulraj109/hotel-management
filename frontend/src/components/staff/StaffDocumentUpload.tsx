@@ -179,6 +179,16 @@ export default function StaffDocumentUpload({ onUploadSuccess }: StaffDocumentUp
     fetchDepartments();
   }, []);
 
+  // Revoke all pending object URLs when the component unmounts to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      setSelectedFiles(prev => {
+        prev.forEach(f => URL.revokeObjectURL(f.preview));
+        return prev;
+      });
+    };
+  }, []);
+
   const fetchRequirements = async () => {
     try {
       const { data } = await api.get('/documents/requirements/staff');
@@ -369,7 +379,11 @@ export default function StaffDocumentUpload({ onUploadSuccess }: StaffDocumentUp
 
     if (successCount > 0) {
       toast.success(`${successCount} document(s) uploaded successfully`);
-      setSelectedFiles([]);
+      // Revoke object URLs before clearing state to prevent memory leaks
+      setSelectedFiles(prev => {
+        prev.forEach(f => URL.revokeObjectURL(f.preview));
+        return [];
+      });
       setSelectedCategory('');
       setSelectedDocumentType('');
       setSelectedDepartment('');

@@ -955,4 +955,86 @@ invoiceSchema.methods.addExtraPersonCharges = function(extraPersonCharges) {
   return this;
 };
 
+// Sync to FinancialInvoice for unified financial reporting
+invoiceSchema.post('save', async function(doc) {
+  try {
+    const FinancialInvoice = mongoose.model('FinancialInvoice');
+
+    // Map Invoice status to FinancialInvoice status ('issued' -> 'sent')
+    const statusMap = {
+      draft: 'draft',
+      issued: 'sent',
+      paid: 'paid',
+      partially_paid: 'partially_paid',
+      overdue: 'overdue',
+      cancelled: 'cancelled',
+      refunded: 'refunded'
+    };
+
+    // Map Invoice items to FinancialInvoice lineItems
+    const lineItems = (doc.items || []).map(item => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      amount: item.totalPrice,
+      taxRate: item.taxRate,
+      taxAmount: item.taxAmount,
+      date: item.dateProvided
+    }));
+
+    // Calculate paidAmount from payments
+    const paidAmount = (doc.payments || []).reduce(
+      (sum, p) => sum + (p.amount || 0), 0
+    );
+
+    // Calculate discount total
+    const totalDiscount = (doc.discounts || []).reduce(
+      (sum, d) => sum + (d.amount || 0), 0
+    );
+
+    const balanceAmount = (doc.totalAmount || 0) - paidAmount;
+
+    await FinancialInvoice.findOneAndUpdate(
+      { sourceInvoiceId: doc._id },
+      {
+        $set: {
+          sourceInvoiceId: doc._id,
+          hotelId: doc.hotelId,
+          invoiceNumber: doc.invoiceNumber,
+          type: 'guest_folio',
+          customer: {
+            type: 'guest',
+            guestId: doc.guestId,
+            details: {
+              name: doc.billingAddress?.name || 'Guest'
+            }
+          },
+          bookingReference: doc.bookingId,
+          issueDate: doc.issueDate,
+          dueDate: doc.dueDate,
+          currency: doc.currency,
+          lineItems: lineItems,
+          subtotal: doc.subtotal,
+          totalTax: doc.taxAmount,
+          totalDiscount: totalDiscount,
+          totalAmount: doc.totalAmount,
+          paidAmount: paidAmount,
+          balanceAmount: balanceAmount,
+          status: statusMap[doc.status] || doc.status,
+          notes: doc.notes,
+          internalNotes: doc.internalNotes,
+          syncedAt: new Date()
+        },
+        $setOnInsert: {
+          createdBy: doc.guestId
+        }
+      },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    // Non-blocking — don't fail the invoice save
+    console.warn('Invoice->FinancialInvoice sync failed:', err.message);
+  }
+});
+
 export default mongoose.model('Invoice', invoiceSchema);

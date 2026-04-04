@@ -31,6 +31,33 @@ const MyApprovalRequests: React.FC = () => {
   const totalCount = data?.totalCount ?? 0;
   const totalPages = data?.totalPages ?? 1;
 
+  // Fetch per-status total counts from the server to show accurate stats cards.
+  // Each query fetches page 1 with limit 1 — we only care about totalCount, not the data.
+  const { data: pendingData } = useQuery({
+    queryKey: ['myApprovalRequests', 'pending', 'count'],
+    queryFn: () =>
+      approvalService.getMyApprovalRequests({ status: 'pending', page: 1, limit: 1 }),
+    keepPreviousData: true,
+  });
+  const { data: approvedData } = useQuery({
+    queryKey: ['myApprovalRequests', 'approved', 'count'],
+    queryFn: () =>
+      approvalService.getMyApprovalRequests({ status: 'approved', page: 1, limit: 1 }),
+    keepPreviousData: true,
+  });
+  const { data: rejectedData } = useQuery({
+    queryKey: ['myApprovalRequests', 'rejected', 'count'],
+    queryFn: () =>
+      approvalService.getMyApprovalRequests({ status: 'rejected', page: 1, limit: 1 }),
+    keepPreviousData: true,
+  });
+  const { data: allData } = useQuery({
+    queryKey: ['myApprovalRequests', 'all', 'count'],
+    queryFn: () =>
+      approvalService.getMyApprovalRequests({ page: 1, limit: 1 }),
+    keepPreviousData: true,
+  });
+
   // Ensure the real-time WebSocket singleton is connected so event listeners below can fire.
   // Do NOT disconnect on unmount — realTimeService is a singleton shared across components.
   useEffect(() => {
@@ -59,6 +86,8 @@ const MyApprovalRequests: React.FC = () => {
     onSuccess: () => {
       toast.success('Request cancelled successfully');
       queryClient.invalidateQueries({ queryKey: ['myApprovalRequests'] });
+      // Also refresh the header pending count badge
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals-count'] });
     },
     onError: (err: unknown) => {
       const axiosError = err as { response?: { data?: { message?: string } } };
@@ -78,12 +107,12 @@ const MyApprovalRequests: React.FC = () => {
     }
   };
 
-  // Derive status counts from the current page data (approximate; server knows totals)
+  // Use server-provided total counts for accurate stats across all pages
   const statusCounts = {
-    all: totalCount,
-    pending: requests.filter((r) => r.status === 'pending').length,
-    approved: requests.filter((r) => r.status === 'approved').length,
-    rejected: requests.filter((r) => r.status === 'rejected').length,
+    all: allData?.totalCount ?? totalCount,
+    pending: pendingData?.totalCount ?? 0,
+    approved: approvedData?.totalCount ?? 0,
+    rejected: rejectedData?.totalCount ?? 0,
   };
 
   return (

@@ -166,7 +166,7 @@ router.get('/hotel/:hotelId', authenticate, ensureTenantContext, ensurePropertyA
  *       200:
  *         description: Room type options
  */
-router.get('/hotel/:hotelId/options', roomTypeController.getRoomTypeOptions);
+router.get('/hotel/:hotelId/options', authenticate, ensureTenantContext, ensurePropertyAccess, roomTypeController.getRoomTypeOptions);
 
 /** Public: pre-booking inventory check (RoomAvailability; skips if calendar not maintained). */
 router.get(

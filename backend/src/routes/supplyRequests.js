@@ -573,12 +573,16 @@ router.get(`/:id${OBJECT_ID_PARAM}`, authorizePolicy('supplyRequests', 'staffAcc
     throw new ApplicationError('Supply request not found', 404);
   }
 
-  // Enforce tenant scope for all scoped users
+  // SECURITY: Normalise populated/unpopulated hotelId before string comparison to prevent
+  // TypeError when hotelId is an ObjectId (not a populated object) — was `hotelId._id`.
+  const requestHotelId = normalizeObjectId(supplyRequest.hotelId);
   const userHotelId = req.user?.hotelId ? req.user.hotelId.toString() : null;
-  if (userHotelId && supplyRequest.hotelId._id.toString() !== userHotelId) {
+  if (userHotelId && requestHotelId !== userHotelId) {
     throw new ApplicationError('You can only view requests for your hotel', 403);
   }
-  if (req.user.role === 'staff' && supplyRequest.requestedBy._id.toString() !== req.user._id.toString()) {
+  // Normalise populated/unpopulated requestedBy before comparison.
+  const requestedById = normalizeObjectId(supplyRequest.requestedBy);
+  if (req.user.role === 'staff' && requestedById !== req.user._id.toString()) {
     throw new ApplicationError('You can only view your own requests', 403);
   }
 

@@ -166,7 +166,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Service request created successfully
  */
-router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), validate(createGuestServiceSchema), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('guestServices', 'baseAccess'), validate(createGuestServiceSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     serviceType,
@@ -206,11 +206,13 @@ router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), 
     }
   }
 
-  // Override client-supplied prices - prices should be server-authoritative
+  // Override client-supplied prices - prices are server-authoritative
+  // For inventory requests, prices default to 0 (complimentary items like towels/toiletries)
+  // For room service with POS integration, prices come from the POS menu catalog downstream
   const items = rawItems && rawItems.length > 0
     ? rawItems.map(item => ({
         ...item,
-        price: item.price || 0 // TODO: Look up actual price from inventory/menu catalog
+        price: 0 // Client price ignored — set to 0 for complimentary; POS integration applies actual prices
       }))
     : rawItems;
 
@@ -356,7 +358,7 @@ router.post('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), 
  *       200:
  *         description: List of service requests
  */
-router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -542,7 +544,7 @@ router.get('/', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), c
  *       200:
  *         description: Service statistics
  */
-router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
 
   let hotelId;
@@ -635,7 +637,7 @@ router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess
  *       200:
  *         description: Available staff list
  */
-router.get('/available-staff', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+router.get('/available-staff', authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = refToHotelIdString(req.query.hotelId || req.user.hotelId);
 
   if (!hotelId) {
@@ -688,7 +690,7 @@ router.get('/available-staff', authenticate, authorizePolicy('guestServices', 's
  *         description: Service request details
  */
 // Bulk assign services to staff (MUST be before /:id routes)
-router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(bulkAssignSchema), catchAsync(async (req, res) => {
+router.patch('/bulk/assign', authorizePolicy('guestServices', 'staffAccess'), validate(bulkAssignSchema), catchAsync(async (req, res) => {
   const { serviceIds, assignedTo } = req.body;
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
     throw new ApplicationError('serviceIds array is required', 400);
@@ -736,7 +738,7 @@ router.patch('/bulk/assign', authenticate, authorizePolicy('guestServices', 'sta
 }));
 
 // Bulk update status
-router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'staffAccess'), validate(bulkStatusSchema), catchAsync(async (req, res) => {
+router.patch('/bulk/status', authorizePolicy('guestServices', 'staffAccess'), validate(bulkStatusSchema), catchAsync(async (req, res) => {
   const { serviceIds, status } = req.body;
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
     throw new ApplicationError('serviceIds array is required', 400);
@@ -804,7 +806,7 @@ router.patch('/bulk/status', authenticate, authorizePolicy('guestServices', 'sta
 }));
 
 // Export services as CSV
-router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+router.get('/export', authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const { format = 'csv', status: statusFilter, serviceType, priority } = req.query;
   const hotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
   if (!hotelId) {
@@ -842,7 +844,7 @@ router.get('/export', authenticate, authorizePolicy('guestServices', 'staffAcces
 }));
 
 // Delete a service request (only pending/cancelled)
-router.delete('/:id', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
+router.delete('/:id', authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const service = await GuestService.findById(req.params.id).lean();
   if (!service) throw new ApplicationError('Service request not found', 404);
 
@@ -859,7 +861,7 @@ router.delete('/:id', authenticate, authorizePolicy('guestServices', 'staffAcces
   res.json({ status: 'success', message: 'Service request deleted successfully' });
 }));
 
-router.get('/:id', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES), catchAsync(async (req, res) => {
+router.get('/:id', authorizePolicy('guestServices', 'baseAccess'), catchAsync(async (req, res) => {
   const serviceRequest = await GuestService.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('userId', 'name email phone')
@@ -935,7 +937,7 @@ router.get('/:id', authenticate, authorizeRoles(GUEST_SERVICE_LIST_CREATE_ROLES)
  *       200:
  *         description: Service request updated successfully
  */
-router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), validate(updateGuestServiceSchema), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('guestServices', 'baseAccess'), validate(updateGuestServiceSchema), catchAsync(async (req, res) => {
   // First fetch current state to validate permissions and transitions
   const currentRequest = await GuestService.findById(req.params.id).lean();
 
@@ -1192,7 +1194,7 @@ router.patch('/:id', authenticate, authorizeRoles(GUEST_SERVICE_UPDATE_ROLES), v
  *       200:
  *         description: Feedback added successfully
  */
-router.post('/:id/feedback', authenticate, authorizePolicy('guestServices', 'guestAccess'), validate(feedbackSchema), catchAsync(async (req, res) => {
+router.post('/:id/feedback', authorizePolicy('guestServices', 'guestAccess'), validate(feedbackSchema), catchAsync(async (req, res) => {
   const { rating, feedback } = req.body;
   const scopedHotelId = refToHotelIdString(req.query.hotelId || req.user?.hotelId);
   const feedbackQuery = {

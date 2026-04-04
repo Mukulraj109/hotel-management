@@ -7,7 +7,6 @@ import { staffBookingService, StaffUpcomingBooking, StaffUpcomingStats, ExtraPer
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { useAuth } from '../../context/AuthContext';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import { withErrorBoundary } from '../../components/ErrorBoundary';
 import { useRealTime } from '../../services/realTimeService';
@@ -30,7 +29,6 @@ import {
 } from 'lucide-react';
 
 function StaffUpcomingBookings() {
-  useAuth();
   const { on, off } = useRealTime();
   const [bookings, setBookings] = useState<StaffUpcomingBooking[]>([]);
   const [stats, setStats] = useState<StaffUpcomingStats>({
@@ -253,7 +251,7 @@ function StaffUpcomingBookings() {
               {booking.rooms?.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                   {booking.rooms.map((room, idx) => (
-                    <Badge key={idx} variant="outline" className="bg-blue-50 text-blue-700">
+                    <Badge key={room.roomId?._id ?? idx} variant="outline" className="bg-blue-50 text-blue-700">
                       {room.roomId?.roomNumber}
                     </Badge>
                   ))}
@@ -280,7 +278,7 @@ function StaffUpcomingBookings() {
               <div className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-gray-500" />
                 <span className="text-sm font-medium">
-                  ₹{booking.totalAmount.toLocaleString()}
+                  ₹{(booking.totalAmount ?? 0).toLocaleString()}
                 </span>
                 <Badge
                   variant={booking.paymentStatus === 'paid' ? 'success' : 'warning'}
@@ -726,7 +724,7 @@ function StaffUpcomingBookings() {
                 {selectedBooking.rooms?.length > 0 ? (
                   <div className="space-y-2">
                     {selectedBooking.rooms.map((room, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-green-50 p-3 rounded border border-green-200">
+                      <div key={room.roomId?._id ?? idx} className="flex justify-between items-center bg-green-50 p-3 rounded border border-green-200">
                         <span className="font-medium text-green-800">
                           Room {room.roomId?.roomNumber} ({room.roomId?.type})
                         </span>
@@ -768,7 +766,7 @@ function StaffUpcomingBookings() {
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">Total Amount:</span>
-                    <span className="font-semibold text-lg">₹{selectedBooking.totalAmount.toLocaleString()}</span>
+                    <span className="font-semibold text-lg">₹{(selectedBooking.totalAmount ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <span className="text-gray-600">Payment Status:</span>

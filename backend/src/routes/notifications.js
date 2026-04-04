@@ -973,6 +973,58 @@ router.patch('/preferences/:channel/:type', validate(schemas.updateNotificationT
   });
 }));
 
+// POST /api/v1/notifications/send - Admin sends notification to guest(s)
+router.post('/send', authorizePolicy('notifications', 'manageAccess'), catchAsync(async (req, res, next) => {
+  const { recipientIds, title, message, type, priority, channels } = req.body;
+
+  if (!recipientIds || !Array.isArray(recipientIds) || recipientIds.length === 0) {
+    return res.status(400).json({ status: 'error', message: 'At least one recipient is required' });
+  }
+  if (recipientIds.length > 100) {
+    return res.status(400).json({ status: 'error', message: 'Maximum 100 recipients per send' });
+  }
+  if (!title || !message) {
+    return res.status(400).json({ status: 'error', message: 'Title and message are required' });
+  }
+
+  const hotelId = req.user.hotelId;
+  const notifications = [];
+
+  for (const recipientId of recipientIds) {
+    const notification = await Notification.create({
+      userId: recipientId,
+      hotelId,
+      title,
+      message,
+      type: type || 'admin_message',
+      priority: priority || 'medium',
+      channels: channels || ['in_app'],
+      metadata: {
+        sentBy: req.user._id,
+        sentByName: req.user.name,
+        category: 'system'
+      }
+    });
+    notifications.push(notification);
+
+    // Send real-time notification
+    try {
+      await websocketService.sendToUser(recipientId.toString(), 'notification:new', notification);
+    } catch (emitError) {
+      logger.warn('Failed to emit send notification event', {
+        recipientId,
+        error: emitError.message
+      });
+    }
+  }
+
+  res.json({
+    status: 'success',
+    message: `Notification sent to ${notifications.length} recipient(s)`,
+    data: { count: notifications.length }
+  });
+}));
+
 // POST /api/v1/notifications/test - Send test notification
 router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
@@ -1048,7 +1100,14 @@ router.post('/subscribe', validate(mutationBaselineSchema), catchAsync(async (re
 }));
 
 // GET /api/v1/notifications/stream - Enhanced Server-sent events for real-time notifications (PLAN 1)
+// DEPRECATED: SSE notifications are deprecated in favor of Socket.IO real-time service.
+// This endpoint remains for backward compatibility but should not be used for new integrations.
 router.get('/stream', authenticate, (req, res) => {
+  // DEPRECATED: SSE notifications are deprecated in favor of Socket.IO real-time service.
+  // This endpoint remains for backward compatibility but should not be used for new integrations.
+  res.setHeader('X-Deprecated', 'Use Socket.IO at /ws/notifications instead');
+  logger.warn('Deprecated SSE notification stream accessed by user:', req.user?._id);
+
   const userId = req.user._id.toString();
   const userRole = req.user.role;
   const requestOrigin = req.headers.origin;

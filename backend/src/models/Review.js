@@ -63,7 +63,7 @@ import NotificationAutomationService from '../services/notificationAutomationSer
  *           default: false
  *         isPublished:
  *           type: boolean
- *           default: true
+ *           default: false
  *         response:
  *           type: object
  *           properties:

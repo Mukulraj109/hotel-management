@@ -243,7 +243,7 @@ function StaffDashboard() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Occupancy Rate</p>
-                  <p className="text-2xl font-semibold text-gray-900">{data.today.occupancyRate}%</p>
+                  <p className="text-2xl font-semibold text-gray-900">{data.today.occupancyRate ?? 0}%</p>
                 </div>
               </div>
             </Card>
@@ -483,8 +483,8 @@ function StaffDashboard() {
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Rooms Needing Attention</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {data.roomStatus.needsAttention.map((room, index) => (
-                <div key={`data-roomStatus-needsAttention-${index}-${room.type}`} className="p-4 border rounded-lg">
+              {data.roomStatus.needsAttention.map((room) => (
+                <div key={room._id} className="p-4 border rounded-lg">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-gray-900">Room {room.roomNumber}</p>
@@ -523,8 +523,8 @@ function StaffDashboard() {
                 </Badge>
               </div>
               <div className="space-y-3">
-                {data.inventory.lowStockAlert.items.map((item, index) => (
-                  <div key={`data-inventory-lowStockAlert-items-${index}-${item.name}`} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                {data.inventory.lowStockAlert.items.map((item) => (
+                  <div key={item._id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-900">{item.name}</p>
                       <p className="text-sm text-gray-600 capitalize">{item.category}</p>
@@ -549,8 +549,8 @@ function StaffDashboard() {
                 </Badge>
               </div>
               <div className="space-y-3">
-                {data.inventory.inspectionsDue.rooms.map((room, index) => (
-                  <div key={`data-inventory-inspectionsDue-rooms-${room._id}`} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                {data.inventory.inspectionsDue.rooms.map((room) => (
+                  <div key={`inspectionsDue-${room._id}`} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-900">Room {room.roomNumber}</p>
                       <p className="text-sm text-gray-600">Inventory inspection needed</p>
@@ -627,13 +627,13 @@ function StaffDashboard() {
                         <div>
                           <p className="text-sm text-gray-600">Items Used</p>
                           <p className="font-medium">
-                            {checkout.items.filter(item => item.status !== 'intact').length} of {checkout.items.length}
+                            {(checkout.items ?? []).filter(item => item.status !== 'intact').length} of {(checkout.items ?? []).length}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">Total Amount</p>
                           <p className="font-medium text-green-600">
-                            ₹{checkout.totalAmount.toLocaleString('en-IN')}
+                            ₹{(checkout.totalAmount ?? 0).toLocaleString('en-IN')}
                           </p>
                         </div>
                       </div>
@@ -641,10 +641,10 @@ function StaffDashboard() {
                       <div className="mb-3">
                         <h4 className="text-sm font-medium text-gray-700 mb-2">Items with Charges:</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {checkout.items
+                          {(checkout.items ?? [])
                             .filter(item => item.status !== 'intact' && item.totalPrice > 0)
                             .map((item, index) => (
-                              <div key={`-${index}-${item.status}`} className="flex justify-between items-center p-2 bg-red-50 rounded">
+                              <div key={`${checkout._id}-item-${index}`} className="flex justify-between items-center p-2 bg-red-50 rounded">
                                 <div>
                                   <span className="text-sm font-medium">{item.itemName}</span>
                                   <span className="text-xs text-gray-500 ml-2 capitalize">({item.status})</span>
@@ -659,7 +659,9 @@ function StaffDashboard() {
 
                       <div className="flex items-center gap-4 text-sm text-gray-500">
                         <span>Checked by: {checkout.checkedBy?.name || 'System'}</span>
-                        <span>Checked: {new Date(checkout.checkedAt).toLocaleDateString()}</span>
+                        {checkout.checkedAt && (
+                          <span>Checked: {new Date(checkout.checkedAt).toLocaleDateString()}</span>
+                        )}
                         {checkout.paidAt && (
                           <span>Paid: {new Date(checkout.paidAt).toLocaleDateString()}</span>
                         )}

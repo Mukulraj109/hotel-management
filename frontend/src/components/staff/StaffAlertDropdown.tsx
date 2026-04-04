@@ -30,6 +30,10 @@ interface StaffAlertDropdownProps {
 export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropdownProps) {
   const [showAll, setShowAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Keep a stable ref to onToggle so the outside-click useEffect doesn't
+  // re-attach the event listener on every render when the parent re-renders.
+  const onToggleRef = useRef(onToggle);
+  useEffect(() => { onToggleRef.current = onToggle; }, [onToggle]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { connectionState, connect, on, off } = useRealTime();
@@ -46,11 +50,13 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
     // Other components may be using the same connection
   }, [isOpen, connect]);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside.
+  // onToggleRef keeps the latest onToggle without being a dep, preventing
+  // the listener from being torn down and re-added on every parent re-render.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onToggle();
+        onToggleRef.current();
       }
     };
 
@@ -61,7 +67,7 @@ export default function StaffAlertDropdown({ isOpen, onToggle }: StaffAlertDropd
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onToggle]);
+  }, [isOpen]);
 
   // Real-time event listeners for staff alerts
   useEffect(() => {

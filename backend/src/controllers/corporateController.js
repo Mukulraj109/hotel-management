@@ -90,20 +90,29 @@ export const createCorporateCompany = catchAsync(async (req, res, next) => {
 export const getAllCorporateCompanies = catchAsync(async (req, res, next) => {
   // Filter by hotel ID
   const filter = { hotelId: req.user.hotelId };
-  
+
   const features = new APIFeatures(CorporateCompany.find(filter), req.query)
     .filter()
     .sort()
     .limitFields()
     .paginate();
-    
-  const companies = await features.query;
-  
+
+  const companies = await features.query.lean();
+  const totalCount = await CorporateCompany.countDocuments(filter);
+  const page = features.page || 1;
+  const limit = features.limit || 20;
+
   res.status(200).json({
     status: 'success',
     results: companies.length,
     data: {
-      companies
+      companies,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     }
   });
 });

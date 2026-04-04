@@ -198,7 +198,7 @@ class MaintenanceService {
    * tasks to the current staff member, so four parallel requests are sufficient.
    */
   async getTasksGrouped(completedPage = 1): Promise<GroupedTasks> {
-    const [pendingRes, assignedRes, inProgressRes, completedRes] = await Promise.all([
+    const [pendingResult, assignedResult, inProgressResult, completedResult] = await Promise.allSettled([
       // Pending tasks (hotel-wide — staff can self-assign and start any of these)
       this.getTasks({ status: 'pending', limit: 20 }),
       // Assigned tasks (scoped to this staff member on the backend)
@@ -209,9 +209,27 @@ class MaintenanceService {
       this.getTasks({ status: 'completed', limit: 10, page: completedPage }),
     ]);
 
-    const pendingTasks: MaintenanceTask[] = pendingRes.data?.tasks || [];
-    const assignedTasks: MaintenanceTask[] = assignedRes.data?.tasks || [];
-    const inProgressTasks: MaintenanceTask[] = inProgressRes.data?.tasks || [];
+    // If ALL requests failed, surface the error so the page can show an error state.
+    const allFailed =
+      pendingResult.status === 'rejected' &&
+      assignedResult.status === 'rejected' &&
+      inProgressResult.status === 'rejected' &&
+      completedResult.status === 'rejected';
+    if (allFailed) {
+      throw (pendingResult as PromiseRejectedResult).reason instanceof Error
+        ? (pendingResult as PromiseRejectedResult).reason
+        : new Error('Failed to load maintenance tasks');
+    }
+
+    // Partial failures: treat the failed slice as empty so the rest of the dashboard stays visible.
+    const pendingRes    = pendingResult.status    === 'fulfilled' ? pendingResult.value    : null;
+    const assignedRes   = assignedResult.status   === 'fulfilled' ? assignedResult.value   : null;
+    const inProgressRes = inProgressResult.status === 'fulfilled' ? inProgressResult.value : null;
+    const completedRes  = completedResult.status  === 'fulfilled' ? completedResult.value  : null;
+
+    const pendingTasks: MaintenanceTask[]    = pendingRes?.data?.tasks    || [];
+    const assignedTasks: MaintenanceTask[]   = assignedRes?.data?.tasks   || [];
+    const inProgressTasks: MaintenanceTask[] = inProgressRes?.data?.tasks || [];
 
     // Urgent = emergency/urgent priority from both pending AND assigned pools, deduplicated
     const urgentPriorities = new Set(['emergency', 'urgent']);
@@ -238,19 +256,19 @@ class MaintenanceService {
       return true;
     });
 
-    const pendingTotal = (pendingRes.data?.pagination?.total ?? 0) +
-      (assignedRes.data?.pagination?.total ?? 0) -
+    const pendingTotal = (pendingRes?.data?.pagination?.total ?? 0) +
+      (assignedRes?.data?.pagination?.total ?? 0) -
       mergedUrgent.length;
 
     return {
       urgent: mergedUrgent.slice(0, 10),
       pending: dedupedPending,
       inProgress: inProgressTasks,
-      completed: completedRes.data?.tasks || [],
+      completed: completedRes?.data?.tasks || [],
       urgentTotal: mergedUrgent.length,
       pendingTotal: Math.max(0, pendingTotal),
-      inProgressTotal: inProgressRes.data?.pagination?.total ?? 0,
-      completedTotal: completedRes.data?.pagination?.total ?? 0,
+      inProgressTotal: inProgressRes?.data?.pagination?.total ?? 0,
+      completedTotal: completedRes?.data?.pagination?.total ?? 0,
     };
   }
 

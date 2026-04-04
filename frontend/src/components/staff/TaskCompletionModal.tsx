@@ -125,7 +125,7 @@ export function TaskCompletionModal({
                 key={step.id}
                 className="group/step relative"
                 onClick={() => toggleStep(step.id)}
-               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => toggleStep(step.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleStep(step.id); } }}>
                 <div className={cn(
                   "absolute inset-0 rounded-2xl blur opacity-50 transition duration-200",
                   isCompleted

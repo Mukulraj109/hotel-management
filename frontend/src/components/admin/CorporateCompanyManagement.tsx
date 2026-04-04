@@ -162,7 +162,7 @@ const initialFormData: CompanyFormData = {
 };
 
 // API functions
-const fetchCorporateCompanies = async (page = 1, limit = 100): Promise<{ companies: CorporateCompany[] }> => {
+const fetchCorporateCompanies = async (page = 1, limit = 20): Promise<{ companies: CorporateCompany[]; pagination?: { page: number; limit: number; totalCount: number; totalPages: number } }> => {
   try {
     const response = await api.get(`/corporate/companies?page=${page}&limit=${limit}`);
     return response.data.data;
@@ -258,18 +258,21 @@ function CorporateCompanyManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<CompanyFormData>(initialFormData);
   const [formErrors, setFormErrors] = useState<FieldValidationErrors>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const queryClient = useQueryClient();
 
-  // Fetch companies
+  // Fetch companies with server-side pagination
   const {
     data: companiesData,
     isLoading,
     error,
     refetch
   } = useQuery({
-    queryKey: ['corporate-companies'],
-    queryFn: fetchCorporateCompanies,
+    queryKey: ['corporate-companies', currentPage],
+    queryFn: () => fetchCorporateCompanies(currentPage, PAGE_SIZE),
+    keepPreviousData: true,
   });
 
   // Fetch dashboard metrics
@@ -842,6 +845,37 @@ function CorporateCompanyManagement() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {companiesData?.pagination && companiesData.pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg mt-4">
+          <div className="text-sm text-gray-700">
+            Showing page {companiesData.pagination.page} of {companiesData.pagination.totalPages}
+            {' '}({companiesData.pagination.totalCount} total companies)
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600 px-2">
+              Page {currentPage}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= (companiesData.pagination.totalPages || 1)}
+              onClick={() => setCurrentPage(prev => prev + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Company Form Modal */}
       {showForm && (

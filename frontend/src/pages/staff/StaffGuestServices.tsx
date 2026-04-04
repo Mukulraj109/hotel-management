@@ -9,11 +9,15 @@ import { guestServiceService, GuestServiceRequest } from '../../services/guestSe
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const PAGE_SIZE = 20;
 
-export default function StaffGuestServices() {
+function StaffGuestServices() {
   const { user } = useAuth();
+  const { selectedPropertyId, primaryTenantHotelId } = useProperty();
+  const propertyScopeId = selectedPropertyId || primaryTenantHotelId || '';
   const { isConnected, connect, on, off } = useRealTime();
   const currentUserId = user?._id || user?.id;
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
@@ -32,10 +36,10 @@ export default function StaffGuestServices() {
   const [activeTab, setActiveTab] = useState<'pending' | 'assigned' | 'in_progress' | 'completed'>('pending');
 
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUserId && propertyScopeId) {
       fetchRequests(1, activeTab);
     }
-  }, [currentUserId, activeTab]);
+  }, [currentUserId, activeTab, propertyScopeId]);
 
   useEffect(() => {
     connect().catch(() => {
@@ -70,7 +74,7 @@ export default function StaffGuestServices() {
   }, [isConnected, currentUserId, on, off, page, activeTab]);
 
   const fetchRequests = useCallback(async (targetPage: number = 1, status?: string) => {
-    if (!currentUserId) {
+    if (!currentUserId || !propertyScopeId) {
       setRequests([]);
       setLoading(false);
       return;
@@ -81,12 +85,14 @@ export default function StaffGuestServices() {
       const params: {
         page: number;
         limit: number;
+        hotelId?: string;
         status?: string;
         assignedTo?: string;
         completedFrom?: string;
       } = {
         page: targetPage,
         limit: PAGE_SIZE,
+        hotelId: propertyScopeId,
       };
 
       if (status) params.status = status;
@@ -119,7 +125,7 @@ export default function StaffGuestServices() {
     } finally {
       setLoading(false);
     }
-  }, [currentUserId]);
+  }, [currentUserId, propertyScopeId]);
 
   const updateRequestStatus = async (requestId: string, newStatus: string) => {
     if (!currentUserId) {
@@ -197,11 +203,17 @@ export default function StaffGuestServices() {
     }
   };
 
+  // Only staff and frontdesk roles can self-assign; backend ASSIGNABLE_ROLES = ['staff', 'frontdesk'].
+  const canSelfAssign = user?.role === 'staff' || user?.role === 'frontdesk';
+
   const getActionButton = (request: GuestServiceRequest) => {
     const isUpdating = updating === request._id;
 
     switch (request.status) {
       case 'pending':
+        if (!canSelfAssign) {
+          return <Badge variant="outline" className="text-orange-600">Pending</Badge>;
+        }
         return (
           <Button
             size="sm"
@@ -404,6 +416,19 @@ export default function StaffGuestServices() {
     }
   };
 
+  if (!propertyScopeId) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="text-center max-w-md">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Property unavailable</h2>
+          <p className="text-gray-600">
+            Your account needs a hotel assignment or property selection. Open the property switcher in the header, or refresh after logging in.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6 flex justify-between items-center">
@@ -551,3 +576,5 @@ export default function StaffGuestServices() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffGuestServices, { level: 'page' });
