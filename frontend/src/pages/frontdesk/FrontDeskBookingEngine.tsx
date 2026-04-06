@@ -12,8 +12,8 @@ import { api } from '../../services/api';
 import { cn } from '../../utils/cn';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import {
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import {
   Search,
   CalendarDays,
   Tag,

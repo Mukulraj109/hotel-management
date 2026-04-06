@@ -9,8 +9,8 @@ import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
 import toast from 'react-hot-toast';
-import {
 import { withErrorBoundary } from '../../components/ErrorBoundary';
+import {
   AlertTriangle,
   CheckCircle,
   Clock,

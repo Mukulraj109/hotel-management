@@ -603,7 +603,7 @@ const AdminPurchaseOrders: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
         </div>
