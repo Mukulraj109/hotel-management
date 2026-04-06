@@ -5,9 +5,9 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/dashboardUtils';
-import { 
 import { withErrorBoundary } from '../../components/ErrorBoundary';
-  ArrowLeft, 
+import {
+  ArrowLeft,
   Calendar,
   User,
   Phone,
